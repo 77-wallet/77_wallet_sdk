@@ -20,6 +20,7 @@ CREATE TABLE api_resource_operation
     tx_hash                      TEXT NULL, -- 资源操作链上交易哈希
     transaction_fee              TEXT NULL, -- 构建阶段预估/计算出的交易手续费
     last_broadcast_at            TIMESTAMP NULL, -- 最近一次成功广播时间；不代表链上最终确认
+    transaction_time             TIMESTAMP NULL, -- 链上最终确认时间；必须来自链上查询结果
     tx_status                    TEXT NULL, -- 链上执行状态视图，如 success / fail / uncertain
     tx_exec_receipt_uploaded_at  TIMESTAMP NULL, -- 链上执行回执已上传时间
 

@@ -44,6 +44,7 @@ pub enum ResourceOperationIntent {
     SendTaskAck(String),
     ClaimBuildSlot(String),
     BroadcastTx(String),
+    RecoverTx(String),
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +135,22 @@ impl ResourceOperationScanner {
             }
         }
 
+        match ApiResourceOperationRepo::scan_need_recover(
+            &self.pool,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(ResourceOperationIntent::RecoverTx(record.resource_trade_no));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan resource operation recover records");
+            }
+        }
+
         intents
     }
 }
@@ -200,6 +217,9 @@ impl ResourceOperationWorker {
             }
             ResourceOperationIntent::BroadcastTx(resource_trade_no) => {
                 self.broadcast_tx(resource_trade_no).await
+            }
+            ResourceOperationIntent::RecoverTx(resource_trade_no) => {
+                self.recover_tx(resource_trade_no).await
             }
         }
     }
@@ -476,6 +496,100 @@ impl ResourceOperationWorker {
 
         Ok(())
     }
+
+    async fn recover_tx(&self, resource_trade_no: String) -> Result<(), ServiceError> {
+        info!(resource_trade_no = %resource_trade_no, "Processing resource operation RecoverTx");
+
+        let operation =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if operation.transaction_time.is_some() {
+            trace!(
+                resource_trade_no = %resource_trade_no,
+                "Resource operation transaction_time already exists, skipping recover"
+            );
+            return Ok(());
+        }
+
+        let tx_hash =
+            operation.tx_hash.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+                ServiceError::Parameter("resource operation recover requires tx_hash".to_string())
+            })?;
+        let transaction_fee = operation.transaction_fee.as_deref().unwrap_or("0");
+
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&operation.chain_code).await;
+        let tx_resp = ApiTransDomain::process_recovered_tx(
+            &operation.chain_code,
+            &operation.owner_address,
+            tx_hash,
+            0,
+            transaction_fee,
+        )
+        .await?;
+
+        let Some(tx_resp) = tx_resp else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                "Resource operation recover result uncertain"
+            );
+            return Ok(());
+        };
+
+        if tx_resp.tx_hash != tx_hash {
+            error!(
+                resource_trade_no = %resource_trade_no,
+                expected_tx_hash = %tx_hash,
+                recovered_tx_hash = %tx_resp.tx_hash,
+                "Resource operation tx_hash mismatch between build and recover"
+            );
+            return Err(ServiceError::System(SystemError::Internal(
+                "resource operation tx_hash mismatch between build and recover".to_string(),
+            )));
+        }
+
+        let transaction_time_ms = tx_resp.transaction_time_ms.ok_or_else(|| {
+            ServiceError::System(SystemError::Internal(
+                "resource operation recover returned final result but missing transaction_time_ms"
+                    .to_string(),
+            ))
+        })?;
+        let transaction_time =
+            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(transaction_time_ms as i64)
+                .ok_or_else(|| {
+                    ServiceError::System(SystemError::Internal(
+                        "invalid resource operation transaction_time_ms from chain".to_string(),
+                    ))
+                })?
+                .to_rfc3339();
+
+        let affected = ApiResourceOperationRepo::confirm_transaction_time_if_absent(
+            &self.pool,
+            &resource_trade_no,
+            &transaction_time,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if affected == 0 {
+            trace!(
+                resource_trade_no = %resource_trade_no,
+                "Resource operation transaction_time already committed"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                transaction_time = %transaction_time,
+                "Resource operation chain confirmation fact committed"
+            );
+        }
+
+        Ok(())
+    }
 }
 
 pub struct ResourceOperationDispatcherActor {
@@ -613,7 +727,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn scanner_owns_resource_operation_ack_build_and_broadcast_intents() {
+    async fn scanner_owns_resource_operation_ack_build_broadcast_and_recover_intents() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
@@ -652,6 +766,24 @@ mod tests {
         )
         .await
         .unwrap();
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_need_recover", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_need_recover").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_need_recover").await.unwrap();
+        ApiResourceOperationRepo::update_after_build(
+            &pool,
+            "op_need_recover",
+            "0xhash_2",
+            "{\"Tron\":[{\"tx_id\":\"0xhash_2\",\"raw_data_hex\":\"00\",\"signature\":[]},{\"netUsed\":0,\"energyUsed\":0},\"0\"]}",
+            "0",
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_broadcast_executed(&pool, "op_need_recover").await.unwrap();
 
         let scanner = ResourceOperationScanner::new(pool);
         let intents = scanner.scan_round().await;
@@ -664,6 +796,9 @@ mod tests {
         }));
         assert!(intents.iter().any(|intent| {
             matches!(intent, ResourceOperationIntent::BroadcastTx(trade_no) if trade_no == "op_can_broadcast")
+        }));
+        assert!(intents.iter().any(|intent| {
+            matches!(intent, ResourceOperationIntent::RecoverTx(trade_no) if trade_no == "op_need_recover")
         }));
     }
 

@@ -49,6 +49,13 @@ impl ApiResourceOperationRepo {
         ApiResourceOperationDao::scan_can_broadcast(pool.read_ref(), limit).await
     }
 
+    pub async fn scan_need_recover(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
+        ApiResourceOperationDao::scan_need_recover(pool.read_ref(), limit).await
+    }
+
     pub async fn claim_building_at(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -85,6 +92,19 @@ impl ApiResourceOperationRepo {
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::mark_broadcast_executed(pool.write_ref(), resource_trade_no).await
+    }
+
+    pub async fn confirm_transaction_time_if_absent(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        transaction_time: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceOperationDao::confirm_transaction_time_if_absent(
+            pool.write_ref(),
+            resource_trade_no,
+            transaction_time,
+        )
+        .await
     }
 }
 
@@ -296,6 +316,64 @@ mod tests {
         assert!(got.result_received_at.is_none());
 
         let rows = ApiResourceOperationRepo::scan_can_broadcast(&pool, 100).await.unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_operation_need_recover_after_broadcast_and_confirms_once() {
+        let pool = setup_api_transaction_pool("resource_operation_recover").await;
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_recover", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_recover").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_recover").await.unwrap();
+        ApiResourceOperationRepo::update_after_build(
+            &pool,
+            "op_recover",
+            "0xhash_1",
+            "{\"raw\":\"tx_1\"}",
+            "10",
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_broadcast_executed(&pool, "op_recover").await.unwrap();
+
+        let rows = ApiResourceOperationRepo::scan_need_recover(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.iter().map(|row| row.resource_trade_no.as_str()).collect();
+        assert!(trade_nos.contains(&"op_recover"));
+
+        assert_eq!(
+            ApiResourceOperationRepo::confirm_transaction_time_if_absent(
+                &pool,
+                "op_recover",
+                "2026-05-04T00:00:00Z",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceOperationRepo::confirm_transaction_time_if_absent(
+                &pool,
+                "op_recover",
+                "2026-05-05T00:00:00Z",
+            )
+            .await
+            .unwrap(),
+            0
+        );
+
+        let got =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_recover").await.unwrap();
+        assert_eq!(got.tx_status.as_deref(), Some("success"));
+        assert!(got.transaction_time.is_some());
+        assert!(got.result_status.is_none());
+        assert!(got.tx_exec_receipt_uploaded_at.is_none());
+
+        let rows = ApiResourceOperationRepo::scan_need_recover(&pool, 100).await.unwrap();
         assert!(rows.is_empty());
     }
 

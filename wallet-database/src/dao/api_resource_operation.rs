@@ -158,6 +158,35 @@ impl ApiResourceOperationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_need_recover<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceOperationEntity>(
+            r#"
+            SELECT * FROM api_resource_operation
+            WHERE task_source = 1
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND raw_tx IS NOT NULL
+              AND trim(raw_tx) <> ''
+              AND last_broadcast_at IS NOT NULL
+              AND transaction_time IS NULL
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND err_code IS NULL
+            ORDER BY id ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn claim_building_at<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -275,6 +304,38 @@ impl ApiResourceOperationDao {
             "#,
         )
         .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Persist final on-chain confirmation time from chain query result.
+    pub async fn confirm_transaction_time_if_absent<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        transaction_time: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET transaction_time = ?2,
+                tx_status = COALESCE(tx_status, 'success'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND task_source = 1
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND last_broadcast_at IS NOT NULL
+              AND transaction_time IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(transaction_time)
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;

@@ -98,6 +98,7 @@ pub struct ApiResourceOperationEntity {
     pub tx_hash: Option<String>,
     pub transaction_fee: Option<String>,
     pub last_broadcast_at: Option<DateTime<Utc>>,
+    pub transaction_time: Option<DateTime<Utc>>,
     pub tx_status: Option<String>,
     pub tx_exec_receipt_uploaded_at: Option<DateTime<Utc>>,
     pub result_status: Option<String>,
