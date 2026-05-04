@@ -1,7 +1,9 @@
 use crate::{
     ApiTransactionDbPool,
     dao::api_resource_delegation::ApiResourceDelegationDao,
-    entities::api_resource_delegation::{ApiResourceDelegationEntity, NewApiResourceDelegation},
+    entities::api_resource_delegation::{
+        ApiResourceDelegationEntity, ApiResourceDelegationResultStatus, NewApiResourceDelegation,
+    },
 };
 
 pub struct ApiResourceDelegationRepo;
@@ -34,12 +36,36 @@ impl ApiResourceDelegationRepo {
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::mark_task_ack_sent(pool.write_ref(), resource_trade_no).await
     }
+
+    pub async fn mark_result_received(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        result_status: ApiResourceDelegationResultStatus,
+        fail_type: Option<i64>,
+        err_code: Option<&str>,
+        err_msg: Option<&str>,
+        result_payload: Option<&str>,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_result_received(
+            pool.write_ref(),
+            resource_trade_no,
+            result_status,
+            fail_type,
+            err_code,
+            err_msg,
+            result_payload,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repositories::test_helper::setup_api_transaction_pool;
+    use crate::{
+        entities::api_resource_delegation::ApiResourceDelegationStatus,
+        repositories::test_helper::setup_api_transaction_pool,
+    };
 
     #[tokio::test]
     async fn resource_delegation_upsert_is_idempotent_and_preserves_source_boundary() {
@@ -97,5 +123,80 @@ mod tests {
             .await
             .unwrap();
         assert!(got.task_ack_sent_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_result_records_success_and_failure_facts() {
+        let pool = setup_api_transaction_pool("resource_delegation_result").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_success",
+                "origin_success",
+                2,
+                "",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_fail",
+                "origin_fail",
+                2,
+                "",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_success",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            Some("{\"status\":true}"),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_fail",
+            ApiResourceDelegationResultStatus::Fail,
+            Some(2),
+            Some("RESOURCE_FAILED"),
+            Some("platform delegate failed"),
+            Some("{\"status\":false}"),
+        )
+        .await
+        .unwrap();
+
+        let success = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_success")
+            .await
+            .unwrap();
+        assert_eq!(
+            success.result_status,
+            Some(ApiResourceDelegationResultStatus::Success.as_i64())
+        );
+        assert!(success.result_received_at.is_some());
+        assert_eq!(success.status, ApiResourceDelegationStatus::Success.as_i64());
+
+        let fail =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_fail").await.unwrap();
+        assert_eq!(fail.result_status, Some(ApiResourceDelegationResultStatus::Fail.as_i64()));
+        assert_eq!(fail.fail_type, Some(2));
+        assert_eq!(fail.err_code.as_deref(), Some("RESOURCE_FAILED"));
+        assert_eq!(fail.err_msg.as_deref(), Some("platform delegate failed"));
+        assert_eq!(fail.status, ApiResourceDelegationStatus::Fail.as_i64());
     }
 }

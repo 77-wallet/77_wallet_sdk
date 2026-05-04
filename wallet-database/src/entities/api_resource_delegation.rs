@@ -1,5 +1,30 @@
 use chrono::{DateTime, Utc};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApiResourceDelegationStatus {
+    Pending = 1,
+    Success = 2,
+    Fail = 3,
+}
+
+impl ApiResourceDelegationStatus {
+    pub fn as_i64(self) -> i64 {
+        self as i64
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApiResourceDelegationResultStatus {
+    Success = 1,
+    Fail = 2,
+}
+
+impl ApiResourceDelegationResultStatus {
+    pub fn as_i64(self) -> i64 {
+        self as i64
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiResourceDelegationEntity {
@@ -15,13 +40,13 @@ pub struct ApiResourceDelegationEntity {
     pub receiver_address: String,
     pub resource_type: String,
     pub amount: String,
-    pub status: String,
+    pub status: i64,
     pub task_ack_sent_at: Option<DateTime<Utc>>,
     pub building_at: Option<DateTime<Utc>>,
     pub tx_hash: Option<String>,
     pub tx_status: Option<String>,
     pub tx_exec_receipt_uploaded_at: Option<DateTime<Utc>>,
-    pub result_status: Option<String>,
+    pub result_status: Option<i64>,
     pub result_received_at: Option<DateTime<Utc>>,
     pub result_ack_sent_at: Option<DateTime<Utc>>,
     pub result_payload: Option<String>,

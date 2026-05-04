@@ -14,7 +14,7 @@ CREATE TABLE api_resource_delegation
     receiver_address             TEXT        NOT NULL, -- 资源接收方地址
     resource_type                TEXT        NOT NULL DEFAULT 'energy', -- 资源类型：energy / bandwidth
     amount                       TEXT        NOT NULL DEFAULT '0', -- 资源数量，字符串保存避免精度/单位转换损失
-    status                       TEXT        NOT NULL DEFAULT 'pending', -- 人类可读阶段视图；执行推进必须以事实字段为准
+    status                       INTEGER     NOT NULL DEFAULT 1, -- 资源任务阶段：1=pending，2=success，3=fail；执行推进仍以事实字段为准
 
     task_ack_sent_at             TIMESTAMP NULL, -- platform 资源任务接收 ACK 已发送时间；local 不使用
     building_at                  TIMESTAMP NULL, -- 链上交易构建占位，防止重复构建
@@ -22,7 +22,7 @@ CREATE TABLE api_resource_delegation
     tx_status                    TEXT NULL, -- 链上执行状态视图，如 success / fail / uncertain
     tx_exec_receipt_uploaded_at  TIMESTAMP NULL, -- 链上执行回执已上传时间
 
-    result_status                TEXT NULL, -- 后端最终结果或本地最终结果状态
+    result_status                INTEGER NULL, -- 后端最终结果或本地最终结果状态：1=success，2=fail
     result_received_at           TIMESTAMP NULL, -- 已接收并持久化最终结果时间
     result_ack_sent_at           TIMESTAMP NULL, -- platform 最终结果 ACK 已发送时间；local 不使用
     result_payload               TEXT NULL, -- 原始最终结果 payload，便于排障和兼容字段回放

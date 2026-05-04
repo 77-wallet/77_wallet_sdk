@@ -6,8 +6,12 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 use tracing;
-use wallet_database::repositories::api_wallet::{
-    collect::ApiCollectRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
+use wallet_database::{
+    entities::api_resource_delegation::ApiResourceDelegationResultStatus,
+    repositories::api_wallet::{
+        collect::ApiCollectRepo, fee::ApiFeeRepo, resource_delegation::ApiResourceDelegationRepo,
+        wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
+    },
 };
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
@@ -123,9 +127,75 @@ impl AwmOrderTransResMsg {
                         .await?;
                     self.transfer_fee().await?;
                 }
+                5 => {
+                    self.collect_resource_delegation_result(&api_transaction_pool).await?;
+                }
                 _ => {}
             }
         }
+        Ok(())
+    }
+
+    async fn collect_resource_delegation_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let result_status = if self.status {
+            ApiResourceDelegationResultStatus::Success
+        } else {
+            ApiResourceDelegationResultStatus::Fail
+        };
+        let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
+        ApiResourceDelegationRepo::mark_result_received(
+            api_transaction_pool,
+            &self.trade_no,
+            result_status,
+            self.fail_type.map(i64::from),
+            None,
+            None,
+            result_payload.as_deref(),
+        )
+        .await?;
+
+        let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            api_transaction_pool,
+            &self.trade_no,
+        )
+        .await?;
+
+        if self.status {
+            if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
+                ApiCollectRepo::mark_resource_released(
+                    api_transaction_pool,
+                    origin_trade_no,
+                    "platform_delegate_success",
+                )
+                .await?;
+                tracing::info!(
+                    resource_trade_no = %self.trade_no,
+                    origin_trade_no = %origin_trade_no,
+                    "Collect resource gate released by platform delegation result"
+                );
+
+                if let Some(handles) =
+                    crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+                {
+                    if let Some(shadow_system) =
+                        handles.get_global_processed_collect_tx_handle().get_shadow_system()
+                    {
+                        if let Err(e) = shadow_system.trigger_collect(origin_trade_no).await {
+                            tracing::warn!(
+                                resource_trade_no = %self.trade_no,
+                                origin_trade_no = %origin_trade_no,
+                                "Trigger collect shadow failed after resource result, but continuing: {:?}",
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 

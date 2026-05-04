@@ -1,5 +1,6 @@
 use crate::entities::api_resource_delegation::{
-    ApiResourceDelegationEntity, NewApiResourceDelegation,
+    ApiResourceDelegationEntity, ApiResourceDelegationResultStatus, ApiResourceDelegationStatus,
+    NewApiResourceDelegation,
 };
 use sqlx::{Executor, Sqlite};
 
@@ -99,6 +100,50 @@ impl ApiResourceDelegationDao {
             "#,
         )
         .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_result_received<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        result_status: ApiResourceDelegationResultStatus,
+        fail_type: Option<i64>,
+        err_code: Option<&str>,
+        err_msg: Option<&str>,
+        result_payload: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET result_status = ?2,
+                result_received_at = COALESCE(result_received_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                result_payload = COALESCE(?6, result_payload),
+                fail_type = ?3,
+                err_code = ?4,
+                err_msg = ?5,
+                status = ?7,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(result_status.as_i64())
+        .bind(fail_type)
+        .bind(err_code)
+        .bind(err_msg)
+        .bind(result_payload)
+        .bind(match result_status {
+            ApiResourceDelegationResultStatus::Success => {
+                ApiResourceDelegationStatus::Success.as_i64()
+            }
+            ApiResourceDelegationResultStatus::Fail => ApiResourceDelegationStatus::Fail.as_i64(),
+        })
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
