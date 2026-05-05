@@ -157,6 +157,93 @@ impl ApiResourceDelegationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_can_execute<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = 1
+              AND operation_type = 1
+              AND status = 1
+              AND task_ack_sent_at IS NOT NULL
+              AND building_at IS NULL
+              AND tx_hash IS NULL
+              AND tx_status IS NULL
+            ORDER BY task_ack_sent_at ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn claim_build_slot<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND source = 1
+              AND operation_type = 1
+              AND status = 1
+              AND task_ack_sent_at IS NOT NULL
+              AND building_at IS NULL
+              AND tx_hash IS NULL
+              AND tx_status IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_broadcast_success<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET tx_hash = ?2,
+                tx_status = 'success',
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND source = 1
+              AND operation_type = 1
+              AND status = 1
+              AND building_at IS NOT NULL
+              AND tx_hash IS NULL
+              AND tx_status IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(tx_hash)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_result_ack_sent<'a, E>(
         exec: E,
         resource_trade_no: &str,

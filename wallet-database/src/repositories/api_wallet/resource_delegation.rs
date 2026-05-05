@@ -51,6 +51,33 @@ impl ApiResourceDelegationRepo {
         ApiResourceDelegationDao::scan_need_result_ack(pool.read_ref(), limit).await
     }
 
+    pub async fn scan_can_execute(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_can_execute(pool.read_ref(), limit).await
+    }
+
+    pub async fn claim_build_slot(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::claim_build_slot(pool.write_ref(), resource_trade_no).await
+    }
+
+    pub async fn mark_broadcast_success(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_broadcast_success(
+            pool.write_ref(),
+            resource_trade_no,
+            tx_hash,
+        )
+        .await
+    }
+
     pub async fn mark_result_ack_sent(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -189,6 +216,140 @@ mod tests {
 
         assert!(trade_nos.contains(&"rsc_needs_ack".to_string()));
         assert!(!trade_nos.contains(&"rsc_already_acked".to_string()));
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_execute_scan_finds_only_acked_unclaimed_tasks() {
+        let pool = setup_api_transaction_pool("resource_delegation_execute_scan").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_unacked",
+                "origin_unacked",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_execute",
+                "origin_execute",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_execute").await.unwrap();
+
+        let rows = ApiResourceDelegationRepo::scan_can_execute(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+
+        assert!(trade_nos.contains(&"rsc_execute".to_string()));
+        assert!(!trade_nos.contains(&"rsc_unacked".to_string()));
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_build_slot_claim_is_idempotent() {
+        let pool = setup_api_transaction_pool("resource_delegation_build_claim").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_claim",
+                "origin_claim",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_claim").await.unwrap(),
+            0
+        );
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_claim").await.unwrap();
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_claim").await.unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_claim").await.unwrap(),
+            0
+        );
+
+        let got =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_claim").await.unwrap();
+        assert!(got.building_at.is_some());
+        assert!(got.tx_hash.is_none());
+        assert!(got.tx_status.is_none());
+        assert!(got.result_status.is_none());
+        assert!(got.result_received_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_broadcast_success_mark_is_idempotent() {
+        let pool = setup_api_transaction_pool("resource_delegation_broadcast_success").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_broadcast",
+                "origin_broadcast",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_broadcast").await.unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcast_success(
+                &pool,
+                "rsc_broadcast",
+                "tx_before_claim",
+            )
+            .await
+            .unwrap(),
+            0
+        );
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_broadcast").await.unwrap();
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcast_success(&pool, "rsc_broadcast", "tx_hash_1")
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcast_success(&pool, "rsc_broadcast", "tx_hash_2")
+                .await
+                .unwrap(),
+            0
+        );
+
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_broadcast")
+            .await
+            .unwrap();
+        assert_eq!(got.tx_hash.as_deref(), Some("tx_hash_1"));
+        assert_eq!(got.tx_status.as_deref(), Some("success"));
+        assert!(got.result_status.is_none());
+        assert!(got.result_received_at.is_none());
     }
 
     #[tokio::test]
