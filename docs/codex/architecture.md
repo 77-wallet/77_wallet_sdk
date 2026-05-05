@@ -70,6 +70,16 @@
 - 如果只是把外部 API 调用接入内部用例，放 Service。
 - 如果只是数据读写，放 Repo。
 
+### Context Passing
+
+- 新增代码优先显式传递 `Context` 或更小的依赖，不新增隐式
+  `CONTEXT.get()`。
+- 旧代码中已经存在的全局 `CONTEXT.get()` 可保留，避免为了分层纯净扩大
+  归集、提币、后台任务等稳定流程的改动面。
+- 同一条新流程内不要混用“显式传 `ctx`”和“内部再取全局 CONTEXT”。
+- 当测试或复用需要更细粒度依赖时，再把 `Context` 逐步拆成 pool、
+  backend、chain adapter 等参数。
+
 ### API Wallet Resource Example
 
 - `api/api_wallet/resource.rs`: 暴露 `WalletManager` 主动质押/解质押方法。
