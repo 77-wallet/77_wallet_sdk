@@ -114,16 +114,16 @@ pub struct AwmOrderTransMsgFront {
 impl From<&AwmOrderTransMsg> for AwmOrderTransMsgFront {
     fn from(msg: &AwmOrderTransMsg) -> Self {
         Self {
-            from: msg.from.clone(),
-            to: msg.to.clone(),
-            value: msg.value.clone(),
-            chain_code: msg.chain_code.clone(),
-            token_address: msg.token_address.clone(),
-            symbol: msg.symbol.clone(),
-            trade_no: msg.trade_no.clone(),
-            trade_type: msg.trade_type,
-            audit: msg.audit,
-            uid: msg.uid.clone(),
+            from: msg.from_addr().to_string(),
+            to: msg.to_addr().to_string(),
+            value: msg.value().to_string(),
+            chain_code: msg.chain_code().to_string(),
+            token_address: msg.token_address().to_string(),
+            symbol: msg.symbol().to_string(),
+            trade_no: msg.trade_no().to_string(),
+            trade_type: msg.trade_type(),
+            audit: msg.audit(),
+            uid: msg.uid().to_string(),
         }
     }
 }

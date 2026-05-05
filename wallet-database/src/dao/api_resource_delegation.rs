@@ -97,6 +97,7 @@ impl ApiResourceDelegationDao {
             SET task_ack_sent_at = COALESCE(task_ack_sent_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
+              AND task_ack_sent_at IS NULL
             "#,
         )
         .bind(resource_trade_no)
@@ -104,6 +105,29 @@ impl ApiResourceDelegationDao {
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
+    }
+
+    pub async fn scan_need_task_ack<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = 1
+              AND operation_type = 1
+              AND task_ack_sent_at IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn scan_need_result_ack<'a, E>(

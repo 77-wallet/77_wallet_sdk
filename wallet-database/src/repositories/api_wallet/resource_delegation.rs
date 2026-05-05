@@ -37,6 +37,13 @@ impl ApiResourceDelegationRepo {
         ApiResourceDelegationDao::mark_task_ack_sent(pool.write_ref(), resource_trade_no).await
     }
 
+    pub async fn scan_need_task_ack(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_need_task_ack(pool.read_ref(), limit).await
+    }
+
     pub async fn scan_need_result_ack(
         pool: &ApiTransactionDbPool,
         limit: usize,
@@ -134,12 +141,53 @@ mod tests {
         );
         assert_eq!(
             ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_trade_ack").await.unwrap(),
-            1
+            0
         );
         let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_trade_ack")
             .await
             .unwrap();
         assert!(got.task_ack_sent_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_task_ack_scan_finds_only_unacked_platform_tasks() {
+        let pool = setup_api_transaction_pool("resource_delegation_task_ack_scan").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_needs_ack",
+                "origin_1",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_already_acked",
+                "origin_2",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_already_acked").await.unwrap();
+
+        let rows = ApiResourceDelegationRepo::scan_need_task_ack(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+
+        assert!(trade_nos.contains(&"rsc_needs_ack".to_string()));
+        assert!(!trade_nos.contains(&"rsc_already_acked".to_string()));
     }
 
     #[tokio::test]

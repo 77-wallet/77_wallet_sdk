@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use crate::entities::api_resource_type::ApiResourceType;
+use crate::entities::{api_resource_type::ApiResourceType, api_trade_type::ApiTradeType};
 
 /// 订单资源代理/回收事实。
 ///
@@ -168,6 +168,31 @@ impl NewApiResourceDelegation {
             owner_address: owner_address.into(),
             receiver_address: receiver_address.into(),
             resource_type: ApiResourceType::Energy,
+            amount: amount.into(),
+        }
+    }
+
+    pub fn platform_delegate_task(
+        uid: impl Into<String>,
+        resource_trade_no: impl Into<String>,
+        origin_trade_type: ApiTradeType,
+        chain_code: impl Into<String>,
+        owner_address: impl Into<String>,
+        receiver_address: impl Into<String>,
+        resource_type: ApiResourceType,
+        amount: impl Into<String>,
+    ) -> Self {
+        Self {
+            uid: uid.into(),
+            source: ApiResourceDelegationSource::Platform,
+            operation_type: ApiResourceDelegationOperationType::Delegate,
+            origin_trade_no: None,
+            origin_trade_type: Some(origin_trade_type as i64),
+            resource_trade_no: resource_trade_no.into(),
+            chain_code: chain_code.into(),
+            owner_address: owner_address.into(),
+            receiver_address: receiver_address.into(),
+            resource_type,
             amount: amount.into(),
         }
     }

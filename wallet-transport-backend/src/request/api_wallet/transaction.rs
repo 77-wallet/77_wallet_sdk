@@ -57,6 +57,12 @@ pub enum TransType {
     /// Collection resource delegation/reclaim task
     #[serde(rename = "COL_RSC")]
     ColRsc,
+    /// Collection resource delegation task
+    #[serde(rename = "COL_RSC_DL")]
+    ColRscDl,
+    /// Withdraw resource delegation task
+    #[serde(rename = "WD_RSC_DL")]
+    WdRscDl,
     /// Platform resource stake/unstake task
     #[serde(rename = "PLT_RSC_STK")]
     PltRscStk,

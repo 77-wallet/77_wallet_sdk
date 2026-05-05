@@ -23,7 +23,9 @@ use rust_decimal::{Decimal, prelude::ToPrimitive as _};
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
-    entities::{api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey},
+    entities::{
+        api_coin::ApiCoinEntity, api_trade_type::ApiTradeType, asset_token_key::AssetTokenKey,
+    },
     repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
@@ -58,6 +60,8 @@ pub enum SideEffectCommand {
     SendTxFeeResAck(String),
     /// 发送资源结果确认，trade_no 是资源任务号
     SendResourceResultAck(String),
+    /// 发送资源任务接收确认，trade_no 是资源任务号
+    SendResourceTaskAck(String),
 }
 
 impl SideEffectCommand {
@@ -93,6 +97,11 @@ impl SideEffectCommand {
             }
             SideEffectCommand::SendResourceResultAck(trade_no) => {
                 crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::SendResourceResultAck(
+                    trade_no.clone(),
+                )
+            }
+            SideEffectCommand::SendResourceTaskAck(trade_no) => {
+                crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::SendResourceTaskAck(
                     trade_no.clone(),
                 )
             }
@@ -253,6 +262,7 @@ impl SideEffectWorker {
             SideEffectCommand::UploadTxExecReceipt(trade_no) => trade_no,
             SideEffectCommand::SendTxFeeResAck(trade_no) => trade_no,
             SideEffectCommand::SendResourceResultAck(trade_no) => trade_no,
+            SideEffectCommand::SendResourceTaskAck(trade_no) => trade_no,
         };
 
         let trade_no_clone = trade_no.to_string();
@@ -288,6 +298,9 @@ impl SideEffectWorker {
                     }
                     SideEffectCommand::SendResourceResultAck(trade_no) => {
                         self_clone.process_resource_result_ack(trade_no).await
+                    }
+                    SideEffectCommand::SendResourceTaskAck(trade_no) => {
+                        self_clone.process_resource_task_ack(trade_no).await
                     }
                 }
             }
@@ -567,6 +580,55 @@ impl SideEffectWorker {
             }
             Err(e) => {
                 error!(resource_trade_no = %resource_trade_no, error = %e, "Failed to send resource result ACK");
+                return Err(e.into());
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_resource_task_ack(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        info!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Processing resource task ACK command");
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if resource_task.task_ack_sent_at.is_some() {
+            info!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Resource task ACK already sent, skipping");
+            return Ok(());
+        }
+
+        let trans_type = match resource_task.origin_trade_type {
+            Some(x) if x == ApiTradeType::Withdraw as i64 => TransType::WdRscDl,
+            _ => TransType::ColRscDl,
+        };
+
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        match backend_api
+            .trans_event_ack(&TransEventAckReq::new(
+                &resource_trade_no,
+                trans_type,
+                TransAckType::Tx,
+            ))
+            .await
+        {
+            Ok(_) => {
+                let affected =
+                    ApiResourceDelegationRepo::mark_task_ack_sent(&self.pool, &resource_trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                if affected == 0 {
+                    warn!(resource_trade_no = %resource_trade_no, "Resource task ACK marked 0 rows");
+                }
+                info!(resource_trade_no = %resource_trade_no, "Resource task ACK sent successfully");
+            }
+            Err(e) => {
+                error!(resource_trade_no = %resource_trade_no, error = %e, "Failed to send resource task ACK");
                 return Err(e.into());
             }
         }

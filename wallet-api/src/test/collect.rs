@@ -191,6 +191,9 @@ pub async fn scan_collect_intent_labels_once(
             CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(_)) => {
                 "SendResourceResultAck".to_string()
             }
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(_)) => {
+                "SendResourceTaskAck".to_string()
+            }
             CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(_)) => {
                 "UploadServiceFee".to_string()
             }

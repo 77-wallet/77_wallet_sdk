@@ -723,6 +723,7 @@ impl ShadowScanner {
         for stage in COLLECT_ADVANCEMENT_ORDER {
             self.scan_stage(*stage).await;
         }
+        self.scan_need_resource_task_ack().await;
         self.scan_need_resource_result_ack().await;
 
         trace!(elapsed = ?start.elapsed(), "Collect shadow scan round completed");
@@ -786,6 +787,31 @@ impl ShadowScanner {
 
         for record in records {
             let intent = CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    async fn scan_need_resource_task_ack(&self) {
+        trace!(
+            max_items = %self.config.max_items_per_scan,
+            "Scanning resource task ACK records"
+        );
+
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan resource task ACK records");
+                return;
+            }
+        };
+
+        for record in records {
+            let intent = CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(
                 record.resource_trade_no,
             ));
             self.dispatch_intent(intent).await;
