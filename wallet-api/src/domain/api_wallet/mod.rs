@@ -10,4 +10,5 @@ pub use adapter_factory::ApiChainAdapterFactory;
 pub mod assets;
 pub(crate) mod chain;
 pub(crate) mod coin;
+pub(crate) mod resource;
 pub(crate) mod strategy;
