@@ -5,7 +5,7 @@ use wallet_transport_backend::response_vo::api_wallet::wallet::ActiveStatus;
 
 use crate::{
     messaging::mqtt::topics::api_wallet::{
-        cmd::wallet_activation::AwmCmdActiveMsg, trans::AwmOrderTransMsg,
+        cmd::wallet_activation::AwmCmdActiveMsg, trans::AwmOrderTransNormalMsg,
     },
     response_vo::standard_wallet::account::BalanceInfo,
 };
@@ -111,19 +111,19 @@ pub struct AwmOrderTransMsgFront {
     uid: String,
 }
 
-impl From<&AwmOrderTransMsg> for AwmOrderTransMsgFront {
-    fn from(msg: &AwmOrderTransMsg) -> Self {
+impl From<&AwmOrderTransNormalMsg> for AwmOrderTransMsgFront {
+    fn from(msg: &AwmOrderTransNormalMsg) -> Self {
         Self {
-            from: msg.from_addr().to_string(),
-            to: msg.to_addr().to_string(),
-            value: msg.value().to_string(),
-            chain_code: msg.chain_code().to_string(),
-            token_address: msg.token_address().to_string(),
-            symbol: msg.symbol().to_string(),
-            trade_no: msg.trade_no().to_string(),
-            trade_type: msg.trade_type(),
-            audit: msg.audit(),
-            uid: msg.uid().to_string(),
+            from: msg.from.to_string(),
+            to: msg.to.to_string(),
+            value: msg.value.to_string(),
+            chain_code: msg.chain_code.to_string(),
+            token_address: msg.token_address.to_string(),
+            symbol: msg.symbol.to_string(),
+            trade_no: msg.trade_no.to_string(),
+            trade_type: msg.trade_type,
+            audit: msg.audit,
+            uid: msg.uid.to_string(),
         }
     }
 }

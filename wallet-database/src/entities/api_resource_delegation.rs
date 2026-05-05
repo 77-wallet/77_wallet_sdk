@@ -111,6 +111,11 @@ pub struct ApiResourceDelegationEntity {
     pub owner_address: String,
     pub receiver_address: String,
     pub resource_type: ApiResourceType,
+    /// 链上 `delegateResource` 需要的 TRX 数量，来自平台代理任务的
+    /// `nativeValue`；本地占位任务没有后端估算值时保持为 `0`。
+    pub native_amount: String,
+    /// 资源数量，来自平台代理任务的 `rscValue`；用于事实记录和排障展示，
+    /// 不能直接作为链上 delegate 的 TRX 数量。
     pub amount: String,
     pub status: ApiResourceDelegationStatus,
     pub task_ack_sent_at: Option<DateTime<Utc>>,
@@ -144,6 +149,7 @@ pub struct NewApiResourceDelegation {
     pub owner_address: String,
     pub receiver_address: String,
     pub resource_type: ApiResourceType,
+    pub native_amount: String,
     pub amount: String,
 }
 
@@ -168,6 +174,7 @@ impl NewApiResourceDelegation {
             owner_address: owner_address.into(),
             receiver_address: receiver_address.into(),
             resource_type: ApiResourceType::Energy,
+            native_amount: "0".to_string(),
             amount: amount.into(),
         }
     }
@@ -180,6 +187,7 @@ impl NewApiResourceDelegation {
         owner_address: impl Into<String>,
         receiver_address: impl Into<String>,
         resource_type: ApiResourceType,
+        native_amount: impl Into<String>,
         amount: impl Into<String>,
     ) -> Self {
         Self {
@@ -193,6 +201,7 @@ impl NewApiResourceDelegation {
             owner_address: owner_address.into(),
             receiver_address: receiver_address.into(),
             resource_type,
+            native_amount: native_amount.into(),
             amount: amount.into(),
         }
     }

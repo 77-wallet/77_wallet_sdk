@@ -211,83 +211,6 @@ impl AwmOrderTransMsg {
             _ => Ok(()),
         }
     }
-
-    pub fn from_addr(&self) -> &str {
-        match self {
-            Self::Normal(msg) => &msg.from,
-            Self::ResourceOperation(msg) => &msg.from,
-            Self::ResourceDelegation(msg) => &msg.from,
-        }
-    }
-
-    pub fn to_addr(&self) -> &str {
-        match self {
-            Self::Normal(msg) => &msg.to,
-            Self::ResourceOperation(_) => "",
-            Self::ResourceDelegation(msg) => &msg.to,
-        }
-    }
-
-    pub fn value(&self) -> &str {
-        match self {
-            Self::Normal(msg) => &msg.value,
-            Self::ResourceOperation(msg) => &msg.value,
-            Self::ResourceDelegation(msg) => &msg.rsc_value,
-        }
-    }
-
-    pub fn chain_code(&self) -> &str {
-        match self {
-            Self::Normal(msg) => &msg.chain_code,
-            Self::ResourceOperation(msg) => &msg.chain_code,
-            Self::ResourceDelegation(msg) => &msg.chain_code,
-        }
-    }
-
-    pub fn token_address(&self) -> &str {
-        match self {
-            Self::Normal(msg) => &msg.token_address,
-            _ => "",
-        }
-    }
-
-    pub fn symbol(&self) -> &str {
-        match self {
-            Self::Normal(msg) => &msg.symbol,
-            _ => "",
-        }
-    }
-
-    pub fn trade_no(&self) -> &str {
-        match self {
-            Self::Normal(msg) => &msg.trade_no,
-            Self::ResourceOperation(msg) => &msg.trade_no,
-            Self::ResourceDelegation(msg) => &msg.trade_no,
-        }
-    }
-
-    pub fn trade_type(&self) -> u32 {
-        match self {
-            Self::Normal(msg) => msg.trade_type,
-            Self::ResourceOperation(msg) => msg.trade_type,
-            Self::ResourceDelegation(msg) => msg.trade_type,
-        }
-    }
-
-    pub fn audit(&self) -> u32 {
-        match self {
-            Self::Normal(msg) => msg.audit,
-            _ => 0,
-        }
-    }
-
-    pub fn uid(&self) -> &str {
-        match self {
-            Self::Normal(msg) => &msg.uid,
-            Self::ResourceOperation(msg) => &msg.uid,
-            Self::ResourceDelegation(msg) => &msg.uid,
-        }
-    }
 }
 
 impl AwmResourceOperationMsg {
@@ -364,6 +287,7 @@ impl AwmResourceDelegationMsg {
             self.from.to_string(),
             self.to.to_string(),
             resource_type,
+            self.resource_delegation_native_amount(),
             amount,
         );
 
@@ -387,6 +311,10 @@ impl AwmResourceDelegationMsg {
         if !self.native_value.trim().is_empty() {
             return self.native_value.clone();
         }
+        self.native_value.clone()
+    }
+
+    fn resource_delegation_native_amount(&self) -> String {
         self.native_value.clone()
     }
 }
@@ -685,6 +613,7 @@ mod tests {
         assert_eq!(got.owner_address, "T_platform_owner");
         assert_eq!(got.receiver_address, "T_collect_receiver");
         assert_eq!(got.resource_type, ApiResourceType::Energy);
+        assert_eq!(got.native_amount, "2");
         assert_eq!(got.amount, "32000");
         assert!(got.task_ack_sent_at.is_none());
 
@@ -723,6 +652,7 @@ mod tests {
         assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Delegate);
         assert_eq!(got.owner_address, "T_platform_owner");
         assert_eq!(got.receiver_address, "T_withdraw_receiver");
+        assert_eq!(got.native_amount, "3");
         assert_eq!(got.amount, "64000");
 
         assert!(

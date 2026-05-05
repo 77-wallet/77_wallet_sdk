@@ -13,6 +13,7 @@ CREATE TABLE api_resource_delegation
     owner_address                TEXT        NOT NULL, -- 资源提供方地址
     receiver_address             TEXT        NOT NULL, -- 资源接收方地址
     resource_type                INTEGER     NOT NULL DEFAULT 1, -- 资源类型：0=bandwidth；1=energy
+    native_amount                TEXT        NOT NULL DEFAULT '0', -- 链上代理 TRX 数量，来自 MQTT nativeValue；amount 保留资源数量 rscValue
     amount                       TEXT        NOT NULL DEFAULT '0', -- 资源数量，字符串保存避免精度/单位转换损失
     status                       INTEGER     NOT NULL DEFAULT 1, -- 资源任务阶段：1=pending，2=success，3=fail；执行推进仍以事实字段为准
 

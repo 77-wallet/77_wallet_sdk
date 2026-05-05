@@ -15,9 +15,9 @@ impl ApiResourceDelegationDao {
             INSERT INTO api_resource_delegation
                 (uid, source, operation_type, origin_trade_no, origin_trade_type,
                  resource_trade_no, chain_code, owner_address, receiver_address,
-                 resource_type, amount, created_at, updated_at)
+                 resource_type, native_amount, amount, created_at, updated_at)
             VALUES
-                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT(resource_trade_no) DO UPDATE SET
@@ -30,6 +30,7 @@ impl ApiResourceDelegationDao {
                 owner_address = excluded.owner_address,
                 receiver_address = excluded.receiver_address,
                 resource_type = excluded.resource_type,
+                native_amount = excluded.native_amount,
                 amount = excluded.amount,
                 updated_at = excluded.updated_at
         "#;
@@ -45,6 +46,7 @@ impl ApiResourceDelegationDao {
             .bind(input.owner_address)
             .bind(input.receiver_address)
             .bind(input.resource_type.as_i64())
+            .bind(input.native_amount)
             .bind(input.amount)
             .execute(exec)
             .await

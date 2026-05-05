@@ -113,6 +113,7 @@ mod tests {
         assert_eq!(got.source, ApiResourceDelegationSource::Platform);
         assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Delegate);
         assert_eq!(got.origin_trade_no.as_deref(), Some("origin_trade_1"));
+        assert_eq!(got.native_amount, "0");
         assert_eq!(got.amount, "32000");
 
         let list = ApiResourceDelegationRepo::list_by_origin_trade_no(&pool, "origin_trade_1")
