@@ -1625,4 +1625,51 @@ mod tests {
         let payload_json = serde_json::to_value(&payload).expect("serialize payload");
         assert_eq!(payload_json["type"], "WD_RSC_DL");
     }
+
+    #[test]
+    fn build_resource_result_ack_payload_uses_withdraw_trans_type() {
+        let r = wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
+            id: 1,
+            uid: "u".to_string(),
+            source: wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform,
+            operation_type: wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
+            origin_trade_no: Some("W_ORIGIN_2".to_string()),
+            origin_trade_type: Some(ApiTradeType::Withdraw as i64),
+            resource_trade_no: "rsc_wd_ack_1".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: "receiver".to_string(),
+            resource_type: wallet_database::entities::api_resource_type::ApiResourceType::Energy,
+            native_amount: "1".to_string(),
+            amount: "100".to_string(),
+            status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Success,
+            task_ack_sent_at: None,
+            building_at: None,
+            tx_hash: Some("tx_hash_2".to_string()),
+            tx_status: Some("success".to_string()),
+            tx_exec_receipt_uploaded_at: None,
+            result_status: Some(
+                wallet_database::entities::api_resource_delegation::ApiResourceDelegationResultStatus::Success,
+            ),
+            result_received_at: Some(Utc::now()),
+            result_ack_sent_at: None,
+            result_payload: None,
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            created_at: Utc::now(),
+            updated_at: None,
+        };
+
+        let ack_req = wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
+            &r.resource_trade_no,
+            SideEffectWorker::resource_delegation_trans_type(&r),
+            wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRscRes,
+        );
+        let ack_json = serde_json::to_value(&ack_req).expect("serialize ack req");
+        assert_eq!(ack_json["type"], "WD_RSC_DL");
+    }
 }
