@@ -3303,7 +3303,7 @@ async fn withdraw_origin_resource_result_ack_does_not_release_collect_gate() {
 
 #[tokio::test]
 #[serial]
-async fn collect_resource_tx_exec_receipt_failure_releases_origin_collect_gate() {
+async fn collect_failed_resource_bypass_reopens_collect_build_flow() {
     let env = ensure_worker_env().await;
     env.recorder.reset();
 
@@ -3374,6 +3374,14 @@ async fn collect_resource_tx_exec_receipt_failure_releases_origin_collect_gate()
     .await
     .expect("seed failed collect delegation row");
 
+    let labels_before = scan_collect_intent_labels_once(collect_pool.clone())
+        .await
+        .expect("scan collect labels before bypass");
+    assert!(
+        labels_before.iter().all(|label| label != "BuildTx"),
+        "blocked collect should not be eligible for BuildTx before failed delegation bypass"
+    );
+
     upload_resource_tx_exec_receipt_via_worker(collect_pool.clone(), core_pool, &resource_trade_no)
         .await
         .expect("upload resource tx exec receipt");
@@ -3384,11 +3392,12 @@ async fn collect_resource_tx_exec_receipt_failure_releases_origin_collect_gate()
     assert!(collect.resource_gate_released_at.is_some());
     assert_eq!(collect.resource_gate_result.as_deref(), Some("resource_delegation_failed_bypass"));
 
-    let labels =
-        scan_collect_intent_labels_once(collect_pool.clone()).await.expect("scan collect labels");
+    let labels = scan_collect_intent_labels_once(collect_pool.clone())
+        .await
+        .expect("scan collect labels after bypass");
     assert!(
         labels.iter().any(|label| label == "BuildTx"),
-        "failed delegation bypass should make collect eligible for BuildTx"
+        "failed delegation bypass should reopen the collect build flow"
     );
 }
 
