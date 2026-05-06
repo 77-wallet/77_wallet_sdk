@@ -431,7 +431,34 @@ impl ShadowCollectWorker {
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
             ShadowCollectCommand::Recover(trade_no) => self.process_recover(trade_no).await,
             ShadowCollectCommand::ExecuteResourceDelegation(trade_no) => {
-                self.process_resource_delegation_execute(trade_no).await
+                let result = self.process_resource_delegation_execute(trade_no.clone()).await;
+                self.handle_resource_delegation_terminal_failure_if_needed(&trade_no, result).await
+            }
+        }
+    }
+
+    async fn handle_resource_delegation_terminal_failure_if_needed(
+        &self,
+        resource_trade_no: &str,
+        result: Result<(), ServiceError>,
+    ) -> Result<(), ServiceError> {
+        let Err(err) = result else {
+            return Ok(());
+        };
+
+        match err.retry_policy() {
+            wallet_utils::RetryPolicy::Never => {
+                self.mark_resource_delegation_failed(resource_trade_no, &err).await?;
+                Ok(())
+            }
+            wallet_utils::RetryPolicy::Delay => {
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %err,
+                    source = "shadow_worker_v2",
+                    "Resource delegation terminal step failed, will retry later"
+                );
+                Ok(())
             }
         }
     }
@@ -614,6 +641,45 @@ impl ShadowCollectWorker {
             ApiResourceType::Bandwidth => "bandwidth",
             ApiResourceType::Energy => "energy",
         }
+    }
+
+    async fn mark_resource_delegation_failed(
+        &self,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let (err_code, err_msg) = Self::resource_delegation_failure_fact_from_error(err);
+        let affected = ApiResourceDelegationRepo::mark_failed_if_unfinished(
+            &self.collect_pool,
+            resource_trade_no,
+            &err_code,
+            &err_msg,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if affected == 0 {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                err_code = %err_code,
+                source = "shadow_worker_v2",
+                "Resource delegation failure fact already committed or no longer eligible"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                err_code = %err_code,
+                source = "shadow_worker_v2",
+                "Resource delegation failure fact committed"
+            );
+        }
+
+        Ok(())
+    }
+
+    fn resource_delegation_failure_fact_from_error(err: &ServiceError) -> (String, String) {
+        let err_code = if err.is_network_error() { "ERR_6005" } else { "ERR_6008" };
+        (err_code.to_string(), err.to_string())
     }
 
     /// 执行资源闸门检查，入参是原归集订单号，不是资源任务号。

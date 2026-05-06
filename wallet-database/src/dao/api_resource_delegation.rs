@@ -300,6 +300,39 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn mark_failed_if_unfinished<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        err_code: &str,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET err_code = ?2,
+                err_msg = ?3,
+                tx_status = 'fail',
+                status = 3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND source = 1
+              AND operation_type = 1
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(err_code)
+        .bind(err_msg)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_result_ack_sent<'a, E>(
         exec: E,
         resource_trade_no: &str,

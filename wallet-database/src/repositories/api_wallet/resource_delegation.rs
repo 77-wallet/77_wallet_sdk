@@ -93,6 +93,21 @@ impl ApiResourceDelegationRepo {
             .await
     }
 
+    pub async fn mark_failed_if_unfinished(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        err_code: &str,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_failed_if_unfinished(
+            pool.write_ref(),
+            resource_trade_no,
+            err_code,
+            err_msg,
+        )
+        .await
+    }
+
     pub async fn mark_result_ack_sent(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -436,6 +451,50 @@ mod tests {
         let rows =
             ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_failure_fact_enables_fail_receipt_scan() {
+        let pool = setup_api_transaction_pool("resource_delegation_failure_receipt").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_fail_receipt",
+                "origin_fail_receipt",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_failed_if_unfinished(
+                &pool,
+                "rsc_fail_receipt",
+                "ERR_6008",
+                "sdk internal error",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_fail_receipt")
+            .await
+            .unwrap();
+        assert_eq!(got.err_code.as_deref(), Some("ERR_6008"));
+        assert_eq!(got.err_msg.as_deref(), Some("sdk internal error"));
+        assert_eq!(got.tx_status.as_deref(), Some("fail"));
+        assert_eq!(got.status, ApiResourceDelegationStatus::Fail);
+
+        let rows =
+            ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+        assert!(trade_nos.contains(&"rsc_fail_receipt".to_string()));
     }
 
     #[tokio::test]
