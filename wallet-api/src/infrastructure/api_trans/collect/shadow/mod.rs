@@ -68,6 +68,10 @@ pub enum ChainIntent {
     /// 它虽然执行的是“资源动作”，但职责上仍属于 collect 主流程的链路步骤：
     /// - 目的不是形成一条与 collect 并列的独立主流程
     /// - 而是为 collect/withdraw 的后续推进补齐资源前置条件
+    ///
+    /// collect gate 的释放时机也要和这个边界区分开：
+    /// - 成功释放由 `SendResourceResultAck` 收口
+    /// - 失败放行由 `UploadResourceTxExecReceipt` 作为稳定失败收口点触发
     ExecuteResourceDelegation(String),
 }
 

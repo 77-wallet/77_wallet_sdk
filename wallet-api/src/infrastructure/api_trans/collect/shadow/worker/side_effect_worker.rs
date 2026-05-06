@@ -69,6 +69,11 @@ pub enum SideEffectCommand {
     UploadResourceTxExecReceipt(String),
 }
 
+/// Projection of a resource-task terminal outcome back into the origin collect
+/// resource gate.
+///
+/// These variants are about "what collect gate result should be written", not
+/// about "which side-effect command is currently running".
 enum ResourceGateReleaseOutcome<'a> {
     Success(&'a str),
     FailureBypass(&'a str),
@@ -596,7 +601,7 @@ impl SideEffectWorker {
                 if affected == 0 {
                     warn!(resource_trade_no = %resource_trade_no, "Resource result ACK marked 0 rows");
                 }
-                self.release_collect_resource_gate_from_resource_task(
+                self.project_resource_task_outcome_to_collect_gate(
                     &resource_task,
                     ResourceGateReleaseOutcome::Success("resource_delegation_success"),
                 )
@@ -612,7 +617,17 @@ impl SideEffectWorker {
         Ok(())
     }
 
-    async fn release_collect_resource_gate_from_resource_task(
+    /// Project a resource delegation terminal outcome back into the origin
+    /// collect gate.
+    ///
+    /// Important boundary:
+    /// - success release is driven by `SendResourceResultAck`
+    /// - failure bypass is driven by `UploadResourceTxExecReceipt`, but only
+    ///   after failure facts are already persisted on the resource task
+    ///
+    /// So `UploadResourceTxExecReceipt` is only the stable failure closure
+    /// hook; uploading a success receipt does not mean "failed_bypass".
+    async fn project_resource_task_outcome_to_collect_gate(
         &self,
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
         outcome: ResourceGateReleaseOutcome<'_>,
@@ -781,7 +796,10 @@ impl SideEffectWorker {
             info!(resource_trade_no = %resource_trade_no, "Resource tx exec receipt uploaded and marked");
         }
 
-        self.release_collect_resource_gate_from_resource_task(
+        // Failure bypass is attached here because failed resource tasks may not
+        // receive a later result event, while receipt upload is still a stable
+        // closure point once failure facts already exist.
+        self.project_resource_task_outcome_to_collect_gate(
             &resource_task,
             ResourceGateReleaseOutcome::FailureBypass("resource_delegation_failed_bypass"),
         )
