@@ -47,7 +47,15 @@ pub(crate) static COLLECT_SHADOW_ENABLED: AtomicBool = AtomicBool::new(false);
 /// 🔒 规则：只有 Confirm（transaction_time != NULL）才是"世界已发生"
 #[derive(Debug, Clone)]
 pub enum ChainIntent {
-    /// 评估 TRON 资源闸门并写入下一步事实
+    /// 评估 TRON 资源闸门。
+    ///
+    /// 这是真正的“操作步骤”：
+    /// - 读取链上资源与本地订单事实
+    /// - 产出评估结果事实（resource_ready / need_platform_delegate）
+    ///
+    /// 注意：
+    /// - `resource_ready` / `need_platform_delegate` 是评估结果状态，不是独立 intent
+    /// - 后续 BuildTx / ExecuteResourceDelegation 仍由 scanner 基于事实继续推进
     EvalResourceGate(String),
     /// 构建交易
     BuildTx(String),
@@ -55,7 +63,11 @@ pub enum ChainIntent {
     BroadcastTx(String),
     /// 恢复交易
     RecoverTx(String),
-    /// 执行平台代理资源代理任务，trade_no 是资源任务号
+    /// 执行平台代理资源代理任务，trade_no 是资源任务号。
+    ///
+    /// 它虽然执行的是“资源动作”，但职责上仍属于 collect 主流程的链路步骤：
+    /// - 目的不是形成一条与 collect 并列的独立主流程
+    /// - 而是为 collect/withdraw 的后续推进补齐资源前置条件
     ExecuteResourceDelegation(String),
 }
 

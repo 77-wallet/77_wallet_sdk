@@ -703,6 +703,11 @@ impl ShadowCollectWorker {
     }
 
     /// 执行资源闸门检查，入参是原归集订单号，不是资源任务号。
+    ///
+    /// 边界说明：
+    /// - 这里的“评估资源闸门”是一个真实操作步骤
+    /// - `resource_ready` / `need_platform_delegate` 只是这一步落下的结果事实
+    /// - worker 负责提交事实，不负责继续调度；后续推进由 scanner/advancer 基于事实完成
     async fn process_resource_gate(&self, origin_trade_no: String) -> Result<(), ServiceError> {
         info!(origin_trade_no = %origin_trade_no, source = "shadow_worker_v2", "Processing resource gate command");
 
@@ -823,9 +828,9 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
-        // The resource gate is a pre-BuildTx fact. Releasing it only says the
-        // order may enter the existing BuildTx flow; raw_tx/tx_hash are still
-        // produced by the normal build path.
+        // The resource gate is a pre-BuildTx fact. Releasing it only records
+        // that the collect order may enter the existing BuildTx flow; raw_tx
+        // and tx_hash are still produced by the normal build path.
         let rows = ApiCollectRepo::mark_resource_released(
             &self.collect_pool,
             &origin_trade_no,
@@ -911,6 +916,10 @@ impl ShadowCollectWorker {
         // At this point the SDK only knows the receiver that needs energy.
         // The platform-owned resource wallet is chosen by backend later, so
         // owner_address intentionally stays empty in this placeholder fact.
+        //
+        // This blocked record is an evaluation result fact, not a standalone
+        // operation step. Scanner will later pick up the delegated resource
+        // task itself via its own facts.
         let delegation = NewApiResourceDelegation::platform_delegate(
             req.uid.clone(),
             resource_trade_no.clone(),
