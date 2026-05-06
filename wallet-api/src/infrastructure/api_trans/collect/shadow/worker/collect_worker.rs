@@ -14,14 +14,19 @@ use wallet_chain_interact::{
     BillResourceConsume,
     tron::{
         self,
-        operations::{RawTransactionParams, TronTxOperation, stake::DelegateArgs},
+        operations::{
+            RawTransactionParams, TronTxOperation, stake::DelegateArgs, stake::UnDelegateArgs,
+        },
     },
 };
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
-        api_resource_delegation::{ApiResourceDelegationEntity, NewApiResourceDelegation},
+        api_resource_delegation::{
+            ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
+            NewApiResourceDelegation,
+        },
         api_resource_type::ApiResourceType,
         asset_token_key::AssetTokenKey,
     },
@@ -548,13 +553,27 @@ impl ShadowCollectWorker {
             crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&delegation.chain_code)
                 .await;
 
-        let args = DelegateArgs::new(
-            &delegation.owner_address,
-            &delegation.receiver_address,
-            trx_amount,
-            resource,
-        )?;
-        let raw = args.build_raw_transaction(chain.get_provider()).await?;
+        let raw = match delegation.operation_type {
+            ApiResourceDelegationOperationType::Delegate => {
+                let args = DelegateArgs::new(
+                    &delegation.owner_address,
+                    &delegation.receiver_address,
+                    trx_amount,
+                    resource,
+                )?;
+                args.build_raw_transaction(chain.get_provider()).await?
+            }
+            ApiResourceDelegationOperationType::Undelegate => {
+                let args = UnDelegateArgs::new(
+                    &delegation.owner_address,
+                    &delegation.receiver_address,
+                    trx_amount,
+                    resource,
+                    None,
+                )?;
+                args.build_raw_transaction(chain.get_provider()).await?
+            }
+        };
         let (tx_hash, raw_tx) = self.sign_tron_resource_delegation(delegation, raw).await?;
         let tx_resp =
             ApiTransDomain::broadcast_transfer(&delegation.chain_code, raw_tx, Some(&tx_hash))
