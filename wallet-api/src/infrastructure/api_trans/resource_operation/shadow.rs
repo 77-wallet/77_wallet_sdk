@@ -1204,4 +1204,41 @@ mod tests {
         assert_eq!(code, "ERR_6008");
         assert!(msg.contains("invalid resource amount"));
     }
+
+    #[tokio::test]
+    async fn terminal_failure_fact_is_scannable_for_receipt_upload() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_terminal_failed", "owner", "1"),
+        )
+        .await
+        .unwrap();
+
+        let worker = ResourceOperationWorker::new(pool.clone());
+        worker
+            .handle_terminal_failure_if_needed(
+                "op_terminal_failed",
+                Err(ServiceError::Parameter("invalid resource amount".to_string())),
+            )
+            .await
+            .expect("terminal failure should be absorbed after persisting failure fact");
+
+        let scanner = ResourceOperationScanner::new(pool);
+        let intents = scanner.scan_round().await;
+        assert!(intents.iter().any(|intent| {
+            matches!(
+                intent,
+                ResourceOperationIntent::UploadTxExecReceipt(trade_no)
+                    if trade_no == "op_terminal_failed"
+            )
+        }));
+    }
 }

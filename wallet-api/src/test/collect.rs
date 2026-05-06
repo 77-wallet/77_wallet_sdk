@@ -85,9 +85,7 @@ pub async fn send_resource_result_ack_via_worker(
     let advancer =
         Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
     let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
-    worker
-        .handle(SideEffectCommand::SendResourceResultAck(resource_trade_no.to_string()))
-        .await
+    worker.handle(SideEffectCommand::SendResourceResultAck(resource_trade_no.to_string())).await
 }
 
 pub async fn upload_collect_tx_exec_receipt_via_backend(

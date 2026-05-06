@@ -40,8 +40,8 @@ use wallet_api::{
     test::collect::{
         build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
         scan_collect_intent_labels_once, send_resource_result_ack_via_worker,
-        upload_collect_service_fee_via_worker,
-        upload_collect_tx_exec_receipt_via_backend, upload_collect_tx_exec_receipt_via_worker,
+        upload_collect_service_fee_via_worker, upload_collect_tx_exec_receipt_via_backend,
+        upload_collect_tx_exec_receipt_via_worker,
     },
     test_support::{
         adapter_factory::{
