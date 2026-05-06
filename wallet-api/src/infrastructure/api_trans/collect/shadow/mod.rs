@@ -89,6 +89,8 @@ pub enum SideEffectIntent {
     SendResourceResultAck(String),
     /// 发送平台资源任务接收 ACK，trade_no 是资源任务号
     SendResourceTaskAck(String),
+    /// 上传平台代理资源执行回执，trade_no 是资源任务号
+    UploadResourceTxExecReceipt(String),
     /// 上传服务费记录
     UploadServiceFee(String),
     /// 上传交易执行回执

@@ -78,6 +78,21 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn scan_need_tx_exec_receipt_upload(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
+    }
+
+    pub async fn mark_tx_exec_receipt_uploaded(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), resource_trade_no)
+            .await
+    }
+
     pub async fn mark_result_ack_sent(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -350,6 +365,77 @@ mod tests {
         assert_eq!(got.tx_status.as_deref(), Some("success"));
         assert!(got.result_status.is_none());
         assert!(got.result_received_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_receipt_scan_and_mark_are_idempotent() {
+        let pool = setup_api_transaction_pool("resource_delegation_receipt_upload").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_receipt_ready",
+                "origin_receipt_ready",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_receipt_pending",
+                "origin_receipt_pending",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET task_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                tx_hash = 'tx_hash_ready',
+                tx_status = 'success',
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = 'rsc_receipt_ready'
+            "#,
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows =
+            ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+        assert!(trade_nos.contains(&"rsc_receipt_ready".to_string()));
+        assert!(!trade_nos.contains(&"rsc_receipt_pending".to_string()));
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(&pool, "rsc_receipt_ready")
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(&pool, "rsc_receipt_ready")
+                .await
+                .unwrap(),
+            0
+        );
+
+        let rows =
+            ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
+        assert!(rows.is_empty());
     }
 
     #[tokio::test]

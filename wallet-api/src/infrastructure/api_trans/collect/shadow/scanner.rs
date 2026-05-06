@@ -725,6 +725,7 @@ impl ShadowScanner {
         }
         self.scan_need_resource_task_ack().await;
         self.scan_can_resource_delegation_execute().await;
+        self.scan_need_resource_tx_exec_receipt_upload().await;
         self.scan_need_resource_result_ack().await;
 
         trace!(elapsed = ?start.elapsed(), "Collect shadow scan round completed");
@@ -838,6 +839,31 @@ impl ShadowScanner {
 
         for record in records {
             let intent = CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    async fn scan_need_resource_tx_exec_receipt_upload(&self) {
+        trace!(
+            max_items = %self.config.max_items_per_scan,
+            "Scanning resource tx exec receipt upload records"
+        );
+
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan resource tx exec receipt upload records");
+                return;
+            }
+        };
+
+        for record in records {
+            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(
                 record.resource_trade_no,
             ));
             self.dispatch_intent(intent).await;

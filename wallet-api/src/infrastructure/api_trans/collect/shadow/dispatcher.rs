@@ -35,6 +35,7 @@ pub enum RunningKey {
     SendTxFeeResAck(String),
     SendResourceResultAck(String),
     SendResourceTaskAck(String),
+    UploadResourceTxExecReceipt(String),
 }
 
 impl RunningKey {
@@ -76,6 +77,9 @@ impl RunningKey {
             }
             CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(trade_no)) => {
                 RunningKey::SendResourceTaskAck(trade_no.clone())
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(trade_no)) => {
+                RunningKey::UploadResourceTxExecReceipt(trade_no.clone())
             }
         }
     }
@@ -137,6 +141,21 @@ mod tests {
 
         assert!(matches!(resource_exec, RunningKey::ExecuteResourceDelegation(_)));
         assert_ne!(resource_exec, collect_build);
+    }
+
+    #[test]
+    fn resource_receipt_upload_uses_distinct_running_key() {
+        use crate::infrastructure::api_trans::collect::shadow::SideEffectIntent;
+
+        let trade_no = "RSC_RECEIPT_KEY";
+        let resource_receipt = RunningKey::from_intent(&CollectIntent::SideEffect(
+            SideEffectIntent::UploadResourceTxExecReceipt(trade_no.to_string()),
+        ));
+        let collect_receipt = RunningKey::from_intent(&CollectIntent::SideEffect(
+            SideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
+        ));
+        assert!(matches!(resource_receipt, RunningKey::UploadResourceTxExecReceipt(_)));
+        assert_ne!(resource_receipt, collect_receipt);
     }
 
     #[test]
@@ -263,6 +282,16 @@ impl DispatchTrace {
                 key,
                 side_effect: true,
             },
+            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(trade_no)) => {
+                Self {
+                    worker: "SideEffectWorker",
+                    command: "UploadResourceTxExecReceipt",
+                    phase: "side_effect",
+                    trade_no: trade_no.clone(),
+                    key,
+                    side_effect: true,
+                }
+            }
         }
     }
 }
@@ -414,6 +443,12 @@ impl ShadowDispatcher {
                 info!(trade_no = %trade_no, "Sending SendResourceTaskAck command to SideEffect Worker");
                 side_effect_worker
                     .handle(SideEffectCommand::SendResourceTaskAck(trade_no.clone()))
+                    .await
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(trade_no)) => {
+                info!(trade_no = %trade_no, "Sending UploadResourceTxExecReceipt command to SideEffect Worker");
+                side_effect_worker
+                    .handle(SideEffectCommand::UploadResourceTxExecReceipt(trade_no.clone()))
                     .await
             }
         }

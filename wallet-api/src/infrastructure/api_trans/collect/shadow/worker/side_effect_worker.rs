@@ -29,7 +29,8 @@ use wallet_database::{
     repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
-    ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransType,
+    ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransStatus, TransType,
+    TxExecReceiptUploadReq,
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
@@ -62,6 +63,8 @@ pub enum SideEffectCommand {
     SendResourceResultAck(String),
     /// 发送资源任务接收确认，trade_no 是资源任务号
     SendResourceTaskAck(String),
+    /// 上传平台代理资源执行回执，trade_no 是资源任务号
+    UploadResourceTxExecReceipt(String),
 }
 
 impl SideEffectCommand {
@@ -102,6 +105,11 @@ impl SideEffectCommand {
             }
             SideEffectCommand::SendResourceTaskAck(trade_no) => {
                 crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::SendResourceTaskAck(
+                    trade_no.clone(),
+                )
+            }
+            SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => {
+                crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::UploadResourceTxExecReceipt(
                     trade_no.clone(),
                 )
             }
@@ -263,6 +271,7 @@ impl SideEffectWorker {
             SideEffectCommand::SendTxFeeResAck(trade_no) => trade_no,
             SideEffectCommand::SendResourceResultAck(trade_no) => trade_no,
             SideEffectCommand::SendResourceTaskAck(trade_no) => trade_no,
+            SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => trade_no,
         };
 
         let trade_no_clone = trade_no.to_string();
@@ -301,6 +310,9 @@ impl SideEffectWorker {
                     }
                     SideEffectCommand::SendResourceTaskAck(trade_no) => {
                         self_clone.process_resource_task_ack(trade_no).await
+                    }
+                    SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => {
+                        self_clone.process_resource_tx_exec_receipt(trade_no).await
                     }
                 }
             }
@@ -634,6 +646,95 @@ impl SideEffectWorker {
         }
 
         Ok(())
+    }
+
+    async fn process_resource_tx_exec_receipt(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        info!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Processing resource tx exec receipt command");
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if resource_task.tx_exec_receipt_uploaded_at.is_some() {
+            info!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Resource tx exec receipt already uploaded, skipping");
+            return Ok(());
+        }
+
+        let payload = Self::build_resource_tx_exec_receipt_payload(&resource_task)?;
+        let tx_hash_missing =
+            resource_task.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if payload.is_success() && tx_hash_missing {
+            return Err(ServiceError::Parameter(
+                "resource delegation success receipt requires non-empty tx_hash".to_string(),
+            ));
+        }
+
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend_api.upload_tx_exec_receipt(&payload).await?;
+
+        let affected = ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(
+            &self.pool,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            warn!(resource_trade_no = %resource_trade_no, "Resource tx exec receipt marked 0 rows");
+        } else {
+            info!(resource_trade_no = %resource_trade_no, "Resource tx exec receipt uploaded and marked");
+        }
+
+        Ok(())
+    }
+
+    fn build_resource_tx_exec_receipt_payload(
+        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+    ) -> Result<TxExecReceiptUploadReq, ServiceError> {
+        let trans_type = match resource_task.origin_trade_type {
+            Some(x) if x == ApiTradeType::Withdraw as i64 => TransType::WdRscDl,
+            Some(_) => TransType::ColRscDl,
+            None => {
+                return Err(ServiceError::Parameter(
+                    "resource delegation receipt upload requires origin_trade_type".to_string(),
+                ));
+            }
+        };
+
+        let status = if matches!(resource_task.tx_status.as_deref(), Some("success")) {
+            TransStatus::Success
+        } else if resource_task.err_code.is_some() {
+            TransStatus::Fail
+        } else {
+            return Err(ServiceError::Parameter(
+                "resource delegation receipt upload requires success tx_status or failure err_code"
+                    .to_string(),
+            ));
+        };
+
+        let remark = if matches!(status, TransStatus::Success) {
+            ""
+        } else {
+            resource_task.err_msg.as_deref().unwrap_or("")
+        };
+
+        let mut payload = TxExecReceiptUploadReq::new(
+            Some(&resource_task.owner_address),
+            Some(&resource_task.receiver_address),
+            &resource_task.resource_trade_no,
+            trans_type,
+            resource_task.tx_hash.as_deref(),
+            status,
+            remark,
+        );
+        if let Some(err_code) = resource_task.err_code.as_deref().filter(|s| !s.trim().is_empty()) {
+            payload = payload.with_error_code(err_code);
+        }
+
+        Ok(payload)
     }
 
     /// 处理上传服务费记录
