@@ -189,6 +189,12 @@ pub async fn scan_collect_intent_labels_once(
             CollectIntent::Chain(ChainIntent::EvalResourceGate(_)) => {
                 "EvalResourceGate".to_string()
             }
+            CollectIntent::Chain(ChainIntent::ReleaseResourceGate(_)) => {
+                "ReleaseResourceGate".to_string()
+            }
+            CollectIntent::Chain(ChainIntent::BlockOnPlatformDelegation(_)) => {
+                "BlockOnPlatformDelegation".to_string()
+            }
             CollectIntent::Chain(ChainIntent::BuildTx(_)) => "BuildTx".to_string(),
             CollectIntent::Chain(ChainIntent::BroadcastTx(_)) => "BroadcastTx".to_string(),
             CollectIntent::Chain(ChainIntent::RecoverTx(_)) => "RecoverTx".to_string(),

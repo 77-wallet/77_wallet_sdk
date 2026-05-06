@@ -49,6 +49,10 @@ pub(crate) static COLLECT_SHADOW_ENABLED: AtomicBool = AtomicBool::new(false);
 pub enum ChainIntent {
     /// 评估 TRON 资源闸门并写入下一步事实
     EvalResourceGate(String),
+    /// 释放 TRON 资源闸门
+    ReleaseResourceGate(String),
+    /// 标记 TRON 归集等待平台代理资源
+    BlockOnPlatformDelegation(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易

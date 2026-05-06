@@ -739,9 +739,14 @@ async fn build_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWorker
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
     ensure_sol_main_coin(&core_pool).await;
     let (intent_tx, _intent_rx) = mpsc::channel(1);
-    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, None));
+    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx.clone(), None));
 
-    ShadowCollectWorker::new(collect_pool, core_pool, Arc::new(AddressLockManager::new()), advancer)
+    ShadowCollectWorker::new(
+        collect_pool,
+        core_pool,
+        Arc::new(AddressLockManager::new()),
+        advancer,
+    )
 }
 
 async fn ensure_eth_main_coin(pool: &ApiWalletDbPool) {
@@ -772,9 +777,14 @@ async fn build_eth_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWo
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
     ensure_eth_main_coin(&core_pool).await;
     let (intent_tx, _intent_rx) = mpsc::channel(1);
-    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, None));
+    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx.clone(), None));
 
-    ShadowCollectWorker::new(collect_pool, core_pool, Arc::new(AddressLockManager::new()), advancer)
+    ShadowCollectWorker::new(
+        collect_pool,
+        core_pool,
+        Arc::new(AddressLockManager::new()),
+        advancer,
+    )
 }
 
 async fn ensure_sol_main_coin(pool: &ApiWalletDbPool) {

@@ -76,6 +76,10 @@ use crate::{
 pub enum ShadowCollectCommand {
     /// 评估资源闸门
     EvalResourceGate(String),
+    /// 释放资源闸门
+    ReleaseResourceGate(String),
+    /// 标记等待平台代理资源
+    BlockOnPlatformDelegation(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易
@@ -421,6 +425,8 @@ impl ShadowCollectWorker {
         // 提取 trade_no 用于日志
         let trade_no = match &cmd {
             ShadowCollectCommand::EvalResourceGate(trade_no) => trade_no,
+            ShadowCollectCommand::ReleaseResourceGate(trade_no) => trade_no,
+            ShadowCollectCommand::BlockOnPlatformDelegation(trade_no) => trade_no,
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
             ShadowCollectCommand::Recover(trade_no) => trade_no,
@@ -432,6 +438,12 @@ impl ShadowCollectWorker {
         match cmd {
             ShadowCollectCommand::EvalResourceGate(trade_no) => {
                 self.process_resource_gate(trade_no).await
+            }
+            ShadowCollectCommand::ReleaseResourceGate(trade_no) => {
+                self.process_release_resource_gate(trade_no).await
+            }
+            ShadowCollectCommand::BlockOnPlatformDelegation(trade_no) => {
+                self.process_block_on_platform_delegation(trade_no).await
             }
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
@@ -758,15 +770,27 @@ impl ShadowCollectWorker {
         let available_energy = resource.available_energy();
         let available_bandwidth = resource.available_bandwidth();
 
-        self.apply_resource_gate_decision(
-            origin_trade_no,
-            &req,
-            fee_details.energy,
-            fee_details.bandwidth,
+        if Self::tron_resource_ready(
             available_energy,
             available_bandwidth,
+            fee_details.energy,
+            fee_details.bandwidth,
+        ) {
+            self.process_release_resource_gate(origin_trade_no.to_string()).await?;
+        } else {
+            self.process_block_on_platform_delegation(origin_trade_no.to_string()).await?;
+        }
+
+        info!(
+            origin_trade_no,
+            required_energy = %fee_details.energy,
+            available_energy = %available_energy,
+            required_bandwidth = %fee_details.bandwidth,
+            available_bandwidth = %available_bandwidth,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate evaluated"
         )
-        .await?;
+        ;
 
         Ok(())
     }
@@ -783,7 +807,107 @@ impl ShadowCollectWorker {
             || req.err_code.is_some()
     }
 
-    async fn apply_resource_gate_decision(
+    async fn process_release_resource_gate(&self, origin_trade_no: String) -> Result<(), ServiceError> {
+        let req = self.get_collect_entity(&origin_trade_no).await?;
+        if !Self::is_tron_collect(&req.chain_code) {
+            return Ok(());
+        }
+        if req.resource_gate_released_at.is_some() {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Resource gate already released"
+            );
+            return Ok(());
+        }
+        if req.raw_tx.is_some()
+            || req.transaction_time.is_some()
+            || req.finished_at.is_some()
+            || req.err_code.is_some()
+        {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Skip release resource gate: collect no longer eligible"
+            );
+            return Ok(());
+        }
+
+        // The resource gate is a pre-BuildTx fact. Releasing it only says the
+        // order may enter the existing BuildTx flow; raw_tx/tx_hash are still
+        // produced by the normal build path.
+        let rows = ApiCollectRepo::mark_resource_released(
+            &self.collect_pool,
+            &origin_trade_no,
+            "resource_ready",
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            origin_trade_no = %origin_trade_no,
+            rows = %rows,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate released"
+        );
+        self.advancer.try_advance(&origin_trade_no).await;
+        Ok(())
+    }
+
+    async fn process_block_on_platform_delegation(
+        &self,
+        origin_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        let req = self.get_collect_entity(&origin_trade_no).await?;
+        if !Self::is_tron_collect(&req.chain_code) {
+            return Ok(());
+        }
+        if Self::resource_gate_already_resolved(&req) {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Skip block on platform delegation: resource gate already resolved"
+            );
+            return Ok(());
+        }
+
+        let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
+        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
+            let token_coin =
+                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
+                    .await?;
+            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+        } else {
+            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
+        };
+        let fee_details = self
+            .estimate_tron_fee_details(
+                &req.from_addr,
+                &exec_to_addr,
+                &req.value,
+                &token_symbol,
+                &main_coin.symbol,
+                token_key,
+                token_decimals,
+            )
+            .await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let resource = adapter.account_resource(&req.from_addr).await?;
+        let available_energy = resource.available_energy();
+        let available_bandwidth = resource.available_bandwidth();
+
+        self.commit_platform_delegation_block(
+            &origin_trade_no,
+            &req,
+            fee_details.energy,
+            fee_details.bandwidth,
+            available_energy,
+            available_bandwidth,
+        )
+        .await
+    }
+
+    async fn commit_platform_delegation_block(
         &self,
         origin_trade_no: &str,
         req: &ApiCollectEntity,
@@ -792,38 +916,9 @@ impl ShadowCollectWorker {
         available_energy: i64,
         available_bandwidth: i64,
     ) -> Result<(), ServiceError> {
-        // The resource gate is a pre-BuildTx fact. Releasing it only says the
-        // order may enter the existing BuildTx flow; raw_tx/tx_hash are still
-        // produced by the normal build path.
-        if Self::tron_resource_ready(
-            available_energy,
-            available_bandwidth,
-            required_energy,
-            required_bandwidth,
-        ) {
-            let rows = ApiCollectRepo::mark_resource_released(
-                &self.collect_pool,
-                origin_trade_no,
-                "resource_ready",
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
-            info!(
-                origin_trade_no = %origin_trade_no,
-                rows = %rows,
-                required_energy = %required_energy,
-                available_energy = %available_energy,
-                required_bandwidth = %required_bandwidth,
-                available_bandwidth = %available_bandwidth,
-                source = "shadow_worker_v2",
-                "TRON collect resource gate released"
-            );
-            self.advancer.try_advance(origin_trade_no).await;
-            return Ok(());
-        }
-
-        let resource_trade_no = Self::collect_platform_delegate_trade_no(origin_trade_no);
-        let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
+        let resource_trade_no = Self::collect_platform_delegate_trade_no(&origin_trade_no);
+        let amount =
+            Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
         // At this point the SDK only knows the receiver that needs energy.
         // The platform-owned resource wallet is chosen by backend later, so
         // owner_address intentionally stays empty in this placeholder fact.
@@ -3005,8 +3100,11 @@ mod tests {
             api_collect::{ApiCollectEntity, ApiCollectStatus},
             asset_token_key::AssetTokenKey,
         },
-        repositories::api_wallet::collect::ApiCollectRepo,
+        repositories::api_wallet::{
+            collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+        },
     };
+    use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     fn base_collect() -> ApiCollectEntity {
         ApiCollectEntity {
@@ -3087,7 +3185,7 @@ mod tests {
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
                 collect_pool.clone(),
-                intent_tx,
+                intent_tx.clone(),
                 None,
             )),
         );
@@ -3147,7 +3245,7 @@ mod tests {
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
                 collect_pool.clone(),
-                intent_tx,
+                intent_tx.clone(),
                 None,
             )),
         );
@@ -3229,7 +3327,7 @@ mod tests {
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
                 collect_pool.clone(),
-                intent_tx,
+                intent_tx.clone(),
                 None,
             )),
         );
@@ -3392,6 +3490,150 @@ mod tests {
             ShadowCollectWorker::collect_platform_delegate_trade_no("C_1"),
             "rsc_delegate_C_1"
         );
+    }
+
+    #[tokio::test]
+    async fn release_resource_gate_is_idempotent() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx.clone(),
+                None,
+            )),
+        );
+
+        let trade_no = "C_release_once";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+
+        worker
+            .process_release_resource_gate(trade_no.to_string())
+            .await
+            .expect("first release");
+        worker
+            .process_release_resource_gate(trade_no.to_string())
+            .await
+            .expect("second release");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(persisted.resource_gate_result.as_deref(), Some("resource_ready"));
+    }
+
+    #[tokio::test]
+    async fn platform_delegation_block_commit_is_idempotent() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx.clone(),
+                None,
+            )),
+        );
+
+        let trade_no = "C_block_once";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+
+        worker
+            .commit_platform_delegation_block(trade_no, &req, 100, 50, 20, 10)
+            .await
+            .expect("first block commit");
+        worker
+            .commit_platform_delegation_block(trade_no, &req, 100, 50, 20, 10)
+            .await
+            .expect("second block commit");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert_eq!(
+            persisted.resource_dependency_trade_no.as_deref(),
+            Some("rsc_delegate_C_block_once")
+        );
+        assert_eq!(
+            persisted.resource_dependency_type.as_deref(),
+            Some("platform_delegate")
+        );
+        assert_eq!(
+            persisted.resource_block_reason.as_deref(),
+            Some("need_platform_delegate")
+        );
+
+        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &collect_pool,
+            "rsc_delegate_C_block_once",
+        )
+        .await
+        .expect("load delegation");
+        assert_eq!(delegation.origin_trade_no.as_deref(), Some(trade_no));
+        assert_eq!(delegation.amount, "80");
     }
 
     #[test]
