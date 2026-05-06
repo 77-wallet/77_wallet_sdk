@@ -10,8 +10,7 @@ use crate::{
 };
 use wallet_database::{
     entities::{
-        api_resource_delegation::ApiResourceDelegationOperationType,
-        api_resource_delegation::NewApiResourceDelegation,
+        api_resource_delegation::{ApiResourceDelegationOperationType, NewApiResourceDelegation},
         api_resource_operation::{ApiResourceOperationType, NewApiResourceOperation},
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
