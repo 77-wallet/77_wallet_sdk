@@ -571,11 +571,12 @@ impl SideEffectWorker {
             return Ok(());
         }
 
+        let trans_type = Self::resource_delegation_trans_type(&resource_task);
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
-                TransType::ColRsc,
+                trans_type,
                 TransAckType::TxRscRes,
             ))
             .await
@@ -694,15 +695,7 @@ impl SideEffectWorker {
     fn build_resource_tx_exec_receipt_payload(
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
     ) -> Result<TxExecReceiptUploadReq, ServiceError> {
-        let trans_type = match resource_task.origin_trade_type {
-            Some(x) if x == ApiTradeType::Withdraw as i64 => TransType::WdRscDl,
-            Some(_) => TransType::ColRscDl,
-            None => {
-                return Err(ServiceError::Parameter(
-                    "resource delegation receipt upload requires origin_trade_type".to_string(),
-                ));
-            }
-        };
+        let trans_type = Self::resource_delegation_trans_type(resource_task);
 
         let status = if matches!(resource_task.tx_status.as_deref(), Some("success")) {
             TransStatus::Success
@@ -735,6 +728,15 @@ impl SideEffectWorker {
         }
 
         Ok(payload)
+    }
+
+    fn resource_delegation_trans_type(
+        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+    ) -> TransType {
+        match resource_task.origin_trade_type {
+            Some(x) if x == ApiTradeType::Withdraw as i64 => TransType::WdRscDl,
+            _ => TransType::ColRscDl,
+        }
     }
 
     /// 处理上传服务费记录
@@ -1313,8 +1315,10 @@ mod tests {
     use wallet_database::entities::{
         api_coin::ApiCoinEntity,
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
+        api_trade_type::ApiTradeType,
         asset_token_key::AssetTokenKey,
     };
+    use wallet_transport_backend::request::api_wallet::transaction::TransType;
 
     fn make_coin(symbol: &str, token_address: AssetTokenKey, decimals: u8) -> ApiCoinEntity {
         ApiCoinEntity {
@@ -1537,5 +1541,49 @@ mod tests {
             .expect_err("pending facts should be rejected");
 
         assert!(err.to_string().contains("confirmed success or failure facts"));
+    }
+
+    #[test]
+    fn resource_delegation_trans_type_maps_collect() {
+        let mut r = wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
+            id: 1,
+            uid: "u".to_string(),
+            source: wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform,
+            operation_type: wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
+            origin_trade_no: None,
+            origin_trade_type: Some(ApiTradeType::Collect as i64),
+            resource_trade_no: "rsc".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: "receiver".to_string(),
+            resource_type: wallet_database::entities::api_resource_type::ApiResourceType::Energy,
+            native_amount: "1".to_string(),
+            amount: "100".to_string(),
+            status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
+            task_ack_sent_at: None,
+            building_at: None,
+            tx_hash: None,
+            tx_status: None,
+            tx_exec_receipt_uploaded_at: None,
+            result_status: None,
+            result_received_at: None,
+            result_ack_sent_at: None,
+            result_payload: None,
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            created_at: Utc::now(),
+            updated_at: None,
+        };
+        assert!(matches!(
+            SideEffectWorker::resource_delegation_trans_type(&r),
+            TransType::ColRscDl
+        ));
+
+        r.origin_trade_type = Some(ApiTradeType::Withdraw as i64);
+        assert!(matches!(SideEffectWorker::resource_delegation_trans_type(&r), TransType::WdRscDl));
     }
 }
