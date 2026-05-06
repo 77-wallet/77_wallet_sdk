@@ -39,7 +39,8 @@ use wallet_api::{
     messaging::notify::FrontendNotifyEvent,
     test::collect::{
         build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
-        scan_collect_intent_labels_once, upload_collect_service_fee_via_worker,
+        scan_collect_intent_labels_once, send_resource_result_ack_via_worker,
+        upload_collect_service_fee_via_worker,
         upload_collect_tx_exec_receipt_via_backend, upload_collect_tx_exec_receipt_via_worker,
     },
     test_support::{
@@ -2977,6 +2978,69 @@ async fn collect_scanner_emits_resource_receipt_upload_for_failed_delegation() {
         labels.iter().any(|label| label == "UploadResourceTxExecReceipt"),
         "failed resource delegation should emit UploadResourceTxExecReceipt"
     );
+}
+
+#[serial]
+#[tokio::test]
+async fn withdraw_resource_result_ack_uses_wd_rsc_dl_type() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+
+    let resource_trade_no = format!("RSC_WD_ACK_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    sqlx::query(
+        r#"
+        INSERT INTO api_resource_delegation (
+            uid, source, operation_type, origin_trade_no, origin_trade_type,
+            resource_trade_no, chain_code, owner_address, receiver_address,
+            resource_type, native_amount, amount, status,
+            result_status, result_received_at,
+            created_at, updated_at
+        ) VALUES (
+            'uid', 1, 1, 'W_ORIGIN_ACK', 1,
+            ?, 'tron', 'owner', 'receiver',
+            1, '2', '32000', 3,
+            1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        )
+        "#,
+    )
+    .bind(&resource_trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed withdraw delegation row for result ack");
+
+    send_resource_result_ack_via_worker(collect_pool, core_pool, &resource_trade_no)
+        .await
+        .expect("send resource result ack");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let matched = loop {
+        let requests = env.recorder.snapshot();
+        let found = requests.iter().any(|req| {
+            req.path
+                .contains(wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK)
+                && {
+                    let payload = decrypt_captured_api_backend_body(&req.body);
+                    payload["tradeNo"].as_str() == Some(resource_trade_no.as_str())
+                        && payload["ackType"].as_str() == Some("TX_RSC_RES")
+                        && payload["type"].as_str() == Some("WD_RSC_DL")
+                }
+        });
+        if found || std::time::Instant::now() >= deadline {
+            break found;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    };
+
+    assert!(matched, "withdraw resource result ack must use WD_RSC_DL");
 }
 
 #[serial]
