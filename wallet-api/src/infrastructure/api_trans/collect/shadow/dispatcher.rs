@@ -24,8 +24,6 @@ use super::CollectIntent;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
     EvalResourceGate(String),
-    ReleaseResourceGate(String),
-    BlockOnPlatformDelegation(String),
     BuildTx(String),
     BroadcastTx(String),
     RecoverTx(String),
@@ -46,12 +44,6 @@ impl RunningKey {
         match intent {
             CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => {
                 RunningKey::EvalResourceGate(trade_no.clone())
-            }
-            CollectIntent::Chain(ChainIntent::ReleaseResourceGate(trade_no)) => {
-                RunningKey::ReleaseResourceGate(trade_no.clone())
-            }
-            CollectIntent::Chain(ChainIntent::BlockOnPlatformDelegation(trade_no)) => {
-                RunningKey::BlockOnPlatformDelegation(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
                 RunningKey::BuildTx(trade_no.clone())
@@ -197,22 +189,6 @@ impl DispatchTrace {
             CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => Self {
                 worker: "ShadowCollectWorker",
                 command: "EvalResourceGate",
-                phase: "resource_gate",
-                trade_no: trade_no.clone(),
-                key,
-                side_effect: false,
-            },
-            CollectIntent::Chain(ChainIntent::ReleaseResourceGate(trade_no)) => Self {
-                worker: "ShadowCollectWorker",
-                command: "ReleaseResourceGate",
-                phase: "resource_gate",
-                trade_no: trade_no.clone(),
-                key,
-                side_effect: false,
-            },
-            CollectIntent::Chain(ChainIntent::BlockOnPlatformDelegation(trade_no)) => Self {
-                worker: "ShadowCollectWorker",
-                command: "BlockOnPlatformDelegation",
                 phase: "resource_gate",
                 trade_no: trade_no.clone(),
                 key,
@@ -410,18 +386,6 @@ impl ShadowDispatcher {
             CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending EvalResourceGate command to Shadow Worker");
                 shadow_worker.handle(ShadowCollectCommand::EvalResourceGate(trade_no.clone())).await
-            }
-            CollectIntent::Chain(ChainIntent::ReleaseResourceGate(trade_no)) => {
-                debug!(trade_no = %trade_no, "Sending ReleaseResourceGate command to Shadow Worker");
-                shadow_worker
-                    .handle(ShadowCollectCommand::ReleaseResourceGate(trade_no.clone()))
-                    .await
-            }
-            CollectIntent::Chain(ChainIntent::BlockOnPlatformDelegation(trade_no)) => {
-                debug!(trade_no = %trade_no, "Sending BlockOnPlatformDelegation command to Shadow Worker");
-                shadow_worker
-                    .handle(ShadowCollectCommand::BlockOnPlatformDelegation(trade_no.clone()))
-                    .await
             }
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");

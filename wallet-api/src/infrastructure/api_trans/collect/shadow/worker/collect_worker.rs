@@ -76,10 +76,6 @@ use crate::{
 pub enum ShadowCollectCommand {
     /// 评估资源闸门
     EvalResourceGate(String),
-    /// 释放资源闸门
-    ReleaseResourceGate(String),
-    /// 标记等待平台代理资源
-    BlockOnPlatformDelegation(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易
@@ -425,8 +421,6 @@ impl ShadowCollectWorker {
         // 提取 trade_no 用于日志
         let trade_no = match &cmd {
             ShadowCollectCommand::EvalResourceGate(trade_no) => trade_no,
-            ShadowCollectCommand::ReleaseResourceGate(trade_no) => trade_no,
-            ShadowCollectCommand::BlockOnPlatformDelegation(trade_no) => trade_no,
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
             ShadowCollectCommand::Recover(trade_no) => trade_no,
@@ -438,12 +432,6 @@ impl ShadowCollectWorker {
         match cmd {
             ShadowCollectCommand::EvalResourceGate(trade_no) => {
                 self.process_resource_gate(trade_no).await
-            }
-            ShadowCollectCommand::ReleaseResourceGate(trade_no) => {
-                self.process_release_resource_gate(trade_no).await
-            }
-            ShadowCollectCommand::BlockOnPlatformDelegation(trade_no) => {
-                self.process_block_on_platform_delegation(trade_no).await
             }
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
@@ -789,8 +777,7 @@ impl ShadowCollectWorker {
             available_bandwidth = %available_bandwidth,
             source = "shadow_worker_v2",
             "TRON collect resource gate evaluated"
-        )
-        ;
+        );
 
         Ok(())
     }
@@ -807,7 +794,10 @@ impl ShadowCollectWorker {
             || req.err_code.is_some()
     }
 
-    async fn process_release_resource_gate(&self, origin_trade_no: String) -> Result<(), ServiceError> {
+    async fn process_release_resource_gate(
+        &self,
+        origin_trade_no: String,
+    ) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(&origin_trade_no).await?;
         if !Self::is_tron_collect(&req.chain_code) {
             return Ok(());
@@ -917,8 +907,7 @@ impl ShadowCollectWorker {
         available_bandwidth: i64,
     ) -> Result<(), ServiceError> {
         let resource_trade_no = Self::collect_platform_delegate_trade_no(&origin_trade_no);
-        let amount =
-            Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
+        let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
         // At this point the SDK only knows the receiver that needs energy.
         // The platform-owned resource wallet is chosen by backend later, so
         // owner_address intentionally stays empty in this placeholder fact.
@@ -3089,6 +3078,7 @@ impl ShadowCollectWorker {
 #[cfg(test)]
 mod tests {
     use super::ShadowCollectWorker;
+    use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
     use chrono::Utc;
     use rust_decimal::Decimal;
     use std::{str::FromStr, sync::Arc};
@@ -3104,7 +3094,6 @@ mod tests {
             collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
         },
     };
-    use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     fn base_collect() -> ApiCollectEntity {
         ApiCollectEntity {
@@ -3537,14 +3526,8 @@ mod tests {
         .await
         .expect("insert collect");
 
-        worker
-            .process_release_resource_gate(trade_no.to_string())
-            .await
-            .expect("first release");
-        worker
-            .process_release_resource_gate(trade_no.to_string())
-            .await
-            .expect("second release");
+        worker.process_release_resource_gate(trade_no.to_string()).await.expect("first release");
+        worker.process_release_resource_gate(trade_no.to_string()).await.expect("second release");
 
         let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
             .await
@@ -3617,14 +3600,8 @@ mod tests {
             persisted.resource_dependency_trade_no.as_deref(),
             Some("rsc_delegate_C_block_once")
         );
-        assert_eq!(
-            persisted.resource_dependency_type.as_deref(),
-            Some("platform_delegate")
-        );
-        assert_eq!(
-            persisted.resource_block_reason.as_deref(),
-            Some("need_platform_delegate")
-        );
+        assert_eq!(persisted.resource_dependency_type.as_deref(), Some("platform_delegate"));
+        assert_eq!(persisted.resource_block_reason.as_deref(), Some("need_platform_delegate"));
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
             &collect_pool,

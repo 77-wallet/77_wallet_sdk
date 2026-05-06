@@ -34,8 +34,6 @@ fn intent_trade_no(intent: &CollectIntent) -> Option<String> {
     match intent {
         CollectIntent::Chain(chain_intent) => match chain_intent {
             ChainIntent::EvalResourceGate(trade_no) => Some(trade_no.clone()),
-            ChainIntent::ReleaseResourceGate(trade_no) => Some(trade_no.clone()),
-            ChainIntent::BlockOnPlatformDelegation(trade_no) => Some(trade_no.clone()),
             ChainIntent::BuildTx(trade_no) => Some(trade_no.clone()),
             ChainIntent::BroadcastTx(trade_no) => Some(trade_no.clone()),
             ChainIntent::RecoverTx(trade_no) => Some(trade_no.clone()),
