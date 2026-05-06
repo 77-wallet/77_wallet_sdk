@@ -281,9 +281,15 @@ impl ResourceOperationWorker {
 
         match err.retry_policy() {
             wallet_utils::RetryPolicy::Never => {
+                // 终止型错误（Never）在这里仅负责“落失败事实”，不继续向上抛错中断主循环。
+                //
+                // 设计意图（与 collect/withdraw side-effect 对齐）：
+                // 1) 失败事实先持久化（err_code/err_msg），形成可恢复的单一事实来源；
+                // 2) 后续由 scanner 基于事实推进 UploadTxExecReceipt / SendResultAck；
+                // 3) worker 本轮可安全结束，避免同一轮里重复执行或状态抖动。
+                //
+                // 简单说：这里“吞错”不是忽略错误，而是把错误转成事实后交给调度层续跑。
                 self.mark_failed(resource_trade_no, &err).await?;
-                // 与归集/提币 shadow worker 对齐：失败事实已经落库，
-                // 本轮执行不再继续抛错，后续由 scanner 推动执行回执上传。
                 Ok(())
             }
             wallet_utils::RetryPolicy::Delay => {
