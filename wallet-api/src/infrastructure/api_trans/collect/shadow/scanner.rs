@@ -886,7 +886,7 @@ impl ShadowScanner {
         };
 
         for record in records {
-            let intent = CollectIntent::Chain(ChainIntent::CheckResourceGate(record.trade_no));
+            let intent = CollectIntent::Chain(ChainIntent::EvalResourceGate(record.trade_no));
             self.dispatch_intent(intent).await;
         }
     }
@@ -1372,8 +1372,8 @@ impl ShadowScanner {
                         return;
                     }
                     CollectStage::NeedResourceGate => {
-                        trace!(trade_no = %trade_no, "Need to check resource gate");
-                        let intent = CollectIntent::Chain(ChainIntent::CheckResourceGate(
+                        trace!(trade_no = %trade_no, "Need to eval resource gate");
+                        let intent = CollectIntent::Chain(ChainIntent::EvalResourceGate(
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent).await;

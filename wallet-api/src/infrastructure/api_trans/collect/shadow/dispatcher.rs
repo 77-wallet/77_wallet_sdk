@@ -23,7 +23,7 @@ use super::CollectIntent;
 /// 用于 trade_no + intent_type 级别的互斥执行
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
-    CheckResourceGate(String),
+    EvalResourceGate(String),
     BuildTx(String),
     BroadcastTx(String),
     RecoverTx(String),
@@ -42,8 +42,8 @@ impl RunningKey {
     /// 从 CollectIntent 生成对应的 RunningKey
     pub fn from_intent(intent: &CollectIntent) -> Self {
         match intent {
-            CollectIntent::Chain(ChainIntent::CheckResourceGate(trade_no)) => {
-                RunningKey::CheckResourceGate(trade_no.clone())
+            CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => {
+                RunningKey::EvalResourceGate(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
                 RunningKey::BuildTx(trade_no.clone())
@@ -186,9 +186,9 @@ struct DispatchTrace {
 impl DispatchTrace {
     fn from_intent(intent: &CollectIntent, key: RunningKey) -> Self {
         match intent {
-            CollectIntent::Chain(ChainIntent::CheckResourceGate(trade_no)) => Self {
+            CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => Self {
                 worker: "ShadowCollectWorker",
-                command: "CheckResourceGate",
+                command: "EvalResourceGate",
                 phase: "resource_gate",
                 trade_no: trade_no.clone(),
                 key,
@@ -383,10 +383,10 @@ impl ShadowDispatcher {
         side_effect_worker: Arc<SideEffectWorker>,
     ) -> Result<(), crate::error::service::ServiceError> {
         match intent {
-            CollectIntent::Chain(ChainIntent::CheckResourceGate(trade_no)) => {
-                debug!(trade_no = %trade_no, "Sending CheckResourceGate command to Shadow Worker");
+            CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => {
+                debug!(trade_no = %trade_no, "Sending EvalResourceGate command to Shadow Worker");
                 shadow_worker
-                    .handle(ShadowCollectCommand::CheckResourceGate(trade_no.clone()))
+                    .handle(ShadowCollectCommand::EvalResourceGate(trade_no.clone()))
                     .await
             }
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {

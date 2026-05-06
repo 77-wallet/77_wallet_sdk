@@ -74,8 +74,8 @@ use crate::{
 /// 只表达："对某个 trade_no 执行某个确定动作"
 #[derive(Debug)]
 pub enum ShadowCollectCommand {
-    /// 检查资源闸门
-    CheckResourceGate(String),
+    /// 评估资源闸门
+    EvalResourceGate(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易
@@ -420,7 +420,7 @@ impl ShadowCollectWorker {
     pub async fn handle(&self, cmd: ShadowCollectCommand) -> Result<(), ServiceError> {
         // 提取 trade_no 用于日志
         let trade_no = match &cmd {
-            ShadowCollectCommand::CheckResourceGate(trade_no) => trade_no,
+            ShadowCollectCommand::EvalResourceGate(trade_no) => trade_no,
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
             ShadowCollectCommand::Recover(trade_no) => trade_no,
@@ -430,7 +430,7 @@ impl ShadowCollectWorker {
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
 
         match cmd {
-            ShadowCollectCommand::CheckResourceGate(trade_no) => {
+            ShadowCollectCommand::EvalResourceGate(trade_no) => {
                 self.process_resource_gate(trade_no).await
             }
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,

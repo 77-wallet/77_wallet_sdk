@@ -47,8 +47,8 @@ pub(crate) static COLLECT_SHADOW_ENABLED: AtomicBool = AtomicBool::new(false);
 /// 🔒 规则：只有 Confirm（transaction_time != NULL）才是"世界已发生"
 #[derive(Debug, Clone)]
 pub enum ChainIntent {
-    /// 检查并释放 TRON 资源闸门
-    CheckResourceGate(String),
+    /// 评估 TRON 资源闸门并写入下一步事实
+    EvalResourceGate(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易
