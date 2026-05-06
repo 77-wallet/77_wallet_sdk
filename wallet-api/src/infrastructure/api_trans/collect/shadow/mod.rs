@@ -55,6 +55,8 @@ pub enum ChainIntent {
     BroadcastTx(String),
     /// 恢复交易
     RecoverTx(String),
+    /// 执行平台代理资源代理任务，trade_no 是资源任务号
+    ExecuteResourceDelegation(String),
 }
 
 /// 副作用轴意图

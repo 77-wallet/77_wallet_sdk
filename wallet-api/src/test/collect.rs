@@ -179,6 +179,9 @@ pub async fn scan_collect_intent_labels_once(
             CollectIntent::Chain(ChainIntent::BuildTx(_)) => "BuildTx".to_string(),
             CollectIntent::Chain(ChainIntent::BroadcastTx(_)) => "BroadcastTx".to_string(),
             CollectIntent::Chain(ChainIntent::RecoverTx(_)) => "RecoverTx".to_string(),
+            CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(_)) => {
+                "ExecuteResourceDelegation".to_string()
+            }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(_)) => {
                 "SendOrderAck".to_string()
             }

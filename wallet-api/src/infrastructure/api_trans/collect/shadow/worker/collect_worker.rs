@@ -10,11 +10,19 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use tracing::{error, info, warn};
+use wallet_chain_interact::{
+    BillResourceConsume,
+    tron::{
+        self,
+        operations::{RawTransactionParams, TronTxOperation, stake::DelegateArgs},
+    },
+};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
-        api_resource_delegation::NewApiResourceDelegation,
+        api_resource_delegation::{ApiResourceDelegationEntity, NewApiResourceDelegation},
+        api_resource_type::ApiResourceType,
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
@@ -42,7 +50,7 @@ use crate::{
             chain::ApiChainTransDomain, coin::ApiCoinDomain, strategy::StrategyDomain,
             trans::ApiTransDomain,
         },
-        chain::adapter::sol_tx::SYSTEM_ACCOUNT_RENT,
+        chain::adapter::{ChainAdapterFactory, sol_tx::SYSTEM_ACCOUNT_RENT},
     },
     error::{
         business::{
@@ -68,6 +76,8 @@ pub enum ShadowCollectCommand {
     Broadcast(String),
     /// 恢复交易
     Recover(String),
+    /// 执行平台代理资源代理任务，trade_no 是资源任务号
+    ExecuteResourceDelegation(String),
 }
 
 /// Shadow Worker
@@ -408,6 +418,7 @@ impl ShadowCollectWorker {
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
             ShadowCollectCommand::Recover(trade_no) => trade_no,
+            ShadowCollectCommand::ExecuteResourceDelegation(trade_no) => trade_no,
         };
 
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
@@ -419,6 +430,189 @@ impl ShadowCollectWorker {
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
             ShadowCollectCommand::Recover(trade_no) => self.process_recover(trade_no).await,
+            ShadowCollectCommand::ExecuteResourceDelegation(trade_no) => {
+                self.process_resource_delegation_execute(trade_no).await
+            }
+        }
+    }
+
+    async fn process_resource_delegation_execute(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        info!(
+            resource_trade_no = %resource_trade_no,
+            source = "shadow_worker_v2",
+            "Processing resource delegation execution"
+        );
+
+        let affected =
+            ApiResourceDelegationRepo::claim_build_slot(&self.collect_pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "shadow_worker_v2",
+                "Resource delegation execution was already claimed or completed"
+            );
+            return Ok(());
+        }
+
+        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.collect_pool,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if delegation.tx_hash.is_some() {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "shadow_worker_v2",
+                "Resource delegation already has tx_hash, skipping execution"
+            );
+            return Ok(());
+        }
+
+        let tx_hash = self.execute_tron_resource_delegation(&delegation).await?;
+        let affected = ApiResourceDelegationRepo::mark_broadcast_success(
+            &self.collect_pool,
+            &resource_trade_no,
+            &tx_hash,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if affected == 0 {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                source = "shadow_worker_v2",
+                "Resource delegation broadcast fact was already committed"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                source = "shadow_worker_v2",
+                "Resource delegation broadcast fact committed"
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn execute_tron_resource_delegation(
+        &self,
+        delegation: &ApiResourceDelegationEntity,
+    ) -> Result<String, ServiceError> {
+        if !delegation.chain_code.eq_ignore_ascii_case("tron") {
+            return Err(ServiceError::Parameter(format!(
+                "resource delegation only supports tron, got {}",
+                delegation.chain_code
+            )));
+        }
+
+        let trx_amount = Self::parse_resource_delegation_native_amount(&delegation.native_amount)?;
+        let resource = Self::tron_resource_name(delegation.resource_type);
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&delegation.chain_code)
+                .await;
+
+        let args = DelegateArgs::new(
+            &delegation.owner_address,
+            &delegation.receiver_address,
+            trx_amount,
+            resource,
+        )?;
+        let raw = args.build_raw_transaction(chain.get_provider()).await?;
+        let (tx_hash, raw_tx) = self.sign_tron_resource_delegation(delegation, raw).await?;
+        let tx_resp =
+            ApiTransDomain::broadcast_transfer(&delegation.chain_code, raw_tx, Some(&tx_hash))
+                .await?;
+
+        let Some(tx) = tx_resp else {
+            info!(
+                resource_trade_no = %delegation.resource_trade_no,
+                tx_hash = %tx_hash,
+                source = "shadow_worker_v2",
+                "Resource delegation broadcast result uncertain"
+            );
+            return Err(ServiceError::Parameter(
+                "resource delegation broadcast result uncertain".to_string(),
+            ));
+        };
+
+        if tx.tx_hash != tx_hash {
+            error!(
+                resource_trade_no = %delegation.resource_trade_no,
+                expected_tx_hash = %tx_hash,
+                broadcast_tx_hash = %tx.tx_hash,
+                source = "shadow_worker_v2",
+                "Resource delegation tx_hash mismatch between build and broadcast"
+            );
+            return Err(ServiceError::System(SystemError::Internal(
+                "resource delegation tx_hash mismatch between build and broadcast".to_string(),
+            )));
+        }
+
+        Ok(tx_hash)
+    }
+
+    async fn sign_tron_resource_delegation(
+        &self,
+        delegation: &ApiResourceDelegationEntity,
+        mut raw: RawTransactionParams,
+    ) -> Result<(String, RawTx), ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let provider = chain.get_provider();
+        let consumer =
+            provider.transfer_fee(&delegation.owner_address, None, &raw.raw_data_hex, 1).await?;
+        let balance = chain.balance(&delegation.owner_address, None).await?;
+        if balance.to::<i64>() < consumer.transaction_fee_i64() {
+            return Err(ServiceError::Parameter(format!(
+                "resource delegation balance is insufficient for tx fee: balance={}, need={}",
+                balance,
+                consumer.transaction_fee_i64()
+            )));
+        }
+
+        let handles = crate::context::get_context()?.get_handles_arc().await?;
+        let private_key_manager = handles.get_global_private_key_manager();
+        let private_key = private_key_manager
+            .get_private_key(&delegation.owner_address, &delegation.chain_code)
+            .await?;
+        let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
+        raw.signature.push(sign);
+
+        let tx_hash = raw.tx_id.clone();
+        let raw_tx = RawTx::Tron(
+            raw,
+            BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0),
+            consumer.transaction_fee(),
+        );
+
+        Ok((tx_hash, raw_tx))
+    }
+
+    fn parse_resource_delegation_native_amount(amount: &str) -> Result<i64, ServiceError> {
+        let parsed = amount.trim().parse::<i64>().map_err(|_| {
+            ServiceError::Parameter(format!("invalid resource delegation native amount: {amount}"))
+        })?;
+        if parsed <= 0 {
+            return Err(ServiceError::Parameter(format!(
+                "resource delegation native amount must be positive: {amount}"
+            )));
+        }
+        Ok(parsed)
+    }
+
+    fn tron_resource_name(resource_type: ApiResourceType) -> &'static str {
+        match resource_type {
+            ApiResourceType::Bandwidth => "bandwidth",
+            ApiResourceType::Energy => "energy",
         }
     }
 

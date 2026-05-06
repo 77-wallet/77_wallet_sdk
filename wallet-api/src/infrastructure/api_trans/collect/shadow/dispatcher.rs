@@ -27,6 +27,7 @@ pub enum RunningKey {
     BuildTx(String),
     BroadcastTx(String),
     RecoverTx(String),
+    ExecuteResourceDelegation(String),
     SendOrderAck(String),
     SendResultAck(String),
     UploadServiceFee(String),
@@ -51,6 +52,9 @@ impl RunningKey {
             }
             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
                 RunningKey::RecoverTx(trade_no.clone())
+            }
+            CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(trade_no)) => {
+                RunningKey::ExecuteResourceDelegation(trade_no.clone())
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                 RunningKey::SendOrderAck(trade_no.clone())
@@ -122,6 +126,20 @@ mod tests {
     }
 
     #[test]
+    fn resource_delegation_execution_uses_distinct_running_key() {
+        let resource_trade_no = "RSC_EXEC_KEY";
+        let resource_exec = RunningKey::from_intent(&CollectIntent::Chain(
+            ChainIntent::ExecuteResourceDelegation(resource_trade_no.to_string()),
+        ));
+        let collect_build = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BuildTx(
+            resource_trade_no.to_string(),
+        )));
+
+        assert!(matches!(resource_exec, RunningKey::ExecuteResourceDelegation(_)));
+        assert_ne!(resource_exec, collect_build);
+    }
+
+    #[test]
     fn broadcast_and_recover_use_different_chain_keys_even_with_same_trade_no() {
         let trade_no = "C_KEY";
         let broadcast = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BroadcastTx(
@@ -177,6 +195,14 @@ impl DispatchTrace {
                 worker: "ShadowCollectWorker",
                 command: "RecoverTx",
                 phase: "recover",
+                trade_no: trade_no.clone(),
+                key,
+                side_effect: false,
+            },
+            CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(trade_no)) => Self {
+                worker: "ShadowCollectWorker",
+                command: "ExecuteResourceDelegation",
+                phase: "resource_delegation",
                 trade_no: trade_no.clone(),
                 key,
                 side_effect: false,
@@ -345,6 +371,12 @@ impl ShadowDispatcher {
             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
                 shadow_worker.handle(ShadowCollectCommand::Recover(trade_no.clone())).await
+            }
+            CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(trade_no)) => {
+                debug!(trade_no = %trade_no, "Sending ExecuteResourceDelegation command to Shadow Worker");
+                shadow_worker
+                    .handle(ShadowCollectCommand::ExecuteResourceDelegation(trade_no.clone()))
+                    .await
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending SendOrderAck command to SideEffect Worker");
