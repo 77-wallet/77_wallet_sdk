@@ -10,6 +10,7 @@ use crate::{
 };
 use wallet_database::{
     entities::{
+        api_resource_delegation::ApiResourceDelegationOperationType,
         api_resource_delegation::NewApiResourceDelegation,
         api_resource_operation::{ApiResourceOperationType, NewApiResourceOperation},
         api_resource_type::ApiResourceType,
@@ -264,9 +265,11 @@ impl AwmResourceDelegationMsg {
     pub(crate) async fn resource_delegation(
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let origin_trade_type = match self.trade_type {
-            5 => ApiTradeType::Collect,
-            7 => ApiTradeType::Withdraw,
+        let (origin_trade_type, operation_type) = match self.trade_type {
+            5 => (ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate),
+            6 => (ApiTradeType::Collect, ApiResourceDelegationOperationType::Undelegate),
+            7 => (ApiTradeType::Withdraw, ApiResourceDelegationOperationType::Delegate),
+            8 => (ApiTradeType::Withdraw, ApiResourceDelegationOperationType::Undelegate),
             _ => return Ok(()),
         };
         let resource_type =
@@ -283,6 +286,7 @@ impl AwmResourceDelegationMsg {
             self.uid.to_string(),
             self.trade_no.to_string(),
             origin_trade_type,
+            operation_type,
             self.chain_code.to_string(),
             self.from.to_string(),
             self.to.to_string(),
@@ -299,7 +303,8 @@ impl AwmResourceDelegationMsg {
             trade_type = %self.trade_type,
             rsc_type = %self.rsc_type,
             mode = %self.mode,
-            "平台资源代理任务已落库，等待任务 ACK 扫描"
+            operation_type = ?operation_type,
+            "平台资源代理/回收任务已落库，等待任务 ACK 扫描"
         );
         Ok(())
     }
@@ -659,6 +664,82 @@ mod tests {
             ApiResourceOperationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await.is_err(),
             "tradeType=7 resource delegation must not write api_resource_operation"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn resource_delegation_trade_type_6_persists_collect_platform_reclaim()
+    -> anyhow::Result<()> {
+        let (_manager, _params) = get_manager().await?;
+        let trade_no =
+            format!("COL_RSC_RC_order_regression_{}", wallet_utils::time::now().timestamp_millis());
+        let wallet_uid =
+            format!("col-rsc-rc-order-regression-{}", wallet_utils::time::now().timestamp_millis());
+
+        let msg = AwmOrderTransMsg::ResourceDelegation(AwmResourceDelegationMsg {
+            from: "T_platform_owner".to_string(),
+            to: "T_collect_receiver".to_string(),
+            native_value: "2".to_string(),
+            rsc_value: "32000".to_string(),
+            mode: 1,
+            chain_code: "tron".to_string(),
+            rsc_type: 1,
+            trade_no: trade_no.clone(),
+            trade_type: 6,
+            uid: wallet_uid,
+        });
+
+        msg.resource_delegation().await?;
+
+        let tx_pool = api_transaction_pool()?;
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
+        assert_eq!(got.origin_trade_type, Some(ApiTradeType::Collect as i64));
+        assert_eq!(got.source, ApiResourceDelegationSource::Platform);
+        assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Undelegate);
+        assert_eq!(got.owner_address, "T_platform_owner");
+        assert_eq!(got.receiver_address, "T_collect_receiver");
+        assert_eq!(got.native_amount, "2");
+        assert_eq!(got.amount, "32000");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn resource_delegation_trade_type_8_persists_withdraw_platform_reclaim()
+    -> anyhow::Result<()> {
+        let (_manager, _params) = get_manager().await?;
+        let trade_no =
+            format!("WD_RSC_RC_order_regression_{}", wallet_utils::time::now().timestamp_millis());
+        let wallet_uid =
+            format!("wd-rsc-rc-order-regression-{}", wallet_utils::time::now().timestamp_millis());
+
+        let msg = AwmOrderTransMsg::ResourceDelegation(AwmResourceDelegationMsg {
+            from: "T_platform_owner".to_string(),
+            to: "T_withdraw_receiver".to_string(),
+            native_value: "3".to_string(),
+            rsc_value: "64000".to_string(),
+            mode: 2,
+            chain_code: "tron".to_string(),
+            rsc_type: 1,
+            trade_no: trade_no.clone(),
+            trade_type: 8,
+            uid: wallet_uid,
+        });
+
+        msg.resource_delegation().await?;
+
+        let tx_pool = api_transaction_pool()?;
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
+        assert_eq!(got.origin_trade_type, Some(ApiTradeType::Withdraw as i64));
+        assert_eq!(got.source, ApiResourceDelegationSource::Platform);
+        assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Undelegate);
+        assert_eq!(got.owner_address, "T_platform_owner");
+        assert_eq!(got.receiver_address, "T_withdraw_receiver");
+        assert_eq!(got.native_amount, "3");
+        assert_eq!(got.amount, "64000");
 
         Ok(())
     }

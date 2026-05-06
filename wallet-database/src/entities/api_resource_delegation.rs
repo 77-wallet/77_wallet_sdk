@@ -183,6 +183,7 @@ impl NewApiResourceDelegation {
         uid: impl Into<String>,
         resource_trade_no: impl Into<String>,
         origin_trade_type: ApiTradeType,
+        operation_type: ApiResourceDelegationOperationType,
         chain_code: impl Into<String>,
         owner_address: impl Into<String>,
         receiver_address: impl Into<String>,
@@ -193,7 +194,7 @@ impl NewApiResourceDelegation {
         Self {
             uid: uid.into(),
             source: ApiResourceDelegationSource::Platform,
-            operation_type: ApiResourceDelegationOperationType::Delegate,
+            operation_type,
             origin_trade_no: None,
             origin_trade_type: Some(origin_trade_type as i64),
             resource_trade_no: resource_trade_no.into(),
