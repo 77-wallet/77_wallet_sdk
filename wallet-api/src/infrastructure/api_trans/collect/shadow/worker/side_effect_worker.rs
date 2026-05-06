@@ -26,7 +26,9 @@ use wallet_database::{
     entities::{
         api_coin::ApiCoinEntity, api_trade_type::ApiTradeType, asset_token_key::AssetTokenKey,
     },
-    repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
+    repositories::api_wallet::{
+        collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+    },
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
     ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransStatus, TransType,
@@ -589,6 +591,7 @@ impl SideEffectWorker {
                 if affected == 0 {
                     warn!(resource_trade_no = %resource_trade_no, "Resource result ACK marked 0 rows");
                 }
+                self.release_collect_resource_gate_after_resource_success(&resource_task).await?;
                 info!(resource_trade_no = %resource_trade_no, "Resource result ACK sent successfully");
             }
             Err(e) => {
@@ -597,6 +600,78 @@ impl SideEffectWorker {
             }
         }
 
+        Ok(())
+    }
+
+    async fn release_collect_resource_gate_after_resource_success(
+        &self,
+        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+    ) -> Result<(), ServiceError> {
+        if resource_task.err_code.is_some()
+            || !matches!(resource_task.tx_status.as_deref(), Some("success"))
+        {
+            return Ok(());
+        }
+
+        if resource_task.origin_trade_type != Some(ApiTradeType::Collect as i64) {
+            info!(
+                resource_trade_no = %resource_task.resource_trade_no,
+                origin_trade_type = ?resource_task.origin_trade_type,
+                source = "side_effect_worker",
+                "Skip collect resource gate release: origin is not collect"
+            );
+            return Ok(());
+        }
+
+        let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() else {
+            info!(
+                resource_trade_no = %resource_task.resource_trade_no,
+                source = "side_effect_worker",
+                "Skip collect resource gate release: origin trade no missing"
+            );
+            return Ok(());
+        };
+
+        let collect = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, origin_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if collect.resource_gate_released_at.is_some() {
+            info!(
+                resource_trade_no = %resource_task.resource_trade_no,
+                origin_trade_no = %origin_trade_no,
+                source = "side_effect_worker",
+                "Collect resource gate already released after resource success"
+            );
+            self.advancer.try_advance(origin_trade_no).await;
+            return Ok(());
+        }
+
+        let affected = ApiCollectRepo::mark_resource_released(
+            &self.pool,
+            origin_trade_no,
+            "resource_delegation_success",
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if affected == 0 {
+            warn!(
+                resource_trade_no = %resource_task.resource_trade_no,
+                origin_trade_no = %origin_trade_no,
+                source = "side_effect_worker",
+                "Collect resource gate release marked 0 rows after resource success"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_task.resource_trade_no,
+                origin_trade_no = %origin_trade_no,
+                source = "side_effect_worker",
+                "Collect resource gate released after resource success"
+            );
+        }
+
+        self.advancer.try_advance(origin_trade_no).await;
         Ok(())
     }
 
