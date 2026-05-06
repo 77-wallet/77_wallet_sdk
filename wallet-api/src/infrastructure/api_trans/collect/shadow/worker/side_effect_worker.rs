@@ -616,10 +616,7 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        let trans_type = match resource_task.origin_trade_type {
-            Some(x) if x == ApiTradeType::Withdraw as i64 => TransType::WdRscDl,
-            _ => TransType::ColRscDl,
-        };
+        let trans_type = Self::resource_delegation_trans_type(&resource_task);
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
@@ -1585,5 +1582,47 @@ mod tests {
 
         r.origin_trade_type = Some(ApiTradeType::Withdraw as i64);
         assert!(matches!(SideEffectWorker::resource_delegation_trans_type(&r), TransType::WdRscDl));
+    }
+
+    #[test]
+    fn build_resource_tx_exec_receipt_payload_uses_withdraw_trans_type() {
+        let r = wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
+            id: 1,
+            uid: "u".to_string(),
+            source: wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform,
+            operation_type: wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
+            origin_trade_no: Some("W_ORIGIN_1".to_string()),
+            origin_trade_type: Some(ApiTradeType::Withdraw as i64),
+            resource_trade_no: "rsc_wd_1".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: "receiver".to_string(),
+            resource_type: wallet_database::entities::api_resource_type::ApiResourceType::Energy,
+            native_amount: "1".to_string(),
+            amount: "100".to_string(),
+            status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Success,
+            task_ack_sent_at: None,
+            building_at: None,
+            tx_hash: Some("tx_hash_1".to_string()),
+            tx_status: Some("success".to_string()),
+            tx_exec_receipt_uploaded_at: None,
+            result_status: None,
+            result_received_at: None,
+            result_ack_sent_at: None,
+            result_payload: None,
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            created_at: Utc::now(),
+            updated_at: None,
+        };
+
+        let payload = SideEffectWorker::build_resource_tx_exec_receipt_payload(&r)
+            .expect("withdraw resource payload should build");
+        let payload_json = serde_json::to_value(&payload).expect("serialize payload");
+        assert_eq!(payload_json["type"], "WD_RSC_DL");
     }
 }
