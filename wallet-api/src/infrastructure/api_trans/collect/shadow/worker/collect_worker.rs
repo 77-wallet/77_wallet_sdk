@@ -717,16 +717,11 @@ impl ShadowCollectWorker {
     async fn process_resource_gate_inner(&self, origin_trade_no: &str) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(origin_trade_no).await?;
 
-        if !req.chain_code.eq_ignore_ascii_case("tron") {
+        if !Self::is_tron_collect(&req.chain_code) {
             return Ok(());
         }
 
-        if req.resource_gate_released_at.is_some()
-            || req.raw_tx.is_some()
-            || req.transaction_time.is_some()
-            || req.finished_at.is_some()
-            || req.err_code.is_some()
-        {
+        if Self::resource_gate_already_resolved(&req) {
             info!(
                 origin_trade_no = %origin_trade_no,
                 source = "shadow_worker_v2",
@@ -763,14 +758,48 @@ impl ShadowCollectWorker {
         let available_energy = resource.available_energy();
         let available_bandwidth = resource.available_bandwidth();
 
+        self.apply_resource_gate_decision(
+            origin_trade_no,
+            &req,
+            fee_details.energy,
+            fee_details.bandwidth,
+            available_energy,
+            available_bandwidth,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    fn is_tron_collect(chain_code: &str) -> bool {
+        chain_code.eq_ignore_ascii_case("tron")
+    }
+
+    fn resource_gate_already_resolved(req: &ApiCollectEntity) -> bool {
+        req.resource_gate_released_at.is_some()
+            || req.raw_tx.is_some()
+            || req.transaction_time.is_some()
+            || req.finished_at.is_some()
+            || req.err_code.is_some()
+    }
+
+    async fn apply_resource_gate_decision(
+        &self,
+        origin_trade_no: &str,
+        req: &ApiCollectEntity,
+        required_energy: u64,
+        required_bandwidth: u64,
+        available_energy: i64,
+        available_bandwidth: i64,
+    ) -> Result<(), ServiceError> {
         // The resource gate is a pre-BuildTx fact. Releasing it only says the
         // order may enter the existing BuildTx flow; raw_tx/tx_hash are still
         // produced by the normal build path.
         if Self::tron_resource_ready(
             available_energy,
             available_bandwidth,
-            fee_details.energy,
-            fee_details.bandwidth,
+            required_energy,
+            required_bandwidth,
         ) {
             let rows = ApiCollectRepo::mark_resource_released(
                 &self.collect_pool,
@@ -782,59 +811,57 @@ impl ShadowCollectWorker {
             info!(
                 origin_trade_no = %origin_trade_no,
                 rows = %rows,
-                required_energy = %fee_details.energy,
+                required_energy = %required_energy,
                 available_energy = %available_energy,
-                required_bandwidth = %fee_details.bandwidth,
+                required_bandwidth = %required_bandwidth,
                 available_bandwidth = %available_bandwidth,
                 source = "shadow_worker_v2",
                 "TRON collect resource gate released"
             );
             self.advancer.try_advance(origin_trade_no).await;
-        } else {
-            let resource_trade_no = Self::collect_platform_delegate_trade_no(origin_trade_no);
-            let amount =
-                Self::resource_shortfall(fee_details.energy, available_energy).max(1).to_string();
-            // At this point the SDK only knows the receiver that needs energy.
-            // The platform-owned resource wallet is chosen by backend later, so
-            // owner_address intentionally stays empty in this placeholder fact.
-            let delegation = NewApiResourceDelegation::platform_delegate(
-                req.uid.clone(),
-                resource_trade_no.clone(),
-                req.trade_no.clone(),
-                req.trade_type.into(),
-                "",
-                req.from_addr.clone(),
-                amount,
-            );
-            ApiResourceDelegationRepo::upsert(&self.collect_pool, delegation)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-
-            // Blocked here means "waiting for resource delegation", not a
-            // terminal collect failure. The dependency trade no links the
-            // original collect order to the resource task for recovery/ACK.
-            let rows = ApiCollectRepo::mark_resource_blocked(
-                &self.collect_pool,
-                origin_trade_no,
-                "need_platform_delegate",
-                Some(&resource_trade_no),
-                Some("platform_delegate"),
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
-            info!(
-                origin_trade_no = %origin_trade_no,
-                rows = %rows,
-                required_energy = %fee_details.energy,
-                available_energy = %available_energy,
-                required_bandwidth = %fee_details.bandwidth,
-                available_bandwidth = %available_bandwidth,
-                resource_trade_no = %resource_trade_no,
-                source = "shadow_worker_v2",
-                "TRON collect resource gate blocked"
-            );
+            return Ok(());
         }
 
+        let resource_trade_no = Self::collect_platform_delegate_trade_no(origin_trade_no);
+        let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
+        // At this point the SDK only knows the receiver that needs energy.
+        // The platform-owned resource wallet is chosen by backend later, so
+        // owner_address intentionally stays empty in this placeholder fact.
+        let delegation = NewApiResourceDelegation::platform_delegate(
+            req.uid.clone(),
+            resource_trade_no.clone(),
+            req.trade_no.clone(),
+            req.trade_type.into(),
+            "",
+            req.from_addr.clone(),
+            amount,
+        );
+        ApiResourceDelegationRepo::upsert(&self.collect_pool, delegation)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        // Blocked here means "waiting for resource delegation", not a
+        // terminal collect failure. The dependency trade no links the
+        // original collect order to the resource task for recovery/ACK.
+        let rows = ApiCollectRepo::mark_resource_blocked(
+            &self.collect_pool,
+            origin_trade_no,
+            "need_platform_delegate",
+            Some(&resource_trade_no),
+            Some("platform_delegate"),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            origin_trade_no = %origin_trade_no,
+            rows = %rows,
+            required_energy = %required_energy,
+            available_energy = %available_energy,
+            required_bandwidth = %required_bandwidth,
+            available_bandwidth = %available_bandwidth,
+            resource_trade_no = %resource_trade_no,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate blocked"
+        );
         Ok(())
     }
 

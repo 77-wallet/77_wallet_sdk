@@ -31,6 +31,7 @@ pub enum Migrator {
 }
 impl Migrator {
     pub fn migrator(&self) -> Result<sqlx::migrate::Migrator, crate::Error> {
+        // Keep this match explicit so sqlx::migrate! paths stay discoverable at compile time.
         match self {
             Migrator::Core => Ok(sqlx::migrate!("./schema/core/migrations")),
             Migrator::ApiTransaction => Ok(sqlx::migrate!("./schema/api_transaction/migrations")),
