@@ -69,6 +69,11 @@ pub enum SideEffectCommand {
     UploadResourceTxExecReceipt(String),
 }
 
+enum ResourceGateReleaseOutcome<'a> {
+    Success(&'a str),
+    FailureBypass(&'a str),
+}
+
 impl SideEffectCommand {
     /// 从 SideEffectCommand 生成对应的 RunningKey
     pub fn to_running_key(
@@ -591,7 +596,11 @@ impl SideEffectWorker {
                 if affected == 0 {
                     warn!(resource_trade_no = %resource_trade_no, "Resource result ACK marked 0 rows");
                 }
-                self.release_collect_resource_gate_after_resource_success(&resource_task).await?;
+                self.release_collect_resource_gate_from_resource_task(
+                    &resource_task,
+                    ResourceGateReleaseOutcome::Success("resource_delegation_success"),
+                )
+                .await?;
                 info!(resource_trade_no = %resource_trade_no, "Resource result ACK sent successfully");
             }
             Err(e) => {
@@ -603,15 +612,29 @@ impl SideEffectWorker {
         Ok(())
     }
 
-    async fn release_collect_resource_gate_after_resource_success(
+    async fn release_collect_resource_gate_from_resource_task(
         &self,
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+        outcome: ResourceGateReleaseOutcome<'_>,
     ) -> Result<(), ServiceError> {
-        if resource_task.err_code.is_some()
-            || !matches!(resource_task.tx_status.as_deref(), Some("success"))
-        {
-            return Ok(());
-        }
+        let release_result = match outcome {
+            ResourceGateReleaseOutcome::Success(release_result) => {
+                if resource_task.err_code.is_some()
+                    || !matches!(resource_task.tx_status.as_deref(), Some("success"))
+                {
+                    return Ok(());
+                }
+                release_result
+            }
+            ResourceGateReleaseOutcome::FailureBypass(release_result) => {
+                let is_failure = resource_task.err_code.is_some()
+                    || matches!(resource_task.tx_status.as_deref(), Some("fail"));
+                if !is_failure {
+                    return Ok(());
+                }
+                release_result
+            }
+        };
 
         if resource_task.origin_trade_type != Some(ApiTradeType::Collect as i64) {
             info!(
@@ -647,13 +670,10 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        let affected = ApiCollectRepo::mark_resource_released(
-            &self.pool,
-            origin_trade_no,
-            "resource_delegation_success",
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
+        let affected =
+            ApiCollectRepo::mark_resource_released(&self.pool, origin_trade_no, release_result)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
 
         if affected == 0 {
             warn!(
@@ -760,6 +780,12 @@ impl SideEffectWorker {
         } else {
             info!(resource_trade_no = %resource_trade_no, "Resource tx exec receipt uploaded and marked");
         }
+
+        self.release_collect_resource_gate_from_resource_task(
+            &resource_task,
+            ResourceGateReleaseOutcome::FailureBypass("resource_delegation_failed_bypass"),
+        )
+        .await?;
 
         Ok(())
     }

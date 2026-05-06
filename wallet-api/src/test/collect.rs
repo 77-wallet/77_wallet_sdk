@@ -88,6 +88,21 @@ pub async fn send_resource_result_ack_via_worker(
     worker.handle(SideEffectCommand::SendResourceResultAck(resource_trade_no.to_string())).await
 }
 
+pub async fn upload_resource_tx_exec_receipt_via_worker(
+    collect_pool: ApiTransactionDbPool,
+    core_pool: ApiWalletDbPool,
+    resource_trade_no: &str,
+) -> Result<(), ServiceError> {
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
+    let advancer =
+        Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
+    let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
+    worker
+        .handle(SideEffectCommand::UploadResourceTxExecReceipt(resource_trade_no.to_string()))
+        .await
+}
+
 pub async fn upload_collect_tx_exec_receipt_via_backend(
     req: &ApiCollectEntity,
     trade_no: &str,

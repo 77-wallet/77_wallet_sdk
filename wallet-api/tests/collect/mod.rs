@@ -41,7 +41,7 @@ use wallet_api::{
         build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
         scan_collect_intent_labels_once, send_resource_result_ack_via_worker,
         upload_collect_service_fee_via_worker, upload_collect_tx_exec_receipt_via_backend,
-        upload_collect_tx_exec_receipt_via_worker,
+        upload_collect_tx_exec_receipt_via_worker, upload_resource_tx_exec_receipt_via_worker,
     },
     test_support::{
         adapter_factory::{
@@ -3124,14 +3124,10 @@ async fn collect_resource_result_ack_releases_origin_collect_gate() {
         .await
         .expect("load collect");
     assert!(collect.resource_gate_released_at.is_some());
-    assert_eq!(
-        collect.resource_gate_result.as_deref(),
-        Some("resource_delegation_success")
-    );
+    assert_eq!(collect.resource_gate_result.as_deref(), Some("resource_delegation_success"));
 
-    let labels = scan_collect_intent_labels_once(collect_pool.clone())
-        .await
-        .expect("scan collect intents");
+    let labels =
+        scan_collect_intent_labels_once(collect_pool.clone()).await.expect("scan collect intents");
     assert!(
         labels.iter().any(|label| label == "BuildTx"),
         "released collect should be eligible for BuildTx"
@@ -3297,6 +3293,180 @@ async fn withdraw_origin_resource_result_ack_does_not_release_collect_gate() {
     send_resource_result_ack_via_worker(collect_pool.clone(), core_pool, &resource_trade_no)
         .await
         .expect("send resource result ack");
+
+    let collect = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("load collect");
+    assert!(collect.resource_gate_released_at.is_none());
+    assert!(collect.resource_gate_result.is_none());
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_resource_tx_exec_receipt_failure_releases_origin_collect_gate() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+
+    let trade_no = format!("C_RSC_FAIL_BYPASS_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    ApiCollectRepo::upsert_api_collect(
+        &collect_pool,
+        "uid",
+        "collect",
+        "from",
+        "to",
+        "1.12",
+        "digest",
+        "tron",
+        None,
+        "TRX",
+        &trade_no,
+        2,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert collect");
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            resource_block_reason = 'need_platform_delegate',
+            resource_dependency_trade_no = ?,
+            resource_dependency_type = 'platform_delegate'
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(&trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed blocked collect");
+
+    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    sqlx::query(
+        r#"
+        INSERT INTO api_resource_delegation (
+            uid, source, operation_type, origin_trade_no, origin_trade_type,
+            resource_trade_no, chain_code, owner_address, receiver_address,
+            resource_type, native_amount, amount, status,
+            err_code, err_msg, tx_status,
+            created_at, updated_at
+        ) VALUES (
+            'uid', 1, 1, ?, 2,
+            ?, 'tron', 'owner', 'receiver',
+            1, '2', '32000', 3,
+            'delegate_failed', 'delegate failed', 'fail',
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        )
+        "#,
+    )
+    .bind(&trade_no)
+    .bind(&resource_trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed failed collect delegation row");
+
+    upload_resource_tx_exec_receipt_via_worker(collect_pool.clone(), core_pool, &resource_trade_no)
+        .await
+        .expect("upload resource tx exec receipt");
+
+    let collect = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("load collect");
+    assert!(collect.resource_gate_released_at.is_some());
+    assert_eq!(collect.resource_gate_result.as_deref(), Some("resource_delegation_failed_bypass"));
+
+    let labels =
+        scan_collect_intent_labels_once(collect_pool.clone()).await.expect("scan collect labels");
+    assert!(
+        labels.iter().any(|label| label == "BuildTx"),
+        "failed delegation bypass should make collect eligible for BuildTx"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_resource_tx_exec_receipt_failure_without_origin_trade_no_does_not_release_gate() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+
+    let trade_no = format!("C_RSC_NO_ORIGIN_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    ApiCollectRepo::upsert_api_collect(
+        &collect_pool,
+        "uid",
+        "collect",
+        "from",
+        "to",
+        "1.12",
+        "digest",
+        "tron",
+        None,
+        "TRX",
+        &trade_no,
+        2,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert collect");
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            resource_block_reason = 'need_platform_delegate',
+            resource_dependency_trade_no = ?,
+            resource_dependency_type = 'platform_delegate'
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(&trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed blocked collect");
+
+    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    sqlx::query(
+        r#"
+        INSERT INTO api_resource_delegation (
+            uid, source, operation_type, origin_trade_no, origin_trade_type,
+            resource_trade_no, chain_code, owner_address, receiver_address,
+            resource_type, native_amount, amount, status,
+            err_code, err_msg, tx_status,
+            created_at, updated_at
+        ) VALUES (
+            'uid', 1, 1, NULL, 2,
+            ?, 'tron', 'owner', 'receiver',
+            1, '2', '32000', 3,
+            'delegate_failed', 'delegate failed', 'fail',
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        )
+        "#,
+    )
+    .bind(&resource_trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed failed delegation row without origin trade");
+
+    upload_resource_tx_exec_receipt_via_worker(collect_pool.clone(), core_pool, &resource_trade_no)
+        .await
+        .expect("upload resource tx exec receipt");
 
     let collect = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
         .await
