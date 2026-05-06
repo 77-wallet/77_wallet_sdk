@@ -15,7 +15,8 @@ use wallet_chain_interact::{
     tron::{
         self,
         operations::{
-            RawTransactionParams, TronTxOperation, stake::DelegateArgs, stake::UnDelegateArgs,
+            RawTransactionParams, TronTxOperation,
+            stake::{DelegateArgs, UnDelegateArgs},
         },
     },
 };
