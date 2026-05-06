@@ -90,11 +90,17 @@ pub struct ApiWithdrawEntity {
     pub err_msg: Option<String>,
 
     // ===== TRON Resource Gate Facts =====
+    /// 最近一次资源门禁检查时间（仅作为调度事实，不代表门禁已通过）
     pub resource_check_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    /// 门禁放行时间（有值表示当前订单已不再阻塞于资源门禁）
     pub resource_gate_released_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    /// 最近一次门禁结论（如 `ready` / `blocked`）
     pub resource_gate_result: Option<String>,
+    /// 最近一次门禁阻塞原因（仅 blocked 时有意义）
     pub resource_block_reason: Option<String>,
+    /// 资源依赖任务号（平台代打能量等），用于关联资源子流程事实
     pub resource_dependency_trade_no: Option<String>,
+    /// 资源依赖类型（如 `platform_delegate`），用于区分依赖来源
     pub resource_dependency_type: Option<String>,
 
     // ===== Tx ACK（交易 ACK 事实）=====

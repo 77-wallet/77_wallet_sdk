@@ -1664,11 +1664,12 @@ mod tests {
             updated_at: None,
         };
 
-        let ack_req = wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
-            &r.resource_trade_no,
-            SideEffectWorker::resource_delegation_trans_type(&r),
-            wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRscRes,
-        );
+        let ack_req =
+            wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
+                &r.resource_trade_no,
+                SideEffectWorker::resource_delegation_trans_type(&r),
+                wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRscRes,
+            );
         let ack_json = serde_json::to_value(&ack_req).expect("serialize ack req");
         assert_eq!(ack_json["type"], "WD_RSC_DL");
     }
