@@ -104,6 +104,13 @@ enum ResourceDelegationBlockPath {
     LocalFallback,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResourceGateNextStep {
+    Release,
+    BlockOnPlatform,
+    BlockOnLocal,
+}
+
 /// Shadow Worker
 /// 纯执行型、无状态假设、可随时 kill -9 的 Worker
 ///
@@ -765,22 +772,16 @@ impl ShadowCollectWorker {
         let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
         let snapshot = self.eval_collect_resource_gate_snapshot(&req, &exec_to_addr).await?;
 
-        if Self::tron_resource_ready(
-            snapshot.available_energy,
-            snapshot.available_bandwidth,
-            snapshot.required_energy,
-            snapshot.required_bandwidth,
-        ) {
-            self.process_release_resource_gate(origin_trade_no.to_string()).await?;
-        } else {
-            self.process_resource_gate_blocked_path(
-                origin_trade_no.to_string(),
-                &req,
-                &exec_to_addr,
-                snapshot,
-            )
-            .await?;
-        }
+        let next_step =
+            self.decide_collect_resource_gate_next_step(origin_trade_no, &snapshot).await?;
+        self.apply_collect_resource_gate_next_step(
+            next_step,
+            origin_trade_no,
+            &req,
+            &exec_to_addr,
+            snapshot,
+        )
+        .await?;
 
         info!(
             origin_trade_no,
@@ -951,47 +952,66 @@ impl ShadowCollectWorker {
         })
     }
 
-    /// Decide which resource dependency fact should be written when TRON
-    /// collect still lacks energy.
-    ///
-    /// Important boundary:
-    /// - platform failure receipt does not directly rewrite collect into
-    ///   `need_local_delegate`
-    /// - it only wakes collect back up
-    /// - the dependency switch itself happens here, during the next
-    ///   `EvalResourceGate`, so scanner remains the owner of progression
-    async fn process_resource_gate_blocked_path(
+    async fn decide_collect_resource_gate_next_step(
         &self,
-        origin_trade_no: String,
+        snapshot: ResourceGateSnapshot,
+        origin_trade_no: &str,
+    ) -> Result<ResourceGateNextStep, ServiceError> {
+        if Self::tron_resource_ready(
+            snapshot.available_energy,
+            snapshot.available_bandwidth,
+            snapshot.required_energy,
+            snapshot.required_bandwidth,
+        ) {
+            return Ok(ResourceGateNextStep::Release);
+        }
+
+        let delegations =
+            ApiResourceDelegationRepo::list_by_origin_trade_no(&self.collect_pool, origin_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        let next_step = match Self::decide_collect_resource_block_path(&delegations) {
+            ResourceDelegationBlockPath::LocalFallback => ResourceGateNextStep::BlockOnLocal,
+            ResourceDelegationBlockPath::PlatformFallback => ResourceGateNextStep::BlockOnPlatform,
+        };
+
+        Ok(next_step)
+    }
+
+    /// Main collect resource-gate skeleton:
+    /// 1. evaluate current resource snapshot
+    /// 2. decide the next step from facts
+    /// 3. commit only the facts for that one step
+    async fn apply_collect_resource_gate_next_step(
+        &self,
+        next_step: ResourceGateNextStep,
+        origin_trade_no: &str,
         req: &ApiCollectEntity,
         exec_to_addr: &str,
         snapshot: ResourceGateSnapshot,
     ) -> Result<(), ServiceError> {
-        let delegations = ApiResourceDelegationRepo::list_by_origin_trade_no(
-            &self.collect_pool,
-            &origin_trade_no,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-        match Self::decide_collect_resource_block_path(&delegations) {
-            ResourceDelegationBlockPath::LocalFallback => {
-                self.commit_local_delegation_block(
-                    &origin_trade_no,
-                    req,
-                    exec_to_addr,
-                    snapshot.required_energy,
-                    snapshot.available_energy,
-                )
-                .await
+        match next_step {
+            ResourceGateNextStep::Release => {
+                self.process_release_resource_gate(origin_trade_no.to_string()).await
             }
-            ResourceDelegationBlockPath::PlatformFallback => {
+            ResourceGateNextStep::BlockOnPlatform => {
                 self.commit_platform_delegation_block(
-                    &origin_trade_no,
+                    origin_trade_no,
                     req,
                     snapshot.required_energy,
                     snapshot.required_bandwidth,
                     snapshot.available_energy,
                     snapshot.available_bandwidth,
+                )
+                .await
+            }
+            ResourceGateNextStep::BlockOnLocal => {
+                self.commit_local_delegation_block(
+                    origin_trade_no,
+                    req,
+                    exec_to_addr,
+                    snapshot.required_energy,
+                    snapshot.available_energy,
                 )
                 .await
             }
