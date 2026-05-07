@@ -390,6 +390,31 @@ impl CommonFeeDetails {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ethereum_fee_details_preserve_fractional_bnb_gas_tracker_price() {
+        let gas_oracle = GasOracle {
+            safe_gas_price: None,
+            propose_gas_price: Some("0.1".to_string()),
+            fast_gas_price: None,
+            suggest_base_fee: Some("0".to_string()),
+            gas_used_ratio: None,
+        };
+        let token_currency =
+            TokenCurrency::new("bnb", "BNB", "BNB", Some(643.98037376), None, 1.0, 18);
+
+        let fee =
+            FeeDetails::try_from((gas_oracle, 331_311)).unwrap().to_resp(token_currency, "USD");
+
+        assert_eq!(fee.data[0].fee_setting.gas_limit, 331_311);
+        assert_eq!(fee.data[0].fee_setting.priority_fee, "100000000");
+        assert!((fee.data[0].estimate_fee.amount - 0.00003313).abs() < 0.00000001);
+    }
+}
+
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoinCurrency {
