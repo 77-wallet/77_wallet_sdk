@@ -772,6 +772,9 @@ impl ShadowCollectWorker {
         let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
         let snapshot = self.eval_collect_resource_gate_snapshot(&req, &exec_to_addr).await?;
 
+        // 资源顺序只处理到“允许回到旧 collect 主链”为止：
+        // 自身资源 -> 平台代理 -> 本地代理 fallback -> release gate。
+        // release 之后，主币不足 / 补币 / 原失败收口仍走上一版已经稳定的旧闭环。
         let next_step =
             self.decide_collect_resource_gate_next_step(origin_trade_no, &snapshot).await?;
         self.apply_collect_resource_gate_next_step(
@@ -1111,6 +1114,9 @@ impl ShadowCollectWorker {
         // local delegation 的 owner 是出款地址，receiver 是当前待归集子地址。
         // 这里写下的是“本地代理 fallback 已成为当前依赖”的事实，
         // 不是说本地代理已经执行成功。
+        //
+        // 一旦 local delegation 到终态，collect 只会被放回旧主链入口，
+        // 不会在资源链里继续承接主币/补币逻辑。
         let resource_trade_no = Self::collect_local_delegate_trade_no(origin_trade_no);
         let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
         let delegation = NewApiResourceDelegation::local_delegate(

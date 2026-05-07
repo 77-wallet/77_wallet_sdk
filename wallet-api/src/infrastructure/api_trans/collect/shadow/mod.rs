@@ -56,6 +56,8 @@ pub enum ChainIntent {
     /// 注意：
     /// - `resource_ready` / `need_platform_delegate` 是评估结果状态，不是独立 intent
     /// - 后续 BuildTx / ExecuteResourceDelegation 仍由 scanner 基于事实继续推进
+    /// - 资源链这次只补齐到“回到旧 collect 主链入口”为止
+    /// - 子账户主币 / 出款地址补币 / 原失败收口继续沿用上一版已经闭环的旧流程
     EvalResourceGate(String),
     /// 构建交易
     BuildTx(String),
