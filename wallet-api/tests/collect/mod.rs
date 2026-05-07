@@ -3262,6 +3262,189 @@ async fn withdraw_failed_resource_bypass_reopens_withdraw_build_flow() {
     );
 }
 
+#[serial]
+#[tokio::test]
+async fn withdraw_resource_result_ack_without_origin_trade_no_does_not_release_gate() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let tx_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+        .await
+        .expect("open api transaction sqlite");
+    let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+
+    let trade_no = format!("W_RSC_NO_ORIGIN_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    ApiWithdrawRepo::upsert_api_withdraw(
+        &tx_pool,
+        "uid",
+        "withdraw",
+        "from",
+        "to",
+        "1.12",
+        "digest",
+        "tron",
+        None,
+        "TRX",
+        &trade_no,
+        ApiTradeType::Withdraw,
+        1,
+        None,
+        ApiWithdrawStatus::AuditPass,
+        ApiWithdrawStatus::InitOrder,
+        "",
+        "",
+        None,
+        None,
+    )
+    .await
+    .expect("insert withdraw");
+    sqlx::query(
+        r#"
+        UPDATE api_withdraws
+        SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            resource_block_reason = 'need_platform_delegate',
+            resource_dependency_trade_no = ?,
+            resource_dependency_type = 'platform_delegate'
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(&trade_no)
+    .execute(tx_pool.as_ref())
+    .await
+    .expect("seed blocked withdraw");
+
+    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    sqlx::query(
+        r#"
+        INSERT INTO api_resource_delegation (
+            uid, source, operation_type, origin_trade_no, origin_trade_type,
+            resource_trade_no, chain_code, owner_address, receiver_address,
+            resource_type, native_amount, amount, status,
+            tx_hash, tx_status, result_status, result_received_at,
+            created_at, updated_at
+        ) VALUES (
+            'uid', 1, 1, NULL, ?,
+            ?, 'tron', 'owner', 'receiver',
+            1, '2', '32000', 3,
+            'tx_hash_withdraw_no_origin', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        )
+        "#,
+    )
+    .bind(ApiTradeType::Withdraw as i64)
+    .bind(&resource_trade_no)
+    .execute(tx_pool.as_ref())
+    .await
+    .expect("seed withdraw delegation row without origin trade");
+
+    send_withdraw_resource_result_ack_via_worker(tx_pool.clone(), core_pool, &resource_trade_no)
+        .await
+        .expect("send withdraw resource result ack");
+
+    let withdraw =
+        ApiWithdrawRepo::get_api_withdraw_by_trade_no(&tx_pool, &trade_no, ApiTradeType::Withdraw)
+            .await
+            .expect("load withdraw");
+    assert!(withdraw.resource_gate_released_at.is_none());
+    assert!(withdraw.resource_gate_result.is_none());
+}
+
+#[serial]
+#[tokio::test]
+async fn withdraw_resource_result_ack_for_collect_origin_does_not_release_withdraw_gate() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let tx_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+        .await
+        .expect("open api transaction sqlite");
+    let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+
+    let trade_no = format!("W_RSC_WRONG_ORIGIN_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    ApiWithdrawRepo::upsert_api_withdraw(
+        &tx_pool,
+        "uid",
+        "withdraw",
+        "from",
+        "to",
+        "1.12",
+        "digest",
+        "tron",
+        None,
+        "TRX",
+        &trade_no,
+        ApiTradeType::Withdraw,
+        1,
+        None,
+        ApiWithdrawStatus::AuditPass,
+        ApiWithdrawStatus::InitOrder,
+        "",
+        "",
+        None,
+        None,
+    )
+    .await
+    .expect("insert withdraw");
+    sqlx::query(
+        r#"
+        UPDATE api_withdraws
+        SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            resource_block_reason = 'need_platform_delegate',
+            resource_dependency_trade_no = ?,
+            resource_dependency_type = 'platform_delegate'
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(&trade_no)
+    .execute(tx_pool.as_ref())
+    .await
+    .expect("seed blocked withdraw");
+
+    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    sqlx::query(
+        r#"
+        INSERT INTO api_resource_delegation (
+            uid, source, operation_type, origin_trade_no, origin_trade_type,
+            resource_trade_no, chain_code, owner_address, receiver_address,
+            resource_type, native_amount, amount, status,
+            tx_hash, tx_status, result_status, result_received_at,
+            created_at, updated_at
+        ) VALUES (
+            'uid', 1, 1, ?, ?,
+            ?, 'tron', 'owner', 'receiver',
+            1, '2', '32000', 3,
+            'tx_hash_withdraw_wrong_origin', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        )
+        "#,
+    )
+    .bind(&trade_no)
+    .bind(ApiTradeType::Collect as i64)
+    .bind(&resource_trade_no)
+    .execute(tx_pool.as_ref())
+    .await
+    .expect("seed withdraw delegation row with collect origin type");
+
+    send_withdraw_resource_result_ack_via_worker(tx_pool.clone(), core_pool, &resource_trade_no)
+        .await
+        .expect("send withdraw resource result ack");
+
+    let withdraw =
+        ApiWithdrawRepo::get_api_withdraw_by_trade_no(&tx_pool, &trade_no, ApiTradeType::Withdraw)
+            .await
+            .expect("load withdraw");
+    assert!(withdraw.resource_gate_released_at.is_none());
+    assert!(withdraw.resource_gate_result.is_none());
+}
+
 #[tokio::test]
 #[serial]
 async fn collect_resource_result_ack_releases_origin_collect_gate() {
