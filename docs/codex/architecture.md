@@ -90,6 +90,25 @@
   Bandwidth 映射、stake/unstake 余额与交易构建规则。
 - `wallet-database/repositories`: 只做钱包、交易、资源记录的查询和更新。
 
+### Resource Gate Model
+
+- `EvalResourceGate` 是操作步骤；它负责评估资源是否足够，并把结果落成事实。
+- `resource_ready` / `need_platform_delegate` 是评估结果事实，不是独立
+  intent，也不是可调度操作。
+- `BuildTx` 只能在 `resource_gate_released_at` 已存在后继续推进。
+- 平台资源代理任务是共享副链，`collect` 和 `withdraw` 都复用
+  `api_resource_delegation`，但 scanner 必须按 `origin_trade_type` 分流，
+  避免两个主流程扫描同一批资源任务。
+- 资源代理成功时：
+  - collect / withdraw 都在 `SendResourceResultAck` 成功后释放原订单 gate
+  - `resource_gate_result = resource_delegation_success`
+- 资源代理失败时：
+  - collect / withdraw 都在 `UploadResourceTxExecReceipt` 成功后做 bypass 释放
+  - 失败事实保留在 `api_resource_delegation`
+  - `resource_gate_result = resource_delegation_failed_bypass`
+- 资源代理失败不会阻塞 collect / withdraw 主流程；释放 gate 后由 scanner
+  基于事实重新推进到 `BuildTx`。
+
 ## Dependency Direction
 
 - 允许：API -> Service -> Application -> Domain -> Repo/Transport
