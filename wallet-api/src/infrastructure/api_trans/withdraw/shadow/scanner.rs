@@ -496,6 +496,10 @@ impl ShadowScanner {
         self.scan_need_recover().await;
         self.scan_need_tx_exec_receipt_upload().await;
         self.scan_confirmed_need_tx_res_ack().await;
+        self.scan_need_resource_task_ack().await;
+        self.scan_can_resource_delegation_execute().await;
+        self.scan_need_resource_tx_exec_receipt_upload().await;
+        self.scan_need_resource_result_ack().await;
 
         trace!("Withdraw shadow scan round completed in {:?}", start.elapsed());
     }
@@ -552,6 +556,98 @@ impl ShadowScanner {
         for record in records {
             let intent =
                 WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(record.trade_no));
+            self.dispatch_intent(intent);
+        }
+    }
+
+    async fn scan_need_resource_result_ack(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource result ACK records");
+
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
+            &self.pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan withdraw resource result ACK records");
+                return;
+            }
+        };
+
+        for record in records {
+            let intent = WithdrawIntent::SideEffect(
+                WithdrawSideEffectIntent::SendResourceResultAck(record.resource_trade_no),
+            );
+            self.dispatch_intent(intent);
+        }
+    }
+
+    async fn scan_need_resource_task_ack(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource task ACK records");
+
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type(
+            &self.pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan withdraw resource task ACK records");
+                return;
+            }
+        };
+
+        for record in records {
+            let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceTaskAck(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent);
+        }
+    }
+
+    async fn scan_can_resource_delegation_execute(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable withdraw resource delegation records");
+
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type(
+            &self.pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan executable withdraw resource delegation records");
+                return;
+            }
+        };
+
+        for record in records {
+            let intent = WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent);
+        }
+    }
+
+    async fn scan_need_resource_tx_exec_receipt_upload(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource tx exec receipt upload records");
+
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
+            &self.pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan withdraw resource tx exec receipt upload records");
+                return;
+            }
+        };
+
+        for record in records {
+            let intent = WithdrawIntent::SideEffect(
+                WithdrawSideEffectIntent::UploadResourceTxExecReceipt(record.resource_trade_no),
+            );
             self.dispatch_intent(intent);
         }
     }
@@ -821,10 +917,22 @@ impl ShadowScanner {
             | Err(tokio::sync::mpsc::error::TrySendError::Closed(intent)) => {
                 let trade_no = match &intent {
                     WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no))
+                    | WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(
+                        trade_no,
+                    ))
                     | WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no))
                     | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no))
+                    | WithdrawIntent::SideEffect(
+                        WithdrawSideEffectIntent::SendResourceResultAck(trade_no),
+                    )
+                    | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceTaskAck(
+                        trade_no,
+                    ))
+                    | WithdrawIntent::SideEffect(
+                        WithdrawSideEffectIntent::UploadResourceTxExecReceipt(trade_no),
+                    )
                     | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(
                         trade_no,
                     ))

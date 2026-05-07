@@ -776,8 +776,9 @@ impl ShadowScanner {
             "Scanning resource result ACK records"
         );
 
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_result_ack(
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
             &self.pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
             self.config.max_items_per_scan,
         ).await {
             Ok(records) => records,
@@ -801,8 +802,9 @@ impl ShadowScanner {
             "Scanning resource task ACK records"
         );
 
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack(
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type(
             &self.pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
             self.config.max_items_per_scan,
         ).await {
             Ok(records) => records,
@@ -826,8 +828,9 @@ impl ShadowScanner {
             "Scanning executable resource delegation records"
         );
 
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute(
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type(
             &self.pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
             self.config.max_items_per_scan,
         ).await {
             Ok(records) => records,
@@ -851,8 +854,9 @@ impl ShadowScanner {
             "Scanning resource tx exec receipt upload records"
         );
 
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload(
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
             &self.pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
             self.config.max_items_per_scan,
         ).await {
             Ok(records) => records,

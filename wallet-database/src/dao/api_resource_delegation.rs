@@ -109,8 +109,9 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
-    pub async fn scan_need_task_ack<'a, E>(
+    pub async fn scan_need_task_ack_by_origin_type<'a, E>(
         exec: E,
+        origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
     where
@@ -121,19 +122,22 @@ impl ApiResourceDelegationDao {
             SELECT * FROM api_resource_delegation
             WHERE source = 1
               AND operation_type = 1
+              AND origin_trade_type = ?
               AND task_ack_sent_at IS NULL
             ORDER BY created_at ASC
             LIMIT ?
             "#,
         )
+        .bind(origin_trade_type)
         .bind(limit as i64)
         .fetch_all(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn scan_need_result_ack<'a, E>(
+    pub async fn scan_need_result_ack_by_origin_type<'a, E>(
         exec: E,
+        origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
     where
@@ -144,21 +148,23 @@ impl ApiResourceDelegationDao {
             SELECT * FROM api_resource_delegation
             WHERE source = 1
               AND operation_type = 1
-              AND origin_trade_type = 2
+              AND origin_trade_type = ?
               AND result_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
             ORDER BY result_received_at ASC
             LIMIT ?
             "#,
         )
+        .bind(origin_trade_type)
         .bind(limit as i64)
         .fetch_all(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn scan_can_execute<'a, E>(
+    pub async fn scan_can_execute_by_origin_type<'a, E>(
         exec: E,
+        origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
     where
@@ -169,6 +175,7 @@ impl ApiResourceDelegationDao {
             SELECT * FROM api_resource_delegation
             WHERE source = 1
               AND operation_type = 1
+              AND origin_trade_type = ?
               AND status = 1
               AND task_ack_sent_at IS NOT NULL
               AND building_at IS NULL
@@ -178,6 +185,7 @@ impl ApiResourceDelegationDao {
             LIMIT ?
             "#,
         )
+        .bind(origin_trade_type)
         .bind(limit as i64)
         .fetch_all(exec)
         .await
@@ -244,8 +252,9 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
-    pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
+    pub async fn scan_need_tx_exec_receipt_upload_by_origin_type<'a, E>(
         exec: E,
+        origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
     where
@@ -256,6 +265,7 @@ impl ApiResourceDelegationDao {
             SELECT * FROM api_resource_delegation
             WHERE source = 1
               AND operation_type = 1
+              AND origin_trade_type = ?
               AND tx_exec_receipt_uploaded_at IS NULL
               AND (
                     (
@@ -269,6 +279,7 @@ impl ApiResourceDelegationDao {
             LIMIT ?
             "#,
         )
+        .bind(origin_trade_type)
         .bind(limit as i64)
         .fetch_all(exec)
         .await

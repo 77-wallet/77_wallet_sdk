@@ -41,21 +41,75 @@ impl ApiResourceDelegationRepo {
         pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
-        ApiResourceDelegationDao::scan_need_task_ack(pool.read_ref(), limit).await
+        Self::scan_need_task_ack_for_origin_type(
+            pool,
+            crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn scan_need_task_ack_for_origin_type(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_need_task_ack_by_origin_type(
+            pool.read_ref(),
+            origin_trade_type,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn scan_need_result_ack_for_origin_type(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_need_result_ack_by_origin_type(
+            pool.read_ref(),
+            origin_trade_type,
+            limit,
+        )
+        .await
     }
 
     pub async fn scan_need_result_ack(
         pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
-        ApiResourceDelegationDao::scan_need_result_ack(pool.read_ref(), limit).await
+        Self::scan_need_result_ack_for_origin_type(
+            pool,
+            crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn scan_can_execute_for_origin_type(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_can_execute_by_origin_type(
+            pool.read_ref(),
+            origin_trade_type,
+            limit,
+        )
+        .await
     }
 
     pub async fn scan_can_execute(
         pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
-        ApiResourceDelegationDao::scan_can_execute(pool.read_ref(), limit).await
+        Self::scan_can_execute_for_origin_type(
+            pool,
+            crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+            limit,
+        )
+        .await
     }
 
     pub async fn claim_build_slot(
@@ -78,11 +132,29 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn scan_need_tx_exec_receipt_upload_for_origin_type(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_need_tx_exec_receipt_upload_by_origin_type(
+            pool.read_ref(),
+            origin_trade_type,
+            limit,
+        )
+        .await
+    }
+
     pub async fn scan_need_tx_exec_receipt_upload(
         pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
-        ApiResourceDelegationDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
+        Self::scan_need_tx_exec_receipt_upload_for_origin_type(
+            pool,
+            crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+            limit,
+        )
+        .await
     }
 
     pub async fn mark_tx_exec_receipt_uploaded(

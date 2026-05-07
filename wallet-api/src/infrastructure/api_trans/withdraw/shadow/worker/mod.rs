@@ -10,6 +10,8 @@ pub use side_effect_worker::SideEffectWorker;
 pub enum ShadowWithdrawCommand {
     /// 评估资源闸门
     EvalResourceGate(String),
+    /// 执行平台代理资源代理任务
+    ExecuteResourceDelegation(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易
@@ -23,6 +25,12 @@ pub enum ShadowWithdrawCommand {
 pub enum SideEffectCommand {
     /// 发送交易 ACK
     SendTxAck(String),
+    /// 发送平台资源结果确认 ACK
+    SendResourceResultAck(String),
+    /// 发送平台资源任务接收 ACK
+    SendResourceTaskAck(String),
+    /// 上传平台代理资源执行回执
+    UploadResourceTxExecReceipt(String),
     /// 发送交易结果 ACK
     SendTxResAck(String),
     /// 上传交易执行回执

@@ -37,11 +37,18 @@ use wallet_api::{
     },
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
-    test::collect::{
-        build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
-        scan_collect_intent_labels_once, send_resource_result_ack_via_worker,
-        upload_collect_service_fee_via_worker, upload_collect_tx_exec_receipt_via_backend,
-        upload_collect_tx_exec_receipt_via_worker, upload_resource_tx_exec_receipt_via_worker,
+    test::{
+        collect::{
+            build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
+            scan_collect_intent_labels_once, send_resource_result_ack_via_worker,
+            upload_collect_service_fee_via_worker, upload_collect_tx_exec_receipt_via_backend,
+            upload_collect_tx_exec_receipt_via_worker, upload_resource_tx_exec_receipt_via_worker,
+        },
+        withdraw::{
+            scan_withdraw_intent_labels_once,
+            send_resource_result_ack_via_worker as send_withdraw_resource_result_ack_via_worker,
+            upload_resource_tx_exec_receipt_via_worker as upload_withdraw_resource_tx_exec_receipt_via_worker,
+        },
     },
     test_support::{
         adapter_factory::{
@@ -59,6 +66,7 @@ use wallet_database::{
         api_account::CreateApiAccountVo,
         api_coin::ApiCoinData,
         api_collect::{ApiCollectEntity, ApiCollectStatus},
+        api_trade_type::ApiTradeType,
         api_wallet::ApiWalletType,
         api_withdraw::ApiWithdrawStatus,
         api_withdraw_strategy::ApiWithdrawStrategyEntity,
@@ -3017,7 +3025,7 @@ async fn withdraw_resource_result_ack_uses_wd_rsc_dl_type() {
     .await
     .expect("seed withdraw delegation row for result ack");
 
-    send_resource_result_ack_via_worker(collect_pool, core_pool, &resource_trade_no)
+    send_withdraw_resource_result_ack_via_worker(collect_pool, core_pool, &resource_trade_no)
         .await
         .expect("send resource result ack");
 
@@ -3041,6 +3049,217 @@ async fn withdraw_resource_result_ack_uses_wd_rsc_dl_type() {
     };
 
     assert!(matched, "withdraw resource result ack must use WD_RSC_DL");
+}
+
+#[serial]
+#[tokio::test]
+async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let tx_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+        .await
+        .expect("open api transaction sqlite");
+    let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+
+    let trade_no = format!("W_RSC_RELEASE_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    ApiWithdrawRepo::upsert_api_withdraw(
+        &tx_pool,
+        "uid",
+        "withdraw",
+        "from",
+        "to",
+        "1.12",
+        "digest",
+        "tron",
+        None,
+        "TRX",
+        &trade_no,
+        ApiTradeType::Withdraw,
+        1,
+        None,
+        ApiWithdrawStatus::AuditPass,
+        ApiWithdrawStatus::InitOrder,
+        "",
+        "",
+        None,
+        None,
+    )
+    .await
+    .expect("insert withdraw");
+    sqlx::query(
+        r#"
+        UPDATE api_withdraws
+        SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            resource_block_reason = 'need_platform_delegate',
+            resource_dependency_trade_no = ?,
+            resource_dependency_type = 'platform_delegate'
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(&trade_no)
+    .execute(tx_pool.as_ref())
+    .await
+    .expect("seed blocked withdraw");
+
+    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    sqlx::query(
+        r#"
+        INSERT INTO api_resource_delegation (
+            uid, source, operation_type, origin_trade_no, origin_trade_type,
+            resource_trade_no, chain_code, owner_address, receiver_address,
+            resource_type, native_amount, amount, status,
+            tx_hash, tx_status, result_status, result_received_at,
+            created_at, updated_at
+        ) VALUES (
+            'uid', 1, 1, ?, ?,
+            ?, 'tron', 'owner', 'receiver',
+            1, '2', '32000', 3,
+            'tx_hash_withdraw_release', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        )
+        "#,
+    )
+    .bind(&trade_no)
+    .bind(ApiTradeType::Withdraw as i64)
+    .bind(&resource_trade_no)
+    .execute(tx_pool.as_ref())
+    .await
+    .expect("seed withdraw delegation row for result ack");
+
+    send_withdraw_resource_result_ack_via_worker(tx_pool.clone(), core_pool, &resource_trade_no)
+        .await
+        .expect("send withdraw resource result ack");
+
+    let withdraw =
+        ApiWithdrawRepo::get_api_withdraw_by_trade_no(&tx_pool, &trade_no, ApiTradeType::Withdraw)
+            .await
+            .expect("load withdraw");
+    assert!(withdraw.resource_gate_released_at.is_some());
+    assert_eq!(withdraw.resource_gate_result.as_deref(), Some("resource_delegation_success"));
+
+    let labels =
+        scan_withdraw_intent_labels_once(tx_pool.clone()).await.expect("scan withdraw labels");
+    assert!(
+        labels.iter().any(|label| label == "BuildTx"),
+        "released withdraw should re-enter BuildTx"
+    );
+}
+
+#[serial]
+#[tokio::test]
+async fn withdraw_failed_resource_bypass_reopens_withdraw_build_flow() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let tx_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+        .await
+        .expect("open api transaction sqlite");
+    let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+
+    let trade_no = format!("W_RSC_FAIL_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    ApiWithdrawRepo::upsert_api_withdraw(
+        &tx_pool,
+        "uid",
+        "withdraw",
+        "from",
+        "to",
+        "1.12",
+        "digest",
+        "tron",
+        None,
+        "TRX",
+        &trade_no,
+        ApiTradeType::Withdraw,
+        1,
+        None,
+        ApiWithdrawStatus::AuditPass,
+        ApiWithdrawStatus::InitOrder,
+        "",
+        "",
+        None,
+        None,
+    )
+    .await
+    .expect("insert withdraw");
+    sqlx::query(
+        r#"
+        UPDATE api_withdraws
+        SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            resource_block_reason = 'need_platform_delegate',
+            resource_dependency_trade_no = ?,
+            resource_dependency_type = 'platform_delegate'
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(&trade_no)
+    .execute(tx_pool.as_ref())
+    .await
+    .expect("seed blocked withdraw");
+
+    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    sqlx::query(
+        r#"
+        INSERT INTO api_resource_delegation (
+            uid, source, operation_type, origin_trade_no, origin_trade_type,
+            resource_trade_no, chain_code, owner_address, receiver_address,
+            resource_type, native_amount, amount, status,
+            err_code, err_msg, tx_status,
+            created_at, updated_at
+        ) VALUES (
+            'uid', 1, 1, ?, ?,
+            ?, 'tron', 'owner', 'receiver',
+            1, '2', '32000', 3,
+            'delegate_failed', 'delegate failed', 'fail',
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        )
+        "#,
+    )
+    .bind(&trade_no)
+    .bind(ApiTradeType::Withdraw as i64)
+    .bind(&resource_trade_no)
+    .execute(tx_pool.as_ref())
+    .await
+    .expect("seed failed withdraw delegation row");
+
+    let labels_before = scan_withdraw_intent_labels_once(tx_pool.clone())
+        .await
+        .expect("scan withdraw labels before bypass");
+    assert!(
+        labels_before.iter().all(|label| label != "BuildTx"),
+        "blocked withdraw should not be eligible for BuildTx before failed delegation bypass"
+    );
+
+    upload_withdraw_resource_tx_exec_receipt_via_worker(
+        tx_pool.clone(),
+        core_pool,
+        &resource_trade_no,
+    )
+    .await
+    .expect("upload withdraw resource tx exec receipt");
+
+    let withdraw =
+        ApiWithdrawRepo::get_api_withdraw_by_trade_no(&tx_pool, &trade_no, ApiTradeType::Withdraw)
+            .await
+            .expect("load withdraw");
+    assert!(withdraw.resource_gate_released_at.is_some());
+    assert_eq!(withdraw.resource_gate_result.as_deref(), Some("resource_delegation_failed_bypass"));
+
+    let labels_after = scan_withdraw_intent_labels_once(tx_pool.clone())
+        .await
+        .expect("scan withdraw labels after bypass");
+    assert!(
+        labels_after.iter().any(|label| label == "BuildTx"),
+        "failed delegation bypass should reopen the withdraw build flow"
+    );
 }
 
 #[tokio::test]

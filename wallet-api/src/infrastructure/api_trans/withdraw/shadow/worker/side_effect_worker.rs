@@ -1,14 +1,26 @@
 // withdraw/shadow/worker/side_effect_worker.rs
 use std::sync::Arc;
 
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool, repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    ApiTransactionDbPool, ApiWalletDbPool,
+    entities::api_trade_type::ApiTradeType,
+    repositories::api_wallet::{
+        resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
+    },
+};
+use wallet_transport_backend::request::api_wallet::transaction::{
+    TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
 
 use crate::{
     error::service::ServiceError, infrastructure::api_trans::withdraw::shadow::ShadowScanner,
 };
+
+enum ResourceGateReleaseOutcome<'a> {
+    Success(&'a str),
+    FailureBypass(&'a str),
+}
 
 /// SideEffectWorker
 ///
@@ -45,6 +57,9 @@ impl SideEffectWorker {
         // 提取 trade_no 用于日志
         let trade_no = match &command {
             super::SideEffectCommand::SendTxAck(trade_no) => trade_no,
+            super::SideEffectCommand::SendResourceResultAck(trade_no) => trade_no,
+            super::SideEffectCommand::SendResourceTaskAck(trade_no) => trade_no,
+            super::SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => trade_no,
             super::SideEffectCommand::SendTxResAck(trade_no) => trade_no,
             super::SideEffectCommand::UploadTxExecReceipt(trade_no) => trade_no,
         };
@@ -56,6 +71,15 @@ impl SideEffectWorker {
             match command {
                 super::SideEffectCommand::SendTxAck(trade_no) => {
                     self_clone.process_send_tx_ack(trade_no).await
+                }
+                super::SideEffectCommand::SendResourceResultAck(trade_no) => {
+                    self_clone.process_resource_result_ack(trade_no).await
+                }
+                super::SideEffectCommand::SendResourceTaskAck(trade_no) => {
+                    self_clone.process_resource_task_ack(trade_no).await
+                }
+                super::SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => {
+                    self_clone.process_resource_tx_exec_receipt(trade_no).await
                 }
                 super::SideEffectCommand::SendTxResAck(trade_no) => {
                     self_clone.process_send_tx_res_ack(trade_no).await
@@ -247,6 +271,213 @@ impl SideEffectWorker {
         }
 
         Ok(())
+    }
+
+    async fn process_resource_result_ack(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if resource_task.result_ack_sent_at.is_some() || resource_task.result_received_at.is_none()
+        {
+            return Ok(());
+        }
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend
+            .trans_event_ack(&TransEventAckReq::new(
+                &resource_trade_no,
+                Self::resource_delegation_trans_type(&resource_task),
+                TransAckType::TxRscRes,
+            ))
+            .await?;
+
+        let affected =
+            ApiResourceDelegationRepo::mark_result_ack_sent(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            warn!(resource_trade_no = %resource_trade_no, "Resource result ACK marked 0 rows");
+        }
+
+        self.project_resource_task_outcome_to_withdraw_gate(
+            &resource_task,
+            ResourceGateReleaseOutcome::Success("resource_delegation_success"),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn process_resource_task_ack(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if resource_task.task_ack_sent_at.is_some() {
+            return Ok(());
+        }
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend
+            .trans_event_ack(&TransEventAckReq::new(
+                &resource_trade_no,
+                Self::resource_delegation_trans_type(&resource_task),
+                TransAckType::Tx,
+            ))
+            .await?;
+
+        let affected =
+            ApiResourceDelegationRepo::mark_task_ack_sent(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            warn!(resource_trade_no = %resource_trade_no, "Resource task ACK marked 0 rows");
+        }
+        Ok(())
+    }
+
+    async fn process_resource_tx_exec_receipt(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if resource_task.tx_exec_receipt_uploaded_at.is_some() {
+            return Ok(());
+        }
+
+        let payload = Self::build_resource_tx_exec_receipt_payload(&resource_task)?;
+        let tx_hash_missing =
+            resource_task.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if payload.is_success() && tx_hash_missing {
+            return Err(ServiceError::Parameter(
+                "resource delegation success receipt requires non-empty tx_hash".to_string(),
+            ));
+        }
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend.upload_tx_exec_receipt(&payload).await?;
+        let affected = ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(
+            &self.pool,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            warn!(resource_trade_no = %resource_trade_no, "Resource tx exec receipt marked 0 rows");
+        }
+
+        self.project_resource_task_outcome_to_withdraw_gate(
+            &resource_task,
+            ResourceGateReleaseOutcome::FailureBypass("resource_delegation_failed_bypass"),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn project_resource_task_outcome_to_withdraw_gate(
+        &self,
+        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+        outcome: ResourceGateReleaseOutcome<'_>,
+    ) -> Result<(), ServiceError> {
+        let release_result = match outcome {
+            ResourceGateReleaseOutcome::Success(release_result) => {
+                if resource_task.err_code.is_some()
+                    || !matches!(resource_task.tx_status.as_deref(), Some("success"))
+                {
+                    return Ok(());
+                }
+                release_result
+            }
+            ResourceGateReleaseOutcome::FailureBypass(release_result) => {
+                let is_failure = resource_task.err_code.is_some()
+                    || matches!(resource_task.tx_status.as_deref(), Some("fail"));
+                if !is_failure {
+                    return Ok(());
+                }
+                release_result
+            }
+        };
+
+        if resource_task.origin_trade_type != Some(ApiTradeType::Withdraw as i64) {
+            return Ok(());
+        }
+        let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() else {
+            return Ok(());
+        };
+
+        let withdraw = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &self.pool,
+            origin_trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if withdraw.resource_gate_released_at.is_some() {
+            self.scanner.try_advance(origin_trade_no).await;
+            return Ok(());
+        }
+
+        ApiWithdrawRepo::mark_resource_released(&self.pool, origin_trade_no, release_result)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        self.scanner.try_advance(origin_trade_no).await;
+        Ok(())
+    }
+
+    fn build_resource_tx_exec_receipt_payload(
+        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+    ) -> Result<TxExecReceiptUploadReq, ServiceError> {
+        let trans_type = Self::resource_delegation_trans_type(resource_task);
+        let status = if matches!(resource_task.tx_status.as_deref(), Some("success")) {
+            TransStatus::Success
+        } else if resource_task.err_code.is_some() {
+            TransStatus::Fail
+        } else {
+            return Err(ServiceError::Parameter(
+                "resource delegation receipt upload requires success tx_status or failure err_code"
+                    .to_string(),
+            ));
+        };
+        let remark = if matches!(status, TransStatus::Success) {
+            ""
+        } else {
+            resource_task.err_msg.as_deref().unwrap_or("")
+        };
+        let mut payload = TxExecReceiptUploadReq::new(
+            Some(&resource_task.owner_address),
+            Some(&resource_task.receiver_address),
+            &resource_task.resource_trade_no,
+            trans_type,
+            resource_task.tx_hash.as_deref(),
+            status,
+            remark,
+        );
+        if let Some(err_code) = resource_task.err_code.as_deref().filter(|s| !s.trim().is_empty()) {
+            payload = payload.with_error_code(err_code);
+        }
+        Ok(payload)
+    }
+
+    fn resource_delegation_trans_type(
+        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+    ) -> TransType {
+        match resource_task.origin_trade_type {
+            Some(x) if x == ApiTradeType::Withdraw as i64 => TransType::WdRscDl,
+            _ => TransType::ColRscDl,
+        }
     }
 
     /// 上传交易执行回执
