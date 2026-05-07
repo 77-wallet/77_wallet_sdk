@@ -8,6 +8,15 @@ use crate::entities::{api_resource_type::ApiResourceType, api_trade_type::ApiTra
 /// 也就是 `tradeType=5/6/7/8` 这类绑定原始订单的资源流程。
 /// 平台资源质押/解质押（`tradeType=4`）不属于本表，必须走
 /// `api_resource_operation` 的独立任务流。
+///
+/// 共享边界：
+/// - 这是 collect / withdraw 共用的一条资源副链
+/// - 主流程归属由 `origin_trade_type` 区分
+/// - 资源来源由 `source` 区分：
+///   - `Platform`：平台代理/回收
+///   - `Local`：本地出款地址 fallback 代理
+/// - scanner 读取这张表时，必须同时明确“主流程归属”和“资源来源”
+///   两层边界，避免不同主链或不同来源互相抢任务。
 #[derive(
     Debug,
     Clone,
@@ -102,9 +111,11 @@ impl ApiResourceDelegationResultStatus {
 pub struct ApiResourceDelegationEntity {
     pub id: i64,
     pub uid: String,
+    /// 资源任务来源：平台代理还是本地出款地址 fallback
     pub source: ApiResourceDelegationSource,
     pub operation_type: ApiResourceDelegationOperationType,
     pub origin_trade_no: Option<String>,
+    /// 原始主流程归属：collect / withdraw
     pub origin_trade_type: Option<i64>,
     pub resource_trade_no: String,
     pub chain_code: String,

@@ -55,6 +55,8 @@ impl ApiResourceDelegationRepo {
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        // 这里只扫描“平台代理任务 ACK”。
+        // 本地 fallback 不走后端任务 ACK，因此不应混进这组扫描。
         ApiResourceDelegationDao::scan_need_task_ack_by_origin_type(
             pool.read_ref(),
             origin_trade_type,
@@ -68,6 +70,8 @@ impl ApiResourceDelegationRepo {
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        // 这里只扫描“平台代理结果 ACK”。
+        // Local fallback 没有这条后端结果确认副作用。
         ApiResourceDelegationDao::scan_need_result_ack_by_origin_type(
             pool.read_ref(),
             origin_trade_type,
@@ -93,6 +97,7 @@ impl ApiResourceDelegationRepo {
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        // 默认执行扫描只面向 platform source，保持历史调用语义不变。
         ApiResourceDelegationDao::scan_can_execute_by_origin_type(
             pool.read_ref(),
             origin_trade_type,
@@ -119,6 +124,8 @@ impl ApiResourceDelegationRepo {
         source: ApiResourceDelegationSource,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        // 新调用方需要同时声明“主流程归属 + 资源来源”。
+        // 这用于 collect local fallback 这类共享副链中的第二层边界。
         ApiResourceDelegationDao::scan_can_execute_by_origin_type_and_source(
             pool.read_ref(),
             origin_trade_type,
@@ -153,6 +160,8 @@ impl ApiResourceDelegationRepo {
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        // 当前 receipt upload 仍只对应平台代理事实。
+        // local fallback 终态由主链本地执行结果直接投影，不走后端资源回执。
         ApiResourceDelegationDao::scan_need_tx_exec_receipt_upload_by_origin_type(
             pool.read_ref(),
             origin_trade_type,

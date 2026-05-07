@@ -99,6 +99,10 @@
 - 平台资源代理任务是共享副链，`collect` 和 `withdraw` 都复用
   `api_resource_delegation`，但 scanner 必须按 `origin_trade_type` 分流，
   避免两个主流程扫描同一批资源任务。
+- 这条共享副链还有第二层边界：`source`
+  - `Platform`：后端下发或平台占位的资源任务
+  - `Local`：collect 在平台代理失败后切换到出款地址本地代理 fallback
+  - 当前 `withdraw` 仍只消费 `Platform`
 - 资源代理成功时：
   - collect / withdraw 都在 `SendResourceResultAck` 成功后释放原订单 gate
   - `resource_gate_result = resource_delegation_success`

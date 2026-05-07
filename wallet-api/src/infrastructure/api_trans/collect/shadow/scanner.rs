@@ -834,6 +834,7 @@ impl ShadowScanner {
             "Scanning executable resource delegation records"
         );
 
+        // 第一段扫描 collect 主链下的平台代理任务。
         let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type(
             &self.pool,
             ApiTradeType::Collect as i64,
@@ -853,6 +854,8 @@ impl ShadowScanner {
             self.dispatch_intent(intent).await;
         }
 
+        // 第二段扫描 collect 主链下的 local fallback 任务。
+        // 这里必须显式补 source 维度，否则共享副链读起来会像“又扫了一遍同样的任务”。
         let local_records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_and_source(
             &self.pool,
             ApiTradeType::Collect as i64,
