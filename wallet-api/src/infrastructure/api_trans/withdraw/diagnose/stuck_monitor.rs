@@ -35,6 +35,7 @@ fn withdraw_stage_to_diagnose_stage(
     use crate::infrastructure::api_trans::withdraw::shadow::AdvancementPoint::*;
     match stage {
         NeedTxAck => DiagnoseStage::OrderAck,
+        NeedResourceGate => DiagnoseStage::Build,
         CanBuild => DiagnoseStage::Build,
         CanBroadcast => DiagnoseStage::Broadcast,
         NeedRecover => DiagnoseStage::Recover,

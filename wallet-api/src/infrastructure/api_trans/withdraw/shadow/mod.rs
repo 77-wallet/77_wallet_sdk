@@ -49,6 +49,16 @@ pub(crate) static WITHDRAW_SHADOW_ENABLED: AtomicBool = AtomicBool::new(false);
 /// 🔒 规则：只有 Confirm（transaction_time != NULL）才是"世界已发生"
 #[derive(Debug, Clone)]
 pub enum WithdrawChainIntent {
+    /// 评估 TRON 资源闸门。
+    ///
+    /// 这是真实操作步骤：
+    /// - 读取链上资源与本地提币事实
+    /// - 落下评估结果事实（resource_ready / need_platform_delegate）
+    ///
+    /// 注意：
+    /// - `resource_ready` / `need_platform_delegate` 是评估结果状态，不是独立 intent
+    /// - 后续 BuildTx 仍由 scanner 基于事实推进
+    EvalResourceGate(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易

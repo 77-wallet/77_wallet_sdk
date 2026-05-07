@@ -136,6 +136,13 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::mark_resource_released(pool.write_ref(), trade_no, gate_result).await
     }
 
+    pub async fn scan_need_resource_gate(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_resource_gate(pool.read_ref(), limit).await
+    }
+
     /// Runtime repair helper: query withdraw candidates from acct_change facts.
     ///
     /// Caller must still perform Rust-side filtering (amount/time window/uniqueness)

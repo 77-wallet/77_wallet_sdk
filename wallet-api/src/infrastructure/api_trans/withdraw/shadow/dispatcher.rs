@@ -22,6 +22,7 @@ use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 /// 用于 trade_no + intent_type 级别的互斥执行
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
+    EvalResourceGate(String),
     BuildTx(String),
     BroadcastTx(String),
     RecoverTx(String),
@@ -34,6 +35,9 @@ impl RunningKey {
     /// 从 WithdrawIntent 生成对应的 RunningKey
     pub fn from_intent(intent: &WithdrawIntent) -> Self {
         match intent {
+            WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no)) => {
+                RunningKey::EvalResourceGate(trade_no.clone())
+            }
             WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
                 RunningKey::BuildTx(trade_no.clone())
             }
@@ -280,6 +284,12 @@ impl ShadowDispatcher {
 
             // 路由 Intent 到正确的 Worker
             if let Err(e) = match intent {
+                WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending EvalResourceGate command to Shadow Worker");
+                    shadow_worker
+                        .handle(ShadowWithdrawCommand::EvalResourceGate(trade_no.clone()))
+                        .await
+                }
                 WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
                     info!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
                     shadow_worker.handle(ShadowWithdrawCommand::BuildTx(trade_no.clone())).await

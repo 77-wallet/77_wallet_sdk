@@ -325,6 +325,36 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn scan_need_resource_gate<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE tx_ack_sent_at IS NOT NULL
+              AND audit_passed_at IS NOT NULL
+              AND lower(chain_code) = 'tron'
+              AND resource_gate_released_at IS NULL
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND trade_type = ?
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     /// Find withdraw candidates for acct_change-driven tx_hash backfill.
     ///
     /// Notes:
@@ -1421,6 +1451,7 @@ impl ApiWithdrawDao {
             -- [FACT REQUIRED]
             -- ✔ tx_ack_sent_at IS NOT NULL   — 后端确认已发送
             -- ✔ audit_passed_at IS NOT NULL  — 审计通过（强顺序屏障）
+            -- ✔ 非 TRON 或 resource_gate_released_at IS NOT NULL
             --
             -- [FACT MUST NOT EXIST]
             -- ✘ raw_tx IS NOT NULL           — 防止重复构建
@@ -1434,6 +1465,7 @@ impl ApiWithdrawDao {
             SELECT * FROM api_withdraws 
             WHERE tx_ack_sent_at IS NOT NULL
             AND audit_passed_at IS NOT NULL
+            AND (lower(chain_code) <> 'tron' OR resource_gate_released_at IS NOT NULL)
             AND raw_tx IS NULL 
             AND transaction_time IS NULL
             AND finished_at IS NULL

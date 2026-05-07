@@ -251,6 +251,16 @@
 /// - infer audit status through status field
 /// - modify the strong order chain
 /// ============================================================================
+///
+/// Withdraw Resource Gate Rule ===
+/// ============================================================================
+///
+/// TRON withdraw build must also pass resource gate before BuildTx.
+///
+/// `EvalResourceGate` is the operation step.
+/// `resource_ready` / `need_platform_delegate` are persisted result facts.
+/// BuildTx may only proceed after `resource_gate_released_at`.
+/// ============================================================================
 use std::time::{Duration, Instant};
 
 use tracing::{error, trace, warn};
@@ -480,6 +490,7 @@ impl ShadowScanner {
         // 5. 上传交易执行回执
         // 6. 发送结果 ACK
         self.scan_need_tx_ack().await;
+        self.scan_need_resource_gate().await;
         self.scan_can_build().await;
         self.scan_can_broadcast().await;
         self.scan_need_recover().await;
@@ -520,6 +531,27 @@ impl ShadowScanner {
         for record in records {
             let intent =
                 WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(record.trade_no));
+            self.dispatch_intent(intent);
+        }
+    }
+
+    async fn scan_need_resource_gate(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource gate records");
+
+        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_resource_gate(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan withdraw resource gate records");
+                return;
+            }
+        };
+
+        for record in records {
+            let intent =
+                WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(record.trade_no));
             self.dispatch_intent(intent);
         }
     }
@@ -788,7 +820,8 @@ impl ShadowScanner {
             Err(tokio::sync::mpsc::error::TrySendError::Full(intent))
             | Err(tokio::sync::mpsc::error::TrySendError::Closed(intent)) => {
                 let trade_no = match &intent {
-                    WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no))
+                    WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no))
+                    | WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no))
                     | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no))
@@ -897,6 +930,14 @@ impl ShadowScanner {
                 AdvancementPoint::NeedTxAck => {
                     trace!(trade_no = %trade_no, "Need to send tx ACK");
                     let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(
+                        trade_no.to_string(),
+                    ));
+                    self.dispatch_intent(intent);
+                    return;
+                }
+                AdvancementPoint::NeedResourceGate => {
+                    trace!(trade_no = %trade_no, "Need to evaluate resource gate");
+                    let intent = WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(
                         trade_no.to_string(),
                     ));
                     self.dispatch_intent(intent);

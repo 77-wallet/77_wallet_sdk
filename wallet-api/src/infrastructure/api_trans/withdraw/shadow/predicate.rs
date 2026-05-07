@@ -19,9 +19,15 @@ fn is_evm_chain_code(chain_code: &str) -> bool {
     chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
 }
 
+fn withdraw_resource_gate_released_for_build(withdraw: &ApiWithdrawEntity) -> bool {
+    !withdraw.chain_code.eq_ignore_ascii_case("tron")
+        || withdraw.resource_gate_released_at.is_some()
+}
+
 pub fn evaluate_point(point: AdvancementPoint, withdraw: &ApiWithdrawEntity) -> StageEval {
     match point {
         AdvancementPoint::NeedTxAck => evaluate_need_tx_ack(withdraw),
+        AdvancementPoint::NeedResourceGate => evaluate_need_resource_gate(withdraw),
         AdvancementPoint::CanBuild => evaluate_can_build(withdraw),
         AdvancementPoint::CanBroadcast => evaluate_can_broadcast(withdraw),
         AdvancementPoint::NeedRecover => evaluate_need_recover(withdraw),
@@ -31,6 +37,65 @@ pub fn evaluate_point(point: AdvancementPoint, withdraw: &ApiWithdrawEntity) -> 
             StageEval { can_advance: false, reasons: SmallVec::new() }
         }
     }
+}
+
+fn evaluate_need_resource_gate(withdraw: &ApiWithdrawEntity) -> StageEval {
+    let mut reasons = SmallVec::new();
+
+    if withdraw.tx_ack_sent_at.is_none() {
+        reasons.push(StageReason {
+            code: "tx_ack_not_sent",
+            message: "Tx ACK not sent yet".to_string(),
+        });
+    }
+    if withdraw.audit_passed_at.is_none() {
+        reasons.push(StageReason {
+            code: "audit_not_passed",
+            message: "Audit not passed yet".to_string(),
+        });
+    }
+    if !withdraw.chain_code.eq_ignore_ascii_case("tron") {
+        reasons.push(StageReason {
+            code: "not_tron",
+            message: "Resource gate is only required for TRON withdraw".to_string(),
+        });
+    }
+    if withdraw.resource_gate_released_at.is_some() {
+        reasons.push(StageReason {
+            code: "resource_gate_released",
+            message: "Resource gate already released".to_string(),
+        });
+    }
+    if withdraw.raw_tx.is_some() {
+        reasons.push(StageReason {
+            code: "raw_tx_exists",
+            message: "Raw tx already exists".to_string(),
+        });
+    }
+    if withdraw.transaction_time.is_some() {
+        reasons.push(StageReason {
+            code: "transaction_time_exists",
+            message: "Transaction already committed".to_string(),
+        });
+    }
+    if withdraw.finished_at.is_some() {
+        reasons
+            .push(StageReason { code: "finished", message: "Order already finished".to_string() });
+    }
+    if withdraw.err_code.is_some() {
+        reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
+    }
+
+    let can_advance = withdraw.tx_ack_sent_at.is_some()
+        && withdraw.audit_passed_at.is_some()
+        && withdraw.chain_code.eq_ignore_ascii_case("tron")
+        && withdraw.resource_gate_released_at.is_none()
+        && withdraw.raw_tx.is_none()
+        && withdraw.transaction_time.is_none()
+        && withdraw.finished_at.is_none()
+        && withdraw.err_code.is_none();
+
+    StageEval { can_advance, reasons }
 }
 
 fn evaluate_need_tx_ack(withdraw: &ApiWithdrawEntity) -> StageEval {
@@ -76,6 +141,12 @@ fn evaluate_can_build(withdraw: &ApiWithdrawEntity) -> StageEval {
             message: "Raw tx already exists".to_string(),
         });
     }
+    if !withdraw_resource_gate_released_for_build(withdraw) {
+        reasons.push(StageReason {
+            code: "resource_gate_not_released",
+            message: "TRON resource gate has not been released yet".to_string(),
+        });
+    }
     if withdraw.transaction_time.is_some() {
         reasons.push(StageReason {
             code: "transaction_time_exists",
@@ -93,6 +164,7 @@ fn evaluate_can_build(withdraw: &ApiWithdrawEntity) -> StageEval {
     let can_advance = withdraw.tx_ack_sent_at.is_some()
         && withdraw.audit_passed_at.is_some()
         && withdraw.raw_tx.is_none()
+        && withdraw_resource_gate_released_for_build(withdraw)
         && withdraw.transaction_time.is_none()
         && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none();
@@ -404,5 +476,47 @@ mod tests {
         );
         assert!(!finished_eval.can_advance);
         assert!(finished_eval.reasons.iter().any(|reason| reason.code == "finished"));
+    }
+
+    #[test]
+    fn withdraw_resource_gate_advances_for_unreleased_tron_only() {
+        let mut tron = base_withdraw();
+        tron.raw_tx = None;
+        tron.tx_hash = None;
+        tron.tx_exec_receipt_uploaded_at = None;
+
+        let tron_eval = evaluate_point(AdvancementPoint::NeedResourceGate, &tron);
+        assert!(tron_eval.can_advance);
+
+        tron.resource_gate_released_at = Some(Utc::now());
+        let released_eval = evaluate_point(AdvancementPoint::NeedResourceGate, &tron);
+        assert!(!released_eval.can_advance);
+
+        let mut sol = base_withdraw();
+        sol.chain_code = "sol".to_string();
+        sol.raw_tx = None;
+        sol.tx_hash = None;
+        sol.tx_exec_receipt_uploaded_at = None;
+        let sol_eval = evaluate_point(AdvancementPoint::NeedResourceGate, &sol);
+        assert!(!sol_eval.can_advance);
+    }
+
+    #[test]
+    fn withdraw_resource_gate_blocks_tron_build_until_released() {
+        let mut tron = base_withdraw();
+        tron.raw_tx = None;
+        tron.tx_hash = None;
+        tron.tx_exec_receipt_uploaded_at = None;
+        tron.resource_gate_released_at = None;
+
+        let blocked_eval = evaluate_point(AdvancementPoint::CanBuild, &tron);
+        assert!(!blocked_eval.can_advance);
+        assert!(
+            blocked_eval.reasons.iter().any(|reason| reason.code == "resource_gate_not_released")
+        );
+
+        tron.resource_gate_released_at = Some(Utc::now());
+        let released_eval = evaluate_point(AdvancementPoint::CanBuild, &tron);
+        assert!(released_eval.can_advance);
     }
 }

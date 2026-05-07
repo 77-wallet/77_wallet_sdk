@@ -7,8 +7,13 @@ use chrono::Utc;
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
-    entities::api_withdraw::{ApiWithdrawEntity, ErrCode, WithdrawFailureStage},
-    repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    entities::{
+        api_resource_delegation::NewApiResourceDelegation,
+        api_withdraw::{ApiWithdrawEntity, ErrCode, WithdrawFailureStage},
+    },
+    repositories::api_wallet::{
+        resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
+    },
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
@@ -28,6 +33,7 @@ use crate::{
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+    response_vo::TronFeeDetails,
 };
 use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_utils::{conversion, unit};
@@ -248,6 +254,30 @@ impl ShadowWithdrawWorker {
         Ok(balance < value)
     }
 
+    fn is_tron_withdraw(chain_code: &str) -> bool {
+        chain_code.eq_ignore_ascii_case("tron")
+    }
+
+    fn tron_resource_ready(
+        available_energy: i64,
+        available_bandwidth: i64,
+        required_energy: u64,
+        required_bandwidth: u64,
+    ) -> bool {
+        available_energy >= required_energy as i64
+            && available_bandwidth >= required_bandwidth as i64
+    }
+
+    fn withdraw_platform_delegate_trade_no(origin_trade_no: &str) -> String {
+        // Deterministic placeholder id so repeated resource-gate scans keep
+        // upserting the same pending delegation dependency row.
+        format!("rsc_delegate_{}", origin_trade_no)
+    }
+
+    fn resource_shortfall(required: u64, available: i64) -> u64 {
+        required.saturating_sub(available.max(0) as u64)
+    }
+
     pub fn new(
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
@@ -259,6 +289,9 @@ impl ShadowWithdrawWorker {
     /// 处理命令
     pub async fn handle(&self, command: super::ShadowWithdrawCommand) -> Result<(), ServiceError> {
         match command {
+            super::ShadowWithdrawCommand::EvalResourceGate(trade_no) => {
+                self.process_eval_resource_gate(trade_no).await
+            }
             super::ShadowWithdrawCommand::BuildTx(trade_no) => {
                 self.process_build_tx(trade_no).await
             }
@@ -267,6 +300,126 @@ impl ShadowWithdrawWorker {
             }
             super::ShadowWithdrawCommand::Recover(trade_no) => self.process_recover(trade_no).await,
         }
+    }
+
+    async fn process_eval_resource_gate(&self, trade_no: String) -> Result<(), ServiceError> {
+        info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Processing EvalResourceGate command");
+        self.process_resource_gate_inner(&trade_no).await
+    }
+
+    async fn process_resource_gate_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
+        let req = self.get_withdraw_entity(trade_no).await?;
+
+        if !Self::is_tron_withdraw(&req.chain_code) {
+            return Ok(());
+        }
+        if req.resource_gate_released_at.is_some()
+            || req.raw_tx.is_some()
+            || req.transaction_time.is_some()
+            || req.finished_at.is_some()
+            || req.err_code.is_some()
+        {
+            return Ok(());
+        }
+
+        let main_coin =
+            ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, AssetTokenKey::Native)
+                .await?;
+        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
+            let token_coin =
+                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
+                    .await?;
+            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+        } else {
+            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
+        };
+
+        let fee_details = self
+            .estimate_tron_fee_details(
+                &req.from_addr,
+                &req.to_addr,
+                &req.value,
+                &token_symbol,
+                &main_coin.symbol,
+                token_key,
+                token_decimals,
+            )
+            .await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let resource = adapter.account_resource(&req.from_addr).await?;
+        let available_energy = resource.available_energy();
+        let available_bandwidth = resource.available_bandwidth();
+
+        if Self::tron_resource_ready(
+            available_energy,
+            available_bandwidth,
+            fee_details.energy,
+            fee_details.bandwidth,
+        ) {
+            let rows =
+                ApiWithdrawRepo::mark_resource_released(&self.pool, trade_no, "resource_ready")
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+            if rows > 0 {
+                self.scanner.try_advance(trade_no).await;
+            }
+            return Ok(());
+        }
+
+        self.commit_platform_delegation_block(
+            trade_no,
+            &req,
+            fee_details.energy,
+            fee_details.bandwidth,
+            available_energy,
+            available_bandwidth,
+        )
+        .await
+    }
+
+    async fn commit_platform_delegation_block(
+        &self,
+        origin_trade_no: &str,
+        req: &ApiWithdrawEntity,
+        required_energy: u64,
+        required_bandwidth: u64,
+        available_energy: i64,
+        available_bandwidth: i64,
+    ) -> Result<(), ServiceError> {
+        let resource_trade_no = Self::withdraw_platform_delegate_trade_no(origin_trade_no);
+        let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
+        let delegation = NewApiResourceDelegation::platform_delegate(
+            req.uid.clone(),
+            resource_trade_no.clone(),
+            req.trade_no.clone(),
+            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
+            "",
+            req.from_addr.clone(),
+            amount,
+        );
+        ApiResourceDelegationRepo::upsert(&self.pool, delegation)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        ApiWithdrawRepo::mark_resource_blocked(
+            &self.pool,
+            origin_trade_no,
+            "need_platform_delegate",
+            Some(&resource_trade_no),
+            Some("platform_delegate"),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            origin_trade_no = %origin_trade_no,
+            required_energy = %required_energy,
+            available_energy = %available_energy,
+            required_bandwidth = %required_bandwidth,
+            available_bandwidth = %available_bandwidth,
+            resource_trade_no = %resource_trade_no,
+            source = "shadow_withdraw_worker",
+            "TRON withdraw resource gate blocked"
+        );
+        Ok(())
     }
 
     /// 执行 Recover Command - 外层wrapper，确保所有错误都被捕获
@@ -1164,6 +1317,24 @@ impl ShadowWithdrawWorker {
         let transfer_req = ApiTransferReq { base: params, password: unlock_token, nonce };
         tracing::info!(trade_no=%req.trade_no, nonce=%nonce, "[提币] 转账请求生成完成");
         Ok(transfer_req)
+    }
+
+    async fn estimate_tron_fee_details(
+        &self,
+        from: &str,
+        to: &str,
+        value: &str,
+        symbol: &str,
+        main_symbol: &str,
+        token_key: AssetTokenKey,
+        decimals: u8,
+    ) -> Result<TronFeeDetails, ServiceError> {
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter("tron").await?;
+        let mut params = ApiBaseTransferReq::new(from, to, value, "tron");
+        params.with_token(token_key.to_chain_token_option(), decimals, symbol);
+        let fee = adapter.estimate_fee(params, main_symbol).await?;
+        let details: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
+        Ok(details)
     }
 
     /// 交易恢复逻辑
