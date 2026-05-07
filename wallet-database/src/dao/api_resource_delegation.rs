@@ -1,6 +1,6 @@
 use crate::entities::api_resource_delegation::{
-    ApiResourceDelegationEntity, ApiResourceDelegationResultStatus, ApiResourceDelegationStatus,
-    NewApiResourceDelegation,
+    ApiResourceDelegationEntity, ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
+    ApiResourceDelegationStatus, NewApiResourceDelegation,
 };
 use sqlx::{Executor, Sqlite};
 
@@ -192,6 +192,45 @@ impl ApiResourceDelegationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_can_execute_by_origin_type_and_source<'a, E>(
+        exec: E,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let (ack_clause, order_expr) = match source {
+            ApiResourceDelegationSource::Platform => {
+                ("AND task_ack_sent_at IS NOT NULL", "task_ack_sent_at")
+            }
+            ApiResourceDelegationSource::Local => ("", "created_at"),
+        };
+        let sql = format!(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = ?
+              AND operation_type = 1
+              AND origin_trade_type = ?
+              AND status = 1
+              {ack_clause}
+              AND building_at IS NULL
+              AND tx_hash IS NULL
+              AND tx_status IS NULL
+            ORDER BY {order_expr} ASC
+            LIMIT ?
+            "#
+        );
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(&sql)
+            .bind(source.as_i64())
+            .bind(origin_trade_type)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn claim_build_slot<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -205,10 +244,12 @@ impl ApiResourceDelegationDao {
             SET building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
-              AND source = 1
               AND operation_type = 1
               AND status = 1
-              AND task_ack_sent_at IS NOT NULL
+              AND (
+                    source = 2
+                    OR task_ack_sent_at IS NOT NULL
+                  )
               AND building_at IS NULL
               AND tx_hash IS NULL
               AND tx_status IS NULL
@@ -236,7 +277,6 @@ impl ApiResourceDelegationDao {
                 tx_status = 'success',
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND source = 1
               AND operation_type = 1
               AND status = 1
               AND building_at IS NOT NULL
@@ -329,7 +369,6 @@ impl ApiResourceDelegationDao {
                 status = 3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND source = 1
               AND operation_type = 1
               AND result_received_at IS NULL
               AND err_code IS NULL

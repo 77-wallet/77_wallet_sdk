@@ -508,7 +508,13 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::Semaphore;
 use tracing::{error, trace, warn};
-use wallet_database::{ApiTransactionDbPool, entities::api_collect::ApiCollectEntity};
+use wallet_database::{
+    ApiTransactionDbPool,
+    entities::{
+        api_collect::ApiCollectEntity, api_resource_delegation::ApiResourceDelegationSource,
+        api_trade_type::ApiTradeType,
+    },
+};
 
 use crate::infrastructure::api_trans::{
     collect::{
@@ -830,7 +836,7 @@ impl ShadowScanner {
 
         let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type(
             &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
+            ApiTradeType::Collect as i64,
             self.config.max_items_per_scan,
         ).await {
             Ok(records) => records,
@@ -841,6 +847,26 @@ impl ShadowScanner {
         };
 
         for record in records {
+            let intent = CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+
+        let local_records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_and_source(
+            &self.pool,
+            ApiTradeType::Collect as i64,
+            ApiResourceDelegationSource::Local,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan executable local delegation records");
+                return;
+            }
+        };
+
+        for record in local_records {
             let intent = CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(
                 record.resource_trade_no,
             ));

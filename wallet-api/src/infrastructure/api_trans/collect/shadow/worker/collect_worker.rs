@@ -26,7 +26,7 @@ use wallet_database::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            NewApiResourceDelegation,
+            ApiResourceDelegationSource, NewApiResourceDelegation,
         },
         api_resource_type::ApiResourceType,
         asset_token_key::AssetTokenKey,
@@ -84,6 +84,24 @@ pub enum ShadowCollectCommand {
     Recover(String),
     /// 执行平台代理资源代理任务，trade_no 是资源任务号
     ExecuteResourceDelegation(String),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResourceGateSnapshot {
+    /// BuildTx 前当前归集交易需要的能量
+    required_energy: u64,
+    /// BuildTx 前当前归集交易需要的带宽
+    required_bandwidth: u64,
+    /// 子账户当前可直接使用的能量
+    available_energy: i64,
+    /// 子账户当前可直接使用的带宽
+    available_bandwidth: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResourceDelegationBlockPath {
+    PlatformFallback,
+    LocalFallback,
 }
 
 /// Shadow Worker
@@ -296,6 +314,12 @@ impl ShadowCollectWorker {
         format!("rsc_delegate_{}", origin_trade_no)
     }
 
+    fn collect_local_delegate_trade_no(origin_trade_no: &str) -> String {
+        // 和平台代理占位号一样，这里也必须是确定性的。
+        // 否则 collect 每次重新评估时都会重复创建本地 fallback 任务。
+        format!("rsc_local_delegate_{}", origin_trade_no)
+    }
+
     fn resource_shortfall(required: u64, available: i64) -> u64 {
         required.saturating_sub(available.max(0) as u64)
     }
@@ -455,6 +479,7 @@ impl ShadowCollectWorker {
         match err.retry_policy() {
             wallet_utils::RetryPolicy::Never => {
                 self.mark_resource_delegation_failed(resource_trade_no, &err).await?;
+                self.release_collect_gate_after_local_delegation_failure(resource_trade_no).await?;
                 Ok(())
             }
             wallet_utils::RetryPolicy::Delay => {
@@ -532,6 +557,8 @@ impl ShadowCollectWorker {
                 "Resource delegation broadcast fact committed"
             );
         }
+
+        self.release_collect_gate_after_local_delegation_success(&delegation).await?;
 
         Ok(())
     }
@@ -736,50 +763,31 @@ impl ShadowCollectWorker {
         }
 
         let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
-        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                    .await?;
-            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
-        } else {
-            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
-        };
-
-        let fee_details = self
-            .estimate_tron_fee_details(
-                &req.from_addr,
-                &exec_to_addr,
-                &req.value,
-                &token_symbol,
-                &main_coin.symbol,
-                token_key,
-                token_decimals,
-            )
-            .await?;
-
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
-        let resource = adapter.account_resource(&req.from_addr).await?;
-        let available_energy = resource.available_energy();
-        let available_bandwidth = resource.available_bandwidth();
+        let snapshot = self.eval_collect_resource_gate_snapshot(&req, &exec_to_addr).await?;
 
         if Self::tron_resource_ready(
-            available_energy,
-            available_bandwidth,
-            fee_details.energy,
-            fee_details.bandwidth,
+            snapshot.available_energy,
+            snapshot.available_bandwidth,
+            snapshot.required_energy,
+            snapshot.required_bandwidth,
         ) {
             self.process_release_resource_gate(origin_trade_no.to_string()).await?;
         } else {
-            self.process_block_on_platform_delegation(origin_trade_no.to_string()).await?;
+            self.process_resource_gate_blocked_path(
+                origin_trade_no.to_string(),
+                &req,
+                &exec_to_addr,
+                snapshot,
+            )
+            .await?;
         }
 
         info!(
             origin_trade_no,
-            required_energy = %fee_details.energy,
-            available_energy = %available_energy,
-            required_bandwidth = %fee_details.bandwidth,
-            available_bandwidth = %available_bandwidth,
+            required_energy = %snapshot.required_energy,
+            available_energy = %snapshot.available_energy,
+            required_bandwidth = %snapshot.required_bandwidth,
+            available_bandwidth = %snapshot.available_bandwidth,
             source = "shadow_worker_v2",
             "TRON collect resource gate evaluated"
         );
@@ -902,6 +910,120 @@ impl ShadowCollectWorker {
         .await
     }
 
+    async fn eval_collect_resource_gate_snapshot(
+        &self,
+        req: &ApiCollectEntity,
+        exec_to_addr: &str,
+    ) -> Result<ResourceGateSnapshot, ServiceError> {
+        // 这里只做“评估快照”：
+        // - 估算如果现在 BuildTx，需要多少资源
+        // - 读取子账户当前链上资源余额
+        // 不在这里决定走平台代理还是本地代理，也不直接写 blocked/released 事实。
+        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
+            let token_coin =
+                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
+                    .await?;
+            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+        } else {
+            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
+        };
+
+        let fee_details = self
+            .estimate_tron_fee_details(
+                &req.from_addr,
+                exec_to_addr,
+                &req.value,
+                &token_symbol,
+                &main_coin.symbol,
+                token_key,
+                token_decimals,
+            )
+            .await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let resource = adapter.account_resource(&req.from_addr).await?;
+
+        Ok(ResourceGateSnapshot {
+            required_energy: fee_details.energy,
+            required_bandwidth: fee_details.bandwidth,
+            available_energy: resource.available_energy(),
+            available_bandwidth: resource.available_bandwidth(),
+        })
+    }
+
+    /// Decide which resource dependency fact should be written when TRON
+    /// collect still lacks energy.
+    ///
+    /// Important boundary:
+    /// - platform failure receipt does not directly rewrite collect into
+    ///   `need_local_delegate`
+    /// - it only wakes collect back up
+    /// - the dependency switch itself happens here, during the next
+    ///   `EvalResourceGate`, so scanner remains the owner of progression
+    async fn process_resource_gate_blocked_path(
+        &self,
+        origin_trade_no: String,
+        req: &ApiCollectEntity,
+        exec_to_addr: &str,
+        snapshot: ResourceGateSnapshot,
+    ) -> Result<(), ServiceError> {
+        let delegations = ApiResourceDelegationRepo::list_by_origin_trade_no(
+            &self.collect_pool,
+            &origin_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        match Self::decide_collect_resource_block_path(&delegations) {
+            ResourceDelegationBlockPath::LocalFallback => {
+                self.commit_local_delegation_block(
+                    &origin_trade_no,
+                    req,
+                    exec_to_addr,
+                    snapshot.required_energy,
+                    snapshot.available_energy,
+                )
+                .await
+            }
+            ResourceDelegationBlockPath::PlatformFallback => {
+                self.commit_platform_delegation_block(
+                    &origin_trade_no,
+                    req,
+                    snapshot.required_energy,
+                    snapshot.required_bandwidth,
+                    snapshot.available_energy,
+                    snapshot.available_bandwidth,
+                )
+                .await
+            }
+        }
+    }
+
+    fn decide_collect_resource_block_path(
+        delegations: &[ApiResourceDelegationEntity],
+    ) -> ResourceDelegationBlockPath {
+        // 文档顺序要求：
+        // 子账户自身能量 -> 平台资源代理 -> 出款地址本地代理 -> 后续主链
+        //
+        // 所以只要平台代理已经失败，或者本地 fallback 已经存在，
+        // 下一次 EvalResourceGate 就必须把 blocked 事实切到 local_delegate。
+        let has_local_fallback = delegations.iter().any(|delegation| {
+            delegation.source == ApiResourceDelegationSource::Local
+                && delegation.operation_type == ApiResourceDelegationOperationType::Delegate
+        });
+        let platform_failed = delegations.iter().any(|delegation| {
+            delegation.source == ApiResourceDelegationSource::Platform
+                && delegation.operation_type == ApiResourceDelegationOperationType::Delegate
+                && (delegation.err_code.is_some()
+                    || matches!(delegation.tx_status.as_deref(), Some("fail")))
+        });
+
+        if has_local_fallback || platform_failed {
+            ResourceDelegationBlockPath::LocalFallback
+        } else {
+            ResourceDelegationBlockPath::PlatformFallback
+        }
+    }
+
     async fn commit_platform_delegation_block(
         &self,
         origin_trade_no: &str,
@@ -955,6 +1077,119 @@ impl ShadowCollectWorker {
             source = "shadow_worker_v2",
             "TRON collect resource gate blocked"
         );
+        Ok(())
+    }
+
+    async fn commit_local_delegation_block(
+        &self,
+        origin_trade_no: &str,
+        req: &ApiCollectEntity,
+        exec_to_addr: &str,
+        required_energy: u64,
+        available_energy: i64,
+    ) -> Result<(), ServiceError> {
+        // local delegation 的 owner 是出款地址，receiver 是当前待归集子地址。
+        // 这里写下的是“本地代理 fallback 已成为当前依赖”的事实，
+        // 不是说本地代理已经执行成功。
+        let resource_trade_no = Self::collect_local_delegate_trade_no(origin_trade_no);
+        let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
+        let delegation = NewApiResourceDelegation::local_delegate(
+            req.uid.clone(),
+            resource_trade_no.clone(),
+            req.trade_no.clone(),
+            i64::from(req.trade_type),
+            exec_to_addr.to_string(),
+            req.from_addr.clone(),
+            amount.clone(),
+            amount,
+        );
+        ApiResourceDelegationRepo::upsert(&self.collect_pool, delegation)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        let rows = ApiCollectRepo::mark_resource_blocked(
+            &self.collect_pool,
+            origin_trade_no,
+            "need_local_delegate",
+            Some(&resource_trade_no),
+            Some("local_delegate"),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            origin_trade_no = %origin_trade_no,
+            rows = %rows,
+            resource_trade_no = %resource_trade_no,
+            owner_address = %exec_to_addr,
+            receiver_address = %req.from_addr,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate switched to local delegation fallback"
+        );
+        Ok(())
+    }
+
+    async fn release_collect_gate_after_local_delegation_success(
+        &self,
+        delegation: &ApiResourceDelegationEntity,
+    ) -> Result<(), ServiceError> {
+        if delegation.source != ApiResourceDelegationSource::Local {
+            return Ok(());
+        }
+        let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
+            return Ok(());
+        };
+        self.release_collect_gate_after_local_delegation(
+            origin_trade_no,
+            "local_delegation_success",
+        )
+        .await
+    }
+
+    async fn release_collect_gate_after_local_delegation_failure(
+        &self,
+        resource_trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.collect_pool,
+            resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if delegation.source != ApiResourceDelegationSource::Local {
+            return Ok(());
+        }
+        let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
+            return Ok(());
+        };
+        self.release_collect_gate_after_local_delegation(
+            origin_trade_no,
+            "local_delegation_failed_bypass",
+        )
+        .await
+    }
+
+    async fn release_collect_gate_after_local_delegation(
+        &self,
+        origin_trade_no: &str,
+        gate_result: &str,
+    ) -> Result<(), ServiceError> {
+        // local delegation 到达终态后，collect 不再卡在资源 gate。
+        // 后面是否还会因为主币不足、服务费不足而停下，交回原有 BuildTx/fee 流程判断。
+        let affected = ApiCollectRepo::mark_resource_released(
+            &self.collect_pool,
+            origin_trade_no,
+            gate_result,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                gate_result = %gate_result,
+                source = "shadow_worker_v2",
+                "Collect gate already released after local delegation"
+            );
+        }
+        self.advancer.try_advance(origin_trade_no).await;
         Ok(())
     }
 
@@ -3097,6 +3332,7 @@ mod tests {
         ApiWalletDbPool, SqliteContext,
         entities::{
             api_collect::{ApiCollectEntity, ApiCollectStatus},
+            api_resource_delegation::{ApiResourceDelegationSource, NewApiResourceDelegation},
             asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::{
@@ -3488,6 +3724,10 @@ mod tests {
             ShadowCollectWorker::collect_platform_delegate_trade_no("C_1"),
             "rsc_delegate_C_1"
         );
+        assert_eq!(
+            ShadowCollectWorker::collect_local_delegate_trade_no("C_1"),
+            "rsc_local_delegate_C_1"
+        );
     }
 
     #[tokio::test]
@@ -3620,6 +3860,256 @@ mod tests {
         .expect("load delegation");
         assert_eq!(delegation.origin_trade_no.as_deref(), Some(trade_no));
         assert_eq!(delegation.amount, "80");
+    }
+
+    #[tokio::test]
+    async fn local_delegation_block_commit_is_idempotent() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx.clone(),
+                None,
+            )),
+        );
+
+        let trade_no = "C_local_block_once";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+
+        worker
+            .commit_local_delegation_block(trade_no, &req, "withdraw_owner", 100, 20)
+            .await
+            .expect("first local block commit");
+        worker
+            .commit_local_delegation_block(trade_no, &req, "withdraw_owner", 100, 20)
+            .await
+            .expect("second local block commit");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert_eq!(
+            persisted.resource_dependency_trade_no.as_deref(),
+            Some("rsc_local_delegate_C_local_block_once")
+        );
+        assert_eq!(persisted.resource_dependency_type.as_deref(), Some("local_delegate"));
+        assert_eq!(persisted.resource_block_reason.as_deref(), Some("need_local_delegate"));
+
+        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &collect_pool,
+            "rsc_local_delegate_C_local_block_once",
+        )
+        .await
+        .expect("load delegation");
+        assert_eq!(delegation.source, ApiResourceDelegationSource::Local);
+        assert_eq!(delegation.origin_trade_no.as_deref(), Some(trade_no));
+        assert_eq!(delegation.owner_address, "withdraw_owner");
+        assert_eq!(delegation.receiver_address, "from");
+        assert_eq!(delegation.native_amount, "80");
+    }
+
+    #[tokio::test]
+    async fn local_delegation_failure_releases_collect_gate() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx.clone(),
+                None,
+            )),
+        );
+
+        let trade_no = "C_local_release";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        ApiCollectRepo::mark_resource_blocked(
+            &collect_pool,
+            trade_no,
+            "need_local_delegate",
+            Some("rsc_local_delegate_C_local_release"),
+            Some("local_delegate"),
+        )
+        .await
+        .expect("block collect");
+        ApiResourceDelegationRepo::upsert(
+            &collect_pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                "rsc_local_delegate_C_local_release",
+                trade_no,
+                2,
+                "withdraw_owner",
+                "from",
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert local delegation");
+        ApiResourceDelegationRepo::mark_failed_if_unfinished(
+            &collect_pool,
+            "rsc_local_delegate_C_local_release",
+            "ERR_6008",
+            "local delegate failed",
+        )
+        .await
+        .expect("mark failed");
+
+        worker
+            .release_collect_gate_after_local_delegation_failure(
+                "rsc_local_delegate_C_local_release",
+            )
+            .await
+            .expect("release collect after local failure");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(
+            persisted.resource_gate_result.as_deref(),
+            Some("local_delegation_failed_bypass")
+        );
+    }
+
+    #[tokio::test]
+    async fn local_delegation_success_releases_collect_gate() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx.clone(),
+                None,
+            )),
+        );
+
+        let trade_no = "C_local_success";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        let input = NewApiResourceDelegation::local_delegate(
+            "uid",
+            "rsc_local_delegate_C_local_success",
+            trade_no,
+            2,
+            "withdraw_owner",
+            "from",
+            "10",
+            "10",
+        );
+        ApiResourceDelegationRepo::upsert(&collect_pool, input)
+            .await
+            .expect("insert local delegation");
+        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &collect_pool,
+            "rsc_local_delegate_C_local_success",
+        )
+        .await
+        .expect("load delegation");
+
+        worker
+            .release_collect_gate_after_local_delegation_success(&delegation)
+            .await
+            .expect("release collect after local success");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(persisted.resource_gate_result.as_deref(), Some("local_delegation_success"));
     }
 
     #[test]

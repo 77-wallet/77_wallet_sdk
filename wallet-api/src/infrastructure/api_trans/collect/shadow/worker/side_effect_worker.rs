@@ -24,7 +24,8 @@ use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
-        api_coin::ApiCoinEntity, api_trade_type::ApiTradeType, asset_token_key::AssetTokenKey,
+        api_coin::ApiCoinEntity, api_resource_delegation::ApiResourceDelegationSource,
+        api_trade_type::ApiTradeType, asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
         collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
@@ -796,15 +797,28 @@ impl SideEffectWorker {
             info!(resource_trade_no = %resource_trade_no, "Resource tx exec receipt uploaded and marked");
         }
 
-        // Failure bypass is attached here because failed resource tasks may not
-        // receive a later result event, while receipt upload is still a stable
-        // closure point once failure facts already exist.
-        self.project_resource_task_outcome_to_collect_gate(
-            &resource_task,
-            ResourceGateReleaseOutcome::FailureBypass("resource_delegation_failed_bypass"),
-        )
-        .await?;
+        if resource_task.source == ApiResourceDelegationSource::Platform {
+            self.revisit_collect_resource_gate_after_platform_failure(&resource_task).await?;
+        }
 
+        Ok(())
+    }
+
+    async fn revisit_collect_resource_gate_after_platform_failure(
+        &self,
+        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+    ) -> Result<(), ServiceError> {
+        let is_failure = resource_task.err_code.is_some()
+            || matches!(resource_task.tx_status.as_deref(), Some("fail"));
+        if !is_failure || resource_task.origin_trade_type != Some(ApiTradeType::Collect as i64) {
+            return Ok(());
+        }
+
+        let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() else {
+            return Ok(());
+        };
+
+        self.advancer.try_advance(origin_trade_no).await;
         Ok(())
     }
 

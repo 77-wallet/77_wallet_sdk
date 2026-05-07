@@ -2,7 +2,8 @@ use crate::{
     ApiTransactionDbPool,
     dao::api_resource_delegation::ApiResourceDelegationDao,
     entities::api_resource_delegation::{
-        ApiResourceDelegationEntity, ApiResourceDelegationResultStatus, NewApiResourceDelegation,
+        ApiResourceDelegationEntity, ApiResourceDelegationResultStatus,
+        ApiResourceDelegationSource, NewApiResourceDelegation,
     },
 };
 
@@ -107,6 +108,21 @@ impl ApiResourceDelegationRepo {
         Self::scan_can_execute_for_origin_type(
             pool,
             crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn scan_can_execute_for_origin_type_and_source(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_can_execute_by_origin_type_and_source(
+            pool.read_ref(),
+            origin_trade_type,
+            source,
             limit,
         )
         .await
@@ -362,6 +378,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resource_delegation_local_execute_scan_finds_unacked_local_tasks() {
+        let pool = setup_api_transaction_pool("resource_delegation_local_execute_scan").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid_1",
+                "rsc_local_execute",
+                "origin_local_execute",
+                2,
+                "owner",
+                "receiver",
+                "100",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiResourceDelegationRepo::scan_can_execute_for_origin_type_and_source(
+            &pool,
+            2,
+            ApiResourceDelegationSource::Local,
+            100,
+        )
+        .await
+        .unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+
+        assert_eq!(trade_nos, vec!["rsc_local_execute".to_string()]);
+    }
+
+    #[tokio::test]
     async fn resource_delegation_build_slot_claim_is_idempotent() {
         let pool = setup_api_transaction_pool("resource_delegation_build_claim").await;
         ApiResourceDelegationRepo::upsert(
@@ -400,6 +449,31 @@ mod tests {
         assert!(got.tx_status.is_none());
         assert!(got.result_status.is_none());
         assert!(got.result_received_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_local_build_slot_claim_skips_task_ack_gate() {
+        let pool = setup_api_transaction_pool("resource_delegation_local_build_claim").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid_1",
+                "rsc_local_claim",
+                "origin_local_claim",
+                2,
+                "owner",
+                "receiver",
+                "100",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_local_claim").await.unwrap(),
+            1
+        );
     }
 
     #[tokio::test]

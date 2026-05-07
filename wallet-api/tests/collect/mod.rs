@@ -3313,10 +3313,10 @@ async fn collect_failed_resource_bypass_reopens_collect_build_flow() {
 
     let labels_before = scan_collect_intent_labels_once(collect_pool.clone())
         .await
-        .expect("scan collect labels before bypass");
+        .expect("scan collect labels before local fallback");
     assert!(
         labels_before.iter().all(|label| label != "BuildTx"),
-        "blocked collect should not be eligible for BuildTx before failed delegation bypass"
+        "blocked collect should not be eligible for BuildTx before local delegation fallback"
     );
 
     upload_resource_tx_exec_receipt_via_worker(collect_pool.clone(), core_pool, &resource_trade_no)
@@ -3326,16 +3326,23 @@ async fn collect_failed_resource_bypass_reopens_collect_build_flow() {
     let collect = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
         .await
         .expect("load collect");
-    assert!(collect.resource_gate_released_at.is_some());
-    assert_eq!(collect.resource_gate_result.as_deref(), Some("resource_delegation_failed_bypass"));
+    assert!(collect.resource_gate_released_at.is_none());
+    assert_eq!(collect.resource_dependency_type.as_deref(), Some("platform_delegate"));
 
     let labels = scan_collect_intent_labels_once(collect_pool.clone())
         .await
-        .expect("scan collect labels after bypass");
+        .expect("scan collect labels after platform failure");
     assert!(
-        labels.iter().any(|label| label == "BuildTx"),
-        "failed delegation bypass should reopen the collect build flow"
+        labels.iter().all(|label| label != "BuildTx"),
+        "platform delegation failure should not reopen BuildTx before local delegation fallback"
     );
+
+    let collect = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("reload collect");
+    assert_eq!(collect.resource_dependency_trade_no.as_deref(), Some(resource_trade_no.as_str()));
+    assert_eq!(collect.resource_dependency_type.as_deref(), Some("platform_delegate"));
+    assert_eq!(collect.resource_block_reason.as_deref(), Some("need_platform_delegate"));
 }
 
 #[tokio::test]
