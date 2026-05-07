@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let res1 = wallet_manager.expand_address(address_allock_type, chain_code, index, uid).await;
     // tracing::info!("expand_address ------------------- 5: {res1:#?}");
 
-    // let wallet = wallet_manager.create_wallet(test_params.create_wallet_req).await?;
+    // let wallet = wallet_manager.create_wallet(_test_params.create_wallet_req).await?;
     // tracing::warn!("wallet: {wallet:#?}");
 
     // subscribe(&wallet_manager).await;
