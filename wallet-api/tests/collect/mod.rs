@@ -98,7 +98,7 @@ MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEWDZNP0ClbeWJey9hBr2rsjSayQEBywnv
 ZXi0RberQCAp+06fOjvr+jZI5qwYGglmMkGJw49tbni6qgm4QNV6WQ==
 -----END PUBLIC KEY-----"#;
 static WORKER_ENV: OnceCell<WorkerTestEnv> = OnceCell::const_new();
-static UNIQUE_ID: AtomicU64 = AtomicU64::new(1);
+pub(crate) static UNIQUE_ID: AtomicU64 = AtomicU64::new(1);
 
 struct TestFundsDb {
     _dir: TempDir,
@@ -118,9 +118,9 @@ impl TestFundsDb {
 }
 
 #[derive(Clone, Debug)]
-struct CapturedHttpRequest {
-    path: String,
-    body: String,
+pub(crate) struct CapturedHttpRequest {
+    pub(crate) path: String,
+    pub(crate) body: String,
 }
 
 #[derive(Default)]
@@ -129,7 +129,7 @@ struct MockBackendState {
 }
 
 #[derive(Clone, Default)]
-struct MockBackendRecorder {
+pub(crate) struct MockBackendRecorder {
     state: Arc<Mutex<MockBackendState>>,
 }
 
@@ -144,12 +144,12 @@ impl MockBackendRecorder {
         state.requests.pop_front()
     }
 
-    fn reset(&self) {
+    pub(crate) fn reset(&self) {
         let mut state = self.state.lock().expect("mock backend lock poisoned");
         state.requests.clear();
     }
 
-    fn snapshot(&self) -> Vec<CapturedHttpRequest> {
+    pub(crate) fn snapshot(&self) -> Vec<CapturedHttpRequest> {
         let state = self.state.lock().expect("mock backend lock poisoned");
         state.requests.iter().cloned().collect()
     }
@@ -886,11 +886,11 @@ async fn seed_wallet(
     address
 }
 
-struct WorkerTestEnv {
+pub(crate) struct WorkerTestEnv {
     _manager: WalletManager,
-    backend_url: String,
-    db_dir: PathBuf,
-    recorder: MockBackendRecorder,
+    pub(crate) backend_url: String,
+    pub(crate) db_dir: PathBuf,
+    pub(crate) recorder: MockBackendRecorder,
 }
 
 fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)> {
@@ -979,7 +979,7 @@ fn create_test_root_dir() -> PathBuf {
     root
 }
 
-async fn open_api_wallet_pool(db_dir: &Path) -> ApiWalletDbPool {
+pub(crate) async fn open_api_wallet_pool(db_dir: &Path) -> ApiWalletDbPool {
     let sqlite = SqliteContext::new(&db_dir.to_string_lossy(), Some("api_wallet.db"))
         .await
         .expect("open api wallet sqlite");
@@ -987,7 +987,7 @@ async fn open_api_wallet_pool(db_dir: &Path) -> ApiWalletDbPool {
     ApiWalletDbPool::new(pool)
 }
 
-async fn ensure_worker_env() -> &'static WorkerTestEnv {
+pub(crate) async fn ensure_worker_env() -> &'static WorkerTestEnv {
     WORKER_ENV
         .get_or_init(|| async {
             let (backend_url, recorder) =
@@ -1043,7 +1043,7 @@ async fn current_backend_url() -> Option<String> {
     app_state.url().backend.clone()
 }
 
-fn decrypt_captured_api_backend_body(body: &str) -> serde_json::Value {
+pub(crate) fn decrypt_captured_api_backend_body(body: &str) -> serde_json::Value {
     #[derive(serde::Deserialize)]
     struct CapturedApiBackendBody {
         key: String,

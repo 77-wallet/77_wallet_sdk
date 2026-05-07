@@ -24,6 +24,7 @@ mod phrase;
 mod stake;
 mod swap;
 mod transactions;
+mod withdraw;
 
 static TEST_LOG_INIT: Once = Once::new();
 
