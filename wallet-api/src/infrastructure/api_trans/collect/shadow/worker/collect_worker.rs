@@ -775,8 +775,9 @@ impl ShadowCollectWorker {
         // 资源顺序只处理到“允许回到旧 collect 主链”为止：
         // 自身资源 -> 平台代理 -> 本地代理 fallback -> release gate。
         // release 之后，主币不足 / 补币 / 原失败收口仍走上一版已经稳定的旧闭环。
-        let next_step =
-            self.decide_collect_resource_gate_next_step(origin_trade_no, &snapshot).await?;
+        let next_step = self
+            .decide_collect_resource_gate_next_step(snapshot.clone(), origin_trade_no)
+            .await?;
         self.apply_collect_resource_gate_next_step(
             next_step,
             origin_trade_no,
