@@ -24,8 +24,13 @@ use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
-        api_coin::ApiCoinEntity, api_resource_delegation::ApiResourceDelegationSource,
-        api_trade_type::ApiTradeType, asset_token_key::AssetTokenKey,
+        api_coin::ApiCoinEntity,
+        api_resource_delegation::{
+            ApiResourceDelegationOperationType, ApiResourceDelegationResultStatus,
+            ApiResourceDelegationSource, NewApiResourceDelegation,
+        },
+        api_trade_type::ApiTradeType,
+        asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
         collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
@@ -78,6 +83,10 @@ pub enum SideEffectCommand {
 enum ResourceGateReleaseOutcome<'a> {
     Success(&'a str),
     FailureBypass(&'a str),
+}
+
+fn collect_local_undelegate_trade_no(origin_trade_no: &str) -> String {
+    format!("rsc_local_undelegate_{}", origin_trade_no)
 }
 
 impl SideEffectCommand {
@@ -423,6 +432,7 @@ impl SideEffectWorker {
                     )
                     .await
                     .map_err(|e| ServiceError::Database(e.into()))?;
+                self.ensure_local_undelegation_after_collect_finished(&trade_no).await?;
                 self.advancer.try_advance(&trade_no).await;
             } else if req.transaction_time.is_none() {
                 warn!(
@@ -437,6 +447,9 @@ impl SideEffectWorker {
                 source = "side_effect_worker",
                 "Result ACK already sent, skipping"
             );
+            if req.finished_at.is_some() {
+                self.ensure_local_undelegation_after_collect_finished(&trade_no).await?;
+            }
             return Ok(());
         }
 
@@ -494,6 +507,7 @@ impl SideEffectWorker {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK confirmed and collect finished");
                         ServiceError::Database(e.into())
                     })?;
+                self.ensure_local_undelegation_after_collect_finished(&trade_no).await?;
 
                 // 直接调用 try_advance 进行点对点唤醒
                 self.advancer.try_advance(&trade_no).await;
@@ -708,6 +722,50 @@ impl SideEffectWorker {
         }
 
         self.advancer.try_advance(origin_trade_no).await;
+        Ok(())
+    }
+
+    async fn ensure_local_undelegation_after_collect_finished(
+        &self,
+        origin_trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let delegations =
+            ApiResourceDelegationRepo::list_by_origin_trade_no(&self.pool, origin_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if delegations.iter().any(|item| {
+            item.source == ApiResourceDelegationSource::Local
+                && item.operation_type == ApiResourceDelegationOperationType::Undelegate
+        }) {
+            return Ok(());
+        }
+
+        let Some(local_delegate) = delegations.iter().find(|item| {
+            item.source == ApiResourceDelegationSource::Local
+                && item.operation_type == ApiResourceDelegationOperationType::Delegate
+                && item.result_status == Some(ApiResourceDelegationResultStatus::Success)
+        }) else {
+            return Ok(());
+        };
+
+        let resource_trade_no = collect_local_undelegate_trade_no(origin_trade_no);
+        ApiResourceDelegationRepo::upsert(
+            &self.pool,
+            NewApiResourceDelegation::local_undelegate(
+                local_delegate.uid.clone(),
+                resource_trade_no,
+                origin_trade_no.to_string(),
+                ApiTradeType::Collect as i64,
+                local_delegate.owner_address.clone(),
+                local_delegate.receiver_address.clone(),
+                local_delegate.native_amount.clone(),
+                local_delegate.amount.clone(),
+            ),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
         Ok(())
     }
 
@@ -1441,14 +1499,27 @@ mod tests {
     use super::SideEffectWorker;
     use chrono::Utc;
     use rust_decimal::Decimal;
-    use std::str::FromStr;
-    use wallet_database::entities::{
-        api_coin::ApiCoinEntity,
-        api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
-        api_trade_type::ApiTradeType,
-        asset_token_key::AssetTokenKey,
+    use std::{str::FromStr, sync::Arc};
+    use tempfile::tempdir;
+    use tokio::sync::mpsc;
+    use wallet_database::{
+        ApiWalletDbPool, SqliteContext,
+        entities::{
+            api_coin::ApiCoinEntity,
+            api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
+            api_resource_delegation::{
+                ApiResourceDelegationResultStatus, NewApiResourceDelegation,
+            },
+            api_trade_type::ApiTradeType,
+            asset_token_key::AssetTokenKey,
+        },
+        repositories::api_wallet::{
+            collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+        },
     };
     use wallet_transport_backend::request::api_wallet::transaction::TransType;
+
+    use crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer;
 
     fn make_coin(symbol: &str, token_address: AssetTokenKey, decimals: u8) -> ApiCoinEntity {
         ApiCoinEntity {
@@ -1805,5 +1876,89 @@ mod tests {
             );
         let ack_json = serde_json::to_value(&ack_req).expect("serialize ack req");
         assert_eq!(ack_json["type"], "WD_RSC_DL");
+    }
+
+    #[tokio::test]
+    async fn ensure_local_undelegation_after_collect_finished_creates_one_task() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+        let tx_ctx =
+            SqliteContext::new(&dir_path, Some("api_transaction.db")).await.expect("init tx db");
+        let pool = tx_ctx.into_transaction_db_pool().expect("tx pool");
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init wallet db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = SideEffectWorker::new(
+            pool.clone(),
+            wallet_pool,
+            Arc::new(ShadowAdvancer::new(pool.clone(), intent_tx, None)),
+        );
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            "C_LOCAL_UNDELEGATE",
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                "rsc_local_delegate_C_LOCAL_UNDELEGATE",
+                "C_LOCAL_UNDELEGATE",
+                ApiTradeType::Collect as i64,
+                "withdraw_owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert local delegate");
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_local_delegate_C_LOCAL_UNDELEGATE",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("mark local delegate success");
+
+        worker
+            .ensure_local_undelegation_after_collect_finished("C_LOCAL_UNDELEGATE")
+            .await
+            .expect("create undelegation");
+        worker
+            .ensure_local_undelegation_after_collect_finished("C_LOCAL_UNDELEGATE")
+            .await
+            .expect("create undelegation idempotent");
+
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_local_undelegate_C_LOCAL_UNDELEGATE",
+        )
+        .await
+        .expect("load undelegation");
+        assert_eq!(task.origin_trade_no.as_deref(), Some("C_LOCAL_UNDELEGATE"));
+        assert_eq!(task.native_amount, "5");
+        assert_eq!(task.amount, "1000");
     }
 }

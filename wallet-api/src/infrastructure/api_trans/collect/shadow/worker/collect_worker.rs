@@ -26,7 +26,8 @@ use wallet_database::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            ApiResourceDelegationSource, NewApiResourceDelegation,
+            ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
+            NewApiResourceDelegation,
         },
         api_resource_type::ApiResourceType,
         asset_token_key::AssetTokenKey,
@@ -775,9 +776,8 @@ impl ShadowCollectWorker {
         // 资源顺序只处理到“允许回到旧 collect 主链”为止：
         // 自身资源 -> 平台代理 -> 本地代理 fallback -> release gate。
         // release 之后，主币不足 / 补币 / 原失败收口仍走上一版已经稳定的旧闭环。
-        let next_step = self
-            .decide_collect_resource_gate_next_step(snapshot.clone(), origin_trade_no)
-            .await?;
+        let next_step =
+            self.decide_collect_resource_gate_next_step(snapshot.clone(), origin_trade_no).await?;
         self.apply_collect_resource_gate_next_step(
             next_step,
             origin_trade_no,
@@ -1158,9 +1158,22 @@ impl ShadowCollectWorker {
         &self,
         delegation: &ApiResourceDelegationEntity,
     ) -> Result<(), ServiceError> {
-        if delegation.source != ApiResourceDelegationSource::Local {
+        if delegation.source != ApiResourceDelegationSource::Local
+            || delegation.operation_type != ApiResourceDelegationOperationType::Delegate
+        {
             return Ok(());
         }
+        ApiResourceDelegationRepo::mark_result_received(
+            &self.collect_pool,
+            &delegation.resource_trade_no,
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
             return Ok(());
         };
@@ -1181,7 +1194,21 @@ impl ShadowCollectWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        let _ = ApiResourceDelegationRepo::mark_result_received(
+            &self.collect_pool,
+            &delegation.resource_trade_no,
+            ApiResourceDelegationResultStatus::Fail,
+            None,
+            delegation.err_code.as_deref(),
+            delegation.err_msg.as_deref(),
+            None,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         if delegation.source != ApiResourceDelegationSource::Local {
+            return Ok(());
+        }
+        if delegation.operation_type != ApiResourceDelegationOperationType::Delegate {
             return Ok(());
         }
         let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
@@ -3349,7 +3376,10 @@ impl ShadowCollectWorker {
 #[cfg(test)]
 mod tests {
     use super::ShadowCollectWorker;
-    use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
+    use crate::{
+        error::{service::ServiceError, system::SystemError},
+        infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent},
+    };
     use chrono::Utc;
     use rust_decimal::Decimal;
     use std::{str::FromStr, sync::Arc};
@@ -3360,6 +3390,7 @@ mod tests {
         entities::{
             api_collect::{ApiCollectEntity, ApiCollectStatus},
             api_resource_delegation::{ApiResourceDelegationSource, NewApiResourceDelegation},
+            api_trade_type::ApiTradeType,
             asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::{

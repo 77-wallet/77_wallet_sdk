@@ -243,4 +243,30 @@ impl NewApiResourceDelegation {
             amount: amount.into(),
         }
     }
+
+    pub fn local_undelegate(
+        uid: impl Into<String>,
+        resource_trade_no: impl Into<String>,
+        origin_trade_no: impl Into<String>,
+        origin_trade_type: i64,
+        owner_address: impl Into<String>,
+        receiver_address: impl Into<String>,
+        native_amount: impl Into<String>,
+        amount: impl Into<String>,
+    ) -> Self {
+        Self {
+            uid: uid.into(),
+            source: ApiResourceDelegationSource::Local,
+            operation_type: ApiResourceDelegationOperationType::Undelegate,
+            origin_trade_no: Some(origin_trade_no.into()),
+            origin_trade_type: Some(origin_trade_type),
+            resource_trade_no: resource_trade_no.into(),
+            chain_code: "tron".to_string(),
+            owner_address: owner_address.into(),
+            receiver_address: receiver_address.into(),
+            resource_type: ApiResourceType::Energy,
+            native_amount: native_amount.into(),
+            amount: amount.into(),
+        }
+    }
 }

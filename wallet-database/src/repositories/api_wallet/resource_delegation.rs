@@ -2,8 +2,8 @@ use crate::{
     ApiTransactionDbPool,
     dao::api_resource_delegation::ApiResourceDelegationDao,
     entities::api_resource_delegation::{
-        ApiResourceDelegationEntity, ApiResourceDelegationResultStatus,
-        ApiResourceDelegationSource, NewApiResourceDelegation,
+        ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
+        ApiResourceDelegationResultStatus, ApiResourceDelegationSource, NewApiResourceDelegation,
     },
 };
 
@@ -135,6 +135,36 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn scan_can_execute_for_origin_type_source_and_operation(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_can_execute_by_origin_type_source_and_operation(
+            pool.read_ref(),
+            origin_trade_type,
+            source,
+            operation_type,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn scan_can_recover_local_undelegation_for_origin_type(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_can_recover_local_undelegation_by_origin_type(
+            pool.read_ref(),
+            origin_trade_type,
+            limit,
+        )
+        .await
+    }
+
     pub async fn claim_build_slot(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -229,6 +259,36 @@ impl ApiResourceDelegationRepo {
             err_code,
             err_msg,
             result_payload,
+        )
+        .await
+    }
+
+    pub async fn mark_recover_retry_wait(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        recover_status: &str,
+        next_retry_at: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_recover_retry_wait(
+            pool.write_ref(),
+            resource_trade_no,
+            recover_status,
+            next_retry_at,
+        )
+        .await
+    }
+
+    pub async fn reset_for_retry(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        recover_status: &str,
+        next_retry_at: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::reset_for_retry(
+            pool.write_ref(),
+            resource_trade_no,
+            recover_status,
+            next_retry_at,
         )
         .await
     }
@@ -784,5 +844,129 @@ mod tests {
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn local_undelegation_execute_and_recover_scans_respect_source_operation_and_retry() {
+        let pool = setup_api_transaction_pool("resource_delegation_local_undelegation_scan").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_undelegate(
+                "uid_1",
+                "rsc_local_undelegate_ready",
+                "origin_collect_1",
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_undelegate(
+                "uid_1",
+                "rsc_local_undelegate_recover",
+                "origin_collect_2",
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_local_undelegate_recover")
+            .await
+            .unwrap();
+        ApiResourceDelegationRepo::mark_broadcast_success(
+            &pool,
+            "rsc_local_undelegate_recover",
+            "tx_hash_1",
+        )
+        .await
+        .unwrap();
+
+        let execute_rows =
+            ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+                &pool,
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                ApiResourceDelegationSource::Local,
+                ApiResourceDelegationOperationType::Undelegate,
+                100,
+            )
+            .await
+            .unwrap();
+        let execute_trade_nos: Vec<_> =
+            execute_rows.into_iter().map(|row| row.resource_trade_no).collect();
+        assert!(execute_trade_nos.contains(&"rsc_local_undelegate_ready".to_string()));
+        assert!(!execute_trade_nos.contains(&"rsc_local_undelegate_recover".to_string()));
+
+        let recover_rows =
+            ApiResourceDelegationRepo::scan_can_recover_local_undelegation_for_origin_type(
+                &pool,
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                100,
+            )
+            .await
+            .unwrap();
+        let recover_trade_nos: Vec<_> =
+            recover_rows.into_iter().map(|row| row.resource_trade_no).collect();
+        assert!(recover_trade_nos.contains(&"rsc_local_undelegate_recover".to_string()));
+        assert!(!recover_trade_nos.contains(&"rsc_local_undelegate_ready".to_string()));
+    }
+
+    #[tokio::test]
+    async fn local_undelegation_retry_reset_returns_task_to_executable_state() {
+        let pool = setup_api_transaction_pool("resource_delegation_local_undelegation_retry").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_undelegate(
+                "uid_1",
+                "rsc_local_undelegate_retry",
+                "origin_collect_retry",
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_local_undelegate_retry")
+            .await
+            .unwrap();
+        ApiResourceDelegationRepo::mark_broadcast_success(
+            &pool,
+            "rsc_local_undelegate_retry",
+            "tx_hash_retry",
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::reset_for_retry(
+            &pool,
+            "rsc_local_undelegate_retry",
+            "retry_recover",
+            "2099-01-01T00:00:00Z",
+        )
+        .await
+        .unwrap();
+
+        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_local_undelegate_retry",
+        )
+        .await
+        .unwrap();
+        assert_eq!(persisted.tx_hash, None);
+        assert_eq!(persisted.tx_status, None);
+        assert_eq!(persisted.recover_status.as_deref(), Some("retry_recover"));
+        assert_eq!(persisted.retry_count, 1);
     }
 }

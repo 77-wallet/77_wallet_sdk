@@ -6,6 +6,7 @@ use crate::{
         api_trans::collect::legacy::process_collect_tx::ProcessCollectTxHandle,
         api_trans::collect_fee::legacy::process_fee_tx::ProcessFeeTxHandle,
         api_trans::resource_operation::shadow::ResourceOperationShadowActorSystem,
+        api_trans::resource_reclaim::local_shadow::LocalResourceReclaimShadowActorSystem,
         api_trans::withdraw::legacy::process_withdraw_tx::ProcessWithdrawTxHandle,
         collector_unconfirm_msg::UnconfirmedMsgCollector,
         inner_event::InnerEventHandle,
@@ -30,6 +31,7 @@ pub struct Handles {
     process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
     process_collect_tx_handle: Arc<ProcessCollectTxHandle>,
     resource_operation_shadow: Arc<Mutex<Option<ResourceOperationShadowActorSystem>>>,
+    resource_reclaim_shadow: Arc<Mutex<Option<LocalResourceReclaimShadowActorSystem>>>,
     upload_log: Arc<UploadLogHandle>,
     normal_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
     api_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
@@ -57,6 +59,12 @@ impl Handles {
             let api_transaction_pool = ctx.api_transaction_pool()?;
             infrastructure::api_trans::resource_operation::shadow::init(api_transaction_pool).await
         };
+        let resource_reclaim_shadow = {
+            let ctx = crate::context::get_context()?;
+            let api_transaction_pool = ctx.api_transaction_pool()?;
+            infrastructure::api_trans::resource_reclaim::local_shadow::init(api_transaction_pool)
+                .await
+        };
 
         // 初始化私钥管理器
         tracing::info!("Initialize private key manager start");
@@ -78,6 +86,7 @@ impl Handles {
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
             process_collect_tx_handle: Arc::new(process_collect_tx_handle),
             resource_operation_shadow: Arc::new(Mutex::new(Some(resource_operation_shadow))),
+            resource_reclaim_shadow: Arc::new(Mutex::new(Some(resource_reclaim_shadow))),
             upload_log: Arc::new(upload_log_handle),
             normal_wallet_mqtt: Arc::new(Mutex::new(None)),
             api_wallet_mqtt: Arc::new(Mutex::new(None)),
@@ -96,6 +105,13 @@ impl Handles {
                 resource_operation_shadow.stop().await;
             }
             resource_operation_shadow.take();
+        }
+        {
+            let mut resource_reclaim_shadow = self.resource_reclaim_shadow.lock().await;
+            if let Some(resource_reclaim_shadow) = resource_reclaim_shadow.as_mut() {
+                resource_reclaim_shadow.stop().await;
+            }
+            resource_reclaim_shadow.take();
         }
         self.upload_log.close().await?;
         self.unconfirmed_msg_processor.close().await?;

@@ -1,6 +1,7 @@
 use crate::entities::api_resource_delegation::{
-    ApiResourceDelegationEntity, ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
-    ApiResourceDelegationStatus, NewApiResourceDelegation,
+    ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
+    ApiResourceDelegationResultStatus, ApiResourceDelegationSource, ApiResourceDelegationStatus,
+    NewApiResourceDelegation,
 };
 use sqlx::{Executor, Sqlite};
 
@@ -231,6 +232,79 @@ impl ApiResourceDelegationDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_can_execute_by_origin_type_source_and_operation<'a, E>(
+        exec: E,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let (ack_clause, order_expr) = match source {
+            ApiResourceDelegationSource::Platform => {
+                ("AND task_ack_sent_at IS NOT NULL", "task_ack_sent_at")
+            }
+            ApiResourceDelegationSource::Local => ("", "created_at"),
+        };
+        let sql = format!(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = ?
+              AND operation_type = ?
+              AND origin_trade_type = ?
+              AND status = 1
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+              {ack_clause}
+              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+              AND building_at IS NULL
+              AND tx_hash IS NULL
+            ORDER BY {order_expr} ASC, id ASC
+            LIMIT ?
+            "#
+        );
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(&sql)
+            .bind(source.as_i64())
+            .bind(operation_type.as_i64())
+            .bind(origin_trade_type)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn scan_can_recover_local_undelegation_by_origin_type<'a, E>(
+        exec: E,
+        origin_trade_type: i64,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = 2
+              AND operation_type = 2
+              AND origin_trade_type = ?
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            ORDER BY COALESCE(next_retry_at, created_at) ASC, id ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(origin_trade_type)
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn claim_build_slot<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -242,17 +316,20 @@ impl ApiResourceDelegationDao {
             r#"
             UPDATE api_resource_delegation
             SET building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                next_retry_at = NULL,
+                recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
-              AND operation_type = 1
               AND status = 1
               AND (
                     source = 2
                     OR task_ack_sent_at IS NOT NULL
                   )
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
               AND building_at IS NULL
               AND tx_hash IS NULL
-              AND tx_status IS NULL
             "#,
         )
         .bind(resource_trade_no)
@@ -275,13 +352,15 @@ impl ApiResourceDelegationDao {
             UPDATE api_resource_delegation
             SET tx_hash = ?2,
                 tx_status = 'success',
+                next_retry_at = NULL,
+                recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND operation_type = 1
               AND status = 1
               AND building_at IS NOT NULL
               AND tx_hash IS NULL
-              AND tx_status IS NULL
+              AND result_received_at IS NULL
+              AND err_code IS NULL
             "#,
         )
         .bind(resource_trade_no)
@@ -369,7 +448,6 @@ impl ApiResourceDelegationDao {
                 status = 3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND operation_type = 1
               AND result_received_at IS NULL
               AND err_code IS NULL
             "#,
@@ -429,6 +507,8 @@ impl ApiResourceDelegationDao {
                 err_code = ?4,
                 err_msg = ?5,
                 status = ?7,
+                recover_status = NULL,
+                next_retry_at = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
             "#,
@@ -445,6 +525,74 @@ impl ApiResourceDelegationDao {
             }
             ApiResourceDelegationResultStatus::Fail => ApiResourceDelegationStatus::Fail.as_i64(),
         })
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_recover_retry_wait<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        recover_status: &str,
+        next_retry_at: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET recover_status = ?2,
+                next_retry_at = ?3,
+                retry_count = retry_count + 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND source = 2
+              AND operation_type = 2
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(recover_status)
+        .bind(next_retry_at)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn reset_for_retry<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        recover_status: &str,
+        next_retry_at: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET status = 1,
+                building_at = NULL,
+                tx_hash = NULL,
+                tx_status = NULL,
+                recover_status = ?2,
+                next_retry_at = ?3,
+                retry_count = retry_count + 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND source = 2
+              AND operation_type = 2
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(recover_status)
+        .bind(next_retry_at)
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;

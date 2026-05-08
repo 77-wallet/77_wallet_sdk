@@ -37,11 +37,14 @@ use wallet_api::{
     },
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
-    test::collect::{
-        build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
-        scan_collect_intent_labels_once, send_resource_result_ack_via_worker,
-        upload_collect_service_fee_via_worker, upload_collect_tx_exec_receipt_via_backend,
-        upload_collect_tx_exec_receipt_via_worker, upload_resource_tx_exec_receipt_via_worker,
+    test::{
+        collect::{
+            build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
+            scan_collect_intent_labels_once, send_resource_result_ack_via_worker,
+            upload_collect_service_fee_via_worker, upload_collect_tx_exec_receipt_via_backend,
+            upload_collect_tx_exec_receipt_via_worker, upload_resource_tx_exec_receipt_via_worker,
+        },
+        resource_reclaim::scan_local_reclaim_intent_labels_once,
     },
     test_support::{
         adapter_factory::{
@@ -3499,4 +3502,105 @@ async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
     assert_eq!(payload_json["to"], "rebuilt-to");
     assert_eq!(payload_json["hash"], "scan-hash");
     assert_eq!(payload_json["status"], "SUCCESS");
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_shadow_scanner_no_longer_owns_local_undelegation_intents() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db_root = dir.path().to_string_lossy().to_string();
+    let collect_pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+        .await
+        .expect("init api_transaction.db")
+        .into_transaction_db_pool()
+        .expect("transaction pool");
+
+    wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::upsert(
+        &collect_pool,
+        wallet_database::entities::api_resource_delegation::NewApiResourceDelegation::local_undelegate(
+            "uid",
+            "rsc_local_undelegate_scan",
+            "C_SCAN",
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
+            "owner",
+            "receiver",
+            "5",
+            "1000",
+        ),
+    )
+    .await
+    .expect("insert local undelegate task");
+
+    let collect_labels =
+        scan_collect_intent_labels_once(collect_pool.clone()).await.expect("scan collect labels");
+    assert!(
+        collect_labels.iter().all(|label| label != "ExecuteLocalUndelegation"),
+        "collect shadow should no longer own local undelegation execute"
+    );
+    assert!(
+        collect_labels.iter().all(|label| label != "RecoverLocalUndelegation"),
+        "collect shadow should no longer own local undelegation recover"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn local_reclaim_shadow_scanner_owns_local_undelegation_intents() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db_root = dir.path().to_string_lossy().to_string();
+    let collect_pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+        .await
+        .expect("init api_transaction.db")
+        .into_transaction_db_pool()
+        .expect("transaction pool");
+
+    wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::upsert(
+        &collect_pool,
+        wallet_database::entities::api_resource_delegation::NewApiResourceDelegation::local_undelegate(
+            "uid",
+            "rsc_local_undelegate_execute_scan",
+            "C_EXECUTE_SCAN",
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
+            "owner",
+            "receiver",
+            "5",
+            "1000",
+        ),
+    )
+    .await
+    .expect("insert execute local undelegate task");
+
+    wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::upsert(
+        &collect_pool,
+        wallet_database::entities::api_resource_delegation::NewApiResourceDelegation::local_undelegate(
+            "uid",
+            "rsc_local_undelegate_recover_scan",
+            "C_RECOVER_SCAN",
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
+            "owner",
+            "receiver",
+            "5",
+            "1000",
+        ),
+    )
+    .await
+    .expect("insert recover local undelegate task");
+    wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::claim_build_slot(
+        &collect_pool,
+        "rsc_local_undelegate_recover_scan",
+    )
+    .await
+    .expect("claim build slot");
+    wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::mark_broadcast_success(
+        &collect_pool,
+        "rsc_local_undelegate_recover_scan",
+        "tx_hash_recover_scan",
+    )
+    .await
+    .expect("mark broadcast success");
+
+    let reclaim_labels =
+        scan_local_reclaim_intent_labels_once(collect_pool).await.expect("scan reclaim labels");
+    assert!(reclaim_labels.iter().any(|label| label == "ExecuteLocalUndelegation"));
+    assert!(reclaim_labels.iter().any(|label| label == "RecoverLocalUndelegation"));
 }
