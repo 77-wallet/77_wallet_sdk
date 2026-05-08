@@ -32,7 +32,7 @@ CREATE TABLE api_resource_delegation
     err_code                     TEXT NULL, -- 后端或 SDK 内部错误码原样落库
     err_msg                      TEXT NULL, -- 后端或 SDK 内部错误信息原样落库
 
-    recover_status               TEXT NULL, -- 恢复扫描状态视图，如 pending / running / exhausted
+    recover_status               INTEGER NULL, -- 本地回收恢复状态枚举：1=recover_waiting, 2=retry_build, 3=retry_recover
     next_retry_at                TIMESTAMP NULL, -- 下次恢复/重试时间
     retry_count                  INTEGER     NOT NULL DEFAULT 0, -- 恢复/重试次数
 

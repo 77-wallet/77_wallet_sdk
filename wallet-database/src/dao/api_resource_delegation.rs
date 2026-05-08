@@ -1,7 +1,7 @@
 use crate::entities::api_resource_delegation::{
     ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-    ApiResourceDelegationResultStatus, ApiResourceDelegationSource, ApiResourceDelegationStatus,
-    NewApiResourceDelegation,
+    ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
+    ApiResourceDelegationSource, ApiResourceDelegationStatus, NewApiResourceDelegation,
 };
 use sqlx::{Executor, Sqlite};
 
@@ -534,7 +534,7 @@ impl ApiResourceDelegationDao {
     pub async fn mark_recover_retry_wait<'a, E>(
         exec: E,
         resource_trade_no: &str,
-        recover_status: &str,
+        recover_status: ApiResourceDelegationRecoverStatus,
         next_retry_at: &str,
     ) -> Result<u64, crate::Error>
     where
@@ -555,7 +555,7 @@ impl ApiResourceDelegationDao {
             "#,
         )
         .bind(resource_trade_no)
-        .bind(recover_status)
+        .bind(recover_status.as_i64())
         .bind(next_retry_at)
         .execute(exec)
         .await
@@ -566,7 +566,7 @@ impl ApiResourceDelegationDao {
     pub async fn reset_for_retry<'a, E>(
         exec: E,
         resource_trade_no: &str,
-        recover_status: &str,
+        recover_status: ApiResourceDelegationRecoverStatus,
         next_retry_at: &str,
     ) -> Result<u64, crate::Error>
     where
@@ -591,7 +591,7 @@ impl ApiResourceDelegationDao {
             "#,
         )
         .bind(resource_trade_no)
-        .bind(recover_status)
+        .bind(recover_status.as_i64())
         .bind(next_retry_at)
         .execute(exec)
         .await

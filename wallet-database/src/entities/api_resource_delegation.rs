@@ -106,6 +106,29 @@ impl ApiResourceDelegationResultStatus {
     }
 }
 
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
+pub enum ApiResourceDelegationRecoverStatus {
+    RecoverWaiting = 1,
+    RetryBuild = 2,
+    RetryRecover = 3,
+}
+
+impl ApiResourceDelegationRecoverStatus {
+    pub fn as_i64(self) -> i64 {
+        self as i64
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiResourceDelegationEntity {
@@ -141,7 +164,7 @@ pub struct ApiResourceDelegationEntity {
     pub fail_type: Option<i64>,
     pub err_code: Option<String>,
     pub err_msg: Option<String>,
-    pub recover_status: Option<String>,
+    pub recover_status: Option<ApiResourceDelegationRecoverStatus>,
     pub next_retry_at: Option<DateTime<Utc>>,
     pub retry_count: i64,
     pub created_at: DateTime<Utc>,

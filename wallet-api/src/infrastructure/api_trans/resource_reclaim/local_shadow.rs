@@ -11,7 +11,8 @@ use wallet_database::{
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
+            ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
+            ApiResourceDelegationSource,
         },
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
@@ -197,6 +198,10 @@ impl LocalResourceReclaimWorker {
         (60_i64 * (1_i64 << exponent)).min(3600)
     }
 
+    fn origin_trade_no<'a>(delegation: &'a ApiResourceDelegationEntity) -> &'a str {
+        delegation.origin_trade_no.as_deref().unwrap_or("<missing>")
+    }
+
     async fn handle_local_undelegation_execute_failure_if_needed(
         &self,
         resource_trade_no: &str,
@@ -247,6 +252,9 @@ impl LocalResourceReclaimWorker {
         if delegation.tx_hash.is_some() {
             info!(
                 resource_trade_no = %resource_trade_no,
+                origin_trade_no = %Self::origin_trade_no(&delegation),
+                retry_count = delegation.retry_count,
+                recover_status = ?delegation.recover_status,
                 source = "local_resource_reclaim_shadow",
                 "Local undelegation already has tx_hash, skipping execution"
             );
@@ -265,14 +273,18 @@ impl LocalResourceReclaimWorker {
         if affected == 0 {
             info!(
                 resource_trade_no = %resource_trade_no,
+                origin_trade_no = %Self::origin_trade_no(&delegation),
                 tx_hash = %tx_hash,
+                retry_count = delegation.retry_count,
                 source = "local_resource_reclaim_shadow",
                 "Local undelegation broadcast fact already committed"
             );
         } else {
             info!(
                 resource_trade_no = %resource_trade_no,
+                origin_trade_no = %Self::origin_trade_no(&delegation),
                 tx_hash = %tx_hash,
+                retry_count = delegation.retry_count,
                 source = "local_resource_reclaim_shadow",
                 "Local undelegation broadcast fact committed"
             );
@@ -303,6 +315,14 @@ impl LocalResourceReclaimWorker {
         }
 
         if delegation.result_received_at.is_some() || delegation.err_code.is_some() {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                origin_trade_no = %Self::origin_trade_no(&delegation),
+                result_received_at = ?delegation.result_received_at,
+                err_code = ?delegation.err_code,
+                source = "local_resource_reclaim_shadow",
+                "Local undelegation already reached a terminal fact, skipping recover"
+            );
             return Ok(());
         }
 
@@ -335,7 +355,9 @@ impl LocalResourceReclaimWorker {
                 .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     resource_trade_no = %resource_trade_no,
+                    origin_trade_no = %Self::origin_trade_no(&delegation),
                     tx_hash = %tx_hash,
+                    retry_count = delegation.retry_count,
                     source = "local_resource_reclaim_shadow",
                     "Local undelegation recovered as success"
                 );
@@ -468,11 +490,21 @@ impl LocalResourceReclaimWorker {
         ApiResourceDelegationRepo::mark_recover_retry_wait(
             &self.pool,
             resource_trade_no,
-            "recover_waiting",
+            ApiResourceDelegationRecoverStatus::RecoverWaiting,
             &next_retry_at.to_rfc3339(),
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            resource_trade_no = %resource_trade_no,
+            origin_trade_no = %Self::origin_trade_no(&task),
+            retry_count = task.retry_count + 1,
+            recover_status = ?ApiResourceDelegationRecoverStatus::RecoverWaiting,
+            next_retry_at = %next_retry_at.to_rfc3339(),
+            wait_secs,
+            source = "local_resource_reclaim_shadow",
+            "Local undelegation recover scheduled for retry"
+        );
         Ok(())
     }
 
@@ -487,14 +519,30 @@ impl LocalResourceReclaimWorker {
                 .map_err(|e| ServiceError::Database(e.into()))?;
         let wait_secs = Self::local_undelegation_retry_wait_secs(task.retry_count);
         let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
+        let next_status = if err.is_network_error() {
+            ApiResourceDelegationRecoverStatus::RetryBuild
+        } else {
+            ApiResourceDelegationRecoverStatus::RetryRecover
+        };
         ApiResourceDelegationRepo::reset_for_retry(
             &self.pool,
             resource_trade_no,
-            if err.is_network_error() { "retry_build" } else { "retry_recover" },
+            next_status,
             &next_retry_at.to_rfc3339(),
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            resource_trade_no = %resource_trade_no,
+            origin_trade_no = %Self::origin_trade_no(&task),
+            retry_count = task.retry_count + 1,
+            recover_status = ?next_status,
+            next_retry_at = %next_retry_at.to_rfc3339(),
+            wait_secs,
+            error = %err,
+            source = "local_resource_reclaim_shadow",
+            "Local undelegation reset for retry"
+        );
         Ok(())
     }
 }
@@ -755,8 +803,80 @@ mod tests {
         .expect("load task");
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.recover_status.as_deref(), Some("retry_recover"));
+        assert_eq!(
+            persisted.recover_status,
+            Some(ApiResourceDelegationRecoverStatus::RetryRecover)
+        );
         assert!(persisted.next_retry_at.is_some());
         assert_eq!(persisted.retry_count, 1);
+    }
+
+    #[tokio::test]
+    async fn scanner_skips_future_retry_until_due_then_reopens_execute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_undelegate(
+                "uid",
+                "rsc_local_undelegate_future_retry",
+                "C_FUTURE_RETRY",
+                ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert local undelegate");
+
+        ApiResourceDelegationRepo::reset_for_retry(
+            &pool,
+            "rsc_local_undelegate_future_retry",
+            ApiResourceDelegationRecoverStatus::RetryBuild,
+            &(chrono::Utc::now() + chrono::Duration::seconds(300)).to_rfc3339(),
+        )
+        .await
+        .expect("schedule future retry");
+
+        let scanner = LocalResourceReclaimScanner::with_config(
+            pool.clone(),
+            LocalResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+        let intents = scanner.scan_round().await;
+        assert!(
+            intents.iter().all(|intent| !matches!(
+                intent,
+                LocalResourceReclaimIntent::ExecuteLocalUndelegation(trade_no)
+                    if trade_no == "rsc_local_undelegate_future_retry"
+            )),
+            "future retry should not be executable before next_retry_at"
+        );
+
+        ApiResourceDelegationRepo::reset_for_retry(
+            &pool,
+            "rsc_local_undelegate_future_retry",
+            ApiResourceDelegationRecoverStatus::RetryBuild,
+            &(chrono::Utc::now() - chrono::Duration::seconds(1)).to_rfc3339(),
+        )
+        .await
+        .expect("make retry due");
+
+        let intents = scanner.scan_round().await;
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            LocalResourceReclaimIntent::ExecuteLocalUndelegation(trade_no)
+                if trade_no == "rsc_local_undelegate_future_retry"
+        )));
     }
 }

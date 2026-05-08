@@ -113,6 +113,25 @@
 - 资源代理失败不会阻塞 collect / withdraw 主流程；释放 gate 后由 scanner
   基于事实重新推进到 `BuildTx`。
 
+### Local Reclaim Model
+
+- `collect/shadow` 只负责归集主链，以及 `collect finished -> 创建本地回收任务`
+  这一处事实投影。
+- 本地回收执行/恢复不再属于 `collect/shadow`，而是由独立的
+  `api_trans::resource_reclaim::local_shadow` 承接。
+- `local_shadow` 只消费：
+  - `source = Local`
+  - `operation_type = Undelegate`
+  - `origin_trade_type = Collect`
+- 本地回收是资源善后副链，不是 collect 成功/失败的一部分：
+  - 不走 backend task ACK / result ACK / receipt upload
+  - 不依赖 MQTT 结果事件
+  - 失败后只写 `recover_status / next_retry_at / retry_count`
+  - 由本地 scanner 按 capped exponential backoff 无限重试
+- collect 与本地回收之间只通过 `api_resource_delegation` 事实连接；
+  `collect finished` 之后只负责幂等创建确定性的 local undelegation task，
+  不直接驱动执行。
+
 ## Dependency Direction
 
 - 允许：API -> Service -> Application -> Domain -> Repo/Transport

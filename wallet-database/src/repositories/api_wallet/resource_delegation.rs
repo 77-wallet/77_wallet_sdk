@@ -3,7 +3,8 @@ use crate::{
     dao::api_resource_delegation::ApiResourceDelegationDao,
     entities::api_resource_delegation::{
         ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-        ApiResourceDelegationResultStatus, ApiResourceDelegationSource, NewApiResourceDelegation,
+        ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
+        ApiResourceDelegationSource, NewApiResourceDelegation,
     },
 };
 
@@ -266,7 +267,7 @@ impl ApiResourceDelegationRepo {
     pub async fn mark_recover_retry_wait(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
-        recover_status: &str,
+        recover_status: ApiResourceDelegationRecoverStatus,
         next_retry_at: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::mark_recover_retry_wait(
@@ -281,7 +282,7 @@ impl ApiResourceDelegationRepo {
     pub async fn reset_for_retry(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
-        recover_status: &str,
+        recover_status: ApiResourceDelegationRecoverStatus,
         next_retry_at: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::reset_for_retry(
@@ -952,7 +953,7 @@ mod tests {
         ApiResourceDelegationRepo::reset_for_retry(
             &pool,
             "rsc_local_undelegate_retry",
-            "retry_recover",
+            ApiResourceDelegationRecoverStatus::RetryRecover,
             "2099-01-01T00:00:00Z",
         )
         .await
@@ -966,7 +967,10 @@ mod tests {
         .unwrap();
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.recover_status.as_deref(), Some("retry_recover"));
+        assert_eq!(
+            persisted.recover_status,
+            Some(ApiResourceDelegationRecoverStatus::RetryRecover)
+        );
         assert_eq!(persisted.retry_count, 1);
     }
 }
