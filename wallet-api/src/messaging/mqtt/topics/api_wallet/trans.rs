@@ -748,14 +748,10 @@ mod tests {
     async fn resource_delegation_trade_type_6_deserialize_routes_to_resource_delegation()
     -> anyhow::Result<()> {
         let (_manager, _params) = get_manager().await?;
-        let trade_no = format!(
-            "COL_RSC_RC_deser_regression_{}",
-            wallet_utils::time::now().timestamp_millis()
-        );
-        let wallet_uid = format!(
-            "col-rsc-rc-deser-regression-{}",
-            wallet_utils::time::now().timestamp_millis()
-        );
+        let trade_no =
+            format!("COL_RSC_RC_deser_regression_{}", wallet_utils::time::now().timestamp_millis());
+        let wallet_uid =
+            format!("col-rsc-rc-deser-regression-{}", wallet_utils::time::now().timestamp_millis());
 
         let value = serde_json::json!({
             "from": "T_platform_owner",
@@ -795,14 +791,10 @@ mod tests {
     async fn resource_delegation_trade_type_8_deserialize_routes_to_resource_delegation()
     -> anyhow::Result<()> {
         let (_manager, _params) = get_manager().await?;
-        let trade_no = format!(
-            "WD_RSC_RC_deser_regression_{}",
-            wallet_utils::time::now().timestamp_millis()
-        );
-        let wallet_uid = format!(
-            "wd-rsc-rc-deser-regression-{}",
-            wallet_utils::time::now().timestamp_millis()
-        );
+        let trade_no =
+            format!("WD_RSC_RC_deser_regression_{}", wallet_utils::time::now().timestamp_millis());
+        let wallet_uid =
+            format!("wd-rsc-rc-deser-regression-{}", wallet_utils::time::now().timestamp_millis());
 
         let value = serde_json::json!({
             "from": "T_platform_owner",
