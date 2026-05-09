@@ -89,7 +89,10 @@ impl PlatformResourceReclaimScanner {
         intents
     }
 
-    async fn scan_collect_platform_undelegation(&self, intents: &mut Vec<PlatformResourceReclaimIntent>) {
+    async fn scan_collect_platform_undelegation(
+        &self,
+        intents: &mut Vec<PlatformResourceReclaimIntent>,
+    ) {
         match ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
             &self.pool,
             ApiTradeType::Collect as i64,
@@ -112,7 +115,10 @@ impl PlatformResourceReclaimScanner {
         }
     }
 
-    async fn scan_withdraw_platform_undelegation(&self, intents: &mut Vec<PlatformResourceReclaimIntent>) {
+    async fn scan_withdraw_platform_undelegation(
+        &self,
+        intents: &mut Vec<PlatformResourceReclaimIntent>,
+    ) {
         match ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
             &self.pool,
             ApiTradeType::Withdraw as i64,
@@ -193,8 +199,11 @@ impl PlatformResourceReclaimWorker {
             PlatformResourceReclaimIntent::ExecutePlatformUndelegation(resource_trade_no) => {
                 let result =
                     self.process_platform_undelegation_execute(resource_trade_no.clone()).await;
-                self.handle_platform_undelegation_execute_failure_if_needed(&resource_trade_no, result)
-                    .await
+                self.handle_platform_undelegation_execute_failure_if_needed(
+                    &resource_trade_no,
+                    result,
+                )
+                .await
             }
             PlatformResourceReclaimIntent::RecoverPlatformUndelegation(resource_trade_no) => {
                 self.process_platform_undelegation_recover(resource_trade_no).await
@@ -337,7 +346,9 @@ impl PlatformResourceReclaimWorker {
 
         let tx_hash =
             delegation.tx_hash.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| {
-                ServiceError::Parameter("platform undelegation recover requires tx_hash".to_string())
+                ServiceError::Parameter(
+                    "platform undelegation recover requires tx_hash".to_string(),
+                )
             })?;
 
         match ApiTransDomain::process_recovered_tx(
