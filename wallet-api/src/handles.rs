@@ -35,8 +35,7 @@ pub struct Handles {
     process_collect_tx_handle: Arc<ProcessCollectTxHandle>,
     resource_operation_shadow: Arc<Mutex<Option<ResourceOperationShadowActorSystem>>>,
     resource_reclaim_shadow: Arc<Mutex<Option<LocalResourceReclaimShadowActorSystem>>>,
-    platform_resource_reclaim_shadow:
-        Arc<Mutex<Option<PlatformResourceReclaimShadowActorSystem>>>,
+    platform_resource_reclaim_shadow: Arc<Mutex<Option<PlatformResourceReclaimShadowActorSystem>>>,
     upload_log: Arc<UploadLogHandle>,
     normal_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
     api_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
@@ -73,10 +72,8 @@ impl Handles {
         let platform_resource_reclaim_shadow = {
             let ctx = crate::context::get_context()?;
             let api_transaction_pool = ctx.api_transaction_pool()?;
-            infrastructure::api_trans::resource_reclaim::platform_shadow::init(
-                api_transaction_pool,
-            )
-            .await
+            infrastructure::api_trans::resource_reclaim::platform_shadow::init(api_transaction_pool)
+                .await
         };
 
         // 初始化私钥管理器
