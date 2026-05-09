@@ -14,6 +14,9 @@ use crate::{
     dao::api_collect::ApiCollectDao,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         asset_token_key::AssetTokenKey,
     },
 };
@@ -132,9 +135,9 @@ impl ApiCollectRepo {
     pub async fn mark_resource_blocked(
         pool: &ApiTransactionDbPool,
         trade_no: &str,
-        block_reason: &str,
+        block_reason: ApiResourceBlockReason,
         dependency_trade_no: Option<&str>,
-        dependency_type: Option<&str>,
+        dependency_type: Option<ApiResourceDependencyType>,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_resource_blocked(
             pool.write_ref(),
@@ -149,7 +152,7 @@ impl ApiCollectRepo {
     pub async fn mark_resource_released(
         pool: &ApiTransactionDbPool,
         trade_no: &str,
-        gate_result: &str,
+        gate_result: ApiResourceGateResult,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_resource_released(pool.write_ref(), trade_no, gate_result).await
     }
@@ -1193,7 +1196,12 @@ mod tests {
     use super::ApiCollectRepo;
     use crate::{
         dao::api_collect::ApiCollectDao,
-        entities::api_collect::{ApiCollectStatus, CollectCreatedFact},
+        entities::{
+            api_collect::{ApiCollectStatus, CollectCreatedFact},
+            api_resource_gate::{
+                ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+            },
+        },
         error::Error,
         repositories::test_helper::setup_api_transaction_pool,
     };
@@ -1312,9 +1320,9 @@ mod tests {
         ApiCollectRepo::mark_resource_blocked(
             &pool,
             trade_no,
-            "need_platform_delegate",
+            ApiResourceBlockReason::NeedPlatformDelegate,
             Some("resource_trade_1"),
-            Some("platform_delegate"),
+            Some(ApiResourceDependencyType::PlatformDelegate),
         )
         .await
         .unwrap();
@@ -1322,15 +1330,27 @@ mod tests {
         let blocked = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
         assert!(blocked.resource_check_at.is_some());
         assert!(blocked.resource_gate_released_at.is_none());
-        assert_eq!(blocked.resource_block_reason.as_deref(), Some("need_platform_delegate"));
+        assert_eq!(
+            blocked.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedPlatformDelegate)
+        );
         assert_eq!(blocked.resource_dependency_trade_no.as_deref(), Some("resource_trade_1"));
-        assert_eq!(blocked.resource_dependency_type.as_deref(), Some("platform_delegate"));
+        assert_eq!(
+            blocked.resource_dependency_type,
+            Some(ApiResourceDependencyType::PlatformDelegate)
+        );
 
-        ApiCollectRepo::mark_resource_released(&pool, trade_no, "resource_ready").await.unwrap();
+        ApiCollectRepo::mark_resource_released(
+            &pool,
+            trade_no,
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
 
         let released = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
         assert!(released.resource_gate_released_at.is_some());
-        assert_eq!(released.resource_gate_result.as_deref(), Some("resource_ready"));
+        assert_eq!(released.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
         assert!(released.resource_block_reason.is_none());
     }
 }

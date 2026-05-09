@@ -1,6 +1,11 @@
 use crate::{
     DbPool,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
+    entities::{
+        api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
+    },
     pagination::Pagination,
 };
 use sqlx::{Executor, Row, Sqlite};
@@ -310,9 +315,9 @@ impl ApiCollectDao {
     pub async fn mark_resource_blocked<'a, E>(
         exec: E,
         trade_no: &str,
-        block_reason: &str,
+        block_reason: ApiResourceBlockReason,
         dependency_trade_no: Option<&str>,
-        dependency_type: Option<&str>,
+        dependency_type: Option<ApiResourceDependencyType>,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -331,9 +336,9 @@ impl ApiCollectDao {
 
         let res = sqlx::query(sql)
             .bind(trade_no)
-            .bind(block_reason)
+            .bind(block_reason.as_i64())
             .bind(dependency_trade_no)
-            .bind(dependency_type)
+            .bind(dependency_type.map(ApiResourceDependencyType::as_i64))
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -343,7 +348,7 @@ impl ApiCollectDao {
     pub async fn mark_resource_released<'a, E>(
         exec: E,
         trade_no: &str,
-        gate_result: &str,
+        gate_result: ApiResourceGateResult,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -360,7 +365,7 @@ impl ApiCollectDao {
 
         let res = sqlx::query(sql)
             .bind(trade_no)
-            .bind(gate_result)
+            .bind(gate_result.as_i64())
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

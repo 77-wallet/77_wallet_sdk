@@ -7,7 +7,10 @@ use crate::{
 };
 use tracing;
 use wallet_database::{
-    entities::api_resource_delegation::ApiResourceDelegationResultStatus,
+    entities::{
+        api_resource_delegation::ApiResourceDelegationResultStatus,
+        api_resource_gate::ApiResourceGateResult,
+    },
     repositories::api_wallet::{
         collect::ApiCollectRepo, fee::ApiFeeRepo, resource_delegation::ApiResourceDelegationRepo,
         resource_operation::ApiResourceOperationRepo, wallet::ApiWalletRepo,
@@ -192,7 +195,7 @@ impl AwmOrderTransResMsg {
                 ApiCollectRepo::mark_resource_released(
                     api_transaction_pool,
                     origin_trade_no,
-                    "platform_delegate_success",
+                    ApiResourceGateResult::PlatformDelegateSuccess,
                 )
                 .await?;
                 tracing::info!(

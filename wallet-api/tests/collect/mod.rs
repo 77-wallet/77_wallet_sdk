@@ -62,6 +62,9 @@ use wallet_database::{
         api_account::CreateApiAccountVo,
         api_coin::ApiCoinData,
         api_collect::{ApiCollectEntity, ApiCollectStatus},
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         api_wallet::ApiWalletType,
         api_withdraw::ApiWithdrawStatus,
         api_withdraw_strategy::ApiWithdrawStrategyEntity,
@@ -3016,18 +3019,19 @@ async fn collect_resource_result_ack_releases_origin_collect_gate() {
     .await
     .expect("insert collect");
     sqlx::query(
-        r#"
-        UPDATE api_collect
-        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            resource_block_reason = 'need_platform_delegate',
-            resource_dependency_trade_no = ?,
-            resource_dependency_type = 'platform_delegate'
-        WHERE trade_no = ?
-        "#,
+        "UPDATE api_collect SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE trade_no = ?",
     )
-    .bind(format!("rsc_delegate_{trade_no}"))
     .bind(&trade_no)
     .execute(collect_pool.as_ref())
+    .await
+    .expect("seed order ack");
+    ApiCollectRepo::mark_resource_blocked(
+        &collect_pool,
+        &trade_no,
+        ApiResourceBlockReason::NeedPlatformDelegate,
+        Some(&format!("rsc_delegate_{trade_no}")),
+        Some(ApiResourceDependencyType::PlatformDelegate),
+    )
     .await
     .expect("seed blocked collect");
 
@@ -3064,7 +3068,10 @@ async fn collect_resource_result_ack_releases_origin_collect_gate() {
         .await
         .expect("load collect");
     assert!(collect.resource_gate_released_at.is_some());
-    assert_eq!(collect.resource_gate_result.as_deref(), Some("resource_delegation_success"));
+    assert_eq!(
+        collect.resource_gate_result,
+        Some(ApiResourceGateResult::ResourceDelegationSuccess)
+    );
 
     let labels =
         scan_collect_intent_labels_once(collect_pool.clone()).await.expect("scan collect intents");
@@ -3107,18 +3114,19 @@ async fn collect_resource_result_ack_does_not_release_gate_on_failure() {
     .await
     .expect("insert collect");
     sqlx::query(
-        r#"
-        UPDATE api_collect
-        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            resource_block_reason = 'need_platform_delegate',
-            resource_dependency_trade_no = ?,
-            resource_dependency_type = 'platform_delegate'
-        WHERE trade_no = ?
-        "#,
+        "UPDATE api_collect SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE trade_no = ?",
     )
-    .bind(format!("rsc_delegate_{trade_no}"))
     .bind(&trade_no)
     .execute(collect_pool.as_ref())
+    .await
+    .expect("seed order ack");
+    ApiCollectRepo::mark_resource_blocked(
+        &collect_pool,
+        &trade_no,
+        ApiResourceBlockReason::NeedPlatformDelegate,
+        Some(&format!("rsc_delegate_{trade_no}")),
+        Some(ApiResourceDependencyType::PlatformDelegate),
+    )
     .await
     .expect("seed blocked collect");
 
@@ -3191,18 +3199,19 @@ async fn withdraw_origin_resource_result_ack_does_not_release_collect_gate() {
     .await
     .expect("insert collect");
     sqlx::query(
-        r#"
-        UPDATE api_collect
-        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            resource_block_reason = 'need_platform_delegate',
-            resource_dependency_trade_no = ?,
-            resource_dependency_type = 'platform_delegate'
-        WHERE trade_no = ?
-        "#,
+        "UPDATE api_collect SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE trade_no = ?",
     )
-    .bind(format!("rsc_delegate_{trade_no}"))
     .bind(&trade_no)
     .execute(collect_pool.as_ref())
+    .await
+    .expect("seed order ack");
+    ApiCollectRepo::mark_resource_blocked(
+        &collect_pool,
+        &trade_no,
+        ApiResourceBlockReason::NeedPlatformDelegate,
+        Some(&format!("rsc_delegate_{trade_no}")),
+        Some(ApiResourceDependencyType::PlatformDelegate),
+    )
     .await
     .expect("seed blocked collect");
 
@@ -3274,18 +3283,19 @@ async fn collect_failed_resource_bypass_reopens_collect_build_flow() {
     .await
     .expect("insert collect");
     sqlx::query(
-        r#"
-        UPDATE api_collect
-        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            resource_block_reason = 'need_platform_delegate',
-            resource_dependency_trade_no = ?,
-            resource_dependency_type = 'platform_delegate'
-        WHERE trade_no = ?
-        "#,
+        "UPDATE api_collect SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE trade_no = ?",
     )
-    .bind(format!("rsc_delegate_{trade_no}"))
     .bind(&trade_no)
     .execute(collect_pool.as_ref())
+    .await
+    .expect("seed order ack");
+    ApiCollectRepo::mark_resource_blocked(
+        &collect_pool,
+        &trade_no,
+        ApiResourceBlockReason::NeedPlatformDelegate,
+        Some(&format!("rsc_delegate_{trade_no}")),
+        Some(ApiResourceDependencyType::PlatformDelegate),
+    )
     .await
     .expect("seed blocked collect");
 
@@ -3330,7 +3340,7 @@ async fn collect_failed_resource_bypass_reopens_collect_build_flow() {
         .await
         .expect("load collect");
     assert!(collect.resource_gate_released_at.is_none());
-    assert_eq!(collect.resource_dependency_type.as_deref(), Some("platform_delegate"));
+    assert_eq!(collect.resource_dependency_type, Some(ApiResourceDependencyType::PlatformDelegate));
 
     let labels = scan_collect_intent_labels_once(collect_pool.clone())
         .await
@@ -3344,8 +3354,8 @@ async fn collect_failed_resource_bypass_reopens_collect_build_flow() {
         .await
         .expect("reload collect");
     assert_eq!(collect.resource_dependency_trade_no.as_deref(), Some(resource_trade_no.as_str()));
-    assert_eq!(collect.resource_dependency_type.as_deref(), Some("platform_delegate"));
-    assert_eq!(collect.resource_block_reason.as_deref(), Some("need_platform_delegate"));
+    assert_eq!(collect.resource_dependency_type, Some(ApiResourceDependencyType::PlatformDelegate));
+    assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedPlatformDelegate));
 }
 
 #[tokio::test]
@@ -3381,18 +3391,19 @@ async fn collect_resource_tx_exec_receipt_failure_without_origin_trade_no_does_n
     .await
     .expect("insert collect");
     sqlx::query(
-        r#"
-        UPDATE api_collect
-        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            resource_block_reason = 'need_platform_delegate',
-            resource_dependency_trade_no = ?,
-            resource_dependency_type = 'platform_delegate'
-        WHERE trade_no = ?
-        "#,
+        "UPDATE api_collect SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE trade_no = ?",
     )
-    .bind(format!("rsc_delegate_{trade_no}"))
     .bind(&trade_no)
     .execute(collect_pool.as_ref())
+    .await
+    .expect("seed order ack");
+    ApiCollectRepo::mark_resource_blocked(
+        &collect_pool,
+        &trade_no,
+        ApiResourceBlockReason::NeedPlatformDelegate,
+        Some(&format!("rsc_delegate_{trade_no}")),
+        Some(ApiResourceDependencyType::PlatformDelegate),
+    )
     .await
     .expect("seed blocked collect");
 

@@ -29,6 +29,9 @@ use wallet_database::{
             ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
             NewApiResourceDelegation,
         },
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         api_resource_type::ApiResourceType,
         asset_token_key::AssetTokenKey,
     },
@@ -847,7 +850,7 @@ impl ShadowCollectWorker {
         let rows = ApiCollectRepo::mark_resource_released(
             &self.collect_pool,
             &origin_trade_no,
-            "resource_ready",
+            ApiResourceGateResult::ResourceReady,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
@@ -1084,9 +1087,9 @@ impl ShadowCollectWorker {
         let rows = ApiCollectRepo::mark_resource_blocked(
             &self.collect_pool,
             origin_trade_no,
-            "need_platform_delegate",
+            ApiResourceBlockReason::NeedPlatformDelegate,
             Some(&resource_trade_no),
-            Some("platform_delegate"),
+            Some(ApiResourceDependencyType::PlatformDelegate),
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
@@ -1136,9 +1139,9 @@ impl ShadowCollectWorker {
         let rows = ApiCollectRepo::mark_resource_blocked(
             &self.collect_pool,
             origin_trade_no,
-            "need_local_delegate",
+            ApiResourceBlockReason::NeedLocalDelegate,
             Some(&resource_trade_no),
-            Some("local_delegate"),
+            Some(ApiResourceDependencyType::LocalDelegate),
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
@@ -1179,7 +1182,7 @@ impl ShadowCollectWorker {
         };
         self.release_collect_gate_after_local_delegation(
             origin_trade_no,
-            "local_delegation_success",
+            ApiResourceGateResult::LocalDelegationSuccess,
         )
         .await
     }
@@ -1216,7 +1219,7 @@ impl ShadowCollectWorker {
         };
         self.release_collect_gate_after_local_delegation(
             origin_trade_no,
-            "local_delegation_failed_bypass",
+            ApiResourceGateResult::LocalDelegationFailedBypass,
         )
         .await
     }
@@ -1224,7 +1227,7 @@ impl ShadowCollectWorker {
     async fn release_collect_gate_after_local_delegation(
         &self,
         origin_trade_no: &str,
-        gate_result: &str,
+        gate_result: ApiResourceGateResult,
     ) -> Result<(), ServiceError> {
         // local delegation 到达终态后，collect 不再卡在资源 gate。
         // 后面是否还会因为主币不足、服务费不足而停下，交回原有 BuildTx/fee 流程判断。
@@ -1238,7 +1241,7 @@ impl ShadowCollectWorker {
         if affected == 0 {
             info!(
                 origin_trade_no = %origin_trade_no,
-                gate_result = %gate_result,
+                ?gate_result,
                 source = "shadow_worker_v2",
                 "Collect gate already released after local delegation"
             );
@@ -3390,6 +3393,9 @@ mod tests {
         entities::{
             api_collect::{ApiCollectEntity, ApiCollectStatus},
             api_resource_delegation::{ApiResourceDelegationSource, NewApiResourceDelegation},
+            api_resource_gate::{
+                ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+            },
             api_trade_type::ApiTradeType,
             asset_token_key::AssetTokenKey,
         },
@@ -3840,7 +3846,7 @@ mod tests {
             .await
             .expect("load collect");
         assert!(persisted.resource_gate_released_at.is_some());
-        assert_eq!(persisted.resource_gate_result.as_deref(), Some("resource_ready"));
+        assert_eq!(persisted.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
     }
 
     #[tokio::test]
@@ -3907,8 +3913,14 @@ mod tests {
             persisted.resource_dependency_trade_no.as_deref(),
             Some("rsc_delegate_C_block_once")
         );
-        assert_eq!(persisted.resource_dependency_type.as_deref(), Some("platform_delegate"));
-        assert_eq!(persisted.resource_block_reason.as_deref(), Some("need_platform_delegate"));
+        assert_eq!(
+            persisted.resource_dependency_type,
+            Some(ApiResourceDependencyType::PlatformDelegate)
+        );
+        assert_eq!(
+            persisted.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedPlatformDelegate)
+        );
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
             &collect_pool,
@@ -3984,8 +3996,14 @@ mod tests {
             persisted.resource_dependency_trade_no.as_deref(),
             Some("rsc_local_delegate_C_local_block_once")
         );
-        assert_eq!(persisted.resource_dependency_type.as_deref(), Some("local_delegate"));
-        assert_eq!(persisted.resource_block_reason.as_deref(), Some("need_local_delegate"));
+        assert_eq!(
+            persisted.resource_dependency_type,
+            Some(ApiResourceDependencyType::LocalDelegate)
+        );
+        assert_eq!(
+            persisted.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedLocalDelegate)
+        );
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
             &collect_pool,
@@ -4047,9 +4065,9 @@ mod tests {
         ApiCollectRepo::mark_resource_blocked(
             &collect_pool,
             trade_no,
-            "need_local_delegate",
+            ApiResourceBlockReason::NeedLocalDelegate,
             Some("rsc_local_delegate_C_local_release"),
-            Some("local_delegate"),
+            Some(ApiResourceDependencyType::LocalDelegate),
         )
         .await
         .expect("block collect");
@@ -4089,8 +4107,8 @@ mod tests {
             .expect("load collect");
         assert!(persisted.resource_gate_released_at.is_some());
         assert_eq!(
-            persisted.resource_gate_result.as_deref(),
-            Some("local_delegation_failed_bypass")
+            persisted.resource_gate_result,
+            Some(ApiResourceGateResult::LocalDelegationFailedBypass)
         );
     }
 
@@ -4167,7 +4185,10 @@ mod tests {
             .await
             .expect("load collect");
         assert!(persisted.resource_gate_released_at.is_some());
-        assert_eq!(persisted.resource_gate_result.as_deref(), Some("local_delegation_success"));
+        assert_eq!(
+            persisted.resource_gate_result,
+            Some(ApiResourceGateResult::LocalDelegationSuccess)
+        );
     }
 
     #[test]

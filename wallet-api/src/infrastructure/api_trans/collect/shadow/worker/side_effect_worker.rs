@@ -29,6 +29,7 @@ use wallet_database::{
             ApiResourceDelegationOperationType, ApiResourceDelegationResultStatus,
             ApiResourceDelegationSource, NewApiResourceDelegation,
         },
+        api_resource_gate::ApiResourceGateResult,
         api_trade_type::ApiTradeType,
         asset_token_key::AssetTokenKey,
     },
@@ -80,9 +81,9 @@ pub enum SideEffectCommand {
 ///
 /// These variants are about "what collect gate result should be written", not
 /// about "which side-effect command is currently running".
-enum ResourceGateReleaseOutcome<'a> {
-    Success(&'a str),
-    FailureBypass(&'a str),
+enum ResourceGateReleaseOutcome {
+    Success(ApiResourceGateResult),
+    FailureBypass(ApiResourceGateResult),
 }
 
 fn collect_local_undelegate_trade_no(origin_trade_no: &str) -> String {
@@ -618,7 +619,9 @@ impl SideEffectWorker {
                 }
                 self.project_resource_task_outcome_to_collect_gate(
                     &resource_task,
-                    ResourceGateReleaseOutcome::Success("resource_delegation_success"),
+                    ResourceGateReleaseOutcome::Success(
+                        ApiResourceGateResult::ResourceDelegationSuccess,
+                    ),
                 )
                 .await?;
                 info!(resource_trade_no = %resource_trade_no, "Resource result ACK sent successfully");
@@ -645,7 +648,7 @@ impl SideEffectWorker {
     async fn project_resource_task_outcome_to_collect_gate(
         &self,
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
-        outcome: ResourceGateReleaseOutcome<'_>,
+        outcome: ResourceGateReleaseOutcome,
     ) -> Result<(), ServiceError> {
         let release_result = match outcome {
             ResourceGateReleaseOutcome::Success(release_result) => {
