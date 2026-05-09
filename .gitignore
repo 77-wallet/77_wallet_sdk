@@ -27,3 +27,4 @@ logs
 wallet-transport-backend/tests/backend_test_config.toml
 PLANS.md
 api-wallet-password-security.md
+*/2.1/*

@@ -511,7 +511,10 @@ use tracing::{error, trace, warn};
 use wallet_database::{
     ApiTransactionDbPool,
     entities::{
-        api_collect::ApiCollectEntity, api_resource_delegation::ApiResourceDelegationSource,
+        api_collect::ApiCollectEntity,
+        api_resource_delegation::{
+            ApiResourceDelegationOperationType, ApiResourceDelegationSource,
+        },
         api_trade_type::ApiTradeType,
     },
 };
@@ -834,15 +837,23 @@ impl ShadowScanner {
             "Scanning executable resource delegation records"
         );
 
-        // 第一段扫描 collect 主链下的平台代理任务。
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type(
+        self.scan_can_platform_delegate().await;
+        self.scan_can_local_delegate().await;
+    }
+
+    async fn scan_can_platform_delegate(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable platform delegate records");
+
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
             &self.pool,
             ApiTradeType::Collect as i64,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Delegate,
             self.config.max_items_per_scan,
         ).await {
             Ok(records) => records,
             Err(e) => {
-                error!(error = %e, "Failed to scan executable resource delegation records");
+                error!(error = %e, "Failed to scan executable platform delegate records");
                 return;
             }
         };
@@ -853,23 +864,26 @@ impl ShadowScanner {
             ));
             self.dispatch_intent(intent).await;
         }
+    }
 
-        // 第二段扫描 collect 主链下的 local fallback 任务。
-        // 这里必须显式补 source 维度，否则共享副链读起来会像“又扫了一遍同样的任务”。
-        let local_records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_and_source(
+    async fn scan_can_local_delegate(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable local delegate records");
+
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
             &self.pool,
             ApiTradeType::Collect as i64,
             ApiResourceDelegationSource::Local,
+            ApiResourceDelegationOperationType::Delegate,
             self.config.max_items_per_scan,
         ).await {
             Ok(records) => records,
             Err(e) => {
-                error!(error = %e, "Failed to scan executable local delegation records");
+                error!(error = %e, "Failed to scan executable local delegate records");
                 return;
             }
         };
 
-        for record in local_records {
+        for record in records {
             let intent = CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(
                 record.resource_trade_no,
             ));

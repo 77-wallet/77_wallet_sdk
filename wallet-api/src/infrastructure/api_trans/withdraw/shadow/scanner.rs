@@ -609,16 +609,22 @@ impl ShadowScanner {
     async fn scan_can_resource_delegation_execute(&self) {
         trace!(max_items = %self.config.max_items_per_scan, "Scanning executable withdraw resource delegation records");
 
-        // withdraw 当前只扫描共享副链里的 platform source。
-        // local fallback 目前是 collect 专属顺序，尚未扩到 withdraw。
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type(
+        self.scan_can_withdraw_platform_delegate().await;
+    }
+
+    async fn scan_can_withdraw_platform_delegate(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable withdraw platform delegate records");
+
+        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
             &self.pool,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
+            wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform,
+            wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
             self.config.max_items_per_scan,
         ).await {
             Ok(records) => records,
             Err(e) => {
-                error!(error = %e, "Failed to scan executable withdraw resource delegation records");
+                error!(error = %e, "Failed to scan executable withdraw platform delegate records");
                 return;
             }
         };
