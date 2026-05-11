@@ -40,7 +40,7 @@ use wallet_database::{
         resource_delegation::ApiResourceDelegationRepo, wallet::ApiWalletRepo,
     },
 };
-use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
+use wallet_transport_backend::request::api_wallet::{resource_delegation::{ResourceApplyReq, ResourceType, TradeType}, strategy::ChainConfig};
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{RetryableError as _, conversion, unit};
 
@@ -910,6 +910,7 @@ impl ShadowCollectWorker {
         self.commit_platform_delegation_block(
             &origin_trade_no,
             &req,
+            &exec_to_addr,
             fee_details.energy,
             fee_details.bandwidth,
             available_energy,
@@ -1005,6 +1006,7 @@ impl ShadowCollectWorker {
                 self.commit_platform_delegation_block(
                     origin_trade_no,
                     req,
+                    exec_to_addr,
                     snapshot.required_energy,
                     snapshot.required_bandwidth,
                     snapshot.available_energy,
@@ -1055,6 +1057,7 @@ impl ShadowCollectWorker {
         &self,
         origin_trade_no: &str,
         req: &ApiCollectEntity,
+        exec_to_addr: &str,
         required_energy: u64,
         required_bandwidth: u64,
         available_energy: i64,
@@ -1076,7 +1079,7 @@ impl ShadowCollectWorker {
             req.trade_type.into(),
             "",
             req.from_addr.clone(),
-            amount,
+            amount.clone(),
         );
         ApiResourceDelegationRepo::upsert(&self.collect_pool, delegation)
             .await
@@ -1104,7 +1107,84 @@ impl ShadowCollectWorker {
             source = "shadow_worker_v2",
             "TRON collect resource gate blocked"
         );
+
+        let apply_success = self.apply_platform_resource_delegation(
+            &req.uid,
+            &resource_trade_no,
+            &req.trade_no,
+            &req.chain_code,
+            &req.from_addr,
+            &amount,
+        )
+        .await?;
+
+        if !apply_success {
+            return self.commit_local_delegation_block(
+                origin_trade_no,
+                req,
+                &exec_to_addr,
+                required_energy,
+                available_energy,
+            ).await;
+        }
+
         Ok(())
+    }
+
+    async fn apply_platform_resource_delegation(
+        &self,
+        uid: &str,
+        resource_trade_no: &str,
+        origin_trade_no: &str,
+        chain_code: &str,
+        receiver_address: &str,
+        amount: &str,
+    ) -> Result<bool, ServiceError> {
+        let native_token_amount: f64 = amount.parse().map_err(|e| {
+            ServiceError::Business(
+                crate::error::business::BusinessError::ApiWallet(
+                    crate::error::business::api_wallet::ApiWalletError::Trans(
+                        TransError::BuildWithdrawTransactionFailed(format!(
+                            "Invalid delegation amount: {}",
+                            e
+                        )),
+                    ),
+                ),
+            )
+        })?;
+
+        let req = ResourceApplyReq::new(
+            origin_trade_no,
+            uid,
+            uid,
+            Some(chain_code),
+            native_token_amount,
+            None,
+            ResourceType::Energy,
+            receiver_address,
+            TradeType::CollectResourceDelegate,
+        );
+
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let resp = backend_api.apply_resource_delegation(&req).await?;
+
+        if resp.is_success() {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Platform resource delegation apply succeeded"
+            );
+            Ok(true)
+        } else {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Platform resource delegation apply rejected, will try alternative paths"
+            );
+            Ok(false)
+        }
     }
 
     async fn commit_local_delegation_block(
@@ -3898,11 +3978,11 @@ mod tests {
             .expect("load collect");
 
         worker
-            .commit_platform_delegation_block(trade_no, &req, 100, 50, 20, 10)
+            .commit_platform_delegation_block(trade_no, &req, "T_exec_to_addr", 100, 50, 20, 10)
             .await
             .expect("first block commit");
         worker
-            .commit_platform_delegation_block(trade_no, &req, 100, 50, 20, 10)
+            .commit_platform_delegation_block(trade_no, &req, "T_exec_to_addr", 100, 50, 20, 10)
             .await
             .expect("second block commit");
 

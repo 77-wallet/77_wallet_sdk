@@ -26,6 +26,7 @@ use wallet_database::{
         resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
     },
 };
+use wallet_transport_backend::request::api_wallet::resource_delegation::{ResourceApplyReq, ResourceType, TradeType};
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
 
@@ -467,7 +468,7 @@ impl ShadowWithdrawWorker {
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
             "",
             req.from_addr.clone(),
-            amount,
+            amount.clone(),
         );
         ApiResourceDelegationRepo::upsert(&self.pool, delegation)
             .await
@@ -491,7 +492,83 @@ impl ShadowWithdrawWorker {
             source = "shadow_withdraw_worker",
             "TRON withdraw resource gate blocked"
         );
+
+        let apply_success = self.apply_platform_resource_delegation(
+            &req.uid,
+            &resource_trade_no,
+            &req.trade_no,
+            &req.chain_code,
+            &req.from_addr,
+            &amount,
+        )
+        .await?;
+
+        if !apply_success {
+            let rows =
+                ApiWithdrawRepo::mark_resource_released(&self.pool, origin_trade_no, "fallback_allowed")
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+            if rows > 0 {
+                self.scanner.try_advance(origin_trade_no).await;
+            }
+            return Ok(());
+        }
+
         Ok(())
+    }
+
+    async fn apply_platform_resource_delegation(
+        &self,
+        uid: &str,
+        resource_trade_no: &str,
+        origin_trade_no: &str,
+        chain_code: &str,
+        receiver_address: &str,
+        amount: &str,
+    ) -> Result<bool, ServiceError> {
+        let native_token_amount: f64 = amount.parse().map_err(|e| {
+            ServiceError::Business(
+                crate::error::business::BusinessError::ApiWallet(ApiWalletError::Trans(
+                    TransError::BuildWithdrawTransactionFailed(format!(
+                        "Invalid delegation amount: {}",
+                        e
+                    )),
+                )),
+            )
+        })?;
+
+        let req = ResourceApplyReq::new(
+            origin_trade_no,
+            uid,
+            uid,
+            Some(chain_code),
+            native_token_amount,
+            None,
+            ResourceType::Energy,
+            receiver_address,
+            TradeType::WithdrawResourceDelegate,
+        );
+
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let resp = backend_api.apply_resource_delegation(&req).await?;
+
+        if resp.is_success() {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_withdraw_worker",
+                "Platform resource delegation apply succeeded"
+            );
+            Ok(true)
+        } else {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_withdraw_worker",
+                "Platform resource delegation apply rejected, will proceed with main currency check"
+            );
+            Ok(false)
+        }
     }
 
     /// 执行 Recover Command - 外层wrapper，确保所有错误都被捕获

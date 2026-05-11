@@ -9,12 +9,12 @@ use crate::{api::BackendApi, api_request::ApiBackendRequest};
 impl BackendApi {
     pub async fn apply_resource_delegation(
         &self,
-        req: &ResourceDelegationApplyReq,
-    ) -> Result<ResourceDelegationApplyResp, crate::Error> {
+        req: &ResourceApplyReq,
+    ) -> Result<ApplyResourceDlRep, crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let resp = self
-            .post_api_backend::<_, ResourceDelegationApplyResp>(RESOURCE_DELEGATION_APPLY, api_req)
+            .post_api_backend::<_, ApplyResourceDlRep>(RESOURCE_DELEGATION_APPLY, api_req)
             .await?;
         resp.ok_or_else(|| {
             crate::Error::Backend(Some("resource delegation apply response is empty".to_string()))

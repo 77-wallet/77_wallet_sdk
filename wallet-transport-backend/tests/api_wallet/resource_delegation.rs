@@ -1,7 +1,8 @@
 use crate::init;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::{
-    resource_delegation::ResourceDelegationApplyReq, swap::ApiInitSwapReq,
+    resource_delegation::{ResourceApplyReq, ResourceType, TradeType},
+    swap::ApiInitSwapReq,
 };
 
 #[serial_test::serial]
@@ -15,15 +16,16 @@ async fn test_apply_resource_delegation() -> Result<(), wallet_transport_backend
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
 
-    let req = ResourceDelegationApplyReq::new(
-        "test-uid",
-        "rsc_delegate_C2036586295360655360",
+    let req = ResourceApplyReq::new(
         "C2036586295360655360",
-        "tron",
+        "test-uid",
+        "test-org",
+        Some("tron"),
+        100000.0,
+        None,
+        ResourceType::Energy,
         "T_address_needs_energy",
-        1,
-        "100000",
-        5,
+        TradeType::CollectResourceDelegate,
     );
     let res = backend_api.apply_resource_delegation(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;
@@ -42,15 +44,16 @@ async fn test_apply_resource_delegation_withdraw() -> Result<(), wallet_transpor
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
 
-    let req = ResourceDelegationApplyReq::new(
-        "test-uid",
-        "rsc_delegate_W2036586295360655361",
+    let req = ResourceApplyReq::new(
         "W2036586295360655361",
-        "tron",
+        "test-uid",
+        "test-org",
+        Some("tron"),
+        50000.0,
+        None,
+        ResourceType::Energy,
         "T_withdraw_address",
-        1,
-        "50000",
-        7,
+        TradeType::WithdrawResourceDelegate,
     );
     let res = backend_api.apply_resource_delegation(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;
@@ -69,15 +72,16 @@ async fn test_apply_resource_delegation_bandwidth() -> Result<(), wallet_transpo
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
 
-    let req = ResourceDelegationApplyReq::new(
-        "test-uid",
-        "rsc_delegate_C2036586295360655362",
+    let req = ResourceApplyReq::new(
         "C2036586295360655362",
-        "tron",
+        "test-uid",
+        "test-org",
+        Some("tron"),
+        200000.0,
+        None,
+        ResourceType::Bandwidth,
         "T_address_needs_bandwidth",
-        2,
-        "200000",
-        5,
+        TradeType::CollectResourceDelegate,
     );
     let res = backend_api.apply_resource_delegation(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;

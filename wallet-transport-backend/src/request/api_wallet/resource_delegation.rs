@@ -1,53 +1,137 @@
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResourceDelegationApplyReq {
-    pub uid: String,
-    pub trade_no: String,
-    pub origin_trade_no: String,
-    #[serde(rename = "chain")]
-    pub chain_code: String,
-    pub receiver_address: String,
-    #[serde(rename = "rscType")]
-    pub resource_type: u32,
-    pub amount: String,
-    #[serde(rename = "tradeType")]
-    pub trade_type: u32,
+/// 资源委托申请相关的数据结构
+/// 用于 SDK 主动向后端申请资源委托的接口
+
+use serde::{Deserialize, Serialize};
+
+/// 资源类型枚举
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum ResourceType {
+    /// 能量资源
+    #[serde(rename = "ENERGY")]
+    Energy,
+    /// 带宽资源
+    #[serde(rename = "BANDWIDTH")]
+    Bandwidth,
 }
 
-impl ResourceDelegationApplyReq {
-    pub fn new(
-        uid: &str,
-        trade_no: &str,
-        origin_trade_no: &str,
-        chain_code: &str,
-        receiver_address: &str,
-        resource_type: u32,
-        amount: &str,
-        trade_type: u32,
-    ) -> Self {
-        Self {
-            uid: uid.to_string(),
-            trade_no: trade_no.to_string(),
-            origin_trade_no: origin_trade_no.to_string(),
-            chain_code: chain_code.to_string(),
-            receiver_address: receiver_address.to_string(),
-            resource_type,
-            amount: amount.to_string(),
-            trade_type,
+impl ResourceType {
+    /// 获取资源类型的字符串表示
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ResourceType::Energy => "ENERGY",
+            ResourceType::Bandwidth => "BANDWIDTH",
         }
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResourceDelegationApplyResp {
-    pub success: bool,
-    pub trade_no: Option<String>,
-    pub message: Option<String>,
+/// 交易类型枚举
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum TradeType {
+    /// 归集资源代理
+    #[serde(rename = "COL_RSC_DL")]
+    CollectResourceDelegate,
+    /// 提币资源代理
+    #[serde(rename = "WD_RSC_DL")]
+    WithdrawResourceDelegate,
 }
 
-impl ResourceDelegationApplyResp {
+impl TradeType {
+    /// 获取交易类型的字符串表示
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TradeType::CollectResourceDelegate => "COL_RSC_DL",
+            TradeType::WithdrawResourceDelegate => "WD_RSC_DL",
+        }
+    }
+}
+
+/// 资源委托申请请求结构体
+/// 对应后端接口: POST /aw/trans/resourceDl/apply
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceApplyReq {
+    /// 平台交易单号（归集单或提币单）
+    #[serde(rename = "tradeNo")]
+    pub trade_no: String,
+    /// 应用 appId
+    #[serde(rename = "appId")]
+    pub app_id: String,
+    /// 商户 ID
+    #[serde(rename = "orgId")]
+    pub org_id: String,
+    /// 链编码（可选）
+    pub chain: Option<String>,
+    /// 申请的资源换算成本币的数量
+    #[serde(rename = "nativeTokenAmount")]
+    pub native_token_amount: f64,
+    /// 代理的资源数量（可选）
+    #[serde(rename = "resourceAmount")]
+    pub resource_amount: Option<f64>,
+    /// 资源类型（ENERGY / BANDWIDTH）
+    #[serde(rename = "resourceType")]
+    pub resource_type: ResourceType,
+    /// 接收资源的地址
+    pub to: String,
+    /// 交易类型（COL_RSC_DL / WD_RSC_DL）
+    pub r#type: TradeType,
+}
+
+impl ResourceApplyReq {
+    /// 创建资源委托申请请求
+    ///
+    /// # 参数
+    ///
+    /// * `trade_no` - 平台交易单号
+    /// * `app_id` - 应用 appId
+    /// * `org_id` - 商户 ID
+    /// * `chain` - 链编码（可选）
+    /// * `native_token_amount` - 申请的资源换算成本币的数量
+    /// * `resource_amount` - 代理的资源数量（可选）
+    /// * `resource_type` - 资源类型
+    /// * `to` - 接收资源的地址
+    /// * `r#type` - 交易类型
+    pub fn new(
+        trade_no: &str,
+        app_id: &str,
+        org_id: &str,
+        chain: Option<&str>,
+        native_token_amount: f64,
+        resource_amount: Option<f64>,
+        resource_type: ResourceType,
+        to: &str,
+        r#type: TradeType,
+    ) -> Self {
+        Self {
+            trade_no: trade_no.to_string(),
+            app_id: app_id.to_string(),
+            org_id: org_id.to_string(),
+            chain: chain.map(|s| s.to_string()),
+            native_token_amount,
+            resource_amount,
+            resource_type,
+            to: to.to_string(),
+            r#type,
+        }
+    }
+}
+
+/// 资源委托申请响应结构体
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyResourceDlRep {
+    /// 申请结果（成功/失败）
+    #[serde(rename = "dlRes")]
+    pub dl_res: Option<bool>,
+    /// 资源单号（申请成功时返回）
+    #[serde(rename = "dlTradeNo")]
+    pub dl_trade_no: Option<String>,
+}
+
+impl ApplyResourceDlRep {
+    /// 判断申请是否成功
     pub fn is_success(&self) -> bool {
-        self.success
+        self.dl_res.unwrap_or(false)
     }
 }
