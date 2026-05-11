@@ -854,15 +854,25 @@ mod tests {
         )
         .await
         .expect("insert collect platform undelegate");
-        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_platform_undelegate_collect_recover")
-            .await
-            .expect("mark task ack");
-        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_undelegate_collect_recover")
-            .await
-            .expect("claim build slot");
-        ApiResourceDelegationRepo::mark_broadcast_success(&pool, "rsc_platform_undelegate_collect_recover", "tx_hash_collect")
-            .await
-            .expect("mark broadcast success");
+        ApiResourceDelegationRepo::mark_task_ack_sent(
+            &pool,
+            "rsc_platform_undelegate_collect_recover",
+        )
+        .await
+        .expect("mark task ack");
+        ApiResourceDelegationRepo::claim_build_slot(
+            &pool,
+            "rsc_platform_undelegate_collect_recover",
+        )
+        .await
+        .expect("claim build slot");
+        ApiResourceDelegationRepo::mark_broadcast_success(
+            &pool,
+            "rsc_platform_undelegate_collect_recover",
+            "tx_hash_collect",
+        )
+        .await
+        .expect("mark broadcast success");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -881,15 +891,25 @@ mod tests {
         )
         .await
         .expect("insert withdraw platform undelegate");
-        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_platform_undelegate_withdraw_recover")
-            .await
-            .expect("mark task ack");
-        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_undelegate_withdraw_recover")
-            .await
-            .expect("claim build slot");
-        ApiResourceDelegationRepo::mark_broadcast_success(&pool, "rsc_platform_undelegate_withdraw_recover", "tx_hash_withdraw")
-            .await
-            .expect("mark broadcast success");
+        ApiResourceDelegationRepo::mark_task_ack_sent(
+            &pool,
+            "rsc_platform_undelegate_withdraw_recover",
+        )
+        .await
+        .expect("mark task ack");
+        ApiResourceDelegationRepo::claim_build_slot(
+            &pool,
+            "rsc_platform_undelegate_withdraw_recover",
+        )
+        .await
+        .expect("claim build slot");
+        ApiResourceDelegationRepo::mark_broadcast_success(
+            &pool,
+            "rsc_platform_undelegate_withdraw_recover",
+            "tx_hash_withdraw",
+        )
+        .await
+        .expect("mark broadcast success");
 
         let scanner = PlatformResourceReclaimScanner::with_config(
             pool,
