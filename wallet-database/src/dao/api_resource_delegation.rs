@@ -305,6 +305,48 @@ impl ApiResourceDelegationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_can_recover_by_origin_type_source_and_operation<'a, E>(
+        exec: E,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let (ack_clause, order_expr) = match source {
+            ApiResourceDelegationSource::Platform => {
+                ("AND task_ack_sent_at IS NOT NULL", "task_ack_sent_at")
+            }
+            ApiResourceDelegationSource::Local => ("", "created_at"),
+        };
+        let sql = format!(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = ?
+              AND operation_type = ?
+              AND origin_trade_type = ?
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              {ack_clause}
+              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            ORDER BY COALESCE(next_retry_at, {order_expr}) ASC, id ASC
+            LIMIT ?
+            "#
+        );
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(&sql)
+            .bind(source.as_i64())
+            .bind(operation_type.as_i64())
+            .bind(origin_trade_type)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn claim_build_slot<'a, E>(
         exec: E,
         resource_trade_no: &str,

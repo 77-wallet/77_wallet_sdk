@@ -85,6 +85,8 @@ impl PlatformResourceReclaimScanner {
 
         self.scan_collect_platform_undelegation(&mut intents).await;
         self.scan_withdraw_platform_undelegation(&mut intents).await;
+        self.scan_collect_platform_undelegation_recover(&mut intents).await;
+        self.scan_withdraw_platform_undelegation_recover(&mut intents).await;
 
         intents
     }
@@ -137,6 +139,58 @@ impl PlatformResourceReclaimScanner {
             }
             Err(e) => {
                 error!(error = %e, "Failed to scan executable withdraw platform undelegation records");
+            }
+        }
+    }
+
+    async fn scan_collect_platform_undelegation_recover(
+        &self,
+        intents: &mut Vec<PlatformResourceReclaimIntent>,
+    ) {
+        match ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
+            &self.pool,
+            ApiTradeType::Collect as i64,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Undelegate,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(PlatformResourceReclaimIntent::RecoverPlatformUndelegation(
+                        record.resource_trade_no,
+                    ));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan recoverable collect platform undelegation records");
+            }
+        }
+    }
+
+    async fn scan_withdraw_platform_undelegation_recover(
+        &self,
+        intents: &mut Vec<PlatformResourceReclaimIntent>,
+    ) {
+        match ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
+            &self.pool,
+            ApiTradeType::Withdraw as i64,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Undelegate,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(PlatformResourceReclaimIntent::RecoverPlatformUndelegation(
+                        record.resource_trade_no,
+                    ));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan recoverable withdraw platform undelegation records");
             }
         }
     }
