@@ -26,7 +26,6 @@ use wallet_database::{
         resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
     },
 };
-use wallet_transport_backend::request::api_wallet::resource_delegation::ResourceDelegationApplyReq;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
 
@@ -468,7 +467,7 @@ impl ShadowWithdrawWorker {
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
             "",
             req.from_addr.clone(),
-            amount.clone(),
+            amount,
         );
         ApiResourceDelegationRepo::upsert(&self.pool, delegation)
             .await
@@ -492,71 +491,6 @@ impl ShadowWithdrawWorker {
             source = "shadow_withdraw_worker",
             "TRON withdraw resource gate blocked"
         );
-
-        self.apply_platform_resource_delegation(
-            &req.uid,
-            &resource_trade_no,
-            &req.trade_no,
-            &req.chain_code,
-            &req.from_addr,
-            &amount,
-        )
-        .await?;
-
-        Ok(())
-    }
-
-    async fn apply_platform_resource_delegation(
-        &self,
-        uid: &str,
-        resource_trade_no: &str,
-        origin_trade_no: &str,
-        chain_code: &str,
-        receiver_address: &str,
-        amount: &str,
-    ) -> Result<(), ServiceError> {
-        let req = ResourceDelegationApplyReq::new(
-            uid,
-            resource_trade_no,
-            origin_trade_no,
-            chain_code,
-            receiver_address,
-            1,
-            amount,
-            7,
-        );
-
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        match backend_api.apply_resource_delegation(&req).await {
-            Ok(resp) => {
-                if resp.is_success() {
-                    info!(
-                        resource_trade_no = %resource_trade_no,
-                        origin_trade_no = %origin_trade_no,
-                        source = "shadow_withdraw_worker",
-                        "Platform resource delegation apply succeeded"
-                    );
-                } else {
-                    warn!(
-                        resource_trade_no = %resource_trade_no,
-                        origin_trade_no = %origin_trade_no,
-                        message = %resp.message.unwrap_or_default(),
-                        source = "shadow_withdraw_worker",
-                        "Platform resource delegation apply failed"
-                    );
-                }
-            }
-            Err(e) => {
-                warn!(
-                    resource_trade_no = %resource_trade_no,
-                    origin_trade_no = %origin_trade_no,
-                    error = %e,
-                    source = "shadow_withdraw_worker",
-                    "Platform resource delegation apply request failed"
-                );
-            }
-        }
-
         Ok(())
     }
 
