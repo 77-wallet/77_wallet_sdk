@@ -162,7 +162,7 @@ impl WalletManager {
     }
 }
 
-#[cfg(all(test, feature = "integration-tests"))]
+#[cfg(all(feature = "integration-tests"))]
 mod test {
     use crate::test::env::get_manager;
 
@@ -184,7 +184,7 @@ mod test {
         // let salt = "q3333333";
         // let salt = "q6666669";
         // let salt = "r0000011";
-        let salt = "q1111111";
+        let salt = "r0000001";
         // let salt = "r0000002";
         // let salt = "r77777777";
         let wallet_name = "api_wallet";
@@ -228,14 +228,14 @@ mod test {
         // let salt = "10";
         // let salt = "q2222222";
         // let salt = "q7777781";
-        let salt = "w0000011";
+        let salt = "w0000001";
         // let salt = "w0000002";
         // let salt = "q7777777";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
         // let binding_address = Some("0x7092d3B98B177e630efbA09c047D2bd448608Dda");
         // let binding_address = Some("0x806b94a00D6a4e415739D54D476832Adf432f229");
-        let binding_address = None;
-        // let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
+        // let binding_address = None;
+        let binding_address = Some("0x93A36df0a3716429C89EB01D56d269f66aFc26C6");
         let res = wallet_manager
             .create_api_wallet(
                 language_code,
@@ -391,10 +391,10 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         // let app_id = "2956f07a24d94fb6b6426abcfeaca2be";
-        let app_id = "2f4c580450d942b287f34cbea9ea8b92";
-        let org_id = "6989a37f028b8f7abd29c3f3";
-        let subaccount_uid = "3ffc13d78c8f6f5f2dcb847d5065d0cac85fa947ab9d1dc43f0aadd146dddc2f";
-        let withdrawal_uid = "b10a585a83a1dac1cb89b98fcd0f814237d5b44c91caea60305e019f96f27f33";
+        let app_id = "117937721d02471e8791349b00ebd7e4";
+        let org_id = "1";
+        let subaccount_uid = "fbcef8056b5dda7bcae6658613fccba8b9d9707a53a1d62c3f126db9b2ac8b61";
+        let withdrawal_uid = "c37ab9e78d86c0a7c744539642e18deb6d0be09f2dee17935a407087389dc0cb";
 
         let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");
