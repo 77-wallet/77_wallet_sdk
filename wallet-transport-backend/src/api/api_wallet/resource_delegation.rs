@@ -16,6 +16,8 @@ impl BackendApi {
         let resp = self
             .post_api_backend::<_, ResourceDelegationApplyResp>(RESOURCE_DELEGATION_APPLY, api_req)
             .await?;
-        resp.ok_or_else(|| crate::Error::Backend(Some("resource delegation apply response is empty".to_string())))
+        resp.ok_or_else(|| {
+            crate::Error::Backend(Some("resource delegation apply response is empty".to_string()))
+        })
     }
 }

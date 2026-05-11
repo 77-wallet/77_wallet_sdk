@@ -1,8 +1,7 @@
 use crate::init;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::{
-    resource_delegation::ResourceDelegationApplyReq,
-    swap::ApiInitSwapReq,
+    resource_delegation::ResourceDelegationApplyReq, swap::ApiInitSwapReq,
 };
 
 #[serial_test::serial]
