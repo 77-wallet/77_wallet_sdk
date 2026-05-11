@@ -826,4 +826,89 @@ mod tests {
                 if trade_no == "rsc_platform_undelegate_withdraw"
         )));
     }
+
+    #[tokio::test]
+    async fn scanner_finds_platform_undelegation_recover_for_collect_and_withdraw() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_undelegate_collect_recover",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert collect platform undelegate");
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_platform_undelegate_collect_recover")
+            .await
+            .expect("mark task ack");
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_undelegate_collect_recover")
+            .await
+            .expect("claim build slot");
+        ApiResourceDelegationRepo::mark_broadcast_success(&pool, "rsc_platform_undelegate_collect_recover", "tx_hash_collect")
+            .await
+            .expect("mark broadcast success");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_undelegate_withdraw_recover",
+                ApiTradeType::Withdraw,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert withdraw platform undelegate");
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_platform_undelegate_withdraw_recover")
+            .await
+            .expect("mark task ack");
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_undelegate_withdraw_recover")
+            .await
+            .expect("claim build slot");
+        ApiResourceDelegationRepo::mark_broadcast_success(&pool, "rsc_platform_undelegate_withdraw_recover", "tx_hash_withdraw")
+            .await
+            .expect("mark broadcast success");
+
+        let scanner = PlatformResourceReclaimScanner::with_config(
+            pool,
+            PlatformResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+
+        let intents = scanner.scan_round().await;
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::RecoverPlatformUndelegation(trade_no)
+                if trade_no == "rsc_platform_undelegate_collect_recover"
+        )));
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::RecoverPlatformUndelegation(trade_no)
+                if trade_no == "rsc_platform_undelegate_withdraw_recover"
+        )));
+    }
 }
