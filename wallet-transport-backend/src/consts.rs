@@ -145,6 +145,9 @@ pub mod endpoint {
         pub const QUERY_ASSET_LIST: &str = "awallet/aw/address/assetList";
         /// api钱包查询代币列表
         pub const API_WALLET_COIN_LIST: &str = "awallet/aw/token/queryByPage";
+
+        /// SDK申请资源委托
+        pub const RESOURCE_DELEGATION_APPLY: &str = "awallet/aw/trans/resourceDl/apply";
     }
 }
 
