@@ -1,6 +1,5 @@
 /// 资源委托申请相关的数据结构
 /// 用于 SDK 主动向后端申请资源委托的接口
-
 use serde::{Deserialize, Serialize};
 
 /// 资源类型枚举

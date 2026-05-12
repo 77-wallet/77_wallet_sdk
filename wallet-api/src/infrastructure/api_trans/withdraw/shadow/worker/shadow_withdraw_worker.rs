@@ -26,7 +26,9 @@ use wallet_database::{
         resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
     },
 };
-use wallet_transport_backend::request::api_wallet::resource_delegation::{ResourceApplyReq, ResourceType, TradeType};
+use wallet_transport_backend::request::api_wallet::resource_delegation::{
+    ResourceApplyReq, ResourceType, TradeType,
+};
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
 
@@ -493,21 +495,25 @@ impl ShadowWithdrawWorker {
             "TRON withdraw resource gate blocked"
         );
 
-        let apply_success = self.apply_platform_resource_delegation(
-            &req.uid,
-            &resource_trade_no,
-            &req.trade_no,
-            &req.chain_code,
-            &req.from_addr,
-            &amount,
-        )
-        .await?;
+        let apply_success = self
+            .apply_platform_resource_delegation(
+                &req.uid,
+                &resource_trade_no,
+                &req.trade_no,
+                &req.chain_code,
+                &req.from_addr,
+                &amount,
+            )
+            .await?;
 
         if !apply_success {
-            let rows =
-                ApiWithdrawRepo::mark_resource_released(&self.pool, origin_trade_no, "fallback_allowed")
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+            let rows = ApiWithdrawRepo::mark_resource_released(
+                &self.pool,
+                origin_trade_no,
+                "fallback_allowed",
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
             if rows > 0 {
                 self.scanner.try_advance(origin_trade_no).await;
             }
@@ -527,14 +533,12 @@ impl ShadowWithdrawWorker {
         amount: &str,
     ) -> Result<bool, ServiceError> {
         let native_token_amount: f64 = amount.parse().map_err(|e| {
-            ServiceError::Business(
-                crate::error::business::BusinessError::ApiWallet(ApiWalletError::Trans(
-                    TransError::BuildWithdrawTransactionFailed(format!(
-                        "Invalid delegation amount: {}",
-                        e
-                    )),
-                )),
-            )
+            ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
+                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed(format!(
+                    "Invalid delegation amount: {}",
+                    e
+                ))),
+            ))
         })?;
 
         let req = ResourceApplyReq::new(
