@@ -8,7 +8,7 @@ doctest = false
 
 [features]
 # default = ["prod", "api-mqtt"]
-default = ["dev", "token", "integration-tests"]
+default = ["dev", "token", "integration-tests", "api-mqtt"]
 # default = ["test", "token", "integration-tests", "api-mqtt"]
 
 integration-tests = []
