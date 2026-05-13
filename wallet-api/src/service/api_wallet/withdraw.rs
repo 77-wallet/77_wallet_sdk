@@ -27,7 +27,8 @@ impl WithdrawService {
         uid: &str,
     ) -> Result<Vec<ApiWithdrawOrderVo>, ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        let entities = ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.map_err(ServiceError::from)?;
+        let entities =
+            ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.map_err(ServiceError::from)?;
         Ok(entities.into_iter().map(ApiWithdrawOrderVo::from).collect())
     }
 

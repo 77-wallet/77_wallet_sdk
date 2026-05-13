@@ -153,7 +153,7 @@ pub struct ApiWithdrawEntity {
     pub audit_passed_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 审核通过事实
     pub audit_rejected_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 审核拒绝事实
     #[serde(skip_serializing)]
-    pub audit_reason: Option<String>, // 审核拒绝原因
+    pub audit_reason: Option<String>,                         // 审核拒绝原因
 
     // ===== Chain Result 事实 =====
     #[serde(skip_serializing)]

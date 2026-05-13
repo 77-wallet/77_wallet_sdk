@@ -15,10 +15,6 @@ pub struct ApiWithdrawOrderVo {
 impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
     fn from(entity: ApiWithdrawEntity) -> Self {
         let sign_time = entity.audit_passed_at.or(entity.audit_rejected_at);
-        Self {
-            apply_time: entity.created_at,
-            sign_time,
-            inner: entity,
-        }
+        Self { apply_time: entity.created_at, sign_time, inner: entity }
     }
 }

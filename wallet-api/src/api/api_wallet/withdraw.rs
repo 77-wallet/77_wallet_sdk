@@ -1,12 +1,9 @@
 use crate::{
-    api::ReturnType, manager::WalletManager, service::api_wallet::withdraw::WithdrawService,
-    response_vo::api_wallet::withdraw::ApiWithdrawOrderVo,
+    api::ReturnType, manager::WalletManager, response_vo::api_wallet::withdraw::ApiWithdrawOrderVo,
+    service::api_wallet::withdraw::WithdrawService,
 };
 use wallet_database::{
-    entities::{
-        api_withdraw::ApiWithdrawStatus,
-        asset_token_key::AssetTokenKey,
-    },
+    entities::{api_withdraw::ApiWithdrawStatus, asset_token_key::AssetTokenKey},
     pagination::Pagination,
 };
 
