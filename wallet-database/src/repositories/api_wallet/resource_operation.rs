@@ -176,11 +176,17 @@ impl ApiResourceOperationRepo {
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiResourceOperationDao::mark_broadcast_uncertain_attempt(pool.write_ref(), resource_trade_no)
-            .await
+        ApiResourceOperationDao::mark_broadcast_uncertain_attempt(
+            pool.write_ref(),
+            resource_trade_no,
+        )
+        .await
     }
 
-    pub async fn invalidate_raw_tx(pool: &ApiTransactionDbPool, resource_trade_no: &str) -> Result<u64, crate::Error> {
+    pub async fn invalidate_raw_tx(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::invalidate_raw_tx(pool.write_ref(), resource_trade_no).await
     }
 }

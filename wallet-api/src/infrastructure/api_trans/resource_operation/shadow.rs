@@ -532,7 +532,8 @@ impl ResourceOperationWorker {
         operation: &ApiResourceOperationEntity,
         now: DateTime<Utc>,
     ) -> Option<i64> {
-        operation.broadcast_uncertain_since_at
+        operation
+            .broadcast_uncertain_since_at
             .map(|since| now.signed_duration_since(since).num_seconds().max(0))
     }
 
@@ -605,14 +606,17 @@ impl ResourceOperationWorker {
                         "Resource operation tx_hash mismatch between build and broadcast"
                     );
                     return Err(ServiceError::System(SystemError::Internal(
-                        "resource operation tx_hash mismatch between build and broadcast".to_string(),
+                        "resource operation tx_hash mismatch between build and broadcast"
+                            .to_string(),
                     )));
                 }
 
-                let affected =
-                    ApiResourceOperationRepo::mark_broadcast_executed(&self.pool, &resource_trade_no)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let affected = ApiResourceOperationRepo::mark_broadcast_executed(
+                    &self.pool,
+                    &resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 if affected == 0 {
                     trace!(
                         resource_trade_no = %resource_trade_no,
@@ -664,12 +668,10 @@ impl ResourceOperationWorker {
                         uncertain_duration_sec = %Self::broadcast_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default(),
                         "Broadcast uncertain timeout reached; invalidating raw_tx for rebuild"
                     );
-                    let rows = ApiResourceOperationRepo::invalidate_raw_tx(
-                        &self.pool,
-                        &resource_trade_no,
-                    )
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                    let rows =
+                        ApiResourceOperationRepo::invalidate_raw_tx(&self.pool, &resource_trade_no)
+                            .await
+                            .map_err(|e| ServiceError::Database(e.into()))?;
                     if rows > 0 {
                         info!(
                             resource_trade_no = %resource_trade_no,
@@ -731,12 +733,10 @@ impl ResourceOperationWorker {
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
 
-            let refreshed = ApiResourceOperationRepo::get_by_resource_trade_no(
-                &self.pool,
-                &resource_trade_no,
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
+            let refreshed =
+                ApiResourceOperationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
 
             info!(
                 resource_trade_no = %refreshed.resource_trade_no,
@@ -754,12 +754,10 @@ impl ResourceOperationWorker {
                     uncertain_duration_sec = %Self::broadcast_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default(),
                     "Recover uncertain timeout reached; invalidating raw_tx for rebuild"
                 );
-                let rows = ApiResourceOperationRepo::invalidate_raw_tx(
-                    &self.pool,
-                    &resource_trade_no,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows =
+                    ApiResourceOperationRepo::invalidate_raw_tx(&self.pool, &resource_trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                 if rows > 0 {
                     info!(
                         resource_trade_no = %resource_trade_no,
