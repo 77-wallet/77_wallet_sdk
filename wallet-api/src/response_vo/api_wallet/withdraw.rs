@@ -1,5 +1,5 @@
-use wallet_database::entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus};
 use crate::response_vo::api_wallet::withdraw_display::FailureReasonDisplay;
+use wallet_database::entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus};
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,8 +18,17 @@ pub struct ApiWithdrawOrderVo {
 impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
     fn from(entity: ApiWithdrawEntity) -> Self {
         let sign_time = entity.audit_passed_at.or(entity.audit_rejected_at);
-        let failure_reason_display = if matches!(entity.status, ApiWithdrawStatus::AuditReject | ApiWithdrawStatus::SendingTxFailed | ApiWithdrawStatus::Failure) {
-            Some(FailureReasonDisplay::from_status_and_error(entity.status, entity.err_code, entity.failure_stage))
+        let failure_reason_display = if matches!(
+            entity.status,
+            ApiWithdrawStatus::AuditReject
+                | ApiWithdrawStatus::SendingTxFailed
+                | ApiWithdrawStatus::Failure
+        ) {
+            Some(FailureReasonDisplay::from_status_and_error(
+                entity.status,
+                entity.err_code,
+                entity.failure_stage,
+            ))
         } else {
             None
         };

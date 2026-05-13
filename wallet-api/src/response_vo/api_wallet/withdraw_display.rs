@@ -56,11 +56,8 @@ mod tests {
 
     #[test]
     fn test_failure_reason_type_audit_rejected() {
-        let reason = FailureReasonDisplay::from_status_and_error(
-            ApiWithdrawStatus::AuditReject,
-            None,
-            None,
-        );
+        let reason =
+            FailureReasonDisplay::from_status_and_error(ApiWithdrawStatus::AuditReject, None, None);
         assert_eq!(reason, FailureReasonDisplay::AuditRejected);
         assert_eq!(serde_json::to_string(&reason).unwrap(), "1");
     }
@@ -123,11 +120,8 @@ mod tests {
 
     #[test]
     fn test_failure_reason_type_unknown_failed() {
-        let reason = FailureReasonDisplay::from_status_and_error(
-            ApiWithdrawStatus::Failure,
-            None,
-            None,
-        );
+        let reason =
+            FailureReasonDisplay::from_status_and_error(ApiWithdrawStatus::Failure, None, None);
         assert_eq!(reason, FailureReasonDisplay::UnknownFailed);
         assert_eq!(serde_json::to_string(&reason).unwrap(), "0");
     }

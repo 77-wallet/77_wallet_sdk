@@ -137,8 +137,9 @@ mod unit_tests {
         asset_token_key::AssetTokenKey,
     };
 
-    use crate::response_vo::api_wallet::withdraw::ApiWithdrawOrderVo;
-    use crate::response_vo::api_wallet::withdraw_display::FailureReasonDisplay;
+    use crate::response_vo::api_wallet::{
+        withdraw::ApiWithdrawOrderVo, withdraw_display::FailureReasonDisplay,
+    };
 
     fn make_entity(
         created_at: chrono::DateTime<Utc>,
@@ -262,14 +263,14 @@ mod unit_tests {
     #[test]
     fn test_failure_reason_display() {
         let now = Utc::now();
-        
+
         // Test Init status - should return None for non-failure status
         let entity = make_entity(now, None, None);
         let vo = ApiWithdrawOrderVo::from(entity);
         let json = serde_json::to_string_pretty(&vo).unwrap();
         println!("Init status:\n{}", json);
         assert_eq!(vo.failure_reason_display, None);
-        
+
         // Test AuditReject status
         let mut entity = make_entity(now, None, None);
         entity.status = ApiWithdrawStatus::AuditReject;
@@ -277,7 +278,7 @@ mod unit_tests {
         let json = serde_json::to_string_pretty(&vo).unwrap();
         println!("AuditReject status:\n{}", json);
         assert_eq!(vo.failure_reason_display, Some(FailureReasonDisplay::AuditRejected));
-        
+
         // Test Success status
         let mut entity = make_entity(now, None, None);
         entity.status = ApiWithdrawStatus::Success;
