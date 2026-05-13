@@ -981,7 +981,7 @@ impl ApiTransDomain {
         nonce: i64,
         transaction_fee: &str,
     ) -> Result<Option<TransferResp>, ServiceError> {
-        tracing::info!(trade_no=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
+        tracing::info!(tx_hash=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
         if let Some((host, remaining)) =
             chain_rpc_guard::breaker_open_for_chain_code(chain_code).await

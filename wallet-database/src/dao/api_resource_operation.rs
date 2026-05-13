@@ -523,4 +523,70 @@ impl ApiResourceOperationDao {
         .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
     }
+
+    /// Mark a broadcast attempt as uncertain and increment retry count.
+    /// This is used when broadcast returns uncertain result (None).
+    pub async fn mark_broadcast_uncertain_attempt<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET broadcast_uncertain_since_at = COALESCE(broadcast_uncertain_since_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                broadcast_uncertain_retry_count = broadcast_uncertain_retry_count + 1,
+                broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND task_source = 1
+              AND raw_tx IS NOT NULL
+              AND trim(raw_tx) <> ''
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Invalidate raw_tx when transaction expires.
+    /// This allows the operation to be rebuilt with fresh nonce/expiration.
+    pub async fn invalidate_raw_tx<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET raw_tx = NULL,
+                tx_hash = NULL,
+                transaction_fee = NULL,
+                last_broadcast_at = NULL,
+                building_at = NULL,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND task_source = 1
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
 }

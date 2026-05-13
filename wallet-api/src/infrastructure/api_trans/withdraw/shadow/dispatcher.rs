@@ -295,6 +295,9 @@ impl ShadowDispatcher {
                 }
             };
 
+            // 先克隆一个 key 用于错误日志
+            let running_key_for_log = running_key.clone();
+
             // 创建 RunningGuard，确保无论如何都会释放 running 标记
             let _guard = RunningGuard::new(running_key, running, running_times);
 
@@ -367,7 +370,7 @@ impl ShadowDispatcher {
                         .await
                 }
             } {
-                error!(error = ?e, "Worker execution failed");
+                error!(error = ?e, key = ?running_key_for_log, "Worker execution failed");
             }
         });
 

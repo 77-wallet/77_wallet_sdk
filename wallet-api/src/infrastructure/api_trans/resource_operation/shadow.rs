@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use std::{sync::Arc, time::Duration};
 
 use tokio::sync::{broadcast, mpsc};
@@ -503,6 +504,47 @@ impl ResourceOperationWorker {
         }
     }
 
+    const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
+    const BROADCAST_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
+
+    fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
+        let RawTx::Tron(raw, ..) = raw_tx else { return None };
+        let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
+        v.get("expiration").and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
+    }
+
+    fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
+        if !chain_code.eq_ignore_ascii_case("tron") {
+            return false;
+        }
+        let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
+            Ok(raw_tx) => raw_tx,
+            Err(_) => return false,
+        };
+        let Some(exp_ms) = Self::tron_raw_expiration_ms(&raw_tx) else {
+            return false;
+        };
+        let now_ms = Utc::now().timestamp_millis();
+        exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
+    }
+
+    fn broadcast_uncertain_elapsed_secs(
+        operation: &ApiResourceOperationEntity,
+        now: DateTime<Utc>,
+    ) -> Option<i64> {
+        operation.broadcast_uncertain_since_at
+            .map(|since| now.signed_duration_since(since).num_seconds().max(0))
+    }
+
+    fn should_timeout_broadcast_uncertain(
+        operation: &ApiResourceOperationEntity,
+        now: DateTime<Utc>,
+    ) -> bool {
+        Self::broadcast_uncertain_elapsed_secs(operation, now)
+            .map(|elapsed| elapsed >= Self::BROADCAST_UNCERTAIN_TIMEOUT_SECS)
+            .unwrap_or(false)
+    }
+
     async fn broadcast_tx(&self, resource_trade_no: String) -> Result<(), ServiceError> {
         info!(resource_trade_no = %resource_trade_no, "Processing resource operation BroadcastTx");
 
@@ -519,7 +561,7 @@ impl ResourceOperationWorker {
             return Ok(());
         }
 
-        let raw_tx =
+        let raw_tx_json =
             operation.raw_tx.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| {
                 ServiceError::Parameter("resource operation broadcast requires raw_tx".to_string())
             })?;
@@ -528,49 +570,114 @@ impl ResourceOperationWorker {
                 ServiceError::Parameter("resource operation broadcast requires tx_hash".to_string())
             })?;
 
-        let raw_tx: RawTx = wallet_utils::serde_func::serde_from_str(raw_tx)?;
+        if Self::should_invalidate_expired_tron_raw(&operation.chain_code, raw_tx_json) {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                "Detected expired tron raw_tx during broadcast; invalidating stale tx facts"
+            );
+            let rows = ApiResourceOperationRepo::invalidate_raw_tx(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+            if rows > 0 {
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    "Invalidated expired raw_tx, will rebuild"
+                );
+            }
+            return Ok(());
+        }
+
+        let raw_tx: RawTx = wallet_utils::serde_func::serde_from_str(raw_tx_json)?;
         let _chain_rpc_guard =
             crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&operation.chain_code).await;
         let tx_resp =
             ApiTransDomain::broadcast_transfer(&operation.chain_code, raw_tx, Some(tx_hash))
                 .await?;
 
-        let Some(tx) = tx_resp else {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                tx_hash = %tx_hash,
-                "Resource operation broadcast result uncertain"
-            );
-            return Ok(());
-        };
+        match tx_resp {
+            Some(tx) => {
+                if tx.tx_hash != tx_hash {
+                    error!(
+                        resource_trade_no = %resource_trade_no,
+                        expected_tx_hash = %tx_hash,
+                        broadcast_tx_hash = %tx.tx_hash,
+                        "Resource operation tx_hash mismatch between build and broadcast"
+                    );
+                    return Err(ServiceError::System(SystemError::Internal(
+                        "resource operation tx_hash mismatch between build and broadcast".to_string(),
+                    )));
+                }
 
-        if tx.tx_hash != tx_hash {
-            error!(
-                resource_trade_no = %resource_trade_no,
-                expected_tx_hash = %tx_hash,
-                broadcast_tx_hash = %tx.tx_hash,
-                "Resource operation tx_hash mismatch between build and broadcast"
-            );
-            return Err(ServiceError::System(SystemError::Internal(
-                "resource operation tx_hash mismatch between build and broadcast".to_string(),
-            )));
-        }
+                let affected =
+                    ApiResourceOperationRepo::mark_broadcast_executed(&self.pool, &resource_trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                if affected == 0 {
+                    trace!(
+                        resource_trade_no = %resource_trade_no,
+                        "Resource operation broadcast fact already committed"
+                    );
+                } else {
+                    info!(
+                        resource_trade_no = %resource_trade_no,
+                        tx_hash = %tx_hash,
+                        "Resource operation broadcast fact committed"
+                    );
+                }
+            }
+            None => {
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    tx_hash = %tx_hash,
+                    "Resource operation broadcast result uncertain"
+                );
 
-        let affected =
-            ApiResourceOperationRepo::mark_broadcast_executed(&self.pool, &resource_trade_no)
+                let now = Utc::now();
+                let rows_affected = ApiResourceOperationRepo::mark_broadcast_uncertain_attempt(
+                    &self.pool,
+                    &resource_trade_no,
+                )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
-        if affected == 0 {
-            trace!(
-                resource_trade_no = %resource_trade_no,
-                "Resource operation broadcast fact already committed"
-            );
-        } else {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                tx_hash = %tx_hash,
-                "Resource operation broadcast fact committed"
-            );
+
+                let refreshed = ApiResourceOperationRepo::get_by_resource_trade_no(
+                    &self.pool,
+                    &resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+                info!(
+                    resource_trade_no = %refreshed.resource_trade_no,
+                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                    rows_affected = %rows_affected,
+                    retry_count = refreshed.broadcast_uncertain_retry_count,
+                    uncertain_since_at = ?refreshed.broadcast_uncertain_since_at,
+                    "Resource operation broadcast uncertain state recorded"
+                );
+
+                if Self::should_timeout_broadcast_uncertain(&refreshed, now) {
+                    warn!(
+                        resource_trade_no = %refreshed.resource_trade_no,
+                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                        uncertain_duration_sec = %Self::broadcast_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default(),
+                        "Broadcast uncertain timeout reached; invalidating raw_tx for rebuild"
+                    );
+                    let rows = ApiResourceOperationRepo::invalidate_raw_tx(
+                        &self.pool,
+                        &resource_trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                    if rows > 0 {
+                        info!(
+                            resource_trade_no = %resource_trade_no,
+                            "Invalidated timed-out uncertain raw_tx, will rebuild"
+                        );
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -615,6 +722,52 @@ impl ResourceOperationWorker {
                 tx_hash = %tx_hash,
                 "Resource operation recover result uncertain"
             );
+
+            let now = Utc::now();
+            let rows_affected = ApiResourceOperationRepo::mark_broadcast_uncertain_attempt(
+                &self.pool,
+                &resource_trade_no,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+            let refreshed = ApiResourceOperationRepo::get_by_resource_trade_no(
+                &self.pool,
+                &resource_trade_no,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+            info!(
+                resource_trade_no = %refreshed.resource_trade_no,
+                tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                rows_affected = %rows_affected,
+                retry_count = refreshed.broadcast_uncertain_retry_count,
+                uncertain_since_at = ?refreshed.broadcast_uncertain_since_at,
+                "Resource operation recover uncertain state recorded"
+            );
+
+            if Self::should_timeout_broadcast_uncertain(&refreshed, now) {
+                warn!(
+                    resource_trade_no = %refreshed.resource_trade_no,
+                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                    uncertain_duration_sec = %Self::broadcast_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default(),
+                    "Recover uncertain timeout reached; invalidating raw_tx for rebuild"
+                );
+                let rows = ApiResourceOperationRepo::invalidate_raw_tx(
+                    &self.pool,
+                    &resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                if rows > 0 {
+                    info!(
+                        resource_trade_no = %resource_trade_no,
+                        "Invalidated timed-out uncertain raw_tx, will rebuild"
+                    );
+                }
+            }
+
             return Ok(());
         };
 
@@ -1142,6 +1295,10 @@ mod tests {
             recover_status: None,
             next_retry_at: None,
             retry_count: 0,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
             created_at: chrono::Utc::now(),
             updated_at: None,
         };
@@ -1183,6 +1340,10 @@ mod tests {
             recover_status: None,
             next_retry_at: None,
             retry_count: 0,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
             created_at: chrono::Utc::now(),
             updated_at: None,
         };

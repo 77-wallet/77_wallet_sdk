@@ -134,6 +134,10 @@ pub struct ApiResourceOperationEntity {
     pub recover_status: Option<ApiResourceOperationRecoverStatus>,
     pub next_retry_at: Option<DateTime<Utc>>,
     pub retry_count: i64,
+    pub broadcast_uncertain_since_at: Option<DateTime<Utc>>,
+    pub broadcast_uncertain_retry_count: i64,
+    pub broadcast_uncertain_last_checked_at: Option<DateTime<Utc>>,
+    pub broadcast_uncertain_reconciled_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }

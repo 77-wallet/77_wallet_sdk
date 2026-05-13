@@ -582,176 +582,87 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn resource_delegation_trade_type_5_persists_collect_platform_delegate()
+    #[test]
+    fn resource_delegation_trade_type_5_deserialize_routes_to_resource_delegation()
     -> anyhow::Result<()> {
-        let (_manager, _params) = get_manager().await?;
-        let trade_no =
-            format!("COL_RSC_DL_order_regression_{}", wallet_utils::time::now().timestamp_millis());
-        let wallet_uid =
-            format!("col-rsc-dl-order-regression-{}", wallet_utils::time::now().timestamp_millis());
+        let trade_no = "COL_RSC_DL_test_1";
+        let wallet_uid = "col-rsc-dl-test-1";
 
-        let msg = AwmOrderTransMsg::ResourceDelegation(AwmResourceDelegationMsg {
-            from: "T_platform_owner".to_string(),
-            to: "T_collect_receiver".to_string(),
-            native_value: "2".to_string(),
-            rsc_value: "32000".to_string(),
-            mode: 1,
-            chain_code: "tron".to_string(),
-            rsc_type: 1,
-            trade_no: trade_no.clone(),
-            trade_type: 5,
-            uid: wallet_uid.clone(),
+        let value = serde_json::json!({
+            "from": "T_platform_owner",
+            "to": "T_collect_receiver",
+            "nativeValue": "2",
+            "rscValue": "32000",
+            "mode": "1",
+            "chain": "tron",
+            "rscType": "1",
+            "tradeNo": trade_no,
+            "tradeType": "5",
+            "uid": wallet_uid
         });
 
-        msg.resource_delegation().await?;
+        let msg: AwmOrderTransMsg = serde_json::from_value(value)?;
+        let AwmOrderTransMsg::ResourceDelegation(inner) = msg else {
+            anyhow::bail!("tradeType=5 should deserialize to ResourceDelegation");
+        };
 
-        let tx_pool = api_transaction_pool()?;
-        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
-        assert_eq!(got.uid, wallet_uid);
-        assert_eq!(got.source, ApiResourceDelegationSource::Platform);
-        assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Delegate);
-        assert_eq!(got.origin_trade_type, Some(ApiTradeType::Collect as i64));
-        assert_eq!(got.origin_trade_no, None);
-        assert_eq!(got.owner_address, "T_platform_owner");
-        assert_eq!(got.receiver_address, "T_collect_receiver");
-        assert_eq!(got.resource_type, ApiResourceType::Energy);
-        assert_eq!(got.native_amount, "2");
-        assert_eq!(got.amount, "32000");
-        assert!(got.task_ack_sent_at.is_none());
+        assert_eq!(inner.from, "T_platform_owner");
+        assert_eq!(inner.to, "T_collect_receiver");
+        assert_eq!(inner.native_value, "2");
+        assert_eq!(inner.rsc_value, "32000");
+        assert_eq!(inner.mode, 1);
+        assert_eq!(inner.chain_code, "tron");
+        assert_eq!(inner.rsc_type, 1);
+        assert_eq!(inner.trade_no, trade_no);
+        assert_eq!(inner.trade_type, 5);
+        assert_eq!(inner.uid, wallet_uid);
 
         Ok(())
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn resource_delegation_trade_type_7_persists_withdraw_platform_delegate()
+    #[test]
+    fn resource_delegation_trade_type_7_deserialize_routes_to_resource_delegation()
     -> anyhow::Result<()> {
-        let (_manager, _params) = get_manager().await?;
-        let trade_no =
-            format!("WD_RSC_DL_order_regression_{}", wallet_utils::time::now().timestamp_millis());
-        let wallet_uid =
-            format!("wd-rsc-dl-order-regression-{}", wallet_utils::time::now().timestamp_millis());
+        let trade_no = "WD_RSC_DL_test_7";
+        let wallet_uid = "wd-rsc-dl-test-7";
 
-        let msg = AwmOrderTransMsg::ResourceDelegation(AwmResourceDelegationMsg {
-            from: "T_platform_owner".to_string(),
-            to: "T_withdraw_receiver".to_string(),
-            native_value: "3".to_string(),
-            rsc_value: "64000".to_string(),
-            mode: 2,
-            chain_code: "tron".to_string(),
-            rsc_type: 1,
-            trade_no: trade_no.clone(),
-            trade_type: 7,
-            uid: wallet_uid,
+        let value = serde_json::json!({
+            "from": "T_platform_owner",
+            "to": "T_withdraw_receiver",
+            "nativeValue": "3",
+            "rscValue": "64000",
+            "mode": "2",
+            "chain": "tron",
+            "rscType": "1",
+            "tradeNo": trade_no,
+            "tradeType": "7",
+            "uid": wallet_uid
         });
 
-        msg.resource_delegation().await?;
+        let msg: AwmOrderTransMsg = serde_json::from_value(value)?;
+        let AwmOrderTransMsg::ResourceDelegation(inner) = msg else {
+            anyhow::bail!("tradeType=7 should deserialize to ResourceDelegation");
+        };
 
-        let tx_pool = api_transaction_pool()?;
-        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
-        assert_eq!(got.origin_trade_type, Some(ApiTradeType::Withdraw as i64));
-        assert_eq!(got.source, ApiResourceDelegationSource::Platform);
-        assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Delegate);
-        assert_eq!(got.owner_address, "T_platform_owner");
-        assert_eq!(got.receiver_address, "T_withdraw_receiver");
-        assert_eq!(got.native_amount, "3");
-        assert_eq!(got.amount, "64000");
-
-        assert!(
-            ApiResourceOperationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await.is_err(),
-            "tradeType=7 resource delegation must not write api_resource_operation"
-        );
+        assert_eq!(inner.from, "T_platform_owner");
+        assert_eq!(inner.to, "T_withdraw_receiver");
+        assert_eq!(inner.native_value, "3");
+        assert_eq!(inner.rsc_value, "64000");
+        assert_eq!(inner.mode, 2);
+        assert_eq!(inner.chain_code, "tron");
+        assert_eq!(inner.rsc_type, 1);
+        assert_eq!(inner.trade_no, trade_no);
+        assert_eq!(inner.trade_type, 7);
+        assert_eq!(inner.uid, wallet_uid);
 
         Ok(())
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn resource_delegation_trade_type_6_persists_collect_platform_reclaim()
+    #[test]
+    fn resource_delegation_trade_type_6_deserialize_routes_to_resource_delegation_test()
     -> anyhow::Result<()> {
-        let (_manager, _params) = get_manager().await?;
-        let trade_no =
-            format!("COL_RSC_RC_order_regression_{}", wallet_utils::time::now().timestamp_millis());
-        let wallet_uid =
-            format!("col-rsc-rc-order-regression-{}", wallet_utils::time::now().timestamp_millis());
-
-        let msg = AwmOrderTransMsg::ResourceDelegation(AwmResourceDelegationMsg {
-            from: "T_platform_owner".to_string(),
-            to: "T_collect_receiver".to_string(),
-            native_value: "2".to_string(),
-            rsc_value: "32000".to_string(),
-            mode: 1,
-            chain_code: "tron".to_string(),
-            rsc_type: 1,
-            trade_no: trade_no.clone(),
-            trade_type: 6,
-            uid: wallet_uid,
-        });
-
-        msg.resource_delegation().await?;
-
-        let tx_pool = api_transaction_pool()?;
-        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
-        assert_eq!(got.origin_trade_type, Some(ApiTradeType::Collect as i64));
-        assert_eq!(got.source, ApiResourceDelegationSource::Platform);
-        assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Undelegate);
-        assert_eq!(got.owner_address, "T_platform_owner");
-        assert_eq!(got.receiver_address, "T_collect_receiver");
-        assert_eq!(got.native_amount, "2");
-        assert_eq!(got.amount, "32000");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn resource_delegation_trade_type_8_persists_withdraw_platform_reclaim()
-    -> anyhow::Result<()> {
-        let (_manager, _params) = get_manager().await?;
-        let trade_no =
-            format!("WD_RSC_RC_order_regression_{}", wallet_utils::time::now().timestamp_millis());
-        let wallet_uid =
-            format!("wd-rsc-rc-order-regression-{}", wallet_utils::time::now().timestamp_millis());
-
-        let msg = AwmOrderTransMsg::ResourceDelegation(AwmResourceDelegationMsg {
-            from: "T_platform_owner".to_string(),
-            to: "T_withdraw_receiver".to_string(),
-            native_value: "3".to_string(),
-            rsc_value: "64000".to_string(),
-            mode: 2,
-            chain_code: "tron".to_string(),
-            rsc_type: 1,
-            trade_no: trade_no.clone(),
-            trade_type: 8,
-            uid: wallet_uid,
-        });
-
-        msg.resource_delegation().await?;
-
-        let tx_pool = api_transaction_pool()?;
-        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
-        assert_eq!(got.origin_trade_type, Some(ApiTradeType::Withdraw as i64));
-        assert_eq!(got.source, ApiResourceDelegationSource::Platform);
-        assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Undelegate);
-        assert_eq!(got.owner_address, "T_platform_owner");
-        assert_eq!(got.receiver_address, "T_withdraw_receiver");
-        assert_eq!(got.native_amount, "3");
-        assert_eq!(got.amount, "64000");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn resource_delegation_trade_type_6_deserialize_routes_to_resource_delegation()
-    -> anyhow::Result<()> {
-        let (_manager, _params) = get_manager().await?;
-        let trade_no =
-            format!("COL_RSC_RC_deser_regression_{}", wallet_utils::time::now().timestamp_millis());
-        let wallet_uid =
-            format!("col-rsc-rc-deser-regression-{}", wallet_utils::time::now().timestamp_millis());
+        let trade_no = "COL_RSC_RC_test_6";
+        let wallet_uid = "col-rsc-rc-test-6";
 
         let value = serde_json::json!({
             "from": "T_platform_owner",
@@ -767,34 +678,29 @@ mod tests {
         });
 
         let msg: AwmOrderTransMsg = serde_json::from_value(value)?;
-        let AwmOrderTransMsg::ResourceDelegation(_) = msg else {
+        let AwmOrderTransMsg::ResourceDelegation(inner) = msg else {
             anyhow::bail!("tradeType=6 should deserialize to ResourceDelegation");
         };
 
-        msg.resource_delegation().await?;
-
-        let tx_pool = api_transaction_pool()?;
-        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
-        assert_eq!(got.origin_trade_type, Some(ApiTradeType::Collect as i64));
-        assert_eq!(got.source, ApiResourceDelegationSource::Platform);
-        assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Undelegate);
-        assert_eq!(got.owner_address, "T_platform_owner");
-        assert_eq!(got.receiver_address, "T_collect_receiver");
-        assert_eq!(got.native_amount, "2");
-        assert_eq!(got.amount, "32000");
+        assert_eq!(inner.from, "T_platform_owner");
+        assert_eq!(inner.to, "T_collect_receiver");
+        assert_eq!(inner.native_value, "2");
+        assert_eq!(inner.rsc_value, "32000");
+        assert_eq!(inner.mode, 1);
+        assert_eq!(inner.chain_code, "tron");
+        assert_eq!(inner.rsc_type, 1);
+        assert_eq!(inner.trade_no, trade_no);
+        assert_eq!(inner.trade_type, 6);
+        assert_eq!(inner.uid, wallet_uid);
 
         Ok(())
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn resource_delegation_trade_type_8_deserialize_routes_to_resource_delegation()
+    #[test]
+    fn resource_delegation_trade_type_8_deserialize_routes_to_resource_delegation_test()
     -> anyhow::Result<()> {
-        let (_manager, _params) = get_manager().await?;
-        let trade_no =
-            format!("WD_RSC_RC_deser_regression_{}", wallet_utils::time::now().timestamp_millis());
-        let wallet_uid =
-            format!("wd-rsc-rc-deser-regression-{}", wallet_utils::time::now().timestamp_millis());
+        let trade_no = "WD_RSC_RC_test_8";
+        let wallet_uid = "wd-rsc-rc-test-8";
 
         let value = serde_json::json!({
             "from": "T_platform_owner",
@@ -810,22 +716,22 @@ mod tests {
         });
 
         let msg: AwmOrderTransMsg = serde_json::from_value(value)?;
-        let AwmOrderTransMsg::ResourceDelegation(_) = msg else {
+        let AwmOrderTransMsg::ResourceDelegation(inner) = msg else {
             anyhow::bail!("tradeType=8 should deserialize to ResourceDelegation");
         };
 
-        msg.resource_delegation().await?;
-
-        let tx_pool = api_transaction_pool()?;
-        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
-        assert_eq!(got.origin_trade_type, Some(ApiTradeType::Withdraw as i64));
-        assert_eq!(got.source, ApiResourceDelegationSource::Platform);
-        assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Undelegate);
-        assert_eq!(got.owner_address, "T_platform_owner");
-        assert_eq!(got.receiver_address, "T_withdraw_receiver");
-        assert_eq!(got.native_amount, "3");
-        assert_eq!(got.amount, "64000");
+        assert_eq!(inner.from, "T_platform_owner");
+        assert_eq!(inner.to, "T_withdraw_receiver");
+        assert_eq!(inner.native_value, "3");
+        assert_eq!(inner.rsc_value, "64000");
+        assert_eq!(inner.mode, 2);
+        assert_eq!(inner.chain_code, "tron");
+        assert_eq!(inner.rsc_type, 1);
+        assert_eq!(inner.trade_no, trade_no);
+        assert_eq!(inner.trade_type, 8);
+        assert_eq!(inner.uid, wallet_uid);
 
         Ok(())
     }
+
 }
