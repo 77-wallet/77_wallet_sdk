@@ -14,6 +14,10 @@ pub struct TestParams {
 }
 
 pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
+    get_manager_with_config("config.toml").await
+}
+
+pub async fn get_manager_with_config(config_file: &str) -> Result<(WalletManager, TestParams)> {
     // Avoid macOS SystemConfiguration proxy resolver panics in sandboxed test environments.
     unsafe {
         std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
@@ -22,7 +26,7 @@ pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
     // 获取项目根目录
     let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
 
-    let config_dir = dir.join("examples/").join("config.toml");
+    let config_dir = dir.join("examples/client_config/").join(config_file);
     println!("example_dir: {config_dir:?}");
     let test_params: TestParams = if let Ok(config_data) = std::fs::read_to_string(config_dir) {
         wallet_utils::serde_func::toml_from_str(&config_data)?
@@ -33,9 +37,10 @@ pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
 
     // std::env::set_var("RUST_BACKTRACE", "1");
 
-    let client_id = "test_data";
+    let client_id = format!("test_data_{}", config_file.replace(".toml", ""));
     // 获取项目根目录
-    let storage_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join(client_id);
+    let storage_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join("test_data").join(client_id);
 
     // 创建测试目录
     if !storage_dir.exists() {
