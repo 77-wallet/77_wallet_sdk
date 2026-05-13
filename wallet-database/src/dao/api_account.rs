@@ -1324,4 +1324,44 @@ GROUP BY api_account.account_id
 
         Ok(result.is_some())
     }
+
+    /// 地址搜索：在指定钱包范围内搜索地址，支持大小写不敏感匹配
+    pub async fn search_address_by_wallet<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        keyword: &str,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        tracing::info!(
+            wallet_address = %wallet_address,
+            keyword = %keyword,
+            "API_ACCOUNT_QUERY::search_address_by_wallet"
+        );
+        
+        // 对关键词进行规范化处理（转为小写用于 EVM/TRON 地址匹配）
+        let keyword_lower = keyword.to_lowercase();
+        
+        // 使用 LIKE 进行模糊匹配，但由于需求是精确匹配，我们使用 = 和 LOWER()
+        // 支持：
+        // 1. 精确匹配原地址
+        // 2. 大小写不敏感匹配（通过 LOWER() 转换）
+        let sql = r#"
+            SELECT * FROM api_account 
+            WHERE wallet_address = ? 
+              AND status = 1
+              AND (address = ? OR LOWER(address) = ?)
+        "#;
+
+        let results = sqlx::query_as::<_, ApiAccountEntity>(sql)
+            .bind(wallet_address)
+            .bind(keyword)
+            .bind(keyword_lower)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(results)
+    }
 }

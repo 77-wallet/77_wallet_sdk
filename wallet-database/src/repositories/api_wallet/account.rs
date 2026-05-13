@@ -287,6 +287,20 @@ impl ApiAccountRepo {
         Ok(ApiAccountDao::find_one_by_address(address, chain_code, exec.read_ref()).await?)
     }
 
+    /// 地址搜索：在指定钱包范围内搜索地址，支持大小写不敏感匹配
+    pub async fn search_address_by_wallet(
+        pool: &ApiWalletDbPool,
+        wallet_address: &str,
+        keyword: &str,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountDao::search_address_by_wallet(
+            pool.read_ref(),
+            wallet_address,
+            keyword,
+        )
+        .await?)
+    }
+
     /// 批量查询账户（通过地址列表）
     pub async fn find_by_addresses(
         addresses: &[String],

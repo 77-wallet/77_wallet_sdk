@@ -71,3 +71,33 @@ impl TryFrom<ApiAccountEntity> for QueryApiAccountDerivationPath {
         })
     }
 }
+
+/// 地址搜索结果项
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiWalletAddressSearchItem {
+    pub account_id: u32,
+    pub account_name: Option<String>,
+    pub address: String,
+    pub chain_code: String,
+    pub wallet_address: String,
+}
+
+impl From<ApiAccountEntity> for ApiWalletAddressSearchItem {
+    fn from(entity: ApiAccountEntity) -> Self {
+        Self {
+            account_id: entity.account_id,
+            account_name: Some(entity.name),
+            address: entity.address,
+            chain_code: entity.chain_code,
+            wallet_address: entity.wallet_address,
+        }
+    }
+}
+
+/// 地址搜索响应
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiWalletAddressSearchResp {
+    pub items: Vec<ApiWalletAddressSearchItem>,
+}

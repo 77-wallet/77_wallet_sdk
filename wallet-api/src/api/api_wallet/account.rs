@@ -4,9 +4,9 @@ use crate::{
     api::ReturnType,
     manager::WalletManager,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
+    request::api_wallet::account::{CreateApiAccountReq, ApiWalletAddressSearchReq, CreateWithdrawalAccountReq},
     response_vo::{
-        api_wallet::account::{ApiAccountInfo, QueryApiAccountDerivationPath},
+        api_wallet::account::{ApiAccountInfo, ApiWalletAddressSearchResp, QueryApiAccountDerivationPath},
         standard_wallet::account::DerivedAddressesList,
     },
     service::api_wallet::account::ApiAccountService,
@@ -148,6 +148,22 @@ impl WalletManager {
     ) -> ReturnType<Vec<DerivedAddressesList>> {
         ApiAccountService::new(self.ctx)
             .list_derived_addresses(wallet_address, index, password, all)
+            .await
+    }
+
+    /// 地址搜索：在指定钱包范围内搜索账户地址
+    pub async fn search_api_wallet_address(
+        &self,
+        wallet_address: &str,
+        keyword: &str,
+    ) -> ReturnType<ApiWalletAddressSearchResp> {
+        tracing::info!(
+            wallet_address = %wallet_address,
+            keyword = %keyword,
+            "WalletManager::search_api_wallet_address"
+        );
+        ApiAccountService::new(self.ctx)
+            .search_address(wallet_address, keyword)
             .await
     }
 }
