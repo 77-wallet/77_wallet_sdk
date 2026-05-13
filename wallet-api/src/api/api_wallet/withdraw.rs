@@ -138,6 +138,7 @@ mod unit_tests {
     };
 
     use crate::response_vo::api_wallet::withdraw::ApiWithdrawOrderVo;
+    use crate::response_vo::api_wallet::withdraw_display::FailureReasonDisplay;
 
     fn make_entity(
         created_at: chrono::DateTime<Utc>,
@@ -252,10 +253,37 @@ mod unit_tests {
         let vo = ApiWithdrawOrderVo::from(entity);
 
         let json = serde_json::to_value(&vo).unwrap();
-        println!("{:#?}", json);
         assert!(json.get("applyTime").is_some(), "should have camelCase applyTime");
         assert!(json.get("signTime").is_some(), "should have camelCase signTime");
         assert!(json.get("apply_time").is_none(), "should NOT have snake_case apply_time");
         assert!(json.get("sign_time").is_none(), "should NOT have snake_case sign_time");
+    }
+
+    #[test]
+    fn test_failure_reason_display() {
+        let now = Utc::now();
+        
+        // Test Init status - should return None for non-failure status
+        let entity = make_entity(now, None, None);
+        let vo = ApiWithdrawOrderVo::from(entity);
+        let json = serde_json::to_string_pretty(&vo).unwrap();
+        println!("Init status:\n{}", json);
+        assert_eq!(vo.failure_reason_display, None);
+        
+        // Test AuditReject status
+        let mut entity = make_entity(now, None, None);
+        entity.status = ApiWithdrawStatus::AuditReject;
+        let vo = ApiWithdrawOrderVo::from(entity);
+        let json = serde_json::to_string_pretty(&vo).unwrap();
+        println!("AuditReject status:\n{}", json);
+        assert_eq!(vo.failure_reason_display, Some(FailureReasonDisplay::AuditRejected));
+        
+        // Test Success status
+        let mut entity = make_entity(now, None, None);
+        entity.status = ApiWithdrawStatus::Success;
+        let vo = ApiWithdrawOrderVo::from(entity);
+        let json = serde_json::to_string_pretty(&vo).unwrap();
+        println!("Success status:\n{}", json);
+        assert_eq!(vo.failure_reason_display, None);
     }
 }
