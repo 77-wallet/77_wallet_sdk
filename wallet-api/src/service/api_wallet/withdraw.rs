@@ -1,6 +1,7 @@
 use crate::{
     context::Context, domain::api_wallet::trans::withdraw::ApiWithdrawDomain,
     error::service::ServiceError, request::api_wallet::trans::ApiWithdrawReq,
+    response_vo::api_wallet::withdraw::ApiWithdrawOrderVo,
 };
 use wallet_database::{
     entities::{
@@ -24,9 +25,10 @@ impl WithdrawService {
     pub async fn list_withdraw_order(
         &self,
         uid: &str,
-    ) -> Result<Vec<ApiWithdrawEntity>, ServiceError> {
+    ) -> Result<Vec<ApiWithdrawOrderVo>, ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.map_err(|e| e.into())
+        let entities = ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.map_err(ServiceError::from)?;
+        Ok(entities.into_iter().map(ApiWithdrawOrderVo::from).collect())
     }
 
     pub async fn page_withdraw_order_with_init_status(
@@ -36,9 +38,9 @@ impl WithdrawService {
         status: Vec<ApiWithdrawStatus>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<ApiWithdrawEntity>, ServiceError> {
+    ) -> Result<Pagination<ApiWithdrawOrderVo>, ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        ApiWithdrawRepo::page_api_withdraw_with_init_status(
+        let pagination = ApiWithdrawRepo::page_api_withdraw_with_init_status(
             &pool,
             uid,
             init_status,
@@ -47,7 +49,14 @@ impl WithdrawService {
             page_size,
         )
         .await
-        .map_err(|e| e.into())
+        .map_err(ServiceError::from)?;
+        let data = pagination.data.into_iter().map(ApiWithdrawOrderVo::from).collect();
+        Ok(Pagination {
+            page: pagination.page,
+            page_size: pagination.page_size,
+            total_count: pagination.total_count,
+            data,
+        })
     }
 
     pub async fn page_withdraw_order(
@@ -56,11 +65,18 @@ impl WithdrawService {
         status: Vec<ApiWithdrawStatus>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<ApiWithdrawEntity>, ServiceError> {
+    ) -> Result<Pagination<ApiWithdrawOrderVo>, ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        ApiWithdrawRepo::page_api_withdraw(&pool, uid, status, page, page_size)
+        let pagination = ApiWithdrawRepo::page_api_withdraw(&pool, uid, status, page, page_size)
             .await
-            .map_err(|e| e.into())
+            .map_err(ServiceError::from)?;
+        let data = pagination.data.into_iter().map(ApiWithdrawOrderVo::from).collect();
+        Ok(Pagination {
+            page: pagination.page,
+            page_size: pagination.page_size,
+            total_count: pagination.total_count,
+            data,
+        })
     }
 
     pub async fn withdrawal_order(
