@@ -12,7 +12,7 @@ wallet-api/test_data_back/
 data_**
 
 account.toml
-wallet-api/examples/config.toml
+wallet-api/examples/client_config
 example.toml
 wallet.toml
 wallet-api/examples/config.yaml

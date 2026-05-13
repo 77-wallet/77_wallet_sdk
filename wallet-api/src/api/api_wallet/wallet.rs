@@ -164,7 +164,7 @@ impl WalletManager {
 
 #[cfg(all(feature = "integration-tests"))]
 mod test {
-    use crate::test::env::get_manager;
+    use crate::test::env::{get_manager, get_manager_with_config};
 
     use anyhow::Result;
 
@@ -175,7 +175,7 @@ mod test {
     async fn test_create_subaccount_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, test_params) = get_manager_with_config("client4.toml").await?;
         wallet_manager.init_api_swap().await?;
 
         let language_code = 1;
@@ -184,7 +184,7 @@ mod test {
         // let salt = "q3333333";
         // let salt = "q6666669";
         // let salt = "r0000011";
-        let salt = "r0000001";
+        let salt = "r0000007";
         // let salt = "r0000002";
         // let salt = "r77777777";
         let wallet_name = "api_wallet";
@@ -215,7 +215,7 @@ mod test {
     async fn test_create_withdrawal_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, test_params) = get_manager_with_config("client4.toml").await?;
         wallet_manager.init_api_swap().await?;
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
@@ -228,14 +228,14 @@ mod test {
         // let salt = "10";
         // let salt = "q2222222";
         // let salt = "q7777781";
-        let salt = "w0000001";
+        let salt = "w0000007";
         // let salt = "w0000002";
         // let salt = "q7777777";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
         // let binding_address = Some("0x7092d3B98B177e630efbA09c047D2bd448608Dda");
         // let binding_address = Some("0x806b94a00D6a4e415739D54D476832Adf432f229");
         // let binding_address = None;
-        let binding_address = Some("0x93A36df0a3716429C89EB01D56d269f66aFc26C6");
+        let binding_address = Some("0x5489c657Be2504D657f1F56AB04abfE3C77ceC34");
         let res = wallet_manager
             .create_api_wallet(
                 language_code,
@@ -386,15 +386,15 @@ mod test {
     async fn test_scan_bind() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager_with_config("client4.toml").await?;
         wallet_manager.init_api_swap().await?;
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         // let app_id = "2956f07a24d94fb6b6426abcfeaca2be";
-        let app_id = "117937721d02471e8791349b00ebd7e4";
-        let org_id = "1";
-        let subaccount_uid = "fbcef8056b5dda7bcae6658613fccba8b9d9707a53a1d62c3f126db9b2ac8b61";
-        let withdrawal_uid = "c37ab9e78d86c0a7c744539642e18deb6d0be09f2dee17935a407087389dc0cb";
+        let app_id = "8276baee61e14956bf8ad036e4a5efb3";
+        let org_id = "6a044edb3f923904b04aaf71";
+        let subaccount_uid = "ef98e62f7057e2c6cee9314ee017875b283dccaaeeeabc9370f8afa7a3a5e186";
+        let withdrawal_uid = "5bdb1b748bb617d6683f57565b1493cfa5f9e45f3086daf265ca2e0cd325c15e";
 
         let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");

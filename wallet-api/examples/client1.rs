@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use tokio_stream::StreamExt as _;
-use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager};
+use wallet_api::{
+    messaging::notify::FrontendNotifyEvent,
+    test::env::{get_manager, get_manager_with_config},
+};
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 // 694a5988a284522b74515e4b	AwmCmdAddrExpand
@@ -18,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .await
     //     .unwrap();
     // Self::init_log(Some("error")).await?;
-    let (wallet_manager, _test_params) = get_manager().await?;
+    let (wallet_manager, _test_params) = get_manager_with_config("client1.toml").await?;
     let dirs = wallet_api::get_context()?.get_global_dirs();
     let _ = wallet_api::xlog::init_log(Some("info"), &"app_code", &dirs, "sn").await;
     tracing::info!("init_api_swap");
