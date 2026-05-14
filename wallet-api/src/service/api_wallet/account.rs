@@ -1,4 +1,5 @@
 use crate::{
+    application::account::ApiAccountApplication,
     context::Context,
     domain::{
         self,
@@ -489,43 +490,8 @@ impl ApiAccountService {
         wallet_address: &str,
         keyword: &str,
     ) -> Result<ApiWalletAddressSearchResp, ServiceError> {
-        tracing::info!(
-            wallet_address = %wallet_address,
-            keyword = %keyword,
-            "ApiAccountService::search_address"
-        );
-
-        // 地址格式预校验：只在格式有效时才触发数据库查询
-        if !Self::is_valid_address_format(keyword) {
-            tracing::info!(keyword = %keyword, "Invalid address format, returning empty result");
-            return Ok(ApiWalletAddressSearchResp { items: vec![] });
-        }
-
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        
-        let entities = ApiAccountRepo::search_address_by_wallet(&pool, wallet_address, keyword)
-            .await?;
-
-        let items = entities
-            .into_iter()
-            .map(|entity| entity.into())
-            .collect();
-
-        Ok(ApiWalletAddressSearchResp { items })
-    }
-
-    /// 地址格式预校验
-    fn is_valid_address_format(keyword: &str) -> bool {
-        // 最小长度检查
-        if keyword.len() < 20 {
-            return false;
-        }
-
-        // 检查是否包含明显非法字符（不允许空格、@、#、$ 等特殊字符）
-        let has_invalid_chars = keyword.chars().any(|c| {
-            matches!(c, ' ' | '\t' | '\n' | '\r' | '@' | '#' | '$' | '%' | '^' | '&' | '*' | '(' | ')' | '+' | '=' | '[' | ']' | '{' | '}' | '|' | ';' | ':' | '"' | '\'' | '<' | '>' | ',' | '?' | '/')
-        });
-
-        !has_invalid_chars
+        ApiAccountApplication::new(self.ctx)
+            .search_api_wallet_address(wallet_address, keyword)
+            .await
     }
 }
