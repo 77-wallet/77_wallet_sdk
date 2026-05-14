@@ -241,6 +241,9 @@ mod tests {
             trade_no: "trade".to_string(),
             trade_type: 1,
             audit: 0,
+            out_order_id: None,
+            client_id: None,
+            create_time: None,
         };
 
         let debug = format!("{req:?}");

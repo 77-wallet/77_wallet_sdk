@@ -199,6 +199,9 @@ mod unit_tests {
             failure_stage: None,
             created_at,
             updated_at: None,
+            out_order_id: None,
+            client_id: None,
+            create_time: None,
         }
     }
 

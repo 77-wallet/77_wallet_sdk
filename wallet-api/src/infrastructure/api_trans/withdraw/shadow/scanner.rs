@@ -1232,6 +1232,9 @@ mod tests {
             failure_stage: Some(WithdrawFailureStage::Unknown),
             created_at: Utc::now(),
             updated_at: Some(Utc::now()),
+            out_order_id: None,
+            client_id: None,
+            create_time: None,
         }
     }
 

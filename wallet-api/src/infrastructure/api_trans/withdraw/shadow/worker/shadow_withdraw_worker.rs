@@ -2006,6 +2006,9 @@ mod tests {
             failure_stage: None,
             created_at: now,
             updated_at: None,
+            out_order_id: None,
+            client_id: None,
+            create_time: None,
         }
     }
 
@@ -2148,6 +2151,9 @@ mod tests {
             None,
             "USDT",
             trade_no,
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,

@@ -225,6 +225,9 @@ mod tests {
             failure_stage: None,
             created_at: chrono::Utc::now() - chrono::Duration::minutes(30),
             updated_at: Some(chrono::Utc::now()),
+            out_order_id: None,
+            client_id: None,
+            create_time: None,
         }
     }
 
