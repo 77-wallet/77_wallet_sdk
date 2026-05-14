@@ -293,12 +293,8 @@ impl ApiAccountRepo {
         wallet_address: &str,
         keyword: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::search_address_by_wallet(
-            pool.read_ref(),
-            wallet_address,
-            keyword,
-        )
-        .await?)
+        Ok(ApiAccountDao::search_address_by_wallet(pool.read_ref(), wallet_address, keyword)
+            .await?)
     }
 
     /// 批量查询账户（通过地址列表）

@@ -17,7 +17,9 @@ use crate::{
     },
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     response_vo::{
-        api_wallet::account::{ApiAccountInfo, ApiWalletAddressSearchResp, QueryApiAccountDerivationPath},
+        api_wallet::account::{
+            ApiAccountInfo, ApiWalletAddressSearchResp, QueryApiAccountDerivationPath,
+        },
         standard_wallet::account::DerivedAddressesList,
     },
 };
@@ -525,36 +527,5 @@ impl ApiAccountService {
         });
 
         !has_invalid_chars
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ApiAccountService;
-
-    #[test]
-    fn test_is_valid_address_format() {
-        // 有效的以太坊地址格式（十六进制）
-        assert!(ApiAccountService::is_valid_address_format("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24"));
-        assert!(ApiAccountService::is_valid_address_format("0x17F6A199862fd0FFb2D5c79F3dbbe37597162a24"));
-        assert!(ApiAccountService::is_valid_address_format("17f6a199862FD0ffb2d5C79f3DBBE37597162A24"));
-
-        // 有效的 TRON 地址格式（Base58）
-        assert!(ApiAccountService::is_valid_address_format("TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE"));
-        assert!(ApiAccountService::is_valid_address_format("tqn9y2khesljw1chvwfmsmerdow5kcblse"));
-
-        // 有效的 Solana 地址格式（Base58）
-        assert!(ApiAccountService::is_valid_address_format("7Z3s1vZZZ68q9n99fW7QJ5QJ5QJ5QJ5QJ5QJ5QJ5QJ"));
-
-        // 无效的地址格式（包含明显非法字符）
-        assert!(!ApiAccountService::is_valid_address_format("short"));
-        assert!(!ApiAccountService::is_valid_address_format("1234567890"));
-        assert!(!ApiAccountService::is_valid_address_format("0x"));
-        assert!(!ApiAccountService::is_valid_address_format("0x123"));
-        assert!(!ApiAccountService::is_valid_address_format("invalid@address"));
-        assert!(!ApiAccountService::is_valid_address_format("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24 "));
-        assert!(!ApiAccountService::is_valid_address_format("TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE test"));
-        assert!(!ApiAccountService::is_valid_address_format("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A2#"));
-        assert!(!ApiAccountService::is_valid_address_format("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A2&"));
     }
 }

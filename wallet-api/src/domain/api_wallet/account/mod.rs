@@ -1,3 +1,4 @@
+pub(crate) mod search;
 use crate::{
     context::CONTEXT,
     domain::{

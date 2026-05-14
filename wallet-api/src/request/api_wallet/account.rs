@@ -97,10 +97,7 @@ pub struct ApiWalletAddressSearchReq {
 
 impl ApiWalletAddressSearchReq {
     pub fn new(wallet_address: &str, keyword: &str) -> Self {
-        Self {
-            wallet_address: wallet_address.to_string(),
-            keyword: keyword.to_string(),
-        }
+        Self { wallet_address: wallet_address.to_string(), keyword: keyword.to_string() }
     }
 }
 

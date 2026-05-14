@@ -4,9 +4,13 @@ use crate::{
     api::ReturnType,
     manager::WalletManager,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    request::api_wallet::account::{CreateApiAccountReq, ApiWalletAddressSearchReq, CreateWithdrawalAccountReq},
+    request::api_wallet::account::{
+        ApiWalletAddressSearchReq, CreateApiAccountReq, CreateWithdrawalAccountReq,
+    },
     response_vo::{
-        api_wallet::account::{ApiAccountInfo, ApiWalletAddressSearchResp, QueryApiAccountDerivationPath},
+        api_wallet::account::{
+            ApiAccountInfo, ApiWalletAddressSearchResp, QueryApiAccountDerivationPath,
+        },
         standard_wallet::account::DerivedAddressesList,
     },
     service::api_wallet::account::ApiAccountService,
@@ -162,9 +166,7 @@ impl WalletManager {
             keyword = %keyword,
             "WalletManager::search_api_wallet_address"
         );
-        ApiAccountService::new(self.ctx)
-            .search_address(wallet_address, keyword)
-            .await
+        ApiAccountService::new(self.ctx).search_address(wallet_address, keyword).await
     }
 }
 
@@ -172,7 +174,7 @@ impl WalletManager {
 mod test {
     use crate::{
         request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
-        test::env::get_manager,
+        test::env::{get_manager, get_manager_with_config},
     };
 
     use anyhow::Result;
@@ -314,6 +316,25 @@ mod test {
                 1,
                 "q1111111",
                 true,
+            )
+            .await
+            .unwrap();
+        let res = serde_json::to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_search_api_wallet_address_by_wallet() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager_with_config("client4.toml").await?;
+        // let chain_code = "tron";
+
+        let res = wallet_manager
+            .search_api_wallet_address(
+                "0x7def9E4B7eF0D88bC77fc7C704E32AFdf505FF5D",
+                "TW6h166qfNfibxgovAnVyDDMNV1BFXp5A5",
             )
             .await
             .unwrap();

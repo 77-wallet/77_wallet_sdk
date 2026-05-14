@@ -1339,10 +1339,10 @@ GROUP BY api_account.account_id
             keyword = %keyword,
             "API_ACCOUNT_QUERY::search_address_by_wallet"
         );
-        
+
         // 对关键词进行规范化处理（转为小写用于 EVM/TRON 地址匹配）
         let keyword_lower = keyword.to_lowercase();
-        
+
         // 使用 LIKE 进行模糊匹配，但由于需求是精确匹配，我们使用 = 和 LOWER()
         // 支持：
         // 1. 精确匹配原地址
