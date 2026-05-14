@@ -22,6 +22,12 @@ pub struct ApiWithdrawReq {
     // 交易类型： 1 提币 / 2 归集
     pub trade_type: u8,
     pub audit: u32,
+    /// 交易在商户平台的单号
+    pub out_order_id: Option<String>,
+    /// 客户id
+    pub client_id: Option<String>,
+    /// 交易申请时间
+    pub create_time: Option<String>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]

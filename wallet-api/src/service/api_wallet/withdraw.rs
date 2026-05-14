@@ -106,6 +106,9 @@ impl WithdrawService {
             trade_type,
             uid: uid.to_string(),
             audit: audit,
+            out_order_id: None,
+            client_id: None,
+            create_time: None,
         };
         let res = ApiWithdrawDomain::withdraw(&req).await;
         match res {

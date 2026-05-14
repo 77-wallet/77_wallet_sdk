@@ -96,6 +96,12 @@ pub struct AwmOrderTransNormalMsg {
         serialize_with = "wallet_utils::serde_func::u32_to_string"
     )]
     risk_addr: u32,
+    /// 交易在商户平台的单号
+    pub out_order_id: Option<String>,
+    /// 交易申请时间
+    pub create_time: Option<String>,
+    /// 客户id
+    pub client_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -432,6 +438,9 @@ impl AwmOrderTransNormalMsg {
             trade_no: self.trade_no.to_string(),
             trade_type: self.trade_type as u8,
             audit: self.audit,
+            out_order_id: self.out_order_id.clone(),
+            client_id: self.client_id.clone(),
+            create_time: self.create_time.clone(),
         };
         ApiWithdrawDomain::withdraw(&req).await
     }
@@ -532,6 +541,9 @@ mod tests {
             uid: wallet_uid.clone(),
             validate: "digest".to_string(),
             risk_addr: 1,
+            out_order_id: None,
+            create_time: None,
+            client_id: None,
         });
 
         msg.transfer_fee().await?;
