@@ -1171,10 +1171,17 @@ impl ShadowCollectWorker {
 
         let native_token_amount = resource_amount / 1000.0;
 
+        let wallet = ApiWalletRepo::find_by_uid(&self.core_pool, uid)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+        let app_id = wallet.as_ref().and_then(|w| w.app_id.as_deref()).unwrap_or(uid);
+        let org_id = wallet.as_ref().and_then(|w| w.merchant_id.as_deref()).unwrap_or(uid);
+
         let req = ResourceApplyReq::new(
             origin_trade_no,
-            uid,
-            uid,
+            app_id,
+            org_id,
             Some(chain_code),
             native_token_amount,
             Some(resource_amount),
