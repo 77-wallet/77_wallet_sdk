@@ -1175,12 +1175,19 @@ impl ShadowCollectWorker {
             uid,
             Some(chain_code),
             native_token_amount,
-            None,
+            Some(native_token_amount),
             ResourceType::Energy,
             receiver_address,
             TradeType::CollectResourceDelegate,
         );
 
+        tracing::info!(
+            resource_trade_no = %resource_trade_no,
+            origin_trade_no = %origin_trade_no,
+            req = ?req,
+            source = "shadow_worker_v2",
+            "Platform resource delegation apply request"
+        );
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let resp = backend_api.apply_resource_delegation(&req).await?;
 
