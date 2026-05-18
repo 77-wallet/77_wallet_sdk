@@ -1169,12 +1169,14 @@ impl ShadowCollectWorker {
             ))
         })?;
 
+        let native_token_amount = resource_amount / 1000.0;
+
         let req = ResourceApplyReq::new(
             origin_trade_no,
             uid,
             uid,
             Some(chain_code),
-            resource_amount,
+            native_token_amount,
             Some(resource_amount),
             ResourceType::Energy,
             receiver_address,
