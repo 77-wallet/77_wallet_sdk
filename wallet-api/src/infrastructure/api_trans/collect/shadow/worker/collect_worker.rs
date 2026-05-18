@@ -1158,7 +1158,7 @@ impl ShadowCollectWorker {
         receiver_address: &str,
         amount: &str,
     ) -> Result<bool, ServiceError> {
-        let resource_amount: u64 = amount.parse().map_err(|e| {
+        let resource_amount: f64 = amount.parse().map_err(|e| {
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::Trans(
                     TransError::BuildWithdrawTransactionFailed(format!(
@@ -1169,7 +1169,7 @@ impl ShadowCollectWorker {
             ))
         })?;
 
-        let native_token_amount = resource_amount as f64 / 1000.0;
+        let native_token_amount = resource_amount / 1000.0;
 
         let wallet = ApiWalletRepo::find_by_uid(&self.core_pool, uid)
             .await
@@ -1184,7 +1184,7 @@ impl ShadowCollectWorker {
             org_id,
             Some(chain_code),
             native_token_amount,
-            Some(resource_amount as f64),
+            Some(resource_amount),
             ResourceType::Energy,
             receiver_address,
             TradeType::CollectResourceDelegate,
