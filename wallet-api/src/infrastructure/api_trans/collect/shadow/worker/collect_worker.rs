@@ -421,6 +421,18 @@ impl ShadowCollectWorker {
         }
     }
 
+    fn is_collect_amount_insufficient_error(err: &ServiceError) -> bool {
+        match err {
+            ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance(detail),
+            )) => detail
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("collect amount is insufficient")),
+            _ => false,
+        }
+    }
+
     fn is_tron_missing_confirmed_and_pending_error(err: &ServiceError) -> bool {
         err.to_string().contains("tron tx missing from confirmed and pending pools")
     }
@@ -3136,6 +3148,40 @@ impl ShadowCollectWorker {
                     self.advancer.try_advance(&req.trade_no).await;
                 }
             }
+
+            return Ok(());
+        }
+
+        if Self::is_collect_amount_insufficient_error(&err) {
+            info!(
+                trade_no = %trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Detected collect amount insufficient error; marking collect as terminal failure"
+            );
+
+            self.clear_build_slot_after_claim(trade_no).await?;
+
+            let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+                &self.collect_pool,
+                trade_no,
+                ApiCollectStatus::InsufficientBalance,
+                ErrCode::BalanceInsufficient,
+                &format!("{}", err),
+            )
+            .await
+            .map_err(|db_err| {
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark collect as terminal failure due to insufficient balance");
+                ServiceError::Database(db_err.into())
+            })?;
+
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                source = "shadow_worker_v2",
+                "Marked collect as terminal failure due to insufficient balance"
+            );
+            self.advancer.try_advance(&req.trade_no).await;
 
             return Ok(());
         }
