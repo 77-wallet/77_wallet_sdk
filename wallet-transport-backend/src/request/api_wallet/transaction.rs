@@ -54,23 +54,26 @@ impl TxExecReceiptUploadReq {
 pub enum TransType {
     /// Collection
     Col,
-    /// Collection resource delegation/reclaim task
-    #[serde(rename = "COL_RSC")]
-    ColRsc,
-    /// Collection resource delegation task
-    #[serde(rename = "COL_RSC_DL")]
-    ColRscDl,
-    /// Withdraw resource delegation task
-    #[serde(rename = "WD_RSC_DL")]
-    WdRscDl,
-    /// Platform resource stake/unstake task
-    #[serde(rename = "PLT_RSC_STK")]
-    PltRscStk,
     /// Withdraw
     Wd,
     /// Fee
     #[serde(rename = "COL_FEE")]
     ColFee,
+    /// Platform resource stake/unstake task
+    #[serde(rename = "PLT_RSC_STK")]
+    PltRscStk,
+    /// Collection resource delegation task
+    #[serde(rename = "COL_RSC_DL")]
+    ColRscDl,
+    /// Collection resource reclaim task
+    #[serde(rename = "COL_RSC_RC")]
+    ColRscRc,
+    /// Withdraw resource delegation task
+    #[serde(rename = "WD_RSC_DL")]
+    WdRscDl,
+    /// Withdraw resource reclaim task
+    #[serde(rename = "WD_RSC_RC")]
+    WdRscRc,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

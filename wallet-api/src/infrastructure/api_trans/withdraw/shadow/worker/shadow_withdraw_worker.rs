@@ -26,8 +26,9 @@ use wallet_database::{
         resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
     },
 };
-use wallet_transport_backend::request::api_wallet::resource_delegation::{
-    ResourceApplyReq, ResourceType, TradeType,
+use wallet_transport_backend::request::api_wallet::{
+    resource_delegation::{ResourceApplyReq, ResourceType},
+    transaction::TransType,
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
@@ -550,7 +551,7 @@ impl ShadowWithdrawWorker {
             None,
             ResourceType::Energy,
             receiver_address,
-            TradeType::WithdrawResourceDelegate,
+            TransType::Wd,
         );
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();

@@ -2,6 +2,8 @@
 /// 用于 SDK 主动向后端申请资源委托的接口
 use serde::{Deserialize, Serialize};
 
+use super::transaction::TransType;
+
 /// 资源类型枚举
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -20,28 +22,6 @@ impl ResourceType {
         match self {
             ResourceType::Energy => "ENERGY",
             ResourceType::Bandwidth => "BANDWIDTH",
-        }
-    }
-}
-
-/// 交易类型枚举
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum TradeType {
-    /// 归集资源代理
-    #[serde(rename = "COL_RSC_DL")]
-    CollectResourceDelegate,
-    /// 提币资源代理
-    #[serde(rename = "WD_RSC_DL")]
-    WithdrawResourceDelegate,
-}
-
-impl TradeType {
-    /// 获取交易类型的字符串表示
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            TradeType::CollectResourceDelegate => "COL_RSC_DL",
-            TradeType::WithdrawResourceDelegate => "WD_RSC_DL",
         }
     }
 }
@@ -74,7 +54,7 @@ pub struct ResourceApplyReq {
     /// 接收资源的地址
     pub to: String,
     /// 交易类型（COL_RSC_DL / WD_RSC_DL）
-    pub r#type: TradeType,
+    pub r#type: TransType,
 }
 
 impl ResourceApplyReq {
@@ -100,7 +80,7 @@ impl ResourceApplyReq {
         resource_amount: Option<f64>,
         resource_type: ResourceType,
         to: &str,
-        r#type: TradeType,
+        r#type: TransType,
     ) -> Self {
         Self {
             trade_no: trade_no.to_string(),

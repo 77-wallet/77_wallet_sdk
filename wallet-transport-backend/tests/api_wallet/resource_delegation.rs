@@ -1,8 +1,9 @@
 use crate::init;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::{
-    resource_delegation::{ResourceApplyReq, ResourceType, TradeType},
+    resource_delegation::{ResourceApplyReq, ResourceType},
     swap::ApiInitSwapReq,
+    transaction::TransType,
 };
 
 #[serial_test::serial]
@@ -17,15 +18,15 @@ async fn test_apply_resource_delegation() -> Result<(), wallet_transport_backend
     }
 
     let req = ResourceApplyReq::new(
-        "C2036586295360655360",
-        "test-uid",
-        "test-org",
+        "C2056282615807373312",
+        "8276baee61e14956bf8ad036e4a5efb3",
+        "6a044edb3f923904b04aaf71",
         Some("tron"),
-        100000.0,
-        None,
+        14.65,
+        Some(14650.0),
         ResourceType::Energy,
-        "T_address_needs_energy",
-        TradeType::CollectResourceDelegate,
+        "TJZ7AVWQZ2V6nu5SwP718swoQe1yu2VWVv",
+        TransType::ColRscDl,
     );
     let res = backend_api.apply_resource_delegation(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;
@@ -53,7 +54,7 @@ async fn test_apply_resource_delegation_withdraw() -> Result<(), wallet_transpor
         None,
         ResourceType::Energy,
         "T_withdraw_address",
-        TradeType::WithdrawResourceDelegate,
+        TransType::WdRscDl,
     );
     let res = backend_api.apply_resource_delegation(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;
@@ -81,7 +82,7 @@ async fn test_apply_resource_delegation_bandwidth() -> Result<(), wallet_transpo
         None,
         ResourceType::Bandwidth,
         "T_address_needs_bandwidth",
-        TradeType::CollectResourceDelegate,
+        TransType::ColRscDl,
     );
     let res = backend_api.apply_resource_delegation(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;
