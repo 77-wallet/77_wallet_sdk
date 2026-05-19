@@ -320,12 +320,14 @@ impl ShadowCollectWorker {
 
     fn tron_resource_ready(
         available_energy: i64,
-        available_bandwidth: i64,
+        _available_bandwidth: i64,
         required_energy: u64,
-        required_bandwidth: u64,
+        _required_bandwidth: u64,
     ) -> bool {
+        // The collect resource gate only owns Energy delegation. Bandwidth
+        // shortage is paid/bypassed by the existing collect main flow, so it
+        // must not trigger `/resourceDl/apply` for an Energy task.
         available_energy >= required_energy as i64
-            && available_bandwidth >= required_bandwidth as i64
     }
 
     fn collect_local_delegate_trade_no(origin_trade_no: &str) -> String {
@@ -3908,6 +3910,12 @@ mod tests {
             ShadowCollectWorker::collect_local_delegate_trade_no("C_1"),
             "rsc_local_delegate_C_1"
         );
+    }
+
+    #[test]
+    fn tron_collect_resource_gate_ignores_bandwidth_shortage() {
+        assert!(ShadowCollectWorker::tron_resource_ready(0, 0, 0, 268));
+        assert!(!ShadowCollectWorker::tron_resource_ready(0, 1024, 1, 0));
     }
 
     #[tokio::test]

@@ -706,6 +706,9 @@ impl ApiWithdrawDao {
                 token_addr,
                 symbol,
                 trade_no,
+                out_order_id,
+                client_id,
+                create_time,
                 trade_type,
                 init_status,
                 status,
@@ -719,7 +722,7 @@ impl ApiWithdrawDao {
                 updated_at)
             VALUES
                 ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                 $11,$12,$13,$14,$15,$16,$17,$18,$19,
+                 $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
                  strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  strftime('%Y-%m-%dT%H:%M:%SZ','now'))
             ON CONFLICT(trade_no) DO UPDATE SET
@@ -737,6 +740,9 @@ impl ApiWithdrawDao {
             .bind(&api_withdraw.token_addr)
             .bind(&api_withdraw.symbol)
             .bind(&api_withdraw.trade_no)
+            .bind(&api_withdraw.out_order_id)
+            .bind(&api_withdraw.client_id)
+            .bind(&api_withdraw.create_time)
             .bind(&api_withdraw.trade_type)
             .bind(&api_withdraw.init_status)
             .bind(&api_withdraw.status)
@@ -2486,6 +2492,81 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn upsert_api_withdraw_persists_order_metadata() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_order_metadata");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_meta",
+            "withdraw",
+            "FROM_META",
+            "TO_META",
+            "12.34",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_ORDER_METADATA",
+            Some("merchant-order-1".to_string()),
+            Some("client-1".to_string()),
+            Some("2026-05-19 10:11:12".to_string()),
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::InitOrder,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_meta",
+            "withdraw",
+            "FROM_META",
+            "TO_META",
+            "12.34",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_ORDER_METADATA",
+            Some("merchant-order-2".to_string()),
+            Some("client-2".to_string()),
+            Some("2026-05-19 13:14:15".to_string()),
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::InitOrder,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_ORDER_METADATA",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(after.out_order_id.as_deref(), Some("merchant-order-1"));
+        assert_eq!(after.client_id.as_deref(), Some("client-1"));
+        assert_eq!(after.create_time.as_deref(), Some("2026-05-19 10:11:12"));
     }
 
     #[tokio::test]
