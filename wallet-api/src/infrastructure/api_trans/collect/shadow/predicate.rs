@@ -585,6 +585,7 @@ fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
         && collect.service_fee_uploaded_at.is_none()
         && collect.err_code.is_none()
         && collect.finished_at.is_none()
+        && collect.resource_gate_released_at.is_some()
     {
         reasons.push(StageReason {
             code: "ready_for_service_fee_upload",
@@ -595,7 +596,8 @@ fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
     let can_advance = collect.need_service_fee == Some(true)
         && collect.service_fee_uploaded_at.is_none()
         && collect.err_code.is_none()
-        && collect.finished_at.is_none();
+        && collect.finished_at.is_none()
+        && collect.resource_gate_released_at.is_some();
 
     StageEval { can_advance, reasons }
 }

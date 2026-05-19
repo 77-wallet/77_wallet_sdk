@@ -19,7 +19,7 @@ impl ApiBackendRequest {
         T: serde::Serialize,
     {
         let req_data = serde_json::json!(req);
-        // tracing::info!("Request 1: {:?}", req_data);
+        tracing::info!("Request 1: {:?}", req_data.to_string());
         let d = GLOBAL_KEY.encrypt(req_data.to_string().as_bytes())?; // base64
         let key = wallet_utils::bytes_to_base64(&d.key);
         let ct = wallet_utils::bytes_to_base64(&d.ciphertext);

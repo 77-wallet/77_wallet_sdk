@@ -42,8 +42,8 @@ use wallet_database::{
 };
 use wallet_transport_backend::request::api_wallet::{
     resource_delegation::{ResourceApplyReq, ResourceType},
-        transaction::TransType,
     strategy::ChainConfig,
+    transaction::TransType,
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{RetryableError as _, conversion, unit};

@@ -1262,6 +1262,7 @@ impl ApiCollectDao {
             WHERE need_service_fee = true
             AND service_fee_uploaded_at IS NULL
             AND err_code IS NULL
+            AND resource_gate_released_at IS NOT NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
