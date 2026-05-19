@@ -136,14 +136,14 @@ async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
         "#,
     )
     .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
-    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(format!("DL_W_{trade_no}"))
     .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
     .bind(&trade_no)
     .execute(tx_pool.as_ref())
     .await
     .expect("seed blocked withdraw");
 
-    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    let resource_trade_no = format!("DL_W_{trade_no}");
     sqlx::query(
         r#"
         INSERT INTO api_resource_delegation (
@@ -243,14 +243,14 @@ async fn withdraw_failed_resource_bypass_reopens_withdraw_build_flow() {
         "#,
     )
     .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
-    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(format!("DL_W_{trade_no}"))
     .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
     .bind(&trade_no)
     .execute(tx_pool.as_ref())
     .await
     .expect("seed blocked withdraw");
 
-    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    let resource_trade_no = format!("DL_W_{trade_no}");
     sqlx::query(
         r#"
         INSERT INTO api_resource_delegation (
@@ -363,14 +363,14 @@ async fn withdraw_resource_result_ack_without_origin_trade_no_does_not_release_g
         "#,
     )
     .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
-    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(format!("DL_W_{trade_no}"))
     .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
     .bind(&trade_no)
     .execute(tx_pool.as_ref())
     .await
     .expect("seed blocked withdraw");
 
-    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    let resource_trade_no = format!("DL_W_{trade_no}");
     sqlx::query(
         r#"
         INSERT INTO api_resource_delegation (
@@ -459,14 +459,14 @@ async fn withdraw_resource_result_ack_for_collect_origin_does_not_release_withdr
         "#,
     )
     .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
-    .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(format!("DL_W_{trade_no}"))
     .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
     .bind(&trade_no)
     .execute(tx_pool.as_ref())
     .await
     .expect("seed blocked withdraw");
 
-    let resource_trade_no = format!("rsc_delegate_{trade_no}");
+    let resource_trade_no = format!("DL_W_{trade_no}");
     sqlx::query(
         r#"
         INSERT INTO api_resource_delegation (
