@@ -5,12 +5,45 @@ use tracing::info;
 
 use crate::request::{account::CreateAccountReq, devices::InitDeviceReq, wallet::CreateWalletReq};
 use serde::Deserialize;
+use std::fmt;
 
 #[derive(Deserialize, Debug, Default)]
 pub struct TestParams {
     pub device_req: InitDeviceReq,
     pub create_wallet_req: CreateWalletReq,
     pub create_account_req: CreateAccountReq,
+    pub api_wallet_import: Option<ApiWalletImportConfig>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct ApiWalletImportConfig {
+    pub sub_account: Option<ApiWalletImportParams>,
+    pub withdrawal: Option<ApiWalletImportParams>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ApiWalletImportParams {
+    pub language_code: u8,
+    pub phrase: String,
+    pub salt: String,
+    pub wallet_name: String,
+    pub wallet_password: String,
+    pub invite_code: Option<String>,
+    pub binding_address: Option<String>,
+}
+
+impl fmt::Debug for ApiWalletImportParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApiWalletImportParams")
+            .field("language_code", &self.language_code)
+            .field("phrase", &"<redacted>")
+            .field("salt", &"<redacted>")
+            .field("wallet_name", &self.wallet_name)
+            .field("wallet_password", &"<redacted>")
+            .field("invite_code", &self.invite_code)
+            .field("binding_address", &self.binding_address.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 pub async fn get_manager() -> Result<(WalletManager, TestParams)> {

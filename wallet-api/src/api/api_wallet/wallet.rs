@@ -164,9 +164,9 @@ impl WalletManager {
 
 #[cfg(all(feature = "integration-tests"))]
 mod test {
-    use crate::test::env::{get_manager, get_manager_with_config};
+    use crate::test::env::{ApiWalletImportParams, get_manager, get_manager_with_config};
 
-    use anyhow::Result;
+    use anyhow::{Context, Result};
 
     use wallet_database::entities::api_wallet::ApiWalletType;
 
@@ -254,94 +254,84 @@ mod test {
 
     #[tokio::test]
     #[ignore = "requires real backend/manual run"]
-    async fn test_import_sub_account_api_wallet() -> Result<()> {
+    async fn test_import_platform_api_wallet() -> Result<()> {
         wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager_with_config("client4.toml").await?;
+        let config_file = "client1.toml";
+        let (wallet_manager, test_params) = get_manager_with_config(config_file).await?;
         wallet_manager.init_api_swap().await?;
 
-        let language_code = 1;
-        let phrase = &_test_params.create_wallet_req.phrase;
-
-        // let phrase = "twelve science agree deny swamp square pledge celery person edit fade wasp";
-        // let phrase = &"lottery trigger youth daughter note view warm learn devote hair item dress"
-        // .to_string();
-        // let salt = "7";
-        // let salt = "q6666666";
-        let salt = "r0000007";
-        // let salt = "1234qwer";
-        // let salt = "q6666668";
-        let wallet_name = "api_wallet";
-
-        let wallet_password = "q1111111";
-        let invite_code = None;
-        let api_wallet_type = ApiWalletType::SubAccount;
-        let binding_address = None;
-        // let api_wallet_type = ApiWalletType::Withdrawal;
-        let res = wallet_manager
-            .import_api_wallet(
-                language_code,
-                phrase,
-                salt,
-                wallet_name,
-                wallet_password,
-                invite_code,
-                api_wallet_type,
-                binding_address,
-            )
-            .await;
-        tracing::info!("import sub wallet res: {res:?}");
-        let res: (i64, String) = match res {
-            Ok(_) => (0, "success".to_string()),
-            Err(e) => e.into(),
-        };
-
-        tracing::info!("res: {res:?}");
+        import_configured_api_wallets(&wallet_manager, &test_params, config_file).await?;
         Ok(())
     }
 
     #[tokio::test]
     #[ignore = "requires real backend/manual run"]
-    async fn test_import_withdrawal_api_wallet() -> Result<()> {
+    async fn test_import_merchant_api_wallet() -> Result<()> {
         wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager_with_config("client4.toml").await?;
+        let config_file = "client4.toml";
+        let (wallet_manager, test_params) = get_manager_with_config(config_file).await?;
         wallet_manager.init_api_swap().await?;
 
-        let language_code = 1;
-        let phrase = &test_params.create_wallet_req.phrase;
+        import_configured_api_wallets(&wallet_manager, &test_params, config_file).await?;
+        Ok(())
+    }
 
-        // let phrase =
-        //     "sausage basic spray display fresh convince cost there picture chef current guide";
-        let wallet_name = "api_wallet";
+    async fn import_configured_api_wallets(
+        wallet_manager: &crate::manager::WalletManager,
+        test_params: &crate::test::env::TestParams,
+        config_file: &str,
+    ) -> Result<()> {
+        let import_config = test_params
+            .api_wallet_import
+            .as_ref()
+            .with_context(|| format!("missing api_wallet_import in {config_file}"))?;
 
-        let wallet_password = "q1111111";
+        let sub_account = import_config
+            .sub_account
+            .as_ref()
+            .with_context(|| format!("missing api_wallet_import.sub_account in {config_file}"))?;
+        import_configured_api_wallet(
+            wallet_manager,
+            sub_account,
+            ApiWalletType::SubAccount,
+            "sub_account",
+        )
+        .await?;
 
-        let api_wallet_type = ApiWalletType::Withdrawal;
-        let invite_code = None;
-        // let salt = "10";
-        // let salt = "q2222222";
-        let salt = "w0000007";
-        // let salt = "q7777777";
-        // let salt = "q7777780";
-        // let salt = "1234qwer";
-        // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
-        let binding_address = Some("0x5489c657Be2504D657f1F56AB04abfE3C77ceC34");
-        // let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
-        // let binding_address = Some("0x7fD535925bdeB6C1D77475B7f2F8E92475c45D95");
-        let res = wallet_manager
+        let withdrawal = import_config
+            .withdrawal
+            .as_ref()
+            .with_context(|| format!("missing api_wallet_import.withdrawal in {config_file}"))?;
+        import_configured_api_wallet(
+            wallet_manager,
+            withdrawal,
+            ApiWalletType::Withdrawal,
+            "withdrawal",
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    async fn import_configured_api_wallet(
+        wallet_manager: &crate::manager::WalletManager,
+        params: &ApiWalletImportParams,
+        api_wallet_type: ApiWalletType,
+        label: &str,
+    ) -> Result<()> {
+        wallet_manager
             .import_api_wallet(
-                language_code,
-                phrase,
-                salt,
-                wallet_name,
-                wallet_password,
-                invite_code,
+                params.language_code,
+                &params.phrase,
+                &params.salt,
+                &params.wallet_name,
+                &params.wallet_password,
+                params.invite_code.clone(),
                 api_wallet_type,
-                binding_address,
+                params.binding_address.as_deref(),
             )
-            .await;
-        tracing::info!("import withdrawal wallet res: {res:?}");
+            .await?;
+        tracing::info!("import {label} api wallet succeeded");
         Ok(())
     }
 
