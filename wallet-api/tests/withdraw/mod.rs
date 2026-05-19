@@ -8,7 +8,13 @@ use wallet_api::test::withdraw::{
 };
 use wallet_database::{
     SqliteContext,
-    entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus},
+    entities::{
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
+        api_trade_type::ApiTradeType,
+        api_withdraw::ApiWithdrawStatus,
+    },
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 
@@ -123,13 +129,15 @@ async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
         UPDATE api_withdraws
         SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            resource_block_reason = 'need_platform_delegate',
+            resource_block_reason = ?,
             resource_dependency_trade_no = ?,
-            resource_dependency_type = 'platform_delegate'
+            resource_dependency_type = ?
         WHERE trade_no = ?
         "#,
     )
+    .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
     .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
     .bind(&trade_no)
     .execute(tx_pool.as_ref())
     .await
@@ -170,7 +178,10 @@ async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
             .await
             .expect("load withdraw");
     assert!(withdraw.resource_gate_released_at.is_some());
-    assert_eq!(withdraw.resource_gate_result.as_deref(), Some("resource_delegation_success"));
+    assert_eq!(
+        withdraw.resource_gate_result,
+        Some(ApiResourceGateResult::ResourceDelegationSuccess)
+    );
 
     let labels =
         scan_withdraw_intent_labels_once(tx_pool.clone()).await.expect("scan withdraw labels");
@@ -225,13 +236,15 @@ async fn withdraw_failed_resource_bypass_reopens_withdraw_build_flow() {
         UPDATE api_withdraws
         SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            resource_block_reason = 'need_platform_delegate',
+            resource_block_reason = ?,
             resource_dependency_trade_no = ?,
-            resource_dependency_type = 'platform_delegate'
+            resource_dependency_type = ?
         WHERE trade_no = ?
         "#,
     )
+    .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
     .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
     .bind(&trade_no)
     .execute(tx_pool.as_ref())
     .await
@@ -284,7 +297,10 @@ async fn withdraw_failed_resource_bypass_reopens_withdraw_build_flow() {
             .await
             .expect("load withdraw");
     assert!(withdraw.resource_gate_released_at.is_some());
-    assert_eq!(withdraw.resource_gate_result.as_deref(), Some("resource_delegation_failed_bypass"));
+    assert_eq!(
+        withdraw.resource_gate_result,
+        Some(ApiResourceGateResult::ResourceDelegationFailedBypass)
+    );
 
     let labels_after = scan_withdraw_intent_labels_once(tx_pool.clone())
         .await
@@ -340,13 +356,15 @@ async fn withdraw_resource_result_ack_without_origin_trade_no_does_not_release_g
         UPDATE api_withdraws
         SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            resource_block_reason = 'need_platform_delegate',
+            resource_block_reason = ?,
             resource_dependency_trade_no = ?,
-            resource_dependency_type = 'platform_delegate'
+            resource_dependency_type = ?
         WHERE trade_no = ?
         "#,
     )
+    .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
     .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
     .bind(&trade_no)
     .execute(tx_pool.as_ref())
     .await
@@ -434,13 +452,15 @@ async fn withdraw_resource_result_ack_for_collect_origin_does_not_release_withdr
         UPDATE api_withdraws
         SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            resource_block_reason = 'need_platform_delegate',
+            resource_block_reason = ?,
             resource_dependency_trade_no = ?,
-            resource_dependency_type = 'platform_delegate'
+            resource_dependency_type = ?
         WHERE trade_no = ?
         "#,
     )
+    .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
     .bind(format!("rsc_delegate_{trade_no}"))
+    .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
     .bind(&trade_no)
     .execute(tx_pool.as_ref())
     .await

@@ -18,6 +18,9 @@ use wallet_database::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
         },
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         api_resource_type::ApiResourceType,
         api_withdraw::{ApiWithdrawEntity, ErrCode, WithdrawFailureStage},
     },
@@ -433,10 +436,13 @@ impl ShadowWithdrawWorker {
             fee_details.energy,
             fee_details.bandwidth,
         ) {
-            let rows =
-                ApiWithdrawRepo::mark_resource_released(&self.pool, trade_no, "resource_ready")
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+            let rows = ApiWithdrawRepo::mark_resource_released(
+                &self.pool,
+                trade_no,
+                ApiResourceGateResult::ResourceReady,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
             if rows > 0 {
                 self.scanner.try_advance(trade_no).await;
             }
@@ -479,7 +485,7 @@ impl ShadowWithdrawWorker {
                 let rows = ApiWithdrawRepo::mark_resource_released(
                     &self.pool,
                     origin_trade_no,
-                    "fallback_allowed",
+                    ApiResourceGateResult::FallbackAllowed,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
@@ -492,9 +498,9 @@ impl ShadowWithdrawWorker {
         ApiWithdrawRepo::mark_resource_blocked(
             &self.pool,
             origin_trade_no,
-            "need_platform_delegate",
+            ApiResourceBlockReason::NeedPlatformDelegate,
             resource_trade_no.as_deref(),
-            Some("platform_delegate"),
+            Some(ApiResourceDependencyType::PlatformDelegate),
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;

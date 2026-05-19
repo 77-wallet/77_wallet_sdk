@@ -1,5 +1,7 @@
 use smallvec::SmallVec;
-use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
+use wallet_database::entities::{
+    api_resource_gate::ApiResourceBlockReason, api_withdraw::ApiWithdrawEntity,
+};
 
 use super::stage::AdvancementPoint;
 
@@ -66,13 +68,13 @@ fn evaluate_need_resource_gate(withdraw: &ApiWithdrawEntity) -> StageEval {
             message: "Resource gate already released".to_string(),
         });
     }
-    if withdraw.resource_block_reason.as_deref() == Some("need_platform_delegate") {
+    if withdraw.resource_block_reason == Some(ApiResourceBlockReason::NeedPlatformDelegate) {
         reasons.push(StageReason {
             code: "waiting_platform_delegate_result",
             message: "Waiting for platform delegation result".to_string(),
         });
     }
-    if withdraw.resource_block_reason.as_deref() == Some("need_local_delegate")
+    if withdraw.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)
         && withdraw.resource_dependency_trade_no.is_some()
     {
         reasons.push(StageReason {
@@ -105,7 +107,7 @@ fn evaluate_need_resource_gate(withdraw: &ApiWithdrawEntity) -> StageEval {
         && withdraw.chain_code.eq_ignore_ascii_case("tron")
         && withdraw.resource_gate_released_at.is_none()
         && (withdraw.resource_block_reason.is_none()
-            || (withdraw.resource_block_reason.as_deref() == Some("need_local_delegate")
+            || (withdraw.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)
                 && withdraw.resource_dependency_trade_no.is_none()))
         && withdraw.raw_tx.is_none()
         && withdraw.transaction_time.is_none()
@@ -527,7 +529,7 @@ mod tests {
         waiting_platform.raw_tx = None;
         waiting_platform.tx_hash = None;
         waiting_platform.tx_exec_receipt_uploaded_at = None;
-        waiting_platform.resource_block_reason = Some("need_platform_delegate".to_string());
+        waiting_platform.resource_block_reason = Some(ApiResourceBlockReason::NeedPlatformDelegate);
         waiting_platform.resource_dependency_trade_no = Some("DL_W_1".to_string());
 
         let platform_eval = evaluate_point(AdvancementPoint::NeedResourceGate, &waiting_platform);
@@ -540,7 +542,7 @@ mod tests {
         );
 
         let mut waiting_local = waiting_platform.clone();
-        waiting_local.resource_block_reason = Some("need_local_delegate".to_string());
+        waiting_local.resource_block_reason = Some(ApiResourceBlockReason::NeedLocalDelegate);
         waiting_local.resource_dependency_trade_no = Some("rsc_local_delegate_W".to_string());
         let local_eval = evaluate_point(AdvancementPoint::NeedResourceGate, &waiting_local);
         assert!(!local_eval.can_advance);

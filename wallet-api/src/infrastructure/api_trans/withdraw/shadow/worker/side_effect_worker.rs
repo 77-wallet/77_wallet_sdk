@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
-    entities::api_trade_type::ApiTradeType,
+    entities::{api_resource_gate::ApiResourceGateResult, api_trade_type::ApiTradeType},
     repositories::api_wallet::{
         resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
     },
@@ -17,9 +17,9 @@ use crate::{
     error::service::ServiceError, infrastructure::api_trans::withdraw::shadow::ShadowScanner,
 };
 
-enum ResourceGateReleaseOutcome<'a> {
-    Success(&'a str),
-    FailureBypass(&'a str),
+enum ResourceGateReleaseOutcome {
+    Success(ApiResourceGateResult),
+    FailureBypass(ApiResourceGateResult),
 }
 
 /// SideEffectWorker
@@ -306,7 +306,7 @@ impl SideEffectWorker {
 
         self.project_resource_task_outcome_to_withdraw_gate(
             &resource_task,
-            ResourceGateReleaseOutcome::Success("resource_delegation_success"),
+            ResourceGateReleaseOutcome::Success(ApiResourceGateResult::ResourceDelegationSuccess),
         )
         .await?;
         Ok(())
@@ -380,7 +380,9 @@ impl SideEffectWorker {
 
         self.project_resource_task_outcome_to_withdraw_gate(
             &resource_task,
-            ResourceGateReleaseOutcome::FailureBypass("resource_delegation_failed_bypass"),
+            ResourceGateReleaseOutcome::FailureBypass(
+                ApiResourceGateResult::ResourceDelegationFailedBypass,
+            ),
         )
         .await?;
         Ok(())
@@ -389,7 +391,7 @@ impl SideEffectWorker {
     async fn project_resource_task_outcome_to_withdraw_gate(
         &self,
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
-        outcome: ResourceGateReleaseOutcome<'_>,
+        outcome: ResourceGateReleaseOutcome,
     ) -> Result<(), ServiceError> {
         let release_result = match outcome {
             ResourceGateReleaseOutcome::Success(release_result) => {

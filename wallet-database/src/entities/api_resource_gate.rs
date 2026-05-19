@@ -16,6 +16,7 @@ pub enum ApiResourceGateResult {
     LocalDelegationSuccess = 4,
     LocalDelegationFailedBypass = 5,
     PlatformDelegateSuccess = 6,
+    FallbackAllowed = 7,
 }
 
 impl ApiResourceGateResult {

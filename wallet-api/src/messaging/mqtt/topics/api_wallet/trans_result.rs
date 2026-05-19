@@ -296,7 +296,7 @@ impl AwmOrderTransResMsg {
                     ApiWithdrawRepo::mark_resource_released(
                         api_transaction_pool,
                         origin_trade_no,
-                        "platform_delegate_success",
+                        ApiResourceGateResult::PlatformDelegateSuccess,
                     )
                     .await?;
                     tracing::info!(
@@ -336,9 +336,9 @@ impl AwmOrderTransResMsg {
             api_transaction_pool,
             &withdraw.trade_no,
             if self.status {
-                "platform_delegate_success"
+                ApiResourceGateResult::PlatformDelegateSuccess
             } else {
-                "resource_delegation_failed_bypass"
+                ApiResourceGateResult::ResourceDelegationFailedBypass
             },
         )
         .await?;
