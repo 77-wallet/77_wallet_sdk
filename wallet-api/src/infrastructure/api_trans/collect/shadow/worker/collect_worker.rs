@@ -74,7 +74,9 @@ use crate::{
         },
         service::ServiceError,
     },
-    infrastructure::api_trans::collect::legacy::AddressLockManager,
+    infrastructure::api_trans::{
+        collect::legacy::AddressLockManager, resource_amount::energy_shortfall_to_apply_amounts,
+    },
     request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
 };
 
@@ -1141,18 +1143,9 @@ impl ShadowCollectWorker {
         receiver_address: &str,
         amount: &str,
     ) -> Result<PlatformApplyOutcome, ServiceError> {
-        let resource_amount: f64 = amount.parse().map_err(|e| {
-            ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::Trans(
-                    TransError::BuildWithdrawTransactionFailed(format!(
-                        "Invalid delegation amount: {}",
-                        e
-                    )),
-                ),
-            ))
-        })?;
-
-        let native_token_amount = resource_amount / 1000.0;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let resource = adapter.account_resource(receiver_address).await?;
+        let amounts = energy_shortfall_to_apply_amounts(amount, resource.energy_price())?;
 
         let wallet = ApiWalletRepo::find_by_uid(&self.core_pool, uid)
             .await
@@ -1166,8 +1159,8 @@ impl ShadowCollectWorker {
             app_id,
             org_id,
             Some(chain_code),
-            native_token_amount,
-            Some(resource_amount),
+            amounts.native_token_amount,
+            Some(amounts.resource_amount),
             ResourceType::Energy,
             receiver_address,
             TransType::Col,
