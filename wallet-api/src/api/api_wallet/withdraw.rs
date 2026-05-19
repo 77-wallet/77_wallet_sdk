@@ -1,5 +1,7 @@
 use crate::{
-    api::ReturnType, manager::WalletManager, response_vo::api_wallet::withdraw::ApiWithdrawOrderVo,
+    api::ReturnType,
+    manager::WalletManager,
+    response_vo::api_wallet::withdraw::{ApiWithdrawOrderDetailVo, ApiWithdrawOrderVo},
     service::api_wallet::withdraw::WithdrawService,
 };
 use wallet_database::{
@@ -36,6 +38,13 @@ impl WalletManager {
     ) -> ReturnType<Pagination<ApiWithdrawOrderVo>> {
         let s = status.iter().map(|it| ApiWithdrawStatus::try_from(it.clone()).unwrap()).collect();
         WithdrawService::new(self.ctx).page_withdraw_order(uid, s, page, page_size).await
+    }
+
+    pub async fn detail_api_withdraw_order(
+        &self,
+        trade_no: &str,
+    ) -> ReturnType<ApiWithdrawOrderDetailVo> {
+        WithdrawService::new(self.ctx).detail_withdraw_order(trade_no).await
     }
 
     // 测试
@@ -138,7 +147,8 @@ mod unit_tests {
     };
 
     use crate::response_vo::api_wallet::{
-        withdraw::ApiWithdrawOrderVo, withdraw_display::FailureReasonDisplay,
+        withdraw::{ApiWithdrawOrderDetailVo, ApiWithdrawOrderVo},
+        withdraw_display::FailureReasonDisplay,
     };
 
     fn make_entity(
@@ -261,6 +271,43 @@ mod unit_tests {
         assert!(json.get("signTime").is_some(), "should have camelCase signTime");
         assert!(json.get("apply_time").is_none(), "should NOT have snake_case apply_time");
         assert!(json.get("sign_time").is_none(), "should NOT have snake_case sign_time");
+    }
+
+    #[test]
+    fn api_withdraw_order_list_vo_excludes_detail_only_fields() {
+        let now = Utc::now();
+        let mut entity = make_entity(now, None, None);
+        entity.validate = "secret-validate".to_string();
+        entity.audit_reason = Some("reject reason".to_string());
+        entity.err_code = Some(wallet_database::entities::api_withdraw::ErrCode::UnknownError);
+        entity.notes = Some("internal note".to_string());
+
+        let json = serde_json::to_value(ApiWithdrawOrderVo::from(entity)).unwrap();
+
+        assert_eq!(json.get("tradeNo").and_then(|v| v.as_str()), Some("T2024000000000000001"));
+        assert!(json.get("validate").is_none());
+        assert!(json.get("auditReason").is_none());
+        assert!(json.get("errCode").is_none());
+        assert!(json.get("notes").is_none());
+    }
+
+    #[test]
+    fn api_withdraw_order_detail_vo_includes_audit_detail_fields() {
+        let now = Utc::now();
+        let mut entity = make_entity(now, None, Some(now + Duration::minutes(5)));
+        entity.validate = "validate-payload".to_string();
+        entity.audit_reason = Some("risk rejected".to_string());
+        entity.err_code = Some(wallet_database::entities::api_withdraw::ErrCode::UnknownError);
+        entity.err_msg = Some("backend failed".to_string());
+        entity.notes = Some("operator note".to_string());
+
+        let json = serde_json::to_value(ApiWithdrawOrderDetailVo::from(entity)).unwrap();
+
+        assert_eq!(json.get("validate").and_then(|v| v.as_str()), Some("validate-payload"));
+        assert_eq!(json.get("auditReason").and_then(|v| v.as_str()), Some("risk rejected"));
+        assert_eq!(json.get("errMsg").and_then(|v| v.as_str()), Some("backend failed"));
+        assert_eq!(json.get("notes").and_then(|v| v.as_str()), Some("operator note"));
+        assert!(json.get("audit_reason").is_none());
     }
 
     #[test]

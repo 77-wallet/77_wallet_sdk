@@ -1,10 +1,13 @@
 use crate::{
-    context::Context, domain::api_wallet::trans::withdraw::ApiWithdrawDomain,
-    error::service::ServiceError, request::api_wallet::trans::ApiWithdrawReq,
-    response_vo::api_wallet::withdraw::ApiWithdrawOrderVo,
+    context::Context,
+    domain::api_wallet::trans::withdraw::ApiWithdrawDomain,
+    error::service::ServiceError,
+    request::api_wallet::trans::ApiWithdrawReq,
+    response_vo::api_wallet::withdraw::{ApiWithdrawOrderDetailVo, ApiWithdrawOrderVo},
 };
 use wallet_database::{
     entities::{
+        api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
         asset_token_key::AssetTokenKey,
     },
@@ -78,6 +81,18 @@ impl WithdrawService {
             total_count: pagination.total_count,
             data,
         })
+    }
+
+    pub async fn detail_withdraw_order(
+        &self,
+        trade_no: &str,
+    ) -> Result<ApiWithdrawOrderDetailVo, ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+        let entity =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .map_err(ServiceError::from)?;
+        Ok(ApiWithdrawOrderDetailVo::from(entity))
     }
 
     pub async fn withdrawal_order(
