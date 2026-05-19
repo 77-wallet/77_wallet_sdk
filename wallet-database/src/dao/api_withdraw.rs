@@ -1,6 +1,9 @@
 use crate::{
     DbPool,
     entities::{
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         api_trade_type::ApiTradeType,
         api_withdraw::{
             ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawCreatedFact,
@@ -301,9 +304,9 @@ impl ApiWithdrawDao {
     pub async fn mark_resource_blocked<'a, E>(
         exec: E,
         trade_no: &str,
-        block_reason: &str,
+        block_reason: ApiResourceBlockReason,
         dependency_trade_no: Option<&str>,
-        dependency_type: Option<&str>,
+        dependency_type: Option<ApiResourceDependencyType>,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -322,9 +325,9 @@ impl ApiWithdrawDao {
 
         let res = sqlx::query(sql)
             .bind(trade_no)
-            .bind(block_reason)
+            .bind(block_reason.as_i64())
             .bind(dependency_trade_no)
-            .bind(dependency_type)
+            .bind(dependency_type.map(ApiResourceDependencyType::as_i64))
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -334,7 +337,7 @@ impl ApiWithdrawDao {
     pub async fn mark_resource_released<'a, E>(
         exec: E,
         trade_no: &str,
-        gate_result: &str,
+        gate_result: ApiResourceGateResult,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -351,7 +354,7 @@ impl ApiWithdrawDao {
 
         let res = sqlx::query(sql)
             .bind(trade_no)
-            .bind(gate_result)
+            .bind(gate_result.as_i64())
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -387,7 +390,7 @@ impl ApiWithdrawDao {
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind("need_local_delegate")
+            .bind(ApiResourceBlockReason::NeedLocalDelegate.as_i64())
             .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)

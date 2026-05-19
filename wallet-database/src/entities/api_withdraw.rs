@@ -1,6 +1,12 @@
 use crate::{
     Error,
-    entities::{api_trade_type::ApiTradeType, asset_token_key::AssetTokenKey},
+    entities::{
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
+        api_trade_type::ApiTradeType,
+        asset_token_key::AssetTokenKey,
+    },
 };
 use serde::Deserializer;
 use std::fmt::Display;
@@ -99,18 +105,18 @@ pub struct ApiWithdrawEntity {
     /// 门禁放行时间（有值表示当前订单已不再阻塞于资源门禁）
     #[serde(skip_serializing)]
     pub resource_gate_released_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-    /// 最近一次门禁结论（如 `ready` / `blocked`）
+    /// 最近一次门禁结论（内部数字枚举）
     #[serde(skip_serializing)]
-    pub resource_gate_result: Option<String>,
-    /// 最近一次门禁阻塞原因（仅 blocked 时有意义）
+    pub resource_gate_result: Option<ApiResourceGateResult>,
+    /// 最近一次门禁阻塞原因（内部数字枚举，仅 blocked 时有意义）
     #[serde(skip_serializing)]
-    pub resource_block_reason: Option<String>,
+    pub resource_block_reason: Option<ApiResourceBlockReason>,
     /// 资源依赖任务号（平台代打能量等），用于关联资源子流程事实
     #[serde(skip_serializing)]
     pub resource_dependency_trade_no: Option<String>,
-    /// 资源依赖类型（如 `platform_delegate`），用于区分依赖来源
+    /// 资源依赖类型（内部数字枚举），用于区分依赖来源
     #[serde(skip_serializing)]
-    pub resource_dependency_type: Option<String>,
+    pub resource_dependency_type: Option<ApiResourceDependencyType>,
 
     // ===== Tx ACK（交易 ACK 事实）=====
     #[serde(skip_serializing)]
