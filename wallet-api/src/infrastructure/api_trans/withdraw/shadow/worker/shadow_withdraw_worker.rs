@@ -518,14 +518,7 @@ impl ShadowWithdrawWorker {
         receiver_address: &str,
         amount: &str,
     ) -> Result<PlatformApplyOutcome, ServiceError> {
-        let native_token_amount: f64 = amount.parse().map_err(|e| {
-            ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
-                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed(format!(
-                    "Invalid delegation amount: {}",
-                    e
-                ))),
-            ))
-        })?;
+        let (resource_amount, native_token_amount) = Self::platform_resource_amounts(amount)?;
 
         let req = ResourceApplyReq::new(
             origin_trade_no,
@@ -533,7 +526,7 @@ impl ShadowWithdrawWorker {
             uid,
             Some(chain_code),
             native_token_amount,
-            None,
+            Some(resource_amount),
             ResourceType::Energy,
             receiver_address,
             TransType::Wd,
@@ -558,6 +551,23 @@ impl ShadowWithdrawWorker {
             );
             Ok(PlatformApplyOutcome::Rejected)
         }
+    }
+
+    fn platform_resource_amounts(amount: &str) -> Result<(f64, f64), ServiceError> {
+        let resource_amount: f64 = amount.parse().map_err(|e| {
+            ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
+                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed(format!(
+                    "Invalid delegation amount: {}",
+                    e
+                ))),
+            ))
+        })?;
+
+        // `amount` is an energy shortfall, not a native token quantity. Keep
+        // withdraw aligned with collect: send both the exact resource amount
+        // and the backend's native-token estimate field.
+        let native_token_amount = resource_amount / 1000.0;
+        Ok((resource_amount, native_token_amount))
     }
 
     /// 执行 Recover Command - 外层wrapper，确保所有错误都被捕获
@@ -2041,6 +2051,15 @@ mod tests {
     #[test]
     fn withdraw_evm_prebroadcast_nonce_gap_aligns_when_local_nonce_is_far_ahead() {
         assert!(ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(3, 5));
+    }
+
+    #[test]
+    fn withdraw_platform_resource_apply_amounts_match_collect_semantics() {
+        let (resource_amount, native_token_amount) =
+            ShadowWithdrawWorker::platform_resource_amounts("800").expect("parse amount");
+
+        assert_eq!(resource_amount, 800.0);
+        assert_eq!(native_token_amount, 0.8);
     }
 
     #[test]
