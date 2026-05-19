@@ -242,6 +242,39 @@ impl ApiWithdrawDao {
         Ok(res)
     }
 
+    pub async fn find_api_withdraw_by_trade_no<'a, E>(
+        exec: E,
+        trade_no: &str,
+        trade_type: ApiTradeType,
+    ) -> Result<Option<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_withdraws WHERE trade_no = ? AND trade_type = ?";
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(trade_no)
+            .bind(trade_type)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn find_by_resource_dependency_trade_no<'a, E>(
+        exec: E,
+        dependency_trade_no: &str,
+    ) -> Result<Option<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_withdraws WHERE resource_dependency_trade_no = ? AND trade_type = ? ORDER BY id ASC LIMIT 1";
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(dependency_trade_no)
+            .bind(ApiTradeType::Withdraw)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn get_api_withdraw_by_trade_no_status<'a, E>(
         exec: E,
         trade_no: &str,
@@ -338,6 +371,13 @@ impl ApiWithdrawDao {
               AND audit_passed_at IS NOT NULL
               AND lower(chain_code) = 'tron'
               AND resource_gate_released_at IS NULL
+              AND (
+                  resource_block_reason IS NULL
+                  OR (
+                      resource_block_reason = ?
+                      AND resource_dependency_trade_no IS NULL
+                  )
+              )
               AND raw_tx IS NULL
               AND transaction_time IS NULL
               AND finished_at IS NULL
@@ -347,6 +387,7 @@ impl ApiWithdrawDao {
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind("need_local_delegate")
             .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)

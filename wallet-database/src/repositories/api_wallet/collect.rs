@@ -55,6 +55,21 @@ impl ApiCollectRepo {
         ApiCollectDao::get_api_collect_by_trade_no(pool.read_ref(), trade_no).await
     }
 
+    pub async fn find_api_collect_by_trade_no(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<Option<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::find_api_collect_by_trade_no(pool.read_ref(), trade_no).await
+    }
+
+    pub async fn find_by_resource_dependency_trade_no(
+        pool: &ApiTransactionDbPool,
+        dependency_trade_no: &str,
+    ) -> Result<Option<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::find_by_resource_dependency_trade_no(pool.read_ref(), dependency_trade_no)
+            .await
+    }
+
     pub async fn get_api_collect_by_trade_no_status(
         pool: &ApiTransactionDbPool,
         trade_no: &str,

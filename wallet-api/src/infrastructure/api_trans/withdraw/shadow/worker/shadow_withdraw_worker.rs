@@ -17,7 +17,6 @@ use wallet_database::{
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            NewApiResourceDelegation,
         },
         api_resource_type::ApiResourceType,
         api_withdraw::{ApiWithdrawEntity, ErrCode, WithdrawFailureStage},
@@ -32,6 +31,12 @@ use wallet_transport_backend::request::api_wallet::{
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PlatformApplyOutcome {
+    Accepted(Option<String>),
+    Rejected,
+}
 
 use crate::{
     domain::{
@@ -286,12 +291,6 @@ impl ShadowWithdrawWorker {
             && available_bandwidth >= required_bandwidth as i64
     }
 
-    fn withdraw_platform_delegate_trade_no(origin_trade_no: &str) -> String {
-        // Deterministic placeholder id so repeated resource-gate scans keep
-        // upserting the same pending delegation dependency row.
-        format!("rsc_delegate_{}", origin_trade_no)
-    }
-
     fn resource_shortfall(required: u64, available: i64) -> u64 {
         required.saturating_sub(available.max(0) as u64)
     }
@@ -462,25 +461,37 @@ impl ShadowWithdrawWorker {
         available_energy: i64,
         available_bandwidth: i64,
     ) -> Result<(), ServiceError> {
-        let resource_trade_no = Self::withdraw_platform_delegate_trade_no(origin_trade_no);
         let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
-        let delegation = NewApiResourceDelegation::platform_delegate(
-            req.uid.clone(),
-            resource_trade_no.clone(),
-            req.trade_no.clone(),
-            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
-            "",
-            req.from_addr.clone(),
-            amount.clone(),
-        );
-        ApiResourceDelegationRepo::upsert(&self.pool, delegation)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
+        let resource_trade_no = match self
+            .apply_platform_resource_delegation(
+                &req.uid,
+                origin_trade_no,
+                &req.chain_code,
+                &req.from_addr,
+                &amount,
+            )
+            .await?
+        {
+            PlatformApplyOutcome::Accepted(resource_trade_no) => resource_trade_no,
+            PlatformApplyOutcome::Rejected => {
+                let rows = ApiWithdrawRepo::mark_resource_released(
+                    &self.pool,
+                    origin_trade_no,
+                    "fallback_allowed",
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                if rows > 0 {
+                    self.scanner.try_advance(origin_trade_no).await;
+                }
+                return Ok(());
+            }
+        };
         ApiWithdrawRepo::mark_resource_blocked(
             &self.pool,
             origin_trade_no,
             "need_platform_delegate",
-            Some(&resource_trade_no),
+            resource_trade_no.as_deref(),
             Some("platform_delegate"),
         )
         .await
@@ -491,35 +502,10 @@ impl ShadowWithdrawWorker {
             available_energy = %available_energy,
             required_bandwidth = %required_bandwidth,
             available_bandwidth = %available_bandwidth,
-            resource_trade_no = %resource_trade_no,
+            resource_trade_no = ?resource_trade_no,
             source = "shadow_withdraw_worker",
             "TRON withdraw resource gate blocked"
         );
-
-        let apply_success = self
-            .apply_platform_resource_delegation(
-                &req.uid,
-                &resource_trade_no,
-                &req.trade_no,
-                &req.chain_code,
-                &req.from_addr,
-                &amount,
-            )
-            .await?;
-
-        if !apply_success {
-            let rows = ApiWithdrawRepo::mark_resource_released(
-                &self.pool,
-                origin_trade_no,
-                "fallback_allowed",
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
-            if rows > 0 {
-                self.scanner.try_advance(origin_trade_no).await;
-            }
-            return Ok(());
-        }
 
         Ok(())
     }
@@ -527,12 +513,11 @@ impl ShadowWithdrawWorker {
     async fn apply_platform_resource_delegation(
         &self,
         uid: &str,
-        resource_trade_no: &str,
         origin_trade_no: &str,
         chain_code: &str,
         receiver_address: &str,
         amount: &str,
-    ) -> Result<bool, ServiceError> {
+    ) -> Result<PlatformApplyOutcome, ServiceError> {
         let native_token_amount: f64 = amount.parse().map_err(|e| {
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed(format!(
@@ -559,20 +544,19 @@ impl ShadowWithdrawWorker {
 
         if resp.is_success() {
             info!(
-                resource_trade_no = %resource_trade_no,
                 origin_trade_no = %origin_trade_no,
+                resource_trade_no = ?resp.dl_trade_no,
                 source = "shadow_withdraw_worker",
                 "Platform resource delegation apply succeeded"
             );
-            Ok(true)
+            Ok(PlatformApplyOutcome::Accepted(resp.dl_trade_no))
         } else {
             warn!(
-                resource_trade_no = %resource_trade_no,
                 origin_trade_no = %origin_trade_no,
                 source = "shadow_withdraw_worker",
                 "Platform resource delegation apply rejected, will proceed with main currency check"
             );
-            Ok(false)
+            Ok(PlatformApplyOutcome::Rejected)
         }
     }
 

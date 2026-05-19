@@ -25,6 +25,14 @@ impl ApiResourceDelegationRepo {
         ApiResourceDelegationDao::get_by_resource_trade_no(pool.read_ref(), resource_trade_no).await
     }
 
+    pub async fn find_by_resource_trade_no(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<Option<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::find_by_resource_trade_no(pool.read_ref(), resource_trade_no)
+            .await
+    }
+
     pub async fn list_by_origin_trade_no(
         pool: &ApiTransactionDbPool,
         origin_trade_no: &str,
@@ -56,8 +64,10 @@ impl ApiResourceDelegationRepo {
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
-        // 这里只扫描“平台代理任务 ACK”。
-        // 本地 fallback 不走后端任务 ACK，因此不应混进这组扫描。
+        // 这里只扫描“后端下发的平台代理任务 ACK”。
+        // 商户侧资源 gate 只记录原单依赖的 backend dlTradeNo，不再写 platform
+        // placeholder；因此扫描边界只看 source/operation/origin_type。
+        // 本地 fallback 不走后端任务 ACK，也不会混进这组扫描。
         ApiResourceDelegationDao::scan_need_task_ack_by_origin_type(
             pool.read_ref(),
             origin_trade_type,
@@ -71,8 +81,8 @@ impl ApiResourceDelegationRepo {
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
-        // 这里只扫描“平台代理结果 ACK”。
-        // Local fallback 没有这条后端结果确认副作用。
+        // 这里只扫描“后端下发的平台代理结果 ACK”。
+        // 商户侧不会创建 platform placeholder；Local fallback 没有这条后端结果确认副作用。
         ApiResourceDelegationDao::scan_need_result_ack_by_origin_type(
             pool.read_ref(),
             origin_trade_type,
@@ -316,9 +326,13 @@ impl ApiResourceDelegationRepo {
 mod tests {
     use super::*;
     use crate::{
-        entities::api_resource_delegation::{
-            ApiResourceDelegationOperationType, ApiResourceDelegationSource,
-            ApiResourceDelegationStatus,
+        entities::{
+            api_resource_delegation::{
+                ApiResourceDelegationOperationType, ApiResourceDelegationSource,
+                ApiResourceDelegationStatus,
+            },
+            api_resource_type::ApiResourceType,
+            api_trade_type::ApiTradeType,
         },
         repositories::test_helper::setup_api_transaction_pool,
     };
@@ -388,13 +402,16 @@ mod tests {
 
         ApiResourceDelegationRepo::upsert(
             &pool,
-            NewApiResourceDelegation::platform_delegate(
+            NewApiResourceDelegation::platform_delegate_task(
                 "uid_1",
                 "rsc_needs_ack",
-                "origin_1",
-                2,
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
                 "owner",
                 "receiver",
+                ApiResourceType::Energy,
+                "1",
                 "100",
             ),
         )
@@ -402,13 +419,31 @@ mod tests {
         .unwrap();
         ApiResourceDelegationRepo::upsert(
             &pool,
-            NewApiResourceDelegation::platform_delegate(
+            NewApiResourceDelegation::platform_delegate_task(
                 "uid_1",
                 "rsc_already_acked",
-                "origin_2",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "1",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid_1",
+                "rsc_local_delegate",
+                "origin_local",
                 2,
                 "owner",
                 "receiver",
+                "1",
                 "100",
             ),
         )
@@ -421,6 +456,7 @@ mod tests {
 
         assert!(trade_nos.contains(&"rsc_needs_ack".to_string()));
         assert!(!trade_nos.contains(&"rsc_already_acked".to_string()));
+        assert!(!trade_nos.contains(&"rsc_local_delegate".to_string()));
     }
 
     #[tokio::test]
@@ -807,13 +843,16 @@ mod tests {
         let pool = setup_api_transaction_pool("resource_delegation_result_ack").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
-            NewApiResourceDelegation::platform_delegate(
+            NewApiResourceDelegation::platform_delegate_task(
                 "uid_1",
                 "rsc_ack",
-                "origin_ack",
-                2,
-                "",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "owner",
                 "receiver",
+                ApiResourceType::Energy,
+                "1",
                 "100",
             ),
         )
@@ -821,13 +860,31 @@ mod tests {
         .unwrap();
         ApiResourceDelegationRepo::upsert(
             &pool,
-            NewApiResourceDelegation::platform_delegate(
+            NewApiResourceDelegation::platform_delegate_task(
                 "uid_1",
                 "rsc_no_result",
-                "origin_no_result",
-                2,
-                "",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "owner",
                 "receiver",
+                ApiResourceType::Energy,
+                "1",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid_1",
+                "rsc_local_result",
+                "origin_local_result",
+                2,
+                "owner",
+                "receiver",
+                "1",
                 "100",
             ),
         )
@@ -845,11 +902,23 @@ mod tests {
         )
         .await
         .unwrap();
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_local_result",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
         let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
         assert!(trade_nos.contains(&"rsc_ack".to_string()));
         assert!(!trade_nos.contains(&"rsc_no_result".to_string()));
+        assert!(!trade_nos.contains(&"rsc_local_result".to_string()));
 
         assert_eq!(
             ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "rsc_ack").await.unwrap(),

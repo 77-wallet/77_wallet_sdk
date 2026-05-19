@@ -9,7 +9,10 @@ use tracing;
 use wallet_database::{
     entities::{
         api_resource_delegation::ApiResourceDelegationResultStatus,
-        api_resource_gate::ApiResourceGateResult,
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
+        api_trade_type::ApiTradeType,
     },
     repositories::api_wallet::{
         collect::ApiCollectRepo, fee::ApiFeeRepo, resource_delegation::ApiResourceDelegationRepo,
@@ -179,55 +182,83 @@ impl AwmOrderTransResMsg {
             ApiResourceDelegationResultStatus::Fail
         };
         let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
-        ApiResourceDelegationRepo::mark_result_received(
-            api_transaction_pool,
-            &self.trade_no,
-            result_status,
-            self.fail_type.map(i64::from),
-            None,
-            None,
-            result_payload.as_deref(),
-        )
-        .await?;
 
-        let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+        if let Some(resource_task) = ApiResourceDelegationRepo::find_by_resource_trade_no(
             api_transaction_pool,
             &self.trade_no,
         )
-        .await?;
+        .await?
+        {
+            ApiResourceDelegationRepo::mark_result_received(
+                api_transaction_pool,
+                &self.trade_no,
+                result_status,
+                self.fail_type.map(i64::from),
+                None,
+                None,
+                result_payload.as_deref(),
+            )
+            .await?;
 
-        if self.status {
-            if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
-                ApiCollectRepo::mark_resource_released(
-                    api_transaction_pool,
-                    origin_trade_no,
-                    ApiResourceGateResult::PlatformDelegateSuccess,
-                )
-                .await?;
-                tracing::info!(
-                    resource_trade_no = %self.trade_no,
-                    origin_trade_no = %origin_trade_no,
-                    "Collect resource gate released by platform delegation result"
-                );
+            if self.status {
+                if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
+                    ApiCollectRepo::mark_resource_released(
+                        api_transaction_pool,
+                        origin_trade_no,
+                        ApiResourceGateResult::PlatformDelegateSuccess,
+                    )
+                    .await?;
+                    tracing::info!(
+                        resource_trade_no = %self.trade_no,
+                        origin_trade_no = %origin_trade_no,
+                        "Collect resource gate released by platform delegation result"
+                    );
 
-                if let Some(handles) =
-                    crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-                {
-                    if let Some(shadow_system) =
-                        handles.get_global_processed_collect_tx_handle().get_shadow_system()
-                    {
-                        if let Err(e) = shadow_system.trigger_collect(origin_trade_no).await {
-                            tracing::warn!(
-                                resource_trade_no = %self.trade_no,
-                                origin_trade_no = %origin_trade_no,
-                                "Trigger collect shadow failed after resource result, but continuing: {:?}",
-                                e
-                            );
-                        }
-                    }
+                    self.trigger_collect_shadow(origin_trade_no).await;
                 }
             }
+
+            return Ok(());
         }
+
+        let collect = ApiCollectRepo::find_by_resource_dependency_trade_no(
+            api_transaction_pool,
+            &self.trade_no,
+        )
+        .await?
+        .or(ApiCollectRepo::find_api_collect_by_trade_no(
+            api_transaction_pool,
+            &self.trade_no,
+        )
+        .await?);
+
+        let Some(collect) = collect else {
+            tracing::warn!(
+                resource_trade_no = %self.trade_no,
+                "Collect resource delegation result has no local resource task or blocked origin order"
+            );
+            return Ok(());
+        };
+
+        if self.status {
+            ApiCollectRepo::mark_resource_released(
+                api_transaction_pool,
+                &collect.trade_no,
+                ApiResourceGateResult::PlatformDelegateSuccess,
+            )
+            .await?;
+        } else {
+            ApiCollectRepo::mark_resource_blocked(
+                api_transaction_pool,
+                &collect.trade_no,
+                ApiResourceBlockReason::NeedLocalDelegate,
+                None,
+                Some(ApiResourceDependencyType::LocalDelegate),
+            )
+            .await?;
+        }
+
+        self.trigger_collect_shadow(&collect.trade_no).await;
 
         Ok(())
     }
@@ -242,57 +273,131 @@ impl AwmOrderTransResMsg {
             ApiResourceDelegationResultStatus::Fail
         };
         let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
-        ApiResourceDelegationRepo::mark_result_received(
-            api_transaction_pool,
-            &self.trade_no,
-            result_status,
-            self.fail_type.map(i64::from),
-            None,
-            None,
-            result_payload.as_deref(),
-        )
-        .await?;
 
-        let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+        if let Some(resource_task) = ApiResourceDelegationRepo::find_by_resource_trade_no(
             api_transaction_pool,
             &self.trade_no,
         )
-        .await?;
+        .await?
+        {
+            ApiResourceDelegationRepo::mark_result_received(
+                api_transaction_pool,
+                &self.trade_no,
+                result_status,
+                self.fail_type.map(i64::from),
+                None,
+                None,
+                result_payload.as_deref(),
+            )
+            .await?;
 
-        if self.status {
-            if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
-                ApiWithdrawRepo::mark_resource_released(
-                    api_transaction_pool,
-                    origin_trade_no,
-                    "platform_delegate_success",
-                )
-                .await?;
-                tracing::info!(
-                    resource_trade_no = %self.trade_no,
-                    origin_trade_no = %origin_trade_no,
-                    "Withdraw resource gate released by platform delegation result"
-                );
+            if self.status {
+                if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
+                    ApiWithdrawRepo::mark_resource_released(
+                        api_transaction_pool,
+                        origin_trade_no,
+                        "platform_delegate_success",
+                    )
+                    .await?;
+                    tracing::info!(
+                        resource_trade_no = %self.trade_no,
+                        origin_trade_no = %origin_trade_no,
+                        "Withdraw resource gate released by platform delegation result"
+                    );
 
-                if let Some(handles) =
-                    crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-                {
-                    if let Some(shadow_system) =
-                        handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
-                    {
-                        if let Err(e) = shadow_system.trigger_withdraw(origin_trade_no).await {
-                            tracing::warn!(
-                                resource_trade_no = %self.trade_no,
-                                origin_trade_no = %origin_trade_no,
-                                "Trigger withdraw shadow failed after resource result, but continuing: {:?}",
-                                e
-                            );
-                        }
-                    }
+                    self.trigger_withdraw_shadow(origin_trade_no).await;
                 }
             }
+
+            return Ok(());
         }
 
+        let withdraw = ApiWithdrawRepo::find_by_resource_dependency_trade_no(
+            api_transaction_pool,
+            &self.trade_no,
+        )
+        .await?
+        .or(ApiWithdrawRepo::find_api_withdraw_by_trade_no(
+            api_transaction_pool,
+            &self.trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await?);
+
+        let Some(withdraw) = withdraw else {
+            tracing::warn!(
+                resource_trade_no = %self.trade_no,
+                "Withdraw resource delegation result has no local resource task or blocked origin order"
+            );
+            return Ok(());
+        };
+
+        ApiWithdrawRepo::mark_resource_released(
+            api_transaction_pool,
+            &withdraw.trade_no,
+            if self.status {
+                "platform_delegate_success"
+            } else {
+                "resource_delegation_failed_bypass"
+            },
+        )
+        .await?;
+
+        self.trigger_withdraw_shadow(&withdraw.trade_no).await;
+
         Ok(())
+    }
+
+    async fn trigger_collect_shadow(&self, origin_trade_no: &str) {
+        let Some(context) = crate::context::CONTEXT.get() else {
+            tracing::debug!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = %origin_trade_no,
+                "Skip collect shadow trigger: global context is not initialized"
+            );
+            return;
+        };
+        let Some(handles) = context.get_global_handles().await.upgrade() else {
+            return;
+        };
+        let collect_handle = handles.get_global_processed_collect_tx_handle();
+        let Some(shadow_system) = collect_handle.get_shadow_system() else {
+            return;
+        };
+        if let Err(e) = shadow_system.trigger_collect(origin_trade_no).await {
+            tracing::warn!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = %origin_trade_no,
+                "Trigger collect shadow failed after resource result, but continuing: {:?}",
+                e
+            );
+        }
+    }
+
+    async fn trigger_withdraw_shadow(&self, origin_trade_no: &str) {
+        let Some(context) = crate::context::CONTEXT.get() else {
+            tracing::debug!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = %origin_trade_no,
+                "Skip withdraw shadow trigger: global context is not initialized"
+            );
+            return;
+        };
+        let Some(handles) = context.get_global_handles().await.upgrade() else {
+            return;
+        };
+        let withdraw_handle = handles.get_global_processed_withdraw_tx_handle();
+        let Some(shadow_system) = withdraw_handle.get_shadow_system() else {
+            return;
+        };
+        if let Err(e) = shadow_system.trigger_withdraw(origin_trade_no).await {
+            tracing::warn!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = %origin_trade_no,
+                "Trigger withdraw shadow failed after resource result, but continuing: {:?}",
+                e
+            );
+        }
     }
 
     async fn resource_reclaim_result(
@@ -374,7 +479,10 @@ impl AwmOrderTransResMsg {
 mod tests {
     use super::*;
     use wallet_database::{
-        SqliteContext, entities::api_resource_operation::NewApiResourceOperation,
+        SqliteContext,
+        entities::{
+            api_collect::ApiCollectStatus, api_resource_operation::NewApiResourceOperation,
+        },
         repositories::api_wallet::resource_operation::ApiResourceOperationRepo,
     };
 
@@ -409,6 +517,111 @@ mod tests {
         assert!(got.result_received_at.is_some());
         assert!(got.result_payload.as_deref().unwrap_or_default().contains("op_result_msg"));
         assert!(got.result_ack_sent_at.is_none());
+
+        Ok(())
+    }
+
+    async fn insert_blocked_collect_waiting_platform_result(
+        pool: &wallet_database::ApiTransactionDbPool,
+        trade_no: &str,
+        resource_trade_no: &str,
+    ) -> anyhow::Result<()> {
+        ApiCollectRepo::upsert_api_collect(
+            pool,
+            "uid_1",
+            "collect",
+            "from_addr",
+            "to_addr",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+        ApiCollectRepo::mark_resource_blocked(
+            pool,
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            Some(resource_trade_no),
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn collect_resource_result_releases_origin_without_placeholder_task() -> anyhow::Result<()>
+    {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+        insert_blocked_collect_waiting_platform_result(&pool, "C_wait_success", "DL_success")
+            .await?;
+
+        let msg = AwmOrderTransResMsg {
+            trade_no: "DL_success".to_string(),
+            trade_type: 5,
+            status: true,
+            fail_type: None,
+            uid: "uid_1".to_string(),
+        };
+
+        msg.collect_resource_delegation_result(&pool).await?;
+
+        let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_success").await?;
+        assert!(collect.resource_gate_released_at.is_some());
+        assert_eq!(
+            collect.resource_gate_result,
+            Some(ApiResourceGateResult::PlatformDelegateSuccess)
+        );
+        assert_eq!(collect.resource_dependency_trade_no.as_deref(), Some("DL_success"));
+        assert!(
+            ApiResourceDelegationRepo::find_by_resource_trade_no(&pool, "DL_success")
+                .await?
+                .is_none()
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn collect_resource_result_failure_switches_origin_to_local_fallback()
+    -> anyhow::Result<()> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+        insert_blocked_collect_waiting_platform_result(&pool, "C_wait_fail", "DL_fail").await?;
+
+        let msg = AwmOrderTransResMsg {
+            trade_no: "DL_fail".to_string(),
+            trade_type: 5,
+            status: false,
+            fail_type: Some(1),
+            uid: "uid_1".to_string(),
+        };
+
+        msg.collect_resource_delegation_result(&pool).await?;
+
+        let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_fail").await?;
+        assert!(collect.resource_gate_released_at.is_none());
+        assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
+        assert_eq!(
+            collect.resource_dependency_type,
+            Some(ApiResourceDependencyType::LocalDelegate)
+        );
+        assert!(collect.resource_dependency_trade_no.is_none());
+        assert!(
+            ApiResourceDelegationRepo::find_by_resource_trade_no(&pool, "DL_fail").await?.is_none()
+        );
 
         Ok(())
     }

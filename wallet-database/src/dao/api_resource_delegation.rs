@@ -232,6 +232,22 @@ impl ApiResourceDelegationDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn find_by_resource_trade_no<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<Option<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            "SELECT * FROM api_resource_delegation WHERE resource_trade_no = ?",
+        )
+        .bind(resource_trade_no)
+        .fetch_optional(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn scan_can_execute_by_origin_type_source_and_operation<'a, E>(
         exec: E,
         origin_trade_type: i64,

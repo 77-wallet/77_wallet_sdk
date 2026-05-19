@@ -102,7 +102,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "order_ack_sent_at IS NULL".to_string()
             }
             CollectStage::NeedResourceGate => {
-                "order_ack_sent_at IS NOT NULL AND lower(chain_code) = 'tron' AND resource_gate_released_at IS NULL AND raw_tx IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+                "order_ack_sent_at IS NOT NULL AND lower(chain_code) = 'tron' AND resource_gate_released_at IS NULL AND (resource_block_reason IS NULL OR (resource_block_reason = 2 AND resource_dependency_trade_no IS NULL)) AND raw_tx IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::CanBuild => {
                 // BuildTx 只看“当前周期是否真的进入过服务费上传”。

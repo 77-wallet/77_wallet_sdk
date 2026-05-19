@@ -1,5 +1,7 @@
 use smallvec::SmallVec;
-use wallet_database::entities::api_collect::ApiCollectEntity;
+use wallet_database::entities::{
+    api_collect::ApiCollectEntity, api_resource_gate::ApiResourceBlockReason,
+};
 
 use super::stage::CollectStage;
 
@@ -65,6 +67,22 @@ fn evaluate_need_resource_gate(collect: &ApiCollectEntity) -> StageEval {
         });
     }
 
+    if collect.resource_block_reason == Some(ApiResourceBlockReason::NeedPlatformDelegate) {
+        reasons.push(StageReason {
+            code: "waiting_platform_delegate_result",
+            message: "Waiting for platform delegation result".to_string(),
+        });
+    }
+
+    if collect.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)
+        && collect.resource_dependency_trade_no.is_some()
+    {
+        reasons.push(StageReason {
+            code: "waiting_local_delegate_task",
+            message: "Waiting for local delegation task".to_string(),
+        });
+    }
+
     if collect.raw_tx.is_some() {
         reasons.push(StageReason {
             code: "raw_tx_exists",
@@ -91,6 +109,9 @@ fn evaluate_need_resource_gate(collect: &ApiCollectEntity) -> StageEval {
     let can_advance = collect.order_ack_sent_at.is_some()
         && collect.chain_code.eq_ignore_ascii_case("tron")
         && collect.resource_gate_released_at.is_none()
+        && (collect.resource_block_reason.is_none()
+            || (collect.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)
+                && collect.resource_dependency_trade_no.is_none()))
         && collect.raw_tx.is_none()
         && collect.err_code.is_none()
         && collect.transaction_time.is_none()
@@ -748,6 +769,39 @@ mod tests {
         non_tron.chain_code = "sol".to_string();
         let non_tron_eval = evaluate_stage(CollectStage::NeedResourceGate, &non_tron);
         assert!(!non_tron_eval.can_advance);
+    }
+
+    #[test]
+    fn need_resource_gate_waits_when_resource_dependency_is_in_progress() {
+        let mut waiting_platform = base_collect();
+        waiting_platform.raw_tx = None;
+        waiting_platform.chain_code = "tron".to_string();
+        waiting_platform.resource_gate_released_at = None;
+        waiting_platform.resource_block_reason = Some(ApiResourceBlockReason::NeedPlatformDelegate);
+        waiting_platform.resource_dependency_trade_no = Some("DL_1".to_string());
+
+        let platform_eval = evaluate_stage(CollectStage::NeedResourceGate, &waiting_platform);
+        assert!(!platform_eval.can_advance);
+        assert!(
+            platform_eval
+                .reasons
+                .iter()
+                .any(|reason| reason.code == "waiting_platform_delegate_result")
+        );
+
+        let mut waiting_local = waiting_platform.clone();
+        waiting_local.resource_block_reason = Some(ApiResourceBlockReason::NeedLocalDelegate);
+        waiting_local.resource_dependency_trade_no = Some("rsc_local_delegate_C".to_string());
+        let local_eval = evaluate_stage(CollectStage::NeedResourceGate, &waiting_local);
+        assert!(!local_eval.can_advance);
+        assert!(
+            local_eval.reasons.iter().any(|reason| reason.code == "waiting_local_delegate_task")
+        );
+
+        let mut needs_local_task = waiting_local.clone();
+        needs_local_task.resource_dependency_trade_no = None;
+        let retry_eval = evaluate_stage(CollectStage::NeedResourceGate, &needs_local_task);
+        assert!(retry_eval.can_advance);
     }
 
     #[test]

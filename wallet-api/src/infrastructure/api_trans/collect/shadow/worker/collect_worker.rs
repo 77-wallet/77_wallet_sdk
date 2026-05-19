@@ -119,6 +119,12 @@ enum ResourceGateNextStep {
     BlockOnLocal,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PlatformApplyOutcome {
+    Accepted(Option<String>),
+    Rejected,
+}
+
 /// Shadow Worker
 /// 纯执行型、无状态假设、可随时 kill -9 的 Worker
 ///
@@ -320,18 +326,9 @@ impl ShadowCollectWorker {
             && available_bandwidth >= required_bandwidth as i64
     }
 
-    fn collect_platform_delegate_trade_no(origin_trade_no: &str) -> String {
-        // This is an SDK-local placeholder id, not a backend protocol id. It
-        // is deterministic so repeated scanner rounds upsert the same pending
-        // delegation row instead of creating duplicate resource tasks. When
-        // backend returns an official resource order id, this placeholder can
-        // be replaced or mapped to that id.
-        format!("rsc_delegate_{}", origin_trade_no)
-    }
-
     fn collect_local_delegate_trade_no(origin_trade_no: &str) -> String {
-        // 和平台代理占位号一样，这里也必须是确定性的。
-        // 否则 collect 每次重新评估时都会重复创建本地 fallback 任务。
+        // 本地代理是 SDK 自己执行的 fallback 任务，所以需要确定性任务号；
+        // 否则 collect 每次重新评估时都会重复创建本地代理任务。
         format!("rsc_local_delegate_{}", origin_trade_no)
     }
 
@@ -795,8 +792,9 @@ impl ShadowCollectWorker {
         // 资源顺序只处理到“允许回到旧 collect 主链”为止：
         // 自身资源 -> 平台代理 -> 本地代理 fallback -> release gate。
         // release 之后，主币不足 / 补币 / 原失败收口仍走上一版已经稳定的旧闭环。
-        let next_step =
-            self.decide_collect_resource_gate_next_step(snapshot.clone(), origin_trade_no).await?;
+        let next_step = self
+            .decide_collect_resource_gate_next_step(&req, snapshot.clone(), origin_trade_no)
+            .await?;
         self.apply_collect_resource_gate_next_step(
             next_step,
             origin_trade_no,
@@ -978,6 +976,7 @@ impl ShadowCollectWorker {
 
     async fn decide_collect_resource_gate_next_step(
         &self,
+        req: &ApiCollectEntity,
         snapshot: ResourceGateSnapshot,
         origin_trade_no: &str,
     ) -> Result<ResourceGateNextStep, ServiceError> {
@@ -994,7 +993,7 @@ impl ShadowCollectWorker {
             ApiResourceDelegationRepo::list_by_origin_trade_no(&self.collect_pool, origin_trade_no)
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
-        let next_step = match Self::decide_collect_resource_block_path(&delegations) {
+        let next_step = match Self::decide_collect_resource_block_path(req, &delegations) {
             ResourceDelegationBlockPath::LocalFallback => ResourceGateNextStep::BlockOnLocal,
             ResourceDelegationBlockPath::PlatformFallback => ResourceGateNextStep::BlockOnPlatform,
         };
@@ -1044,6 +1043,7 @@ impl ShadowCollectWorker {
     }
 
     fn decide_collect_resource_block_path(
+        req: &ApiCollectEntity,
         delegations: &[ApiResourceDelegationEntity],
     ) -> ResourceDelegationBlockPath {
         // 文档顺序要求：
@@ -1062,7 +1062,10 @@ impl ShadowCollectWorker {
                     || matches!(delegation.tx_status.as_deref(), Some("fail")))
         });
 
-        if has_local_fallback || platform_failed {
+        if req.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)
+            || has_local_fallback
+            || platform_failed
+        {
             ResourceDelegationBlockPath::LocalFallback
         } else {
             ResourceDelegationBlockPath::PlatformFallback
@@ -1079,35 +1082,38 @@ impl ShadowCollectWorker {
         available_energy: i64,
         available_bandwidth: i64,
     ) -> Result<(), ServiceError> {
-        let resource_trade_no = Self::collect_platform_delegate_trade_no(&origin_trade_no);
         let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
-        // At this point the SDK only knows the receiver that needs energy.
-        // The platform-owned resource wallet is chosen by backend later, so
-        // owner_address intentionally stays empty in this placeholder fact.
-        //
-        // This blocked record is an evaluation result fact, not a standalone
-        // operation step. Scanner will later pick up the delegated resource
-        // task itself via its own facts.
-        let delegation = NewApiResourceDelegation::platform_delegate(
-            req.uid.clone(),
-            resource_trade_no.clone(),
-            req.trade_no.clone(),
-            req.trade_type.into(),
-            "",
-            req.from_addr.clone(),
-            amount.clone(),
-        );
-        ApiResourceDelegationRepo::upsert(&self.collect_pool, delegation)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
-        // Blocked here means "waiting for resource delegation", not a
-        // terminal collect failure. The dependency trade no links the
-        // original collect order to the resource task for recovery/ACK.
+        let resource_trade_no = match self
+            .apply_platform_resource_delegation(
+                &req.uid,
+                origin_trade_no,
+                &req.chain_code,
+                &req.from_addr,
+                &amount,
+            )
+            .await?
+        {
+            PlatformApplyOutcome::Accepted(resource_trade_no) => resource_trade_no,
+            PlatformApplyOutcome::Rejected => {
+                return self
+                    .commit_local_delegation_block(
+                        origin_trade_no,
+                        req,
+                        &exec_to_addr,
+                        required_energy,
+                        available_energy,
+                    )
+                    .await;
+            }
+        };
+
+        // 商户侧只记录“原单正在等待平台代理结果”这个事实。
+        // 真正的平台代理订单由平台钱包接收并执行，不在商户钱包本地创建任务行。
         let rows = ApiCollectRepo::mark_resource_blocked(
             &self.collect_pool,
             origin_trade_no,
             ApiResourceBlockReason::NeedPlatformDelegate,
-            Some(&resource_trade_no),
+            resource_trade_no.as_deref(),
             Some(ApiResourceDependencyType::PlatformDelegate),
         )
         .await
@@ -1119,33 +1125,10 @@ impl ShadowCollectWorker {
             available_energy = %available_energy,
             required_bandwidth = %required_bandwidth,
             available_bandwidth = %available_bandwidth,
-            resource_trade_no = %resource_trade_no,
+            resource_trade_no = ?resource_trade_no,
             source = "shadow_worker_v2",
             "TRON collect resource gate blocked"
         );
-
-        let apply_success = self
-            .apply_platform_resource_delegation(
-                &req.uid,
-                &resource_trade_no,
-                &req.trade_no,
-                &req.chain_code,
-                &req.from_addr,
-                &amount,
-            )
-            .await?;
-
-        if !apply_success {
-            return self
-                .commit_local_delegation_block(
-                    origin_trade_no,
-                    req,
-                    &exec_to_addr,
-                    required_energy,
-                    available_energy,
-                )
-                .await;
-        }
 
         Ok(())
     }
@@ -1153,12 +1136,11 @@ impl ShadowCollectWorker {
     async fn apply_platform_resource_delegation(
         &self,
         uid: &str,
-        resource_trade_no: &str,
         origin_trade_no: &str,
         chain_code: &str,
         receiver_address: &str,
         amount: &str,
-    ) -> Result<bool, ServiceError> {
+    ) -> Result<PlatformApplyOutcome, ServiceError> {
         let resource_amount: f64 = amount.parse().map_err(|e| {
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::Trans(
@@ -1192,7 +1174,6 @@ impl ShadowCollectWorker {
         );
 
         tracing::info!(
-            resource_trade_no = %resource_trade_no,
             origin_trade_no = %origin_trade_no,
             req = ?req,
             source = "shadow_worker_v2",
@@ -1203,20 +1184,19 @@ impl ShadowCollectWorker {
 
         if resp.is_success() {
             info!(
-                resource_trade_no = %resource_trade_no,
                 origin_trade_no = %origin_trade_no,
+                resource_trade_no = ?resp.dl_trade_no,
                 source = "shadow_worker_v2",
                 "Platform resource delegation apply succeeded"
             );
-            Ok(true)
+            Ok(PlatformApplyOutcome::Accepted(resp.dl_trade_no))
         } else {
             warn!(
-                resource_trade_no = %resource_trade_no,
                 origin_trade_no = %origin_trade_no,
                 source = "shadow_worker_v2",
                 "Platform resource delegation apply rejected, will try alternative paths"
             );
-            Ok(false)
+            Ok(PlatformApplyOutcome::Rejected)
         }
     }
 
@@ -3932,10 +3912,6 @@ mod tests {
     #[test]
     fn resource_gate_delegate_trade_no_is_deterministic() {
         assert_eq!(
-            ShadowCollectWorker::collect_platform_delegate_trade_no("C_1"),
-            "rsc_delegate_C_1"
-        );
-        assert_eq!(
             ShadowCollectWorker::collect_local_delegate_trade_no("C_1"),
             "rsc_local_delegate_C_1"
         );
@@ -3994,89 +3970,6 @@ mod tests {
             .expect("load collect");
         assert!(persisted.resource_gate_released_at.is_some());
         assert_eq!(persisted.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
-    }
-
-    #[tokio::test]
-    async fn platform_delegation_block_commit_is_idempotent() {
-        let dir = tempdir().expect("tempdir");
-        let dir_path = dir.path().to_string_lossy().to_string();
-
-        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
-            .await
-            .expect("init api_transaction.db");
-        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
-            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
-                intent_tx.clone(),
-                None,
-            )),
-        );
-
-        let trade_no = "C_block_once";
-        ApiCollectRepo::upsert_api_collect(
-            &collect_pool,
-            "uid",
-            "collect",
-            "from",
-            "to",
-            "1.12",
-            "digest",
-            "tron",
-            None,
-            "TRX",
-            trade_no,
-            2,
-            ApiCollectStatus::Init,
-            1,
-        )
-        .await
-        .expect("insert collect");
-        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
-            .await
-            .expect("load collect");
-
-        worker
-            .commit_platform_delegation_block(trade_no, &req, "T_exec_to_addr", 100, 50, 20, 10)
-            .await
-            .expect("first block commit");
-        worker
-            .commit_platform_delegation_block(trade_no, &req, "T_exec_to_addr", 100, 50, 20, 10)
-            .await
-            .expect("second block commit");
-
-        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
-            .await
-            .expect("load collect");
-        assert_eq!(
-            persisted.resource_dependency_trade_no.as_deref(),
-            Some("rsc_delegate_C_block_once")
-        );
-        assert_eq!(
-            persisted.resource_dependency_type,
-            Some(ApiResourceDependencyType::PlatformDelegate)
-        );
-        assert_eq!(
-            persisted.resource_block_reason,
-            Some(ApiResourceBlockReason::NeedPlatformDelegate)
-        );
-
-        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &collect_pool,
-            "rsc_delegate_C_block_once",
-        )
-        .await
-        .expect("load delegation");
-        assert_eq!(delegation.origin_trade_no.as_deref(), Some(trade_no));
-        assert_eq!(delegation.amount, "80");
     }
 
     #[tokio::test]

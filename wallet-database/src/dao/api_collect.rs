@@ -97,6 +97,36 @@ impl ApiCollectDao {
         Ok(res)
     }
 
+    pub async fn find_api_collect_by_trade_no<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<Option<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_collect WHERE trade_no = ?";
+        sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(trade_no)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn find_by_resource_dependency_trade_no<'a, E>(
+        exec: E,
+        dependency_trade_no: &str,
+    ) -> Result<Option<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_collect WHERE resource_dependency_trade_no = ? ORDER BY id ASC LIMIT 1";
+        sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(dependency_trade_no)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn get_api_collect_by_trade_no_status<'a, E>(
         exec: E,
         trade_no: &str,
@@ -1162,6 +1192,13 @@ impl ApiCollectDao {
             WHERE order_ack_sent_at IS NOT NULL
             AND lower(chain_code) = 'tron'
             AND resource_gate_released_at IS NULL
+            AND (
+                resource_block_reason IS NULL
+                OR (
+                    resource_block_reason = ?
+                    AND resource_dependency_trade_no IS NULL
+                )
+            )
             AND raw_tx IS NULL
             AND transaction_time IS NULL
             AND finished_at IS NULL
@@ -1170,6 +1207,7 @@ impl ApiCollectDao {
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(ApiResourceBlockReason::NeedLocalDelegate.as_i64())
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -2336,7 +2374,11 @@ impl ApiCollectDao {
 mod tests {
     use super::ApiCollectDao;
     use crate::{
-        SqliteContext, entities::api_collect::ApiCollectStatus,
+        SqliteContext,
+        entities::{
+            api_collect::ApiCollectStatus,
+            api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
+        },
         repositories::api_wallet::collect::ApiCollectRepo,
     };
 
@@ -2903,8 +2945,11 @@ mod tests {
         let pool = ctx.into_transaction_db_pool().unwrap();
 
         for (trade_no, chain_code) in [
-            ("C_RESOURCE_GATE_TRON_BLOCKED", "tron"),
+            ("C_RESOURCE_GATE_TRON_READY", "tron"),
             ("C_RESOURCE_GATE_TRON_RELEASED", "tron"),
+            ("C_RESOURCE_GATE_WAIT_PLATFORM", "tron"),
+            ("C_RESOURCE_GATE_WAIT_LOCAL", "tron"),
+            ("C_RESOURCE_GATE_NEED_LOCAL_TASK", "tron"),
             ("C_RESOURCE_GATE_SOL", "sol"),
         ] {
             ApiCollectRepo::upsert_api_collect(
@@ -2946,11 +2991,58 @@ mod tests {
         .await
         .unwrap();
 
+        sqlx::query(
+            "UPDATE api_collect
+             SET resource_block_reason = ?,
+                 resource_dependency_trade_no = ?,
+                 resource_dependency_type = ?
+             WHERE trade_no = ?",
+        )
+        .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
+        .bind("DL_COLLECT_1")
+        .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
+        .bind("C_RESOURCE_GATE_WAIT_PLATFORM")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET resource_block_reason = ?,
+                 resource_dependency_trade_no = ?,
+                 resource_dependency_type = ?
+             WHERE trade_no = ?",
+        )
+        .bind(ApiResourceBlockReason::NeedLocalDelegate.as_i64())
+        .bind("rsc_local_delegate_collect")
+        .bind(ApiResourceDependencyType::LocalDelegate.as_i64())
+        .bind("C_RESOURCE_GATE_WAIT_LOCAL")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET resource_block_reason = ?,
+                 resource_dependency_trade_no = NULL,
+                 resource_dependency_type = ?
+             WHERE trade_no = ?",
+        )
+        .bind(ApiResourceBlockReason::NeedLocalDelegate.as_i64())
+        .bind(ApiResourceDependencyType::LocalDelegate.as_i64())
+        .bind("C_RESOURCE_GATE_NEED_LOCAL_TASK")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
         let records = ApiCollectDao::scan_need_resource_gate(pool.as_ref(), 100).await.unwrap();
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
-        assert!(trade_nos.contains(&"C_RESOURCE_GATE_TRON_BLOCKED".to_string()));
+        assert!(trade_nos.contains(&"C_RESOURCE_GATE_TRON_READY".to_string()));
+        assert!(trade_nos.contains(&"C_RESOURCE_GATE_NEED_LOCAL_TASK".to_string()));
         assert!(!trade_nos.contains(&"C_RESOURCE_GATE_TRON_RELEASED".to_string()));
+        assert!(!trade_nos.contains(&"C_RESOURCE_GATE_WAIT_PLATFORM".to_string()));
+        assert!(!trade_nos.contains(&"C_RESOURCE_GATE_WAIT_LOCAL".to_string()));
         assert!(!trade_nos.contains(&"C_RESOURCE_GATE_SOL".to_string()));
     }
 
