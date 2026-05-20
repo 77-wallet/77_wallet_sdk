@@ -50,7 +50,9 @@ use crate::{
         chain::adapter::sol_tx::SYSTEM_ACCOUNT_RENT,
     },
     error::service::ServiceError,
-    infrastructure::api_trans::collect::shadow::ShadowAdvancer,
+    infrastructure::api_trans::{
+        collect::shadow::ShadowAdvancer, resource_ack_type::resource_delegation_ack_trans_type,
+    },
     request::api_wallet::trans::ApiBaseTransferReq,
 };
 
@@ -646,7 +648,7 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        let trans_type = Self::resource_delegation_trans_type(&resource_task);
+        let trans_type = resource_delegation_ack_trans_type(&resource_task);
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
@@ -840,7 +842,7 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        let trans_type = Self::resource_delegation_trans_type(&resource_task);
+        let trans_type = resource_delegation_ack_trans_type(&resource_task);
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
@@ -938,7 +940,7 @@ impl SideEffectWorker {
     fn build_resource_tx_exec_receipt_payload(
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
     ) -> Result<TxExecReceiptUploadReq, ServiceError> {
-        let trans_type = Self::resource_delegation_trans_type(resource_task);
+        let trans_type = resource_delegation_ack_trans_type(resource_task);
 
         let status = if matches!(resource_task.tx_status.as_deref(), Some("success")) {
             TransStatus::Success
@@ -971,15 +973,6 @@ impl SideEffectWorker {
         }
 
         Ok(payload)
-    }
-
-    fn resource_delegation_trans_type(
-        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
-    ) -> TransType {
-        match resource_task.origin_trade_type {
-            Some(x) if x == ApiTradeType::Withdraw as i64 => TransType::WdRscDl,
-            _ => TransType::ColRscDl,
-        }
     }
 
     /// 处理上传服务费记录
@@ -1574,7 +1567,9 @@ mod tests {
     };
     use wallet_transport_backend::request::api_wallet::transaction::TransType;
 
-    use crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer;
+    use crate::infrastructure::api_trans::{
+        collect::shadow::ShadowAdvancer, resource_ack_type::resource_delegation_ack_trans_type,
+    };
 
     #[test]
     fn resource_result_ack_retry_wait_uses_bounded_backoff() {
@@ -1809,59 +1804,15 @@ mod tests {
     }
 
     #[test]
-    fn resource_delegation_trans_type_maps_collect() {
-        let mut r = wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
-            id: 1,
-            uid: "u".to_string(),
-            source: wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform,
-            operation_type: wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
-            origin_trade_no: None,
-            origin_trade_type: Some(ApiTradeType::Collect as i64),
-            resource_trade_no: "rsc".to_string(),
-            chain_code: "tron".to_string(),
-            owner_address: "owner".to_string(),
-            receiver_address: "receiver".to_string(),
-            resource_type: wallet_database::entities::api_resource_type::ApiResourceType::Energy,
-            native_amount: "1".to_string(),
-            amount: "100".to_string(),
-            status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
-            task_ack_sent_at: None,
-            building_at: None,
-            tx_hash: None,
-            tx_status: None,
-            tx_exec_receipt_uploaded_at: None,
-            result_status: None,
-            result_received_at: None,
-            result_ack_sent_at: None,
-            result_payload: None,
-            fail_type: None,
-            err_code: None,
-            err_msg: None,
-            recover_status: None,
-            next_retry_at: None,
-            retry_count: 0,
-            created_at: Utc::now(),
-            updated_at: None,
-        };
-        assert!(matches!(
-            SideEffectWorker::resource_delegation_trans_type(&r),
-            TransType::ColRscDl
-        ));
-
-        r.origin_trade_type = Some(ApiTradeType::Withdraw as i64);
-        assert!(matches!(SideEffectWorker::resource_delegation_trans_type(&r), TransType::WdRscDl));
-    }
-
-    #[test]
-    fn build_resource_tx_exec_receipt_payload_uses_withdraw_trans_type() {
+    fn build_resource_tx_exec_receipt_payload_uses_collect_trans_type() {
         let r = wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
             id: 1,
             uid: "u".to_string(),
             source: wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform,
             operation_type: wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
-            origin_trade_no: Some("W_ORIGIN_1".to_string()),
-            origin_trade_type: Some(ApiTradeType::Withdraw as i64),
-            resource_trade_no: "rsc_wd_1".to_string(),
+            origin_trade_no: Some("C_ORIGIN_1".to_string()),
+            origin_trade_type: Some(ApiTradeType::Collect as i64),
+            resource_trade_no: "rsc_col_1".to_string(),
             chain_code: "tron".to_string(),
             owner_address: "owner".to_string(),
             receiver_address: "receiver".to_string(),
@@ -1889,58 +1840,9 @@ mod tests {
         };
 
         let payload = SideEffectWorker::build_resource_tx_exec_receipt_payload(&r)
-            .expect("withdraw resource payload should build");
+            .expect("collect resource payload should build");
         let payload_json = serde_json::to_value(&payload).expect("serialize payload");
-        assert_eq!(payload_json["type"], "WD_RSC_DL");
-    }
-
-    #[test]
-    fn build_resource_result_ack_payload_uses_withdraw_trans_type_and_tx_rsc_res_ack() {
-        let r = wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
-            id: 1,
-            uid: "u".to_string(),
-            source: wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform,
-            operation_type: wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
-            origin_trade_no: Some("W_ORIGIN_2".to_string()),
-            origin_trade_type: Some(ApiTradeType::Withdraw as i64),
-            resource_trade_no: "rsc_wd_ack_1".to_string(),
-            chain_code: "tron".to_string(),
-            owner_address: "owner".to_string(),
-            receiver_address: "receiver".to_string(),
-            resource_type: wallet_database::entities::api_resource_type::ApiResourceType::Energy,
-            native_amount: "1".to_string(),
-            amount: "100".to_string(),
-            status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Success,
-            task_ack_sent_at: None,
-            building_at: None,
-            tx_hash: Some("tx_hash_2".to_string()),
-            tx_status: Some("success".to_string()),
-            tx_exec_receipt_uploaded_at: None,
-            result_status: Some(
-                wallet_database::entities::api_resource_delegation::ApiResourceDelegationResultStatus::Success,
-            ),
-            result_received_at: Some(Utc::now()),
-            result_ack_sent_at: None,
-            result_payload: None,
-            fail_type: None,
-            err_code: None,
-            err_msg: None,
-            recover_status: None,
-            next_retry_at: None,
-            retry_count: 0,
-            created_at: Utc::now(),
-            updated_at: None,
-        };
-
-        let ack_req =
-            wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
-                &r.resource_trade_no,
-                SideEffectWorker::resource_delegation_trans_type(&r),
-                wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRscRes,
-            );
-        let ack_json = serde_json::to_value(&ack_req).expect("serialize ack req");
-        assert_eq!(ack_json["type"], "WD_RSC_DL");
-        assert_eq!(ack_json["ackType"], "TX_RSC_RES");
+        assert_eq!(payload_json["type"], "COL_RSC_DL");
     }
 
     #[test]
@@ -1984,7 +1886,7 @@ mod tests {
         let ack_req =
             wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
                 &r.resource_trade_no,
-                SideEffectWorker::resource_delegation_trans_type(&r),
+                resource_delegation_ack_trans_type(&r),
                 wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRscRes,
             );
         let ack_json = serde_json::to_value(&ack_req).expect("serialize ack req");

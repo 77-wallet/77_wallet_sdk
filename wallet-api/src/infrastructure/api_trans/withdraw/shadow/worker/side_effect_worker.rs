@@ -14,7 +14,10 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 };
 
 use crate::{
-    error::service::ServiceError, infrastructure::api_trans::withdraw::shadow::ShadowScanner,
+    error::service::ServiceError,
+    infrastructure::api_trans::{
+        resource_ack_type::resource_delegation_ack_trans_type, withdraw::shadow::ShadowScanner,
+    },
 };
 
 enum ResourceGateReleaseOutcome {
@@ -337,7 +340,7 @@ impl SideEffectWorker {
         if let Err(e) = backend
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
-                Self::resource_delegation_trans_type(&resource_task),
+                resource_delegation_ack_trans_type(&resource_task),
                 TransAckType::TxRscRes,
             ))
             .await
@@ -380,7 +383,7 @@ impl SideEffectWorker {
         backend
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
-                Self::resource_delegation_trans_type(&resource_task),
+                resource_delegation_ack_trans_type(&resource_task),
                 TransAckType::Tx,
             ))
             .await?;
@@ -493,7 +496,7 @@ impl SideEffectWorker {
     fn build_resource_tx_exec_receipt_payload(
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
     ) -> Result<TxExecReceiptUploadReq, ServiceError> {
-        let trans_type = Self::resource_delegation_trans_type(resource_task);
+        let trans_type = resource_delegation_ack_trans_type(resource_task);
         let status = if matches!(resource_task.tx_status.as_deref(), Some("success")) {
             TransStatus::Success
         } else if resource_task.err_code.is_some() {
@@ -522,15 +525,6 @@ impl SideEffectWorker {
             payload = payload.with_error_code(err_code);
         }
         Ok(payload)
-    }
-
-    fn resource_delegation_trans_type(
-        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
-    ) -> TransType {
-        match resource_task.origin_trade_type {
-            Some(x) if x == ApiTradeType::Withdraw as i64 => TransType::WdRscDl,
-            _ => TransType::ColRscDl,
-        }
     }
 
     /// 上传交易执行回执
