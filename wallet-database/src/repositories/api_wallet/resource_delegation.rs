@@ -76,6 +76,23 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn scan_need_task_ack_for_origin_type_source_and_operation(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_need_task_ack_by_origin_type_source_and_operation(
+            pool.read_ref(),
+            origin_trade_type,
+            source,
+            operation_type,
+            limit,
+        )
+        .await
+    }
+
     pub async fn scan_need_result_ack_for_origin_type(
         pool: &ApiTransactionDbPool,
         origin_trade_type: i64,
@@ -490,6 +507,78 @@ mod tests {
         assert!(trade_nos.contains(&"rsc_needs_ack".to_string()));
         assert!(!trade_nos.contains(&"rsc_already_acked".to_string()));
         assert!(!trade_nos.contains(&"rsc_local_delegate".to_string()));
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_task_ack_scan_finds_only_unacked_reclaim_tasks() {
+        let pool = setup_api_transaction_pool("platform_undelegation_task_ack_scan").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "rsc_reclaim_needs_ack",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "1",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "rsc_delegate_needs_ack",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "1",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "rsc_reclaim_acked",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "1",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_reclaim_acked").await.unwrap();
+
+        let rows =
+            ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type_source_and_operation(
+                &pool,
+                ApiTradeType::Collect as i64,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+                100,
+            )
+            .await
+            .unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+
+        assert_eq!(trade_nos, vec!["rsc_reclaim_needs_ack".to_string()]);
     }
 
     #[tokio::test]

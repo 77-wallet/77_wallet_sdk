@@ -22,7 +22,7 @@ use wallet_database::{
 use wallet_utils::RetryableError as _;
 
 use crate::{
-    context::get_context,
+    context::{CONTEXT, get_context},
     domain::{
         api_wallet::{adapter::tx::RawTx, trans::ApiTransDomain},
         chain::adapter::ChainAdapterFactory,
@@ -30,14 +30,17 @@ use crate::{
     error::{service::ServiceError, system::SystemError},
     infrastructure::{
         api_trans::{
+            resource_ack_type::resource_delegation_ack_trans_type,
             resource_amount::parse_resource_delegation_native_trx_units, shadow_rpc_policy,
         },
         runtime::time::new_production_interval,
     },
 };
+use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransEventAckReq};
 
 #[derive(Debug, Clone)]
 pub enum PlatformResourceReclaimIntent {
+    SendPlatformUndelegationTaskAck(String),
     ExecutePlatformUndelegation(String),
     RecoverPlatformUndelegation(String),
 }
@@ -88,12 +91,66 @@ impl PlatformResourceReclaimScanner {
     pub async fn scan_round(&self) -> Vec<PlatformResourceReclaimIntent> {
         let mut intents = Vec::new();
 
+        self.scan_collect_platform_undelegation_task_ack(&mut intents).await;
+        self.scan_withdraw_platform_undelegation_task_ack(&mut intents).await;
         self.scan_collect_platform_undelegation(&mut intents).await;
         self.scan_withdraw_platform_undelegation(&mut intents).await;
         self.scan_collect_platform_undelegation_recover(&mut intents).await;
         self.scan_withdraw_platform_undelegation_recover(&mut intents).await;
 
         intents
+    }
+
+    async fn scan_collect_platform_undelegation_task_ack(
+        &self,
+        intents: &mut Vec<PlatformResourceReclaimIntent>,
+    ) {
+        match ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type_source_and_operation(
+            &self.pool,
+            ApiTradeType::Collect as i64,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Undelegate,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(PlatformResourceReclaimIntent::SendPlatformUndelegationTaskAck(
+                        record.resource_trade_no,
+                    ));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan collect platform undelegation task ACK records");
+            }
+        }
+    }
+
+    async fn scan_withdraw_platform_undelegation_task_ack(
+        &self,
+        intents: &mut Vec<PlatformResourceReclaimIntent>,
+    ) {
+        match ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type_source_and_operation(
+            &self.pool,
+            ApiTradeType::Withdraw as i64,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Undelegate,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(PlatformResourceReclaimIntent::SendPlatformUndelegationTaskAck(
+                        record.resource_trade_no,
+                    ));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan withdraw platform undelegation task ACK records");
+            }
+        }
     }
 
     async fn scan_collect_platform_undelegation(
@@ -255,6 +312,9 @@ impl PlatformResourceReclaimWorker {
 
     pub async fn handle(&self, intent: PlatformResourceReclaimIntent) -> Result<(), ServiceError> {
         match intent {
+            PlatformResourceReclaimIntent::SendPlatformUndelegationTaskAck(resource_trade_no) => {
+                self.process_platform_undelegation_task_ack(resource_trade_no).await
+            }
             PlatformResourceReclaimIntent::ExecutePlatformUndelegation(resource_trade_no) => {
                 let result =
                     self.process_platform_undelegation_execute(resource_trade_no.clone()).await;
@@ -277,6 +337,69 @@ impl PlatformResourceReclaimWorker {
 
     fn origin_trade_no<'a>(delegation: &'a ApiResourceDelegationEntity) -> &'a str {
         delegation.origin_trade_no.as_deref().unwrap_or("<missing>")
+    }
+
+    async fn process_platform_undelegation_task_ack(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        info!(
+            resource_trade_no = %resource_trade_no,
+            source = "platform_resource_reclaim_shadow",
+            "Processing platform undelegation task ACK"
+        );
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if resource_task.task_ack_sent_at.is_some() {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation task ACK already sent"
+            );
+            return Ok(());
+        }
+
+        if resource_task.source != ApiResourceDelegationSource::Platform
+            || resource_task.operation_type != ApiResourceDelegationOperationType::Undelegate
+        {
+            return Err(ServiceError::Parameter(format!(
+                "platform undelegation task ACK requires source=Platform + Undelegate, got source={:?} operation={:?}",
+                resource_task.source, resource_task.operation_type
+            )));
+        }
+
+        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        backend_api
+            .trans_event_ack(&TransEventAckReq::new(
+                &resource_trade_no,
+                resource_delegation_ack_trans_type(&resource_task),
+                TransAckType::Tx,
+            ))
+            .await?;
+
+        let affected =
+            ApiResourceDelegationRepo::mark_task_ack_sent(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation task ACK marked 0 rows"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation task ACK sent successfully"
+            );
+        }
+
+        Ok(())
     }
 
     async fn handle_platform_undelegation_execute_failure_if_needed(
@@ -817,6 +940,55 @@ mod tests {
             intent,
             PlatformResourceReclaimIntent::ExecutePlatformUndelegation(trade_no)
                 if trade_no == "rsc_platform_undelegate_withdraw"
+        )));
+    }
+
+    #[tokio::test]
+    async fn platform_reclaim_scanner_finds_task_ack_before_execute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_undelegate_needs_ack",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert collect platform undelegate");
+
+        let scanner = PlatformResourceReclaimScanner::with_config(
+            pool,
+            PlatformResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+
+        let intents = scanner.scan_round().await;
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::SendPlatformUndelegationTaskAck(trade_no)
+                if trade_no == "rsc_platform_undelegate_needs_ack"
+        )));
+        assert!(!intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::ExecutePlatformUndelegation(trade_no)
+                if trade_no == "rsc_platform_undelegate_needs_ack"
         )));
     }
 

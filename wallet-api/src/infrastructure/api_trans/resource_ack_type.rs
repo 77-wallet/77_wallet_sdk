@@ -1,5 +1,6 @@
 use wallet_database::entities::{
-    api_resource_delegation::ApiResourceDelegationEntity, api_trade_type::ApiTradeType,
+    api_resource_delegation::{ApiResourceDelegationEntity, ApiResourceDelegationOperationType},
+    api_trade_type::ApiTradeType,
 };
 use wallet_transport_backend::request::api_wallet::transaction::TransType;
 
@@ -17,22 +18,43 @@ pub(crate) fn resource_delegation_ack_trans_type(
         .map(|origin| origin == resource_task.resource_trade_no)
         .unwrap_or(false);
 
-    match (resource_task.origin_trade_type, is_original_order_result) {
-        (Some(x), true) if x == ApiTradeType::Collect as i64 => TransType::Col,
-        (Some(x), true) if x == ApiTradeType::Withdraw as i64 => TransType::Wd,
-        (Some(x), false) if x == ApiTradeType::Collect as i64 => TransType::ColRscDl,
-        (Some(x), false) if x == ApiTradeType::Withdraw as i64 => TransType::WdRscDl,
-        (origin_trade_type, true) => {
+    match (resource_task.origin_trade_type, resource_task.operation_type, is_original_order_result)
+    {
+        (Some(x), _, true) if x == ApiTradeType::Collect as i64 => TransType::Col,
+        (Some(x), _, true) if x == ApiTradeType::Withdraw as i64 => TransType::Wd,
+        (Some(x), ApiResourceDelegationOperationType::Delegate, false)
+            if x == ApiTradeType::Collect as i64 =>
+        {
+            TransType::ColRscDl
+        }
+        (Some(x), ApiResourceDelegationOperationType::Delegate, false)
+            if x == ApiTradeType::Withdraw as i64 =>
+        {
+            TransType::WdRscDl
+        }
+        (Some(x), ApiResourceDelegationOperationType::Undelegate, false)
+            if x == ApiTradeType::Collect as i64 =>
+        {
+            TransType::ColRscRc
+        }
+        (Some(x), ApiResourceDelegationOperationType::Undelegate, false)
+            if x == ApiTradeType::Withdraw as i64 =>
+        {
+            TransType::WdRscRc
+        }
+        (origin_trade_type, operation_type, true) => {
             tracing::warn!(
                 ?origin_trade_type,
+                ?operation_type,
                 resource_trade_no = %resource_task.resource_trade_no,
                 "Unknown original-order resource result trade type, fallback to COL ack type"
             );
             TransType::Col
         }
-        (origin_trade_type, false) => {
+        (origin_trade_type, operation_type, false) => {
             tracing::warn!(
                 ?origin_trade_type,
+                ?operation_type,
                 resource_trade_no = %resource_task.resource_trade_no,
                 "Unknown resource task origin trade type, fallback to COL_RSC_DL ack type"
             );
@@ -53,12 +75,15 @@ mod tests {
         api_resource_type::ApiResourceType,
     };
 
-    fn base_resource_task(origin_trade_type: ApiTradeType) -> ApiResourceDelegationEntity {
+    fn base_resource_task(
+        origin_trade_type: ApiTradeType,
+        operation_type: ApiResourceDelegationOperationType,
+    ) -> ApiResourceDelegationEntity {
         ApiResourceDelegationEntity {
             id: 1,
             uid: "u".to_string(),
             source: ApiResourceDelegationSource::Platform,
-            operation_type: ApiResourceDelegationOperationType::Delegate,
+            operation_type,
             origin_trade_no: Some("ORIGIN".to_string()),
             origin_trade_type: Some(origin_trade_type as i64),
             resource_trade_no: "rsc_1".to_string(),
@@ -90,22 +115,48 @@ mod tests {
     }
 
     #[test]
-    fn resource_task_ack_type_uses_resource_order_type() {
-        let collect = base_resource_task(ApiTradeType::Collect);
+    fn resource_task_ack_type_uses_resource_operation_type() {
+        let collect =
+            base_resource_task(ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate);
         assert!(matches!(resource_delegation_ack_trans_type(&collect), TransType::ColRscDl));
 
-        let withdraw = base_resource_task(ApiTradeType::Withdraw);
+        let withdraw = base_resource_task(
+            ApiTradeType::Withdraw,
+            ApiResourceDelegationOperationType::Delegate,
+        );
         assert!(matches!(resource_delegation_ack_trans_type(&withdraw), TransType::WdRscDl));
+
+        let collect_reclaim = base_resource_task(
+            ApiTradeType::Collect,
+            ApiResourceDelegationOperationType::Undelegate,
+        );
+        assert!(matches!(
+            resource_delegation_ack_trans_type(&collect_reclaim),
+            TransType::ColRscRc
+        ));
+
+        let withdraw_reclaim = base_resource_task(
+            ApiTradeType::Withdraw,
+            ApiResourceDelegationOperationType::Undelegate,
+        );
+        assert!(matches!(
+            resource_delegation_ack_trans_type(&withdraw_reclaim),
+            TransType::WdRscRc
+        ));
     }
 
     #[test]
     fn original_order_result_ack_type_uses_origin_order_type() {
-        let mut collect = base_resource_task(ApiTradeType::Collect);
+        let mut collect =
+            base_resource_task(ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate);
         collect.resource_trade_no = "C_ORIGIN".to_string();
         collect.origin_trade_no = Some("C_ORIGIN".to_string());
         assert!(matches!(resource_delegation_ack_trans_type(&collect), TransType::Col));
 
-        let mut withdraw = base_resource_task(ApiTradeType::Withdraw);
+        let mut withdraw = base_resource_task(
+            ApiTradeType::Withdraw,
+            ApiResourceDelegationOperationType::Delegate,
+        );
         withdraw.resource_trade_no = "W_ORIGIN".to_string();
         withdraw.origin_trade_no = Some("W_ORIGIN".to_string());
         assert!(matches!(resource_delegation_ack_trans_type(&withdraw), TransType::Wd));
