@@ -215,6 +215,7 @@ pub(crate) async fn exec_payload(
         // api wallet
         BizType::AwmOrderTrans
         | BizType::AwmOrderTransRes
+        | BizType::AwmCmdRscRes
         | BizType::AwmCmdAddrExpand
         | BizType::AwmCmdFeeRes
         | BizType::AwmCmdActive
@@ -326,6 +327,14 @@ async fn exec_verify_api_mqtt_st(
             }
         }
         EventType::AwmOrderTransRes => {
+            let data: Option<AwmOrderTransResMsg> = res.process()?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdRscRes => {
             let data: Option<AwmOrderTransResMsg> = res.process()?;
             if let Some(data) = data {
                 Ok(serde_func::serde_to_value(data)?)

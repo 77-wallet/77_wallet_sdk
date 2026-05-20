@@ -99,6 +99,8 @@ pub enum BizType {
     AwmOrderTrans,
     /// AWM_ORDER_TRANS_RES API钱包的订单结果消息
     AwmOrderTransRes,
+    /// AWM_CMD_RSC_RES API钱包的资源结果消息
+    AwmCmdRscRes,
     /// AWM_CMD_ADDR_EXPAND API钱包的地址扩容消息
     AwmCmdAddrExpand,
     // AWM_CMD_UID_UNBIND API钱包的钱包解绑消息
@@ -135,6 +137,7 @@ impl fmt::Display for BizType {
             BizType::AddressUse => "AddressUse",
             BizType::AwmOrderTrans => "AwmOrderTrans",
             BizType::AwmOrderTransRes => "AwmOrderTransRes",
+            BizType::AwmCmdRscRes => "AwmCmdRscRes",
             BizType::AwmCmdAddrExpand => "AwmCmdAddrExpand",
             BizType::AwmCmdUidUnbind => "AwmCmdUidUnbind",
             BizType::AwmCmdFeeRes => "AwmCmdFeeRes",
@@ -176,6 +179,7 @@ pub enum Body {
     /// api wallet
     AwmOrderTrans(AwmOrderTransMsg),
     AwmOrderTransRes(AwmOrderTransResMsg),
+    AwmCmdRscRes(AwmOrderTransResMsg),
     AwmCmdAddrExpand(AwmCmdAddrExpandMsg),
     // AwmCmdFeeRes(AwmCmdFeeResMsg),
     AwmCmdActive(AwmCmdActiveMsg),
@@ -183,4 +187,25 @@ pub enum Body {
     AddressUse(AddressUseMsg),
     AwmCmdOrderTransFeeRes(AwmCmdFeeResMsg),
     AwmCmdDevChange(AwmCmdDevChangeMsg),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BizType, Message};
+
+    #[test]
+    fn awm_cmd_rsc_res_biz_type_deserializes() {
+        let payload = r#"{
+            "bizType":"AWM_CMD_RSC_RES",
+            "body":{"eventType":"8","data":{},"eventNo":"1","time":1},
+            "clientId":"client",
+            "deviceType":"ANDROID",
+            "sn":"sn",
+            "walletType":"API_RAW",
+            "msgId":"msg"
+        }"#;
+
+        let message: Message = serde_json::from_str(payload).unwrap();
+        assert!(matches!(message.biz_type, BizType::AwmCmdRscRes));
+    }
 }

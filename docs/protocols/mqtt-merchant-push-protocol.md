@@ -96,12 +96,10 @@
 | 交易订单 | `AWM_ORDER_TRANS` | `/aw/merchant/trans/{clientId}` | `1` |
 | 交易最终结果 | `AWM_ORDER_TRANS_RES` | `/aw/merchant/trans/{clientId}` | `2` |
 | 交易手续费结果 | `AWM_CMD_FEE_RES` | `/aw/merchant/trans/{clientId}` | `6` |
+| 资源结果 | `AWM_CMD_RSC_RES` | `/aw/merchant/cmd/{client}` | `8` |
 | 地址池扩容 | `AWM_CMD_ADDR_EXPAND` | `/aw/merchant/cmd/{client}` | `3` |
 | 激活钱包 | `AWM_CMD_ACTIVE` | `/aw/merchant/cmd/{client}` | `5` |
 | 更换设备 | `AWM_CMD_DEV_CHANGE` | `/aw/merchant/cmd/{client}` | `7` |
-
-说明：原始外部文档提到 `AWM_CMD_RSC_RES` / `eventType = 8`，
-但当前本地代码尚未接入该分支；如后续启用，需要同步补齐代码和文档。
 
 ## 通用消息信封
 
