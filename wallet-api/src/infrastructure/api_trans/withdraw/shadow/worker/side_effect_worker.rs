@@ -16,7 +16,10 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 use crate::{
     error::service::ServiceError,
     infrastructure::api_trans::{
-        resource_ack_type::resource_delegation_ack_trans_type, withdraw::shadow::ShadowScanner,
+        resource_ack_type::{
+            resource_delegation_ack_trans_type, resource_delegation_result_ack_type,
+        },
+        withdraw::shadow::ShadowScanner,
     },
 };
 
@@ -341,7 +344,7 @@ impl SideEffectWorker {
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
                 resource_delegation_ack_trans_type(&resource_task),
-                TransAckType::TxRscRes,
+                resource_delegation_result_ack_type(&resource_task),
             ))
             .await
         {

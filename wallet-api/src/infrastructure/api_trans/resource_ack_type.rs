@@ -2,7 +2,15 @@ use wallet_database::entities::{
     api_resource_delegation::{ApiResourceDelegationEntity, ApiResourceDelegationOperationType},
     api_trade_type::ApiTradeType,
 };
-use wallet_transport_backend::request::api_wallet::transaction::TransType;
+use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransType};
+
+fn is_original_order_result(resource_task: &ApiResourceDelegationEntity) -> bool {
+    resource_task
+        .origin_trade_no
+        .as_deref()
+        .map(|origin| origin == resource_task.resource_trade_no)
+        .unwrap_or(false)
+}
 
 /// Maps a resource-delegation fact to the backend ACK transaction type.
 ///
@@ -12,11 +20,7 @@ use wallet_transport_backend::request::api_wallet::transaction::TransType;
 pub(crate) fn resource_delegation_ack_trans_type(
     resource_task: &ApiResourceDelegationEntity,
 ) -> TransType {
-    let is_original_order_result = resource_task
-        .origin_trade_no
-        .as_deref()
-        .map(|origin| origin == resource_task.resource_trade_no)
-        .unwrap_or(false);
+    let is_original_order_result = is_original_order_result(resource_task);
 
     match (resource_task.origin_trade_type, resource_task.operation_type, is_original_order_result)
     {
@@ -60,6 +64,21 @@ pub(crate) fn resource_delegation_ack_trans_type(
             );
             TransType::ColRscDl
         }
+    }
+}
+
+/// Maps resource result facts to the backend ACK family.
+///
+/// Platform resource tasks are normal backend orders, so their terminal ACK is
+/// `TX_RES`. Merchant-side original-order result facts are projections from
+/// `AWM_CMD_RSC_RES`, so they must keep using `TX_RSC_RES`.
+pub(crate) fn resource_delegation_result_ack_type(
+    resource_task: &ApiResourceDelegationEntity,
+) -> TransAckType {
+    if is_original_order_result(resource_task) {
+        TransAckType::TxRscRes
+    } else {
+        TransAckType::TxRes
     }
 }
 
@@ -142,6 +161,22 @@ mod tests {
         assert!(matches!(
             resource_delegation_ack_trans_type(&withdraw_reclaim),
             TransType::WdRscRc
+        ));
+    }
+
+    #[test]
+    fn resource_result_ack_type_uses_result_fact_family() {
+        let platform_task =
+            base_resource_task(ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate);
+        assert!(matches!(resource_delegation_result_ack_type(&platform_task), TransAckType::TxRes));
+
+        let mut original_result =
+            base_resource_task(ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate);
+        original_result.resource_trade_no = "C_ORIGIN".to_string();
+        original_result.origin_trade_no = Some("C_ORIGIN".to_string());
+        assert!(matches!(
+            resource_delegation_result_ack_type(&original_result),
+            TransAckType::TxRscRes
         ));
     }
 

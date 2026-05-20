@@ -51,7 +51,10 @@ use crate::{
     },
     error::service::ServiceError,
     infrastructure::api_trans::{
-        collect::shadow::ShadowAdvancer, resource_ack_type::resource_delegation_ack_trans_type,
+        collect::shadow::ShadowAdvancer,
+        resource_ack_type::{
+            resource_delegation_ack_trans_type, resource_delegation_result_ack_type,
+        },
     },
     request::api_wallet::trans::ApiBaseTransferReq,
 };
@@ -654,7 +657,7 @@ impl SideEffectWorker {
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
                 trans_type,
-                TransAckType::TxRscRes,
+                resource_delegation_result_ack_type(&resource_task),
             ))
             .await
         {
@@ -1568,7 +1571,10 @@ mod tests {
     use wallet_transport_backend::request::api_wallet::transaction::TransType;
 
     use crate::infrastructure::api_trans::{
-        collect::shadow::ShadowAdvancer, resource_ack_type::resource_delegation_ack_trans_type,
+        collect::shadow::ShadowAdvancer,
+        resource_ack_type::{
+            resource_delegation_ack_trans_type, resource_delegation_result_ack_type,
+        },
     };
 
     #[test]
@@ -1846,7 +1852,7 @@ mod tests {
     }
 
     #[test]
-    fn build_resource_result_ack_payload_uses_collect_trans_type_and_tx_rsc_res_ack() {
+    fn build_resource_result_ack_payload_uses_collect_trans_type_and_tx_res_ack() {
         let r = wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
             id: 1,
             uid: "u".to_string(),
@@ -1887,11 +1893,11 @@ mod tests {
             wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
                 &r.resource_trade_no,
                 resource_delegation_ack_trans_type(&r),
-                wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRscRes,
+                resource_delegation_result_ack_type(&r),
             );
         let ack_json = serde_json::to_value(&ack_req).expect("serialize ack req");
         assert_eq!(ack_json["type"], "COL_RSC_DL");
-        assert_eq!(ack_json["ackType"], "TX_RSC_RES");
+        assert_eq!(ack_json["ackType"], "TX_RES");
     }
 
     #[tokio::test]
