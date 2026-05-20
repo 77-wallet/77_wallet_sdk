@@ -41,13 +41,13 @@ async fn withdraw_resource_result_ack_uses_wd_rsc_dl_type() {
             uid, source, operation_type, origin_trade_no, origin_trade_type,
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
-            result_status, result_received_at,
+            result_status, result_received_at, result_payload,
             created_at, updated_at
         ) VALUES (
             'uid', 1, 1, 'W_ORIGIN_ACK', 1,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
-            1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":true}',
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )
@@ -150,13 +150,13 @@ async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
             uid, source, operation_type, origin_trade_no, origin_trade_type,
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
-            tx_hash, tx_status, result_status, result_received_at,
+            tx_hash, tx_status, result_status, result_received_at, result_payload,
             created_at, updated_at
         ) VALUES (
             'uid', 1, 1, ?, ?,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
-            'tx_hash_withdraw_release', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            'tx_hash_withdraw_release', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":true}',
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )
@@ -377,13 +377,13 @@ async fn withdraw_resource_result_ack_without_origin_trade_no_does_not_release_g
             uid, source, operation_type, origin_trade_no, origin_trade_type,
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
-            tx_hash, tx_status, result_status, result_received_at,
+            tx_hash, tx_status, result_status, result_received_at, result_payload,
             created_at, updated_at
         ) VALUES (
             'uid', 1, 1, NULL, ?,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
-            'tx_hash_withdraw_no_origin', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            'tx_hash_withdraw_no_origin', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":true}',
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )
@@ -473,13 +473,13 @@ async fn withdraw_resource_result_ack_for_collect_origin_does_not_release_withdr
             uid, source, operation_type, origin_trade_no, origin_trade_type,
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
-            tx_hash, tx_status, result_status, result_received_at,
+            tx_hash, tx_status, result_status, result_received_at, result_payload,
             created_at, updated_at
         ) VALUES (
             'uid', 1, 1, ?, ?,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
-            'tx_hash_withdraw_wrong_origin', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            'tx_hash_withdraw_wrong_origin', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":true}',
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )

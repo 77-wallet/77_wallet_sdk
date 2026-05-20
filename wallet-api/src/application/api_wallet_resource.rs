@@ -25,8 +25,8 @@ impl ApiResourceApplication {
         let outcome = ApiResourceDomain::stake_withdraw_wallet_resource(
             self.ctx,
             &req.withdraw_wallet_uid,
-            req.resource_type,
-            &req.amount,
+            req.resource,
+            &req.frozen_balance,
         )
         .await?;
 
@@ -42,8 +42,8 @@ impl ApiResourceApplication {
         let outcome = ApiResourceDomain::unstake_withdraw_wallet_resource(
             self.ctx,
             &req.withdraw_wallet_uid,
-            req.resource_type,
-            &req.amount,
+            req.resource,
+            &req.unfreeze_balance,
         )
         .await?;
 

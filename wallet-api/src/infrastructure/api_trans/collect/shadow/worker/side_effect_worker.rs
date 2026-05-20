@@ -637,6 +637,14 @@ impl SideEffectWorker {
             warn!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Resource result ACK skipped because result has not been received");
             return Ok(());
         }
+        if resource_task.result_payload.is_none() {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                source = "side_effect_worker",
+                "Resource result ACK skipped because backend result payload is missing"
+            );
+            return Ok(());
+        }
 
         let trans_type = Self::resource_delegation_trans_type(&resource_task);
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -644,7 +652,7 @@ impl SideEffectWorker {
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
                 trans_type,
-                TransAckType::TxRes,
+                TransAckType::TxRscRes,
             ))
             .await
         {
@@ -1887,7 +1895,7 @@ mod tests {
     }
 
     #[test]
-    fn build_resource_result_ack_payload_uses_withdraw_trans_type_and_tx_res_ack() {
+    fn build_resource_result_ack_payload_uses_withdraw_trans_type_and_tx_rsc_res_ack() {
         let r = wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
             id: 1,
             uid: "u".to_string(),
@@ -1928,15 +1936,15 @@ mod tests {
             wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
                 &r.resource_trade_no,
                 SideEffectWorker::resource_delegation_trans_type(&r),
-                wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRes,
+                wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRscRes,
             );
         let ack_json = serde_json::to_value(&ack_req).expect("serialize ack req");
         assert_eq!(ack_json["type"], "WD_RSC_DL");
-        assert_eq!(ack_json["ackType"], "TX_RES");
+        assert_eq!(ack_json["ackType"], "TX_RSC_RES");
     }
 
     #[test]
-    fn build_resource_result_ack_payload_uses_collect_trans_type_and_tx_res_ack() {
+    fn build_resource_result_ack_payload_uses_collect_trans_type_and_tx_rsc_res_ack() {
         let r = wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
             id: 1,
             uid: "u".to_string(),
@@ -1977,11 +1985,11 @@ mod tests {
             wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
                 &r.resource_trade_no,
                 SideEffectWorker::resource_delegation_trans_type(&r),
-                wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRes,
+                wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRscRes,
             );
         let ack_json = serde_json::to_value(&ack_req).expect("serialize ack req");
         assert_eq!(ack_json["type"], "COL_RSC_DL");
-        assert_eq!(ack_json["ackType"], "TX_RES");
+        assert_eq!(ack_json["ackType"], "TX_RSC_RES");
     }
 
     #[tokio::test]

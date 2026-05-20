@@ -75,7 +75,10 @@ use crate::{
         service::ServiceError,
     },
     infrastructure::api_trans::{
-        collect::legacy::AddressLockManager, resource_amount::energy_shortfall_to_apply_amounts,
+        collect::legacy::AddressLockManager,
+        resource_amount::{
+            energy_shortfall_to_apply_amounts, parse_resource_delegation_native_trx_units,
+        },
     },
     request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
 };
@@ -602,7 +605,7 @@ impl ShadowCollectWorker {
             )));
         }
 
-        let trx_amount = Self::parse_resource_delegation_native_amount(&delegation.native_amount)?;
+        let trx_amount = parse_resource_delegation_native_trx_units(&delegation.native_amount)?;
         let resource = Self::tron_resource_name(delegation.resource_type);
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
         let _chain_rpc_guard =
@@ -697,18 +700,6 @@ impl ShadowCollectWorker {
         );
 
         Ok((tx_hash, raw_tx))
-    }
-
-    fn parse_resource_delegation_native_amount(amount: &str) -> Result<i64, ServiceError> {
-        let parsed = amount.trim().parse::<i64>().map_err(|_| {
-            ServiceError::Parameter(format!("invalid resource delegation native amount: {amount}"))
-        })?;
-        if parsed <= 0 {
-            return Err(ServiceError::Parameter(format!(
-                "resource delegation native amount must be positive: {amount}"
-            )));
-        }
-        Ok(parsed)
     }
 
     fn tron_resource_name(resource_type: ApiResourceType) -> &'static str {

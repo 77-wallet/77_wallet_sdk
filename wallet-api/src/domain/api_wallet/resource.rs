@@ -35,27 +35,27 @@ impl ApiResourceDomain {
     pub(crate) async fn stake_withdraw_wallet_resource(
         ctx: &'static Context,
         withdraw_wallet_uid: &str,
-        resource_type: ApiResourceType,
-        amount: &str,
+        resource: ApiResourceType,
+        frozen_balance: &str,
     ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
         let owner_address = Self::require_withdraw_wallet_address(ctx, withdraw_wallet_uid).await?;
-        let amount_trx = Self::parse_amount_trx(amount)?;
-        let resource = Self::tron_resource_name(resource_type);
-        let args = FreezeBalanceArgs::new(&owner_address, resource, amount_trx, None)?;
+        let frozen_balance_trx = Self::parse_amount_trx(frozen_balance)?;
+        let resource = Self::tron_resource_name(resource);
+        let args = FreezeBalanceArgs::new(&owner_address, resource, frozen_balance_trx, None)?;
 
-        Self::execute_tron_resource_operation(owner_address, amount_trx, args).await
+        Self::execute_tron_resource_operation(owner_address, frozen_balance_trx, args).await
     }
 
     pub(crate) async fn unstake_withdraw_wallet_resource(
         ctx: &'static Context,
         withdraw_wallet_uid: &str,
-        resource_type: ApiResourceType,
-        amount: &str,
+        resource: ApiResourceType,
+        unfreeze_balance: &str,
     ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
         let owner_address = Self::require_withdraw_wallet_address(ctx, withdraw_wallet_uid).await?;
-        let amount_trx = Self::parse_amount_trx(amount)?;
-        let resource = Self::tron_resource_name(resource_type);
-        let args = UnFreezeBalanceArgs::new(&owner_address, resource, amount_trx, None)?;
+        let unfreeze_balance_trx = Self::parse_amount_trx(unfreeze_balance)?;
+        let resource = Self::tron_resource_name(resource);
+        let args = UnFreezeBalanceArgs::new(&owner_address, resource, unfreeze_balance_trx, None)?;
 
         Self::execute_tron_resource_operation(owner_address, 0, args).await
     }

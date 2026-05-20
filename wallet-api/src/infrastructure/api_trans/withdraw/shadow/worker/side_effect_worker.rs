@@ -325,13 +325,20 @@ impl SideEffectWorker {
         {
             return Ok(());
         }
+        if resource_task.result_payload.is_none() {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                "Resource result ACK skipped because backend result payload is missing"
+            );
+            return Ok(());
+        }
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         if let Err(e) = backend
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
                 Self::resource_delegation_trans_type(&resource_task),
-                TransAckType::TxRes,
+                TransAckType::TxRscRes,
             ))
             .await
         {

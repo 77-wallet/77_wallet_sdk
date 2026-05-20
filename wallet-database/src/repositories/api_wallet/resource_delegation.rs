@@ -911,6 +911,34 @@ mod tests {
             None,
             None,
             None,
+            Some("{\"status\":true}"),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "rsc_local_failure_fact",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "1",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_local_failure_fact",
+            ApiResourceDelegationResultStatus::Fail,
+            Some(1),
+            Some("ERR_6008"),
+            Some("sdk internal error"),
             None,
         )
         .await
@@ -931,6 +959,7 @@ mod tests {
         let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
         assert!(trade_nos.contains(&"rsc_ack".to_string()));
         assert!(!trade_nos.contains(&"rsc_no_result".to_string()));
+        assert!(!trade_nos.contains(&"rsc_local_failure_fact".to_string()));
         assert!(!trade_nos.contains(&"rsc_local_result".to_string()));
 
         assert_eq!(
@@ -973,7 +1002,7 @@ mod tests {
             Some(1),
             Some("ERR_6008"),
             Some("sdk internal error"),
-            None,
+            Some("{\"status\":false}"),
         )
         .await
         .unwrap();

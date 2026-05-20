@@ -3042,13 +3042,13 @@ async fn collect_resource_result_ack_releases_origin_collect_gate() {
             uid, source, operation_type, origin_trade_no, origin_trade_type,
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
-            tx_hash, tx_status, result_status, result_received_at,
+            tx_hash, tx_status, result_status, result_received_at, result_payload,
             created_at, updated_at
         ) VALUES (
             'uid', 1, 1, ?, 2,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
-            'tx_hash_collect_release', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            'tx_hash_collect_release', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":true}',
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )
@@ -3137,13 +3137,13 @@ async fn collect_resource_result_ack_does_not_release_gate_on_failure() {
             uid, source, operation_type, origin_trade_no, origin_trade_type,
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
-            tx_hash, tx_status, err_code, err_msg, result_status, result_received_at,
+            tx_hash, tx_status, err_code, err_msg, result_status, result_received_at, result_payload,
             created_at, updated_at
         ) VALUES (
             'uid', 1, 1, ?, 2,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
-            'tx_hash_collect_fail', 'fail', 'ERR_6008', 'delegate failed', 2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            'tx_hash_collect_fail', 'fail', 'ERR_6008', 'delegate failed', 2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":false}',
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )
@@ -3222,13 +3222,13 @@ async fn withdraw_origin_resource_result_ack_does_not_release_collect_gate() {
             uid, source, operation_type, origin_trade_no, origin_trade_type,
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
-            tx_hash, tx_status, result_status, result_received_at,
+            tx_hash, tx_status, result_status, result_received_at, result_payload,
             created_at, updated_at
         ) VALUES (
             'uid', 1, 1, 'W_ORIGIN_SKIP', 1,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
-            'tx_hash_wd_skip', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            'tx_hash_wd_skip', 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":true}',
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )

@@ -151,6 +151,7 @@ impl ApiResourceDelegationDao {
               AND operation_type = 1
               AND origin_trade_type = ?
               AND result_received_at IS NOT NULL
+              AND result_payload IS NOT NULL
               AND result_ack_sent_at IS NULL
               AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ORDER BY result_received_at ASC
@@ -536,6 +537,7 @@ impl ApiResourceDelegationDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
               AND result_received_at IS NOT NULL
+              AND result_payload IS NOT NULL
               AND result_ack_sent_at IS NULL
             "#,
         )
@@ -561,6 +563,7 @@ impl ApiResourceDelegationDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
               AND result_received_at IS NOT NULL
+              AND result_payload IS NOT NULL
               AND result_ack_sent_at IS NULL
             "#,
         )
