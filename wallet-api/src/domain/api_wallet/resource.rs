@@ -13,9 +13,12 @@ use crate::{
 };
 use wallet_chain_interact::{
     BillResourceConsume,
-    tron::operations::{
-        TronTxOperation,
-        stake::{FreezeBalanceArgs, UnFreezeBalanceArgs},
+    tron::{
+        self,
+        operations::{
+            TronTxOperation,
+            stake::{FreezeBalanceArgs, UnFreezeBalanceArgs},
+        },
     },
 };
 use wallet_database::{
@@ -36,11 +39,11 @@ impl ApiResourceDomain {
         amount: &str,
     ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
         let owner_address = Self::require_withdraw_wallet_address(ctx, withdraw_wallet_uid).await?;
-        let amount_sun = Self::parse_amount_sun(amount)?;
+        let amount_trx = Self::parse_amount_trx(amount)?;
         let resource = Self::tron_resource_name(resource_type);
-        let args = FreezeBalanceArgs::new(&owner_address, resource, amount_sun, None)?;
+        let args = FreezeBalanceArgs::new(&owner_address, resource, amount_trx, None)?;
 
-        Self::execute_tron_resource_operation(owner_address, amount_sun, args).await
+        Self::execute_tron_resource_operation(owner_address, amount_trx, args).await
     }
 
     pub(crate) async fn unstake_withdraw_wallet_resource(
@@ -50,9 +53,9 @@ impl ApiResourceDomain {
         amount: &str,
     ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
         let owner_address = Self::require_withdraw_wallet_address(ctx, withdraw_wallet_uid).await?;
-        let amount_sun = Self::parse_amount_sun(amount)?;
+        let amount_trx = Self::parse_amount_trx(amount)?;
         let resource = Self::tron_resource_name(resource_type);
-        let args = UnFreezeBalanceArgs::new(&owner_address, resource, amount_sun, None)?;
+        let args = UnFreezeBalanceArgs::new(&owner_address, resource, amount_trx, None)?;
 
         Self::execute_tron_resource_operation(owner_address, 0, args).await
     }
@@ -75,7 +78,7 @@ impl ApiResourceDomain {
         Ok(wallet.address)
     }
 
-    fn parse_amount_sun(amount: &str) -> Result<i64, ServiceError> {
+    fn parse_amount_trx(amount: &str) -> Result<i64, ServiceError> {
         let amount = amount.trim().parse::<i64>().map_err(|_| {
             ServiceError::Parameter(format!("invalid api wallet resource amount: {amount}"))
         })?;
@@ -96,7 +99,7 @@ impl ApiResourceDomain {
 
     async fn execute_tron_resource_operation<T>(
         owner_address: String,
-        stake_amount_sun: i64,
+        stake_amount_trx: i64,
         args: impl TronTxOperation<T>,
     ) -> Result<ApiResourceBroadcastOutcome, ServiceError>
     where
@@ -109,7 +112,7 @@ impl ApiResourceDomain {
             .get_provider()
             .transfer_fee(&owner_address, None, &raw_tx.raw_data_hex, 1)
             .await?;
-        let need_sun = consumer.transaction_fee_i64().saturating_add(stake_amount_sun);
+        let need_sun = Self::required_balance_sun(consumer.transaction_fee_i64(), stake_amount_trx);
         if balance.to::<i64>() < need_sun {
             return Err(ServiceError::Business(BusinessError::Chain(
                 ChainError::InsufficientBalance(Default::default()),
@@ -130,6 +133,10 @@ impl ApiResourceDomain {
 
         Ok(ApiResourceBroadcastOutcome { tx_hash })
     }
+
+    fn required_balance_sun(transaction_fee_sun: i64, stake_amount_trx: i64) -> i64 {
+        transaction_fee_sun.saturating_add(stake_amount_trx.saturating_mul(tron::consts::TRX_VALUE))
+    }
 }
 
 #[cfg(test)]
@@ -138,11 +145,19 @@ mod tests {
     use crate::request::api_wallet::resource::ApiResourceType;
 
     #[test]
-    fn api_resource_amount_requires_positive_integer_sun() {
-        assert_eq!(ApiResourceDomain::parse_amount_sun("1000").unwrap(), 1000);
-        assert!(ApiResourceDomain::parse_amount_sun("0").is_err());
-        assert!(ApiResourceDomain::parse_amount_sun("-1").is_err());
-        assert!(ApiResourceDomain::parse_amount_sun("1.5").is_err());
+    fn api_resource_amount_requires_positive_integer_trx() {
+        assert_eq!(ApiResourceDomain::parse_amount_trx("1000").unwrap(), 1000);
+        assert!(ApiResourceDomain::parse_amount_trx("0").is_err());
+        assert!(ApiResourceDomain::parse_amount_trx("-1").is_err());
+        assert!(ApiResourceDomain::parse_amount_trx("1.5").is_err());
+    }
+
+    #[test]
+    fn api_resource_stake_balance_check_uses_trx_unit() {
+        assert_eq!(
+            ApiResourceDomain::required_balance_sun(345, 2),
+            2 * wallet_chain_interact::tron::consts::TRX_VALUE + 345
+        );
     }
 
     #[test]
