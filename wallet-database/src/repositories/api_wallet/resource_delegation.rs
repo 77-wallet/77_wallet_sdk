@@ -91,6 +91,19 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn mark_result_ack_retry_wait(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        next_retry_at: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_result_ack_retry_wait(
+            pool.write_ref(),
+            resource_trade_no,
+            next_retry_at,
+        )
+        .await
+    }
+
     pub async fn scan_need_result_ack(
         pool: &ApiTransactionDbPool,
         limit: usize,
@@ -931,6 +944,74 @@ mod tests {
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_result_ack_retry_wait_throttles_scan() {
+        let pool = setup_api_transaction_pool("resource_delegation_result_ack_retry").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "rsc_ack_retry",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "1",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_ack_retry",
+            ApiResourceDelegationResultStatus::Fail,
+            Some(1),
+            Some("ERR_6008"),
+            Some("sdk internal error"),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        assert!(rows.iter().any(|row| row.resource_trade_no == "rsc_ack_retry"));
+
+        let future = (chrono::Utc::now() + chrono::Duration::minutes(10))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_retry_wait(&pool, "rsc_ack_retry", &future,)
+                .await
+                .unwrap(),
+            1
+        );
+
+        let waiting = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_ack_retry")
+            .await
+            .unwrap();
+        assert_eq!(waiting.retry_count, 1);
+        assert!(waiting.next_retry_at.is_some());
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_ack_retry"));
+
+        let past = (chrono::Utc::now() - chrono::Duration::minutes(10))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_retry_wait(&pool, "rsc_ack_retry", &past)
+                .await
+                .unwrap(),
+            1
+        );
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        assert!(rows.iter().any(|row| row.resource_trade_no == "rsc_ack_retry"));
     }
 
     #[tokio::test]

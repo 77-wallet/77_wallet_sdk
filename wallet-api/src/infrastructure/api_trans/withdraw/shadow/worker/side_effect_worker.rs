@@ -44,6 +44,45 @@ pub struct SideEffectWorker {
 }
 
 impl SideEffectWorker {
+    fn resource_result_ack_retry_wait_secs(retry_count: i64) -> i64 {
+        match retry_count {
+            i if i <= 0 => 60,
+            1 => 120,
+            2 => 300,
+            _ => 600,
+        }
+    }
+
+    async fn schedule_resource_result_ack_retry(&self, resource_trade_no: &str, retry_count: i64) {
+        let wait_secs = Self::resource_result_ack_retry_wait_secs(retry_count);
+        let next_retry_at = (chrono::Utc::now() + chrono::Duration::seconds(wait_secs))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        match ApiResourceDelegationRepo::mark_result_ack_retry_wait(
+            &self.pool,
+            resource_trade_no,
+            &next_retry_at,
+        )
+        .await
+        {
+            Ok(affected) => {
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    wait_secs = wait_secs,
+                    affected = affected,
+                    "Resource result ACK retry scheduled"
+                );
+            }
+            Err(schedule_err) => {
+                error!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %schedule_err,
+                    "Failed to schedule resource result ACK retry"
+                );
+            }
+        }
+    }
+
     pub fn new(
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
@@ -288,13 +327,18 @@ impl SideEffectWorker {
         }
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        backend
+        if let Err(e) = backend
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
                 Self::resource_delegation_trans_type(&resource_task),
                 TransAckType::TxRscRes,
             ))
-            .await?;
+            .await
+        {
+            self.schedule_resource_result_ack_retry(&resource_trade_no, resource_task.retry_count)
+                .await;
+            return Err(e.into());
+        }
 
         let affected =
             ApiResourceDelegationRepo::mark_result_ack_sent(&self.pool, &resource_trade_no)
@@ -652,6 +696,15 @@ mod tests {
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, WithdrawFailureStage},
         asset_token_key::AssetTokenKey,
     };
+
+    #[test]
+    fn withdraw_resource_result_ack_retry_wait_uses_bounded_backoff() {
+        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(0), 60);
+        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(1), 120);
+        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(2), 300);
+        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(3), 600);
+        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(99), 600);
+    }
 
     fn base_withdraw(trade_no: &str) -> ApiWithdrawEntity {
         ApiWithdrawEntity {

@@ -152,6 +152,7 @@ impl ApiResourceDelegationDao {
               AND origin_trade_type = ?
               AND result_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
+              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ORDER BY result_received_at ASC
             LIMIT ?
             "#,
@@ -513,6 +514,33 @@ impl ApiResourceDelegationDao {
         .bind(resource_trade_no)
         .bind(err_code)
         .bind(err_msg)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_result_ack_retry_wait<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        next_retry_at: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET next_retry_at = ?2,
+                retry_count = retry_count + 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND result_received_at IS NOT NULL
+              AND result_ack_sent_at IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(next_retry_at)
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
