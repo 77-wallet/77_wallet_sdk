@@ -409,6 +409,23 @@ impl AwmOrderTransResMsg {
         )
         .await?;
 
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            api_transaction_pool,
+            NewApiResourceDelegation::platform_delegate(
+                &self.uid,
+                &self.trade_no,
+                &withdraw.trade_no,
+                ApiTradeType::Withdraw as i64,
+                "",
+                "",
+                "0",
+            ),
+            result_status,
+            self.fail_type.map(i64::from),
+            result_payload.as_deref(),
+        )
+        .await?;
+
         self.trigger_withdraw_shadow(&withdraw.trade_no).await;
 
         Ok(())
@@ -764,6 +781,102 @@ mod tests {
 
         let result_ack_rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await?;
         assert!(result_ack_rows.iter().any(|row| row.resource_trade_no == "C_origin_result"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn awm_cmd_rsc_res_trade_type_1_creates_withdraw_resource_ack_fact() -> anyhow::Result<()>
+    {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_1",
+            "withdraw",
+            "from_addr",
+            "to_addr",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            "W_origin_result",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            wallet_database::entities::api_withdraw::ApiWithdrawStatus::Init,
+            wallet_database::entities::api_withdraw::ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await?;
+        ApiWithdrawRepo::mark_resource_blocked(
+            &pool,
+            "W_origin_result",
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            None,
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await?;
+
+        let msg = AwmOrderTransResMsg {
+            trade_no: "W_origin_result".to_string(),
+            trade_type: 1,
+            status: true,
+            fail_type: None,
+            uid: "uid_1".to_string(),
+        };
+
+        msg.resource_result(&pool).await?;
+
+        let withdraw = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_origin_result",
+            ApiTradeType::Withdraw,
+        )
+        .await?;
+        assert!(withdraw.resource_gate_released_at.is_some());
+        assert_eq!(
+            withdraw.resource_gate_result,
+            Some(ApiResourceGateResult::PlatformDelegateSuccess)
+        );
+        assert!(withdraw.tx_res_received_at.is_none());
+        assert!(withdraw.transaction_time.is_none());
+        assert!(withdraw.finished_at.is_none());
+        assert!(withdraw.tx_res_ack_sent_at.is_none());
+
+        let result_fact =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "W_origin_result").await?;
+        assert_eq!(result_fact.origin_trade_no.as_deref(), Some("W_origin_result"));
+        assert_eq!(result_fact.origin_trade_type, Some(ApiTradeType::Withdraw as i64));
+        assert_eq!(result_fact.result_status, Some(ApiResourceDelegationResultStatus::Success));
+        assert!(result_fact.result_ack_sent_at.is_none());
+
+        let collect_ack_rows = ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
+            &pool,
+            ApiTradeType::Collect as i64,
+            100,
+        )
+        .await?;
+        assert!(!collect_ack_rows.iter().any(|row| row.resource_trade_no == "W_origin_result"));
+
+        let withdraw_ack_rows = ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
+            &pool,
+            ApiTradeType::Withdraw as i64,
+            100,
+        )
+        .await?;
+        assert!(withdraw_ack_rows.iter().any(|row| row.resource_trade_no == "W_origin_result"));
 
         Ok(())
     }
