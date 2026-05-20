@@ -331,7 +331,7 @@ impl SideEffectWorker {
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
                 Self::resource_delegation_trans_type(&resource_task),
-                TransAckType::TxRscRes,
+                TransAckType::TxRes,
             ))
             .await
         {
