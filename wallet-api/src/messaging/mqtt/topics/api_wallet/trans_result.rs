@@ -187,6 +187,11 @@ impl AwmOrderTransResMsg {
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
+        // AWM_CMD_RSC_RES is shared by two local roles. Platform wallets receive
+        // real resource task results (CD/CR resource trade numbers), while
+        // merchant wallets receive resource results projected onto the original
+        // collect/withdraw order number. The handlers below resolve the local
+        // fact first instead of trusting only the message trade type.
         match self.trade_type {
             1 | 7 => self.withdraw_resource_delegation_result(api_transaction_pool).await,
             2 | 5 => self.collect_resource_delegation_result(api_transaction_pool).await,
@@ -240,6 +245,9 @@ impl AwmOrderTransResMsg {
         )
         .await?
         {
+            // Platform wallet: the message trade number is the real resource
+            // delegation task (for example CD...), so this fact is ACKed later
+            // as a resource task result with TX_RES.
             ApiResourceDelegationRepo::mark_result_received(
                 api_transaction_pool,
                 &self.trade_no,
@@ -291,6 +299,9 @@ impl AwmOrderTransResMsg {
             return Ok(());
         };
 
+        // Merchant wallet: the message trade number is the original collect
+        // order, or a dependency that points back to it. Persist a projection
+        // fact so the side-effect worker can ACK it as COL + TX_RSC_RES.
         if self.status {
             ApiCollectRepo::mark_resource_released(
                 api_transaction_pool,
@@ -346,6 +357,9 @@ impl AwmOrderTransResMsg {
         )
         .await?
         {
+            // Platform wallet: the message trade number is the real resource
+            // delegation task (for example CD...), so this fact is ACKed later
+            // as a resource task result with TX_RES.
             ApiResourceDelegationRepo::mark_result_received(
                 api_transaction_pool,
                 &self.trade_no,
@@ -398,6 +412,9 @@ impl AwmOrderTransResMsg {
             return Ok(());
         };
 
+        // Merchant wallet: the message trade number is the original withdraw
+        // order, or a dependency that points back to it. Persist a projection
+        // fact so the side-effect worker can ACK it as WD + TX_RSC_RES.
         ApiWithdrawRepo::mark_resource_released(
             api_transaction_pool,
             &withdraw.trade_no,

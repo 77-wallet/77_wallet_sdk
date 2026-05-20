@@ -4,7 +4,16 @@ use wallet_database::entities::{
 };
 use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransType};
 
-fn is_original_order_result(resource_task: &ApiResourceDelegationEntity) -> bool {
+// Resource result ACK has two local meanings even though both come from the
+// backend resource-result message:
+// - Platform wallet resource tasks use COL_RSC_DL/WD_RSC_DL/COL_RSC_RC/WD_RSC_RC
+//   with TX_RES.
+// - Merchant wallet original-order projections use COL/WD with TX_RSC_RES.
+// Keep these helpers split so call sites show which side of that boundary they
+// are acknowledging.
+pub(crate) fn is_original_order_resource_result_fact(
+    resource_task: &ApiResourceDelegationEntity,
+) -> bool {
     resource_task
         .origin_trade_no
         .as_deref()
@@ -12,50 +21,32 @@ fn is_original_order_result(resource_task: &ApiResourceDelegationEntity) -> bool
         .unwrap_or(false)
 }
 
-/// Maps a resource-delegation fact to the backend ACK transaction type.
-///
-/// Original-order result facts are created on merchant wallets when the backend
-/// pushes `AWM_CMD_RSC_RES` using the origin order number. Real resource task
-/// facts are created on platform wallets and keep their resource-task type.
-pub(crate) fn resource_delegation_ack_trans_type(
+/// Maps a real platform resource task to the backend transaction type.
+pub(crate) fn platform_resource_task_trans_type(
     resource_task: &ApiResourceDelegationEntity,
 ) -> TransType {
-    let is_original_order_result = is_original_order_result(resource_task);
-
-    match (resource_task.origin_trade_type, resource_task.operation_type, is_original_order_result)
-    {
-        (Some(x), _, true) if x == ApiTradeType::Collect as i64 => TransType::Col,
-        (Some(x), _, true) if x == ApiTradeType::Withdraw as i64 => TransType::Wd,
-        (Some(x), ApiResourceDelegationOperationType::Delegate, false)
+    match (resource_task.origin_trade_type, resource_task.operation_type) {
+        (Some(x), ApiResourceDelegationOperationType::Delegate)
             if x == ApiTradeType::Collect as i64 =>
         {
             TransType::ColRscDl
         }
-        (Some(x), ApiResourceDelegationOperationType::Delegate, false)
+        (Some(x), ApiResourceDelegationOperationType::Delegate)
             if x == ApiTradeType::Withdraw as i64 =>
         {
             TransType::WdRscDl
         }
-        (Some(x), ApiResourceDelegationOperationType::Undelegate, false)
+        (Some(x), ApiResourceDelegationOperationType::Undelegate)
             if x == ApiTradeType::Collect as i64 =>
         {
             TransType::ColRscRc
         }
-        (Some(x), ApiResourceDelegationOperationType::Undelegate, false)
+        (Some(x), ApiResourceDelegationOperationType::Undelegate)
             if x == ApiTradeType::Withdraw as i64 =>
         {
             TransType::WdRscRc
         }
-        (origin_trade_type, operation_type, true) => {
-            tracing::warn!(
-                ?origin_trade_type,
-                ?operation_type,
-                resource_trade_no = %resource_task.resource_trade_no,
-                "Unknown original-order resource result trade type, fallback to COL ack type"
-            );
-            TransType::Col
-        }
-        (origin_trade_type, operation_type, false) => {
+        (origin_trade_type, operation_type) => {
             tracing::warn!(
                 ?origin_trade_type,
                 ?operation_type,
@@ -67,19 +58,32 @@ pub(crate) fn resource_delegation_ack_trans_type(
     }
 }
 
-/// Maps resource result facts to the backend ACK family.
-///
-/// Platform resource tasks are normal backend orders, so their terminal ACK is
-/// `TX_RES`. Merchant-side original-order result facts are projections from
-/// `AWM_CMD_RSC_RES`, so they must keep using `TX_RSC_RES`.
-pub(crate) fn resource_delegation_result_ack_type(
+/// Maps a merchant-side original-order resource result projection to the
+/// original order transaction type.
+pub(crate) fn merchant_original_resource_result_trans_type(
     resource_task: &ApiResourceDelegationEntity,
-) -> TransAckType {
-    if is_original_order_result(resource_task) {
-        TransAckType::TxRscRes
-    } else {
-        TransAckType::TxRes
+) -> TransType {
+    match resource_task.origin_trade_type {
+        Some(x) if x == ApiTradeType::Collect as i64 => TransType::Col,
+        Some(x) if x == ApiTradeType::Withdraw as i64 => TransType::Wd,
+        origin_trade_type => {
+            tracing::warn!(
+                ?origin_trade_type,
+                operation_type = ?resource_task.operation_type,
+                resource_trade_no = %resource_task.resource_trade_no,
+                "Unknown original-order resource result trade type, fallback to COL ack type"
+            );
+            TransType::Col
+        }
     }
+}
+
+pub(crate) fn platform_resource_result_ack_type() -> TransAckType {
+    TransAckType::TxRes
+}
+
+pub(crate) fn merchant_original_resource_result_ack_type() -> TransAckType {
+    TransAckType::TxRscRes
 }
 
 #[cfg(test)]
@@ -137,47 +141,40 @@ mod tests {
     fn resource_task_ack_type_uses_resource_operation_type() {
         let collect =
             base_resource_task(ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate);
-        assert!(matches!(resource_delegation_ack_trans_type(&collect), TransType::ColRscDl));
+        assert!(matches!(platform_resource_task_trans_type(&collect), TransType::ColRscDl));
 
         let withdraw = base_resource_task(
             ApiTradeType::Withdraw,
             ApiResourceDelegationOperationType::Delegate,
         );
-        assert!(matches!(resource_delegation_ack_trans_type(&withdraw), TransType::WdRscDl));
+        assert!(matches!(platform_resource_task_trans_type(&withdraw), TransType::WdRscDl));
 
         let collect_reclaim = base_resource_task(
             ApiTradeType::Collect,
             ApiResourceDelegationOperationType::Undelegate,
         );
-        assert!(matches!(
-            resource_delegation_ack_trans_type(&collect_reclaim),
-            TransType::ColRscRc
-        ));
+        assert!(matches!(platform_resource_task_trans_type(&collect_reclaim), TransType::ColRscRc));
 
         let withdraw_reclaim = base_resource_task(
             ApiTradeType::Withdraw,
             ApiResourceDelegationOperationType::Undelegate,
         );
-        assert!(matches!(
-            resource_delegation_ack_trans_type(&withdraw_reclaim),
-            TransType::WdRscRc
-        ));
+        assert!(matches!(platform_resource_task_trans_type(&withdraw_reclaim), TransType::WdRscRc));
     }
 
     #[test]
     fn resource_result_ack_type_uses_result_fact_family() {
         let platform_task =
             base_resource_task(ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate);
-        assert!(matches!(resource_delegation_result_ack_type(&platform_task), TransAckType::TxRes));
+        assert!(!is_original_order_resource_result_fact(&platform_task));
+        assert!(matches!(platform_resource_result_ack_type(), TransAckType::TxRes));
 
         let mut original_result =
             base_resource_task(ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate);
         original_result.resource_trade_no = "C_ORIGIN".to_string();
         original_result.origin_trade_no = Some("C_ORIGIN".to_string());
-        assert!(matches!(
-            resource_delegation_result_ack_type(&original_result),
-            TransAckType::TxRscRes
-        ));
+        assert!(is_original_order_resource_result_fact(&original_result));
+        assert!(matches!(merchant_original_resource_result_ack_type(), TransAckType::TxRscRes));
     }
 
     #[test]
@@ -186,7 +183,7 @@ mod tests {
             base_resource_task(ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate);
         collect.resource_trade_no = "C_ORIGIN".to_string();
         collect.origin_trade_no = Some("C_ORIGIN".to_string());
-        assert!(matches!(resource_delegation_ack_trans_type(&collect), TransType::Col));
+        assert!(matches!(merchant_original_resource_result_trans_type(&collect), TransType::Col));
 
         let mut withdraw = base_resource_task(
             ApiTradeType::Withdraw,
@@ -194,6 +191,6 @@ mod tests {
         );
         withdraw.resource_trade_no = "W_ORIGIN".to_string();
         withdraw.origin_trade_no = Some("W_ORIGIN".to_string());
-        assert!(matches!(resource_delegation_ack_trans_type(&withdraw), TransType::Wd));
+        assert!(matches!(merchant_original_resource_result_trans_type(&withdraw), TransType::Wd));
     }
 }

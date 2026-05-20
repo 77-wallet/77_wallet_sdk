@@ -53,7 +53,9 @@ use crate::{
     infrastructure::api_trans::{
         collect::shadow::ShadowAdvancer,
         resource_ack_type::{
-            resource_delegation_ack_trans_type, resource_delegation_result_ack_type,
+            is_original_order_resource_result_fact, merchant_original_resource_result_ack_type,
+            merchant_original_resource_result_trans_type, platform_resource_result_ack_type,
+            platform_resource_task_trans_type,
         },
     },
     request::api_wallet::trans::ApiBaseTransferReq,
@@ -651,14 +653,21 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        let trans_type = resource_delegation_ack_trans_type(&resource_task);
+        // Platform resource tasks (CD/CR) and merchant original-order resource
+        // projections (C/W) use the same resource result table, but backend ACK
+        // semantics are different. Keep the branch explicit at the side-effect
+        // boundary so CD... cannot accidentally be ACKed as TX_RSC_RES.
+        let (trans_type, ack_type) = if is_original_order_resource_result_fact(&resource_task) {
+            (
+                merchant_original_resource_result_trans_type(&resource_task),
+                merchant_original_resource_result_ack_type(),
+            )
+        } else {
+            (platform_resource_task_trans_type(&resource_task), platform_resource_result_ack_type())
+        };
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
-            .trans_event_ack(&TransEventAckReq::new(
-                &resource_trade_no,
-                trans_type,
-                resource_delegation_result_ack_type(&resource_task),
-            ))
+            .trans_event_ack(&TransEventAckReq::new(&resource_trade_no, trans_type, ack_type))
             .await
         {
             Ok(_) => {
@@ -845,7 +854,7 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        let trans_type = resource_delegation_ack_trans_type(&resource_task);
+        let trans_type = platform_resource_task_trans_type(&resource_task);
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
@@ -943,7 +952,7 @@ impl SideEffectWorker {
     fn build_resource_tx_exec_receipt_payload(
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
     ) -> Result<TxExecReceiptUploadReq, ServiceError> {
-        let trans_type = resource_delegation_ack_trans_type(resource_task);
+        let trans_type = platform_resource_task_trans_type(resource_task);
 
         let status = if matches!(resource_task.tx_status.as_deref(), Some("success")) {
             TransStatus::Success
@@ -1572,9 +1581,7 @@ mod tests {
 
     use crate::infrastructure::api_trans::{
         collect::shadow::ShadowAdvancer,
-        resource_ack_type::{
-            resource_delegation_ack_trans_type, resource_delegation_result_ack_type,
-        },
+        resource_ack_type::{platform_resource_result_ack_type, platform_resource_task_trans_type},
     };
 
     #[test]
@@ -1892,8 +1899,8 @@ mod tests {
         let ack_req =
             wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
                 &r.resource_trade_no,
-                resource_delegation_ack_trans_type(&r),
-                resource_delegation_result_ack_type(&r),
+                platform_resource_task_trans_type(&r),
+                platform_resource_result_ack_type(),
             );
         let ack_json = serde_json::to_value(&ack_req).expect("serialize ack req");
         assert_eq!(ack_json["type"], "COL_RSC_DL");

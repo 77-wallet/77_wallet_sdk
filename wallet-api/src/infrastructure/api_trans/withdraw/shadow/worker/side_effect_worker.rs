@@ -17,7 +17,9 @@ use crate::{
     error::service::ServiceError,
     infrastructure::api_trans::{
         resource_ack_type::{
-            resource_delegation_ack_trans_type, resource_delegation_result_ack_type,
+            is_original_order_resource_result_fact, merchant_original_resource_result_ack_type,
+            merchant_original_resource_result_trans_type, platform_resource_result_ack_type,
+            platform_resource_task_trans_type,
         },
         withdraw::shadow::ShadowScanner,
     },
@@ -339,13 +341,21 @@ impl SideEffectWorker {
             return Ok(());
         }
 
+        // Platform resource tasks (CD/CR) and merchant original-order resource
+        // projections (C/W) use the same resource result table, but backend ACK
+        // semantics are different. Keep the branch explicit at the side-effect
+        // boundary so CD... cannot accidentally be ACKed as TX_RSC_RES.
+        let (trans_type, ack_type) = if is_original_order_resource_result_fact(&resource_task) {
+            (
+                merchant_original_resource_result_trans_type(&resource_task),
+                merchant_original_resource_result_ack_type(),
+            )
+        } else {
+            (platform_resource_task_trans_type(&resource_task), platform_resource_result_ack_type())
+        };
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         if let Err(e) = backend
-            .trans_event_ack(&TransEventAckReq::new(
-                &resource_trade_no,
-                resource_delegation_ack_trans_type(&resource_task),
-                resource_delegation_result_ack_type(&resource_task),
-            ))
+            .trans_event_ack(&TransEventAckReq::new(&resource_trade_no, trans_type, ack_type))
             .await
         {
             self.schedule_resource_result_ack_retry(&resource_trade_no, resource_task.retry_count)
@@ -386,7 +396,7 @@ impl SideEffectWorker {
         backend
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
-                resource_delegation_ack_trans_type(&resource_task),
+                platform_resource_task_trans_type(&resource_task),
                 TransAckType::Tx,
             ))
             .await?;
@@ -499,7 +509,7 @@ impl SideEffectWorker {
     fn build_resource_tx_exec_receipt_payload(
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
     ) -> Result<TxExecReceiptUploadReq, ServiceError> {
-        let trans_type = resource_delegation_ack_trans_type(resource_task);
+        let trans_type = platform_resource_task_trans_type(resource_task);
         let status = if matches!(resource_task.tx_status.as_deref(), Some("success")) {
             TransStatus::Success
         } else if resource_task.err_code.is_some() {

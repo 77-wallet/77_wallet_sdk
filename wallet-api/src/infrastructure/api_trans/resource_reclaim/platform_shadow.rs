@@ -30,7 +30,7 @@ use crate::{
     error::{service::ServiceError, system::SystemError},
     infrastructure::{
         api_trans::{
-            resource_ack_type::resource_delegation_ack_trans_type,
+            resource_ack_type::platform_resource_task_trans_type,
             resource_amount::parse_resource_delegation_native_trx_units, shadow_rpc_policy,
         },
         runtime::time::new_production_interval,
@@ -376,7 +376,7 @@ impl PlatformResourceReclaimWorker {
         backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
-                resource_delegation_ack_trans_type(&resource_task),
+                platform_resource_task_trans_type(&resource_task),
                 TransAckType::Tx,
             ))
             .await?;
