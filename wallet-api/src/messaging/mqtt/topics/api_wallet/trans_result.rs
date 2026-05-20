@@ -8,7 +8,7 @@ use crate::{
 use tracing;
 use wallet_database::{
     entities::{
-        api_resource_delegation::ApiResourceDelegationResultStatus,
+        api_resource_delegation::{ApiResourceDelegationResultStatus, NewApiResourceDelegation},
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
         },
@@ -306,6 +306,23 @@ impl AwmOrderTransResMsg {
             )
             .await?;
         }
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            api_transaction_pool,
+            NewApiResourceDelegation::platform_delegate(
+                &self.uid,
+                &self.trade_no,
+                &collect.trade_no,
+                ApiTradeType::Collect as i64,
+                "",
+                "",
+                "0",
+            ),
+            result_status,
+            self.fail_type.map(i64::from),
+            result_payload.as_deref(),
+        )
+        .await?;
 
         self.trigger_collect_shadow(&collect.trade_no).await;
 
@@ -631,11 +648,11 @@ mod tests {
             Some(ApiResourceGateResult::PlatformDelegateSuccess)
         );
         assert_eq!(collect.resource_dependency_trade_no.as_deref(), Some("DL_success"));
-        assert!(
-            ApiResourceDelegationRepo::find_by_resource_trade_no(&pool, "DL_success")
-                .await?
-                .is_none()
-        );
+        let result_fact =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "DL_success").await?;
+        assert_eq!(result_fact.origin_trade_no.as_deref(), Some("C_wait_success"));
+        assert_eq!(result_fact.result_status, Some(ApiResourceDelegationResultStatus::Success));
+        assert!(result_fact.result_ack_sent_at.is_none());
 
         Ok(())
     }
@@ -667,9 +684,11 @@ mod tests {
         assert!(collect.resource_gate_released_at.is_some());
         assert!(collect.resource_block_reason.is_none());
         assert_eq!(collect.resource_dependency_trade_no.as_deref(), Some("DL_fail"));
-        assert!(
-            ApiResourceDelegationRepo::find_by_resource_trade_no(&pool, "DL_fail").await?.is_none()
-        );
+        let result_fact =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "DL_fail").await?;
+        assert_eq!(result_fact.origin_trade_no.as_deref(), Some("C_wait_fail"));
+        assert_eq!(result_fact.result_status, Some(ApiResourceDelegationResultStatus::Fail));
+        assert!(result_fact.result_ack_sent_at.is_none());
 
         Ok(())
     }
@@ -729,6 +748,22 @@ mod tests {
         assert!(collect.transaction_time.is_none());
         assert!(collect.finished_at.is_none());
         assert!(collect.result_ack_sent_at.is_none());
+
+        let result_fact =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "C_origin_result").await?;
+        assert_eq!(result_fact.origin_trade_no.as_deref(), Some("C_origin_result"));
+        assert_eq!(result_fact.result_status, Some(ApiResourceDelegationResultStatus::Fail));
+        assert!(result_fact.result_ack_sent_at.is_none());
+        assert!(
+            result_fact
+                .result_payload
+                .as_deref()
+                .unwrap_or_default()
+                .contains("\"tradeNo\":\"C_origin_result\"")
+        );
+
+        let result_ack_rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await?;
+        assert!(result_ack_rows.iter().any(|row| row.resource_trade_no == "C_origin_result"));
 
         Ok(())
     }

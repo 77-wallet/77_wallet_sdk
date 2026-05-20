@@ -283,6 +283,26 @@ impl ApiResourceDelegationRepo {
         ApiResourceDelegationDao::mark_result_ack_sent(pool.write_ref(), resource_trade_no).await
     }
 
+    pub async fn upsert_original_order_result_fact(
+        pool: &ApiTransactionDbPool,
+        input: NewApiResourceDelegation,
+        result_status: ApiResourceDelegationResultStatus,
+        fail_type: Option<i64>,
+        result_payload: Option<&str>,
+    ) -> Result<u64, crate::Error> {
+        // This records a backend resource result that used the original
+        // collect/withdraw trade no. It is a terminal result fact for ACK
+        // retry, not a merchant-side placeholder task to execute.
+        ApiResourceDelegationDao::upsert_original_order_result_fact(
+            pool.write_ref(),
+            input,
+            result_status,
+            fail_type,
+            result_payload,
+        )
+        .await
+    }
+
     pub async fn mark_result_received(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -973,6 +993,61 @@ mod tests {
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_original_order_result_fact_scans_for_result_ack_only() {
+        let pool =
+            setup_api_transaction_pool("resource_delegation_original_order_result_fact").await;
+        let payload = r#"{"tradeNo":"C_origin","tradeType":"2","status":false}"#;
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "C_origin",
+                "C_origin",
+                ApiTradeType::Collect as i64,
+                "",
+                "",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Fail,
+            Some(3),
+            Some(payload),
+        )
+        .await
+        .unwrap();
+
+        let got =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "C_origin").await.unwrap();
+        assert_eq!(got.status, ApiResourceDelegationStatus::Fail);
+        assert_eq!(got.result_status, Some(ApiResourceDelegationResultStatus::Fail));
+        assert_eq!(got.fail_type, Some(3));
+        assert_eq!(got.result_payload.as_deref(), Some(payload));
+        assert!(got.task_ack_sent_at.is_some());
+        assert!(got.result_received_at.is_some());
+        assert!(got.result_ack_sent_at.is_none());
+
+        let task_ack_rows =
+            ApiResourceDelegationRepo::scan_need_task_ack(&pool, 100).await.unwrap();
+        assert!(!task_ack_rows.iter().any(|row| row.resource_trade_no == "C_origin"));
+
+        let execute_rows = ApiResourceDelegationRepo::scan_can_execute(&pool, 100).await.unwrap();
+        assert!(!execute_rows.iter().any(|row| row.resource_trade_no == "C_origin"));
+
+        let result_ack_rows =
+            ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        assert!(result_ack_rows.iter().any(|row| row.resource_trade_no == "C_origin"));
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "C_origin").await.unwrap(),
+            1
+        );
+
+        let result_ack_rows =
+            ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        assert!(!result_ack_rows.iter().any(|row| row.resource_trade_no == "C_origin"));
     }
 
     #[tokio::test]

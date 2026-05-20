@@ -574,6 +574,87 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn upsert_original_order_result_fact<'a, E>(
+        exec: E,
+        input: NewApiResourceDelegation,
+        result_status: ApiResourceDelegationResultStatus,
+        fail_type: Option<i64>,
+        result_payload: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let status = match result_status {
+            ApiResourceDelegationResultStatus::Success => ApiResourceDelegationStatus::Success,
+            ApiResourceDelegationResultStatus::Fail => ApiResourceDelegationStatus::Fail,
+        };
+        let res = sqlx::query(
+            r#"
+            INSERT INTO api_resource_delegation
+                (uid, source, operation_type, origin_trade_no, origin_trade_type,
+                 resource_trade_no, chain_code, owner_address, receiver_address,
+                 resource_type, native_amount, amount, status, task_ack_sent_at,
+                 result_status, result_received_at, result_payload, fail_type,
+                 created_at, updated_at)
+            VALUES
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                 ?13,
+                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                 ?14,
+                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                 ?15, ?16,
+                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            ON CONFLICT(resource_trade_no) DO UPDATE SET
+                uid = excluded.uid,
+                source = excluded.source,
+                operation_type = excluded.operation_type,
+                origin_trade_no = excluded.origin_trade_no,
+                origin_trade_type = excluded.origin_trade_type,
+                chain_code = excluded.chain_code,
+                owner_address = excluded.owner_address,
+                receiver_address = excluded.receiver_address,
+                resource_type = excluded.resource_type,
+                native_amount = excluded.native_amount,
+                amount = excluded.amount,
+                status = excluded.status,
+                task_ack_sent_at = COALESCE(
+                    api_resource_delegation.task_ack_sent_at,
+                    excluded.task_ack_sent_at
+                ),
+                result_status = excluded.result_status,
+                result_received_at = COALESCE(
+                    api_resource_delegation.result_received_at,
+                    excluded.result_received_at
+                ),
+                result_payload = COALESCE(excluded.result_payload, api_resource_delegation.result_payload),
+                fail_type = excluded.fail_type,
+                next_retry_at = NULL,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(input.uid)
+        .bind(input.source.as_i64())
+        .bind(input.operation_type.as_i64())
+        .bind(input.origin_trade_no)
+        .bind(input.origin_trade_type)
+        .bind(input.resource_trade_no)
+        .bind(input.chain_code)
+        .bind(input.owner_address)
+        .bind(input.receiver_address)
+        .bind(input.resource_type.as_i64())
+        .bind(input.native_amount)
+        .bind(input.amount)
+        .bind(status.as_i64())
+        .bind(result_status.as_i64())
+        .bind(result_payload)
+        .bind(fail_type)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_result_received<'a, E>(
         exec: E,
         resource_trade_no: &str,
