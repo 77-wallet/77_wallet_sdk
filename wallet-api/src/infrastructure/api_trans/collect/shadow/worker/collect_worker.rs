@@ -1285,6 +1285,12 @@ impl ShadowCollectWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        if delegation.source != ApiResourceDelegationSource::Local {
+            return Ok(());
+        }
+        if delegation.operation_type != ApiResourceDelegationOperationType::Delegate {
+            return Ok(());
+        }
         let _ = ApiResourceDelegationRepo::mark_result_received(
             &self.collect_pool,
             &delegation.resource_trade_no,
@@ -1296,12 +1302,6 @@ impl ShadowCollectWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        if delegation.source != ApiResourceDelegationSource::Local {
-            return Ok(());
-        }
-        if delegation.operation_type != ApiResourceDelegationOperationType::Delegate {
-            return Ok(());
-        }
         let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
             return Ok(());
         };
@@ -3514,10 +3514,14 @@ mod tests {
         ApiWalletDbPool, SqliteContext,
         entities::{
             api_collect::{ApiCollectEntity, ApiCollectStatus},
-            api_resource_delegation::{ApiResourceDelegationSource, NewApiResourceDelegation},
+            api_resource_delegation::{
+                ApiResourceDelegationOperationType, ApiResourceDelegationSource,
+                NewApiResourceDelegation,
+            },
             api_resource_gate::{
                 ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
             },
+            api_resource_type::ApiResourceType,
             api_trade_type::ApiTradeType,
             asset_token_key::AssetTokenKey,
         },
@@ -4151,6 +4155,77 @@ mod tests {
             persisted.resource_gate_result,
             Some(ApiResourceGateResult::LocalDelegationFailedBypass)
         );
+    }
+
+    #[tokio::test]
+    async fn platform_delegation_failure_does_not_mark_backend_result_received() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx,
+                None,
+            )),
+        );
+
+        ApiResourceDelegationRepo::upsert(
+            &collect_pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_failed",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "withdraw_owner",
+                "from",
+                ApiResourceType::Energy,
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert platform delegation");
+        ApiResourceDelegationRepo::mark_failed_if_unfinished(
+            &collect_pool,
+            "rsc_platform_failed",
+            "ERR_6008",
+            "platform delegate failed locally",
+        )
+        .await
+        .expect("mark failed");
+
+        worker
+            .release_collect_gate_after_local_delegation_failure("rsc_platform_failed")
+            .await
+            .expect("ignore platform failure");
+
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &collect_pool,
+            "rsc_platform_failed",
+        )
+        .await
+        .expect("load platform task");
+        assert!(task.result_received_at.is_none());
+        assert!(task.result_ack_sent_at.is_none());
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&collect_pool, 100)
+            .await
+            .expect("scan result ack");
+        assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_platform_failed"));
     }
 
     #[tokio::test]
