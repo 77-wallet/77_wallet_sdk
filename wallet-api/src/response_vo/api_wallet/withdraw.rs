@@ -16,6 +16,9 @@ pub struct ApiWithdrawOrderVo {
     pub audit_rejected_at: Option<chrono::DateTime<chrono::Utc>>,
     pub err_msg: Option<String>,
     pub tx_hash: Option<String>,
+    pub estimated_transaction_fee: Option<String>,
+    pub estimated_resource_consume: Option<String>,
+    pub fee_estimated_at: Option<chrono::DateTime<chrono::Utc>>,
     /// 申请时间，派生自 created_at
     pub apply_time: chrono::DateTime<chrono::Utc>,
     /// 签名时间，派生自 audit_passed_at ?? audit_rejected_at
@@ -43,6 +46,9 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
             audit_rejected_at: entity.audit_rejected_at,
             err_msg: entity.err_msg,
             tx_hash: entity.tx_hash,
+            estimated_transaction_fee: entity.estimated_transaction_fee,
+            estimated_resource_consume: entity.estimated_resource_consume,
+            fee_estimated_at: entity.fee_estimated_at,
             apply_time: entity.created_at,
             sign_time,
             failure_reason_display,
@@ -69,6 +75,9 @@ pub struct ApiWithdrawOrderDetailVo {
     pub err_code: Option<ErrCode>,
     pub err_msg: Option<String>,
     pub notes: Option<String>,
+    pub estimated_transaction_fee: Option<String>,
+    pub estimated_resource_consume: Option<String>,
+    pub fee_estimated_at: Option<chrono::DateTime<chrono::Utc>>,
     /// 申请时间，派生自 created_at
     pub apply_time: chrono::DateTime<chrono::Utc>,
     /// 签名时间，派生自 audit_passed_at ?? audit_rejected_at
@@ -99,6 +108,9 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
             err_code: entity.err_code,
             err_msg: entity.err_msg,
             notes: entity.notes,
+            estimated_transaction_fee: entity.estimated_transaction_fee,
+            estimated_resource_consume: entity.estimated_resource_consume,
+            fee_estimated_at: entity.fee_estimated_at,
             apply_time: entity.created_at,
             sign_time,
             failure_reason_display,

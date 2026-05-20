@@ -86,6 +86,9 @@ pub struct ApiWithdrawEntity {
     #[serde(skip_serializing)]
     pub resource_consume: String,
     pub transaction_fee: String,
+    pub estimated_transaction_fee: Option<String>,
+    pub estimated_resource_consume: Option<String>,
+    pub fee_estimated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub block_height: Option<String>,
     pub notes: Option<String>,

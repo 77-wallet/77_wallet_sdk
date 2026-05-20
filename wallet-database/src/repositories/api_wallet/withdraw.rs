@@ -130,6 +130,21 @@ impl ApiWithdrawRepo {
             .await
     }
 
+    pub async fn update_fee_estimate(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        estimated_transaction_fee: &str,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_fee_estimate(
+            pool.read_ref(),
+            trade_no,
+            estimated_transaction_fee,
+            estimated_resource_consume,
+        )
+        .await
+    }
+
     pub async fn mark_resource_blocked(
         pool: &ApiTransactionDbPool,
         trade_no: &str,
@@ -304,6 +319,9 @@ impl ApiWithdrawRepo {
             raw_tx: None,
             resource_consume: resource_consume.to_string(),
             transaction_fee: transaction_fee.to_string(),
+            estimated_transaction_fee: None,
+            estimated_resource_consume: None,
+            fee_estimated_at: None,
             transaction_time,
             block_height,
             notes: None,

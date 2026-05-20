@@ -176,6 +176,9 @@ mod unit_tests {
             raw_tx: None,
             resource_consume: "0".to_string(),
             transaction_fee: "0".to_string(),
+            estimated_transaction_fee: None,
+            estimated_resource_consume: None,
+            fee_estimated_at: None,
             transaction_time: None,
             block_height: None,
             notes: None,
@@ -281,10 +284,19 @@ mod unit_tests {
         entity.audit_reason = Some("reject reason".to_string());
         entity.err_code = Some(wallet_database::entities::api_withdraw::ErrCode::UnknownError);
         entity.notes = Some("internal note".to_string());
+        entity.estimated_transaction_fee = Some("0.42".to_string());
+        entity.estimated_resource_consume = Some(r#"{"bandwidth":1,"energy":2}"#.to_string());
+        entity.fee_estimated_at = Some(now + Duration::minutes(3));
 
         let json = serde_json::to_value(ApiWithdrawOrderVo::from(entity)).unwrap();
 
         assert_eq!(json.get("tradeNo").and_then(|v| v.as_str()), Some("T2024000000000000001"));
+        assert_eq!(json.get("estimatedTransactionFee").and_then(|v| v.as_str()), Some("0.42"));
+        assert_eq!(
+            json.get("estimatedResourceConsume").and_then(|v| v.as_str()),
+            Some(r#"{"bandwidth":1,"energy":2}"#)
+        );
+        assert!(json.get("feeEstimatedAt").is_some());
         assert!(json.get("validate").is_none());
         assert!(json.get("auditReason").is_none());
         assert!(json.get("errCode").is_none());
@@ -300,6 +312,9 @@ mod unit_tests {
         entity.err_code = Some(wallet_database::entities::api_withdraw::ErrCode::UnknownError);
         entity.err_msg = Some("backend failed".to_string());
         entity.notes = Some("operator note".to_string());
+        entity.estimated_transaction_fee = Some("0.84".to_string());
+        entity.estimated_resource_consume = Some(r#"{"bandwidth":3,"energy":4}"#.to_string());
+        entity.fee_estimated_at = Some(now + Duration::minutes(8));
 
         let json = serde_json::to_value(ApiWithdrawOrderDetailVo::from(entity)).unwrap();
 
@@ -307,6 +322,12 @@ mod unit_tests {
         assert_eq!(json.get("auditReason").and_then(|v| v.as_str()), Some("risk rejected"));
         assert_eq!(json.get("errMsg").and_then(|v| v.as_str()), Some("backend failed"));
         assert_eq!(json.get("notes").and_then(|v| v.as_str()), Some("operator note"));
+        assert_eq!(json.get("estimatedTransactionFee").and_then(|v| v.as_str()), Some("0.84"));
+        assert_eq!(
+            json.get("estimatedResourceConsume").and_then(|v| v.as_str()),
+            Some(r#"{"bandwidth":3,"energy":4}"#)
+        );
+        assert!(json.get("feeEstimatedAt").is_some());
         assert!(json.get("audit_reason").is_none());
     }
 

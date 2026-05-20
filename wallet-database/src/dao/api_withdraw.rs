@@ -2441,6 +2441,36 @@ impl ApiWithdrawDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
     }
+
+    pub async fn update_fee_estimate<'a, E>(
+        exec: E,
+        trade_no: &str,
+        estimated_transaction_fee: &str,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                estimated_transaction_fee = ?2,
+                estimated_resource_consume = ?3,
+                fee_estimated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+              AND trade_type = ?4
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(estimated_transaction_fee)
+            .bind(estimated_resource_consume)
+            .bind(ApiTradeType::Withdraw)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
 }
 
 #[cfg(test)]
@@ -2567,6 +2597,68 @@ mod tests {
         assert_eq!(after.out_order_id.as_deref(), Some("merchant-order-1"));
         assert_eq!(after.client_id.as_deref(), Some("client-1"));
         assert_eq!(after.create_time.as_deref(), Some("2026-05-19 10:11:12"));
+    }
+
+    #[tokio::test]
+    async fn update_fee_estimate_persists_pre_execution_estimate() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_fee_estimate");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_estimate",
+            "withdraw",
+            "FROM_ESTIMATE",
+            "TO_ESTIMATE",
+            "8.88",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_FEE_ESTIMATE",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::InitOrder,
+            r#"{"bandwidth":1,"energy":2}"#,
+            "0.123",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let affected = ApiWithdrawRepo::update_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE",
+            "0.456",
+            r#"{"bandwidth":10,"energy":20}"#,
+        )
+        .await
+        .unwrap();
+
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_FEE_ESTIMATE",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(affected, 1);
+        assert_eq!(after.estimated_transaction_fee.as_deref(), Some("0.456"));
+        assert_eq!(
+            after.estimated_resource_consume.as_deref(),
+            Some(r#"{"bandwidth":10,"energy":20}"#)
+        );
+        assert!(after.fee_estimated_at.is_some());
+        assert_eq!(after.transaction_fee, "0.123");
+        assert_eq!(after.resource_consume, r#"{"bandwidth":1,"energy":2}"#);
     }
 
     #[tokio::test]
