@@ -86,7 +86,7 @@ impl TaskTrait for ApiMqttStruct {
             EventType::AwmCmdRscRes => {
                 let data: AwmOrderTransResMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec_resource_result(id).await?
             }
             EventType::AwmCmdAddrExpand => {
                 let data: AwmCmdAddrExpandMsg =

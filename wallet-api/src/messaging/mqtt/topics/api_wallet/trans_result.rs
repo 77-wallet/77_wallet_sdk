@@ -100,56 +100,107 @@ impl AwmOrderTransResMsg {
         Ok(())
     }
 
+    pub(crate) async fn exec_resource_result(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!(
+            msg_id = %_msg_id,
+            trade_no = %self.trade_no,
+            trade_type = %self.trade_type,
+            status = %self.status,
+            fail_type = ?self.fail_type,
+            "Received AwmCmdRscResMsg"
+        );
+
+        if self.uid_exists().await? {
+            let api_transaction_pool =
+                crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+            self.resource_result(&api_transaction_pool).await?;
+        } else {
+            tracing::warn!("AwmCmdRscResMsg uid not found: {}", self.uid);
+        }
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let mut msg_ack_req = MsgAckReq::default();
+        msg_ack_req.push(_msg_id);
+        backend.msg_ack(msg_ack_req).await?;
+
+        let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
+        FrontendNotifyEvent::new(data).send().await?;
+        Ok(())
+    }
+
     pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
         // tracing::info!("临时这样做");
         // return Ok(());
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
-        if res.is_some() {
-            // ✅ 强顺序屏障：先持久化“已收到 SER TxRes”事实，再进入 confirm_tx 路径
-            // ⚠️ 若此处失败，必须返回错误并禁止 ack MQTT（让其重投）
-            let api_transaction_pool =
-                crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
-            match self.trade_type {
-                1 => {
-                    ApiWithdrawRepo::update_tx_res_received_at(
-                        &api_transaction_pool,
-                        &self.trade_no,
-                    )
+        if !self.uid_exists().await? {
+            tracing::warn!("AwmOrderTransResMsg uid not found: {}", self.uid);
+            return Ok(());
+        }
+
+        // ✅ 强顺序屏障：先持久化“已收到 SER TxRes”事实，再进入 confirm_tx 路径
+        // ⚠️ 若此处失败，必须返回错误并禁止 ack MQTT（让其重投）
+        let api_transaction_pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        match self.trade_type {
+            1 => {
+                ApiWithdrawRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
                     .await?;
-                    self.withdraw().await?;
-                }
-                2 => {
-                    ApiCollectRepo::update_tx_res_received_at(
-                        &api_transaction_pool,
-                        &self.trade_no,
-                    )
-                    .await?;
-                    let fail_type = self.fail_type.unwrap_or(0);
-                    self.collect(fail_type).await?;
-                }
-                3 => {
-                    ApiFeeRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
-                        .await?;
-                    self.transfer_fee().await?;
-                }
-                4 => {
-                    self.resource_operation_result(&api_transaction_pool).await?;
-                }
-                5 => {
-                    self.collect_resource_delegation_result(&api_transaction_pool).await?;
-                }
-                7 => {
-                    self.withdraw_resource_delegation_result(&api_transaction_pool).await?;
-                }
-                6 | 8 => {
-                    self.resource_reclaim_result(&api_transaction_pool).await?;
-                }
-                _ => {}
+                self.withdraw().await?;
             }
+            2 => {
+                ApiCollectRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
+                    .await?;
+                let fail_type = self.fail_type.unwrap_or(0);
+                self.collect(fail_type).await?;
+            }
+            3 => {
+                ApiFeeRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
+                    .await?;
+                self.transfer_fee().await?;
+            }
+            4 => {
+                self.resource_operation_result(&api_transaction_pool).await?;
+            }
+            5 => {
+                self.collect_resource_delegation_result(&api_transaction_pool).await?;
+            }
+            7 => {
+                self.withdraw_resource_delegation_result(&api_transaction_pool).await?;
+            }
+            6 | 8 => {
+                self.resource_reclaim_result(&api_transaction_pool).await?;
+            }
+            _ => {}
         }
         Ok(())
+    }
+
+    async fn uid_exists(&self) -> Result<bool, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
+        Ok(res.is_some())
+    }
+
+    async fn resource_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        match self.trade_type {
+            1 | 7 => self.withdraw_resource_delegation_result(api_transaction_pool).await,
+            2 | 5 => self.collect_resource_delegation_result(api_transaction_pool).await,
+            4 => self.resource_operation_result(api_transaction_pool).await,
+            6 | 8 => self.resource_reclaim_result(api_transaction_pool).await,
+            _ => {
+                tracing::warn!(
+                    trade_no = %self.trade_no,
+                    trade_type = %self.trade_type,
+                    "Unsupported AWM_CMD_RSC_RES trade type"
+                );
+                Ok(())
+            }
+        }
     }
 
     async fn resource_operation_result(
@@ -248,12 +299,10 @@ impl AwmOrderTransResMsg {
             )
             .await?;
         } else {
-            ApiCollectRepo::mark_resource_blocked(
+            ApiCollectRepo::mark_resource_released(
                 api_transaction_pool,
                 &collect.trade_no,
-                ApiResourceBlockReason::NeedLocalDelegate,
-                None,
-                Some(ApiResourceDependencyType::LocalDelegate),
+                ApiResourceGateResult::ResourceDelegationFailedBypass,
             )
             .await?;
         }
@@ -592,8 +641,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn collect_resource_result_failure_switches_origin_to_local_fallback()
-    -> anyhow::Result<()> {
+    async fn collect_resource_result_failure_releases_origin_with_bypass() -> anyhow::Result<()> {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
@@ -612,16 +660,75 @@ mod tests {
         msg.collect_resource_delegation_result(&pool).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_fail").await?;
-        assert!(collect.resource_gate_released_at.is_none());
-        assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
         assert_eq!(
-            collect.resource_dependency_type,
-            Some(ApiResourceDependencyType::LocalDelegate)
+            collect.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationFailedBypass)
         );
-        assert!(collect.resource_dependency_trade_no.is_none());
+        assert!(collect.resource_gate_released_at.is_some());
+        assert!(collect.resource_block_reason.is_none());
+        assert_eq!(collect.resource_dependency_trade_no.as_deref(), Some("DL_fail"));
         assert!(
             ApiResourceDelegationRepo::find_by_resource_trade_no(&pool, "DL_fail").await?.is_none()
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn awm_cmd_rsc_res_trade_type_2_does_not_write_collect_tx_result_facts()
+    -> anyhow::Result<()> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid_1",
+            "collect",
+            "from_addr",
+            "to_addr",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            "C_origin_result",
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+        ApiCollectRepo::mark_resource_blocked(
+            &pool,
+            "C_origin_result",
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            None,
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await?;
+
+        let msg = AwmOrderTransResMsg {
+            trade_no: "C_origin_result".to_string(),
+            trade_type: 2,
+            status: false,
+            fail_type: Some(3),
+            uid: "uid_1".to_string(),
+        };
+
+        msg.resource_result(&pool).await?;
+
+        let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_origin_result").await?;
+        assert!(collect.resource_gate_released_at.is_some());
+        assert_eq!(
+            collect.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationFailedBypass)
+        );
+        assert!(collect.tx_res_received_at.is_none());
+        assert!(collect.transaction_time.is_none());
+        assert!(collect.finished_at.is_none());
+        assert!(collect.result_ack_sent_at.is_none());
 
         Ok(())
     }
