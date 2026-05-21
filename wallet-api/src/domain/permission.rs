@@ -56,6 +56,17 @@ impl PermissionDomain {
         Ok(())
     }
 
+    // 从链上恢复单个授权地址的权限事实。
+    //
+    // 普通钱包在权限通知/恢复里依赖同一套落库语义；API 钱包资源授权代理
+    // 只是在执行任务时更晚发现本地权限缓存缺失，所以复用这里补齐事实。
+    pub async fn recover_permission_from_chain(
+        pool: &DbPool,
+        grantor_addr: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::handel_one_item(pool, grantor_addr).await
+    }
+
     // retain the permissions to self.
     pub async fn self_contain_permission(
         pool: &DbPool,

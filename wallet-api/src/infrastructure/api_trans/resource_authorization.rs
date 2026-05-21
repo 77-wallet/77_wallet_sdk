@@ -1,11 +1,14 @@
 use wallet_chain_interact::tron::operations::stake::{DelegateArgs, UnDelegateArgs};
 use wallet_database::{
     CoreDbPool,
-    entities::api_resource_delegation::{ApiResourceDelegationEntity, ApiResourceDelegationMode},
+    entities::{
+        api_resource_delegation::{ApiResourceDelegationEntity, ApiResourceDelegationMode},
+        permission::PermissionWithUserEntity,
+    },
     repositories::{api_wallet::account::ApiAccountRepo, permission::PermissionRepo},
 };
 
-use crate::error::service::ServiceError;
+use crate::{domain::permission::PermissionDomain, error::service::ServiceError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResourceDelegationSigner {
@@ -68,32 +71,16 @@ async fn resolve_authorized_resource_signer(
 
     let ctx = crate::context::get_context()?;
     let core_pool = CoreDbPool::new(ctx.get_global_sqlite_pool()?);
-    let permission = if let Ok(active_id) = permission_id.parse::<i64>() {
-        PermissionRepo::permission_with_user(
-            &core_pool,
-            &delegation.owner_address,
-            active_id,
-            false,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?
-    } else {
-        let permission = PermissionRepo::find_option(&core_pool, permission_id)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
-        if let Some(permission) = permission {
-            PermissionRepo::permission_with_user(
-                &core_pool,
-                &permission.grantor_addr,
-                permission.active_id,
-                false,
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?
-        } else {
-            None
-        }
-    }
+    let permission = find_authorized_permission_with_recovery(
+        &core_pool,
+        &delegation.owner_address,
+        permission_id,
+        || async {
+            let pool = ctx.get_global_sqlite_pool()?;
+            PermissionDomain::recover_permission_from_chain(&pool, &delegation.owner_address).await
+        },
+    )
+    .await?
     .ok_or_else(|| {
         ServiceError::Parameter(format!(
             "authorized resource permission not found: owner={}, permissionId={}",
@@ -134,18 +121,79 @@ async fn resolve_authorized_resource_signer(
     )))
 }
 
+async fn find_authorized_permission_with_recovery<F, Fut>(
+    core_pool: &CoreDbPool,
+    owner_address: &str,
+    permission_id: &str,
+    recover: F,
+) -> Result<Option<PermissionWithUserEntity>, ServiceError>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<(), ServiceError>>,
+{
+    if let Some(permission) =
+        find_authorized_permission(core_pool, owner_address, permission_id).await?
+    {
+        return Ok(Some(permission));
+    }
+
+    tracing::info!(
+        owner_address = %owner_address,
+        permission_id = %permission_id,
+        "Authorized resource permission missing locally, recovering permission facts"
+    );
+    recover().await?;
+
+    find_authorized_permission(core_pool, owner_address, permission_id).await
+}
+
+async fn find_authorized_permission(
+    core_pool: &CoreDbPool,
+    owner_address: &str,
+    permission_id: &str,
+) -> Result<Option<PermissionWithUserEntity>, ServiceError> {
+    if let Ok(active_id) = permission_id.parse::<i64>() {
+        return PermissionRepo::permission_with_user(core_pool, owner_address, active_id, false)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()));
+    }
+
+    let permission = PermissionRepo::find_option(core_pool, permission_id)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+    if let Some(permission) = permission {
+        PermissionRepo::permission_with_user(
+            core_pool,
+            &permission.grantor_addr,
+            permission.active_id,
+            false,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))
+    } else {
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::resolve_resource_delegation_signer;
+    use super::{find_authorized_permission_with_recovery, resolve_resource_delegation_signer};
+    use crate::error::service::ServiceError;
     use chrono::Utc;
-    use wallet_database::entities::{
-        api_resource_delegation::{
-            ApiResourceDelegationEntity, ApiResourceDelegationMode,
-            ApiResourceDelegationOperationType, ApiResourceDelegationSource,
-            ApiResourceDelegationStatus,
+    use wallet_database::{
+        CoreDbPool, SqliteContext,
+        entities::{
+            api_resource_delegation::{
+                ApiResourceDelegationEntity, ApiResourceDelegationMode,
+                ApiResourceDelegationOperationType, ApiResourceDelegationSource,
+                ApiResourceDelegationStatus,
+            },
+            api_resource_type::ApiResourceType,
+            api_trade_type::ApiTradeType,
+            permission::PermissionEntity,
+            permission_user::PermissionUserEntity,
         },
-        api_resource_type::ApiResourceType,
-        api_trade_type::ApiTradeType,
+        repositories::permission::PermissionRepo,
     };
 
     fn base_delegation() -> ApiResourceDelegationEntity {
@@ -194,5 +242,63 @@ mod tests {
 
         assert!(err.to_string().contains("missing permissionId"));
         assert!(!err.to_string().contains("Account not found"));
+    }
+
+    #[tokio::test]
+    async fn authorized_resource_permission_lookup_recovers_when_local_cache_missing()
+    -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let db_root = dir.path().to_string_lossy().to_string();
+        let core_pool = SqliteContext::new(&db_root, Some("data.db")).await?.into_core_db_pool()?;
+        let owner = "T_authorized_owner";
+        let signer = "T_platform_signer";
+        let permission_id = "3";
+        let permission_db_id = PermissionRepo::get_id(owner, 3);
+
+        let recovered =
+            find_authorized_permission_with_recovery(&core_pool, owner, permission_id, || {
+                let core_pool = core_pool.clone();
+                let permission_db_id = permission_db_id.clone();
+                async move {
+                    let now = Utc::now();
+                    let permission = PermissionEntity {
+                        id: permission_db_id.clone(),
+                        name: "api-resource".to_string(),
+                        grantor_addr: owner.to_string(),
+                        types: "active".to_string(),
+                        active_id: 3,
+                        threshold: 1,
+                        member: 1,
+                        chain_code: "tron".to_string(),
+                        operations: String::new(),
+                        is_del: 0,
+                        created_at: now,
+                        updated_at: None,
+                    };
+                    let user = PermissionUserEntity {
+                        id: None,
+                        address: signer.to_string(),
+                        grantor_addr: owner.to_string(),
+                        permission_id: permission_db_id,
+                        is_self: 1,
+                        weight: 1,
+                        created_at: now,
+                        updated_at: None,
+                    };
+                    PermissionRepo::add_with_user(&core_pool, &permission, &[user])
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                    Ok::<(), ServiceError>(())
+                }
+            })
+            .await?
+            .expect("permission should be recovered");
+
+        assert_eq!(recovered.permission.grantor_addr, owner);
+        assert_eq!(recovered.permission.active_id, 3);
+        assert_eq!(recovered.user.len(), 1);
+        assert_eq!(recovered.user[0].address, signer);
+
+        Ok(())
     }
 }
