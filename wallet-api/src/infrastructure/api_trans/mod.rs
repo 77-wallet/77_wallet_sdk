@@ -183,6 +183,7 @@ pub(crate) mod collect_fee;
 pub(crate) mod diagnose_common;
 pub(crate) mod resource_ack_type;
 pub(crate) mod resource_amount;
+pub(crate) mod resource_authorization;
 pub(crate) mod resource_operation;
 pub(crate) mod resource_reclaim;
 pub(crate) mod shadow_rpc_policy;

@@ -4,7 +4,7 @@ use tokio::sync::{broadcast, mpsc};
 use tracing::{error, info, warn};
 use wallet_chain_interact::{
     BillResourceConsume,
-    tron::operations::{RawTransactionParams, TronTxOperation, stake::UnDelegateArgs},
+    tron::operations::{RawTransactionParams, TronTxOperation},
 };
 use wallet_database::{
     ApiTransactionDbPool,
@@ -34,6 +34,10 @@ use crate::{
                 platform_resource_result_ack_type, platform_resource_task_trans_type,
             },
             resource_amount::parse_resource_delegation_native_trx_units,
+            resource_authorization::{
+                ResourceDelegationSigner, new_tron_undelegate_args,
+                resolve_resource_delegation_signer,
+            },
             shadow_rpc_policy,
         },
         runtime::time::new_production_interval,
@@ -840,16 +844,18 @@ impl PlatformResourceReclaimWorker {
         let _chain_rpc_guard =
             crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&delegation.chain_code)
                 .await;
+        let signer = resolve_resource_delegation_signer(delegation).await?;
 
-        let args = UnDelegateArgs::new(
+        let args = new_tron_undelegate_args(
             &delegation.owner_address,
             &delegation.receiver_address,
             trx_amount,
             resource,
-            None,
+            signer.permission_id,
         )?;
         let raw = args.build_raw_transaction(chain.get_provider()).await?;
-        let (tx_hash, raw_tx) = self.sign_tron_platform_undelegation(delegation, raw).await?;
+        let (tx_hash, raw_tx) =
+            self.sign_tron_platform_undelegation(delegation, &signer, raw).await?;
         let tx_resp =
             ApiTransDomain::broadcast_transfer(&delegation.chain_code, raw_tx, Some(&tx_hash))
                 .await?;
@@ -878,6 +884,7 @@ impl PlatformResourceReclaimWorker {
     async fn sign_tron_platform_undelegation(
         &self,
         delegation: &ApiResourceDelegationEntity,
+        signer: &ResourceDelegationSigner,
         mut raw: RawTransactionParams,
     ) -> Result<(String, RawTx), ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
@@ -896,7 +903,7 @@ impl PlatformResourceReclaimWorker {
         let handles = get_context()?.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key = private_key_manager
-            .get_private_key(&delegation.owner_address, &delegation.chain_code)
+            .get_private_key(&signer.signer_address, &delegation.chain_code)
             .await?;
         let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
         raw.signature.push(sign);
@@ -1569,6 +1576,8 @@ mod tests {
             chain_code: "tron".to_string(),
             owner_address: "owner".to_string(),
             receiver_address: "receiver".to_string(),
+            delegation_mode: wallet_database::entities::api_resource_delegation::ApiResourceDelegationMode::WithdrawAddress,
+            permission_id: None,
             resource_type: ApiResourceType::Energy,
             native_amount: "1".to_string(),
             amount: "100".to_string(),
@@ -1617,6 +1626,8 @@ mod tests {
             chain_code: "tron".to_string(),
             owner_address: "owner".to_string(),
             receiver_address: "receiver".to_string(),
+            delegation_mode: wallet_database::entities::api_resource_delegation::ApiResourceDelegationMode::WithdrawAddress,
+            permission_id: None,
             resource_type: ApiResourceType::Energy,
             native_amount: "1".to_string(),
             amount: "100".to_string(),

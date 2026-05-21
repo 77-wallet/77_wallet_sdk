@@ -16,9 +16,10 @@ impl ApiResourceDelegationDao {
             INSERT INTO api_resource_delegation
                 (uid, source, operation_type, origin_trade_no, origin_trade_type,
                  resource_trade_no, chain_code, owner_address, receiver_address,
-                 resource_type, native_amount, amount, created_at, updated_at)
+                 delegation_mode, permission_id, resource_type, native_amount, amount,
+                 created_at, updated_at)
             VALUES
-                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT(resource_trade_no) DO UPDATE SET
@@ -30,6 +31,8 @@ impl ApiResourceDelegationDao {
                 chain_code = excluded.chain_code,
                 owner_address = excluded.owner_address,
                 receiver_address = excluded.receiver_address,
+                delegation_mode = excluded.delegation_mode,
+                permission_id = excluded.permission_id,
                 resource_type = excluded.resource_type,
                 native_amount = excluded.native_amount,
                 amount = excluded.amount,
@@ -46,6 +49,8 @@ impl ApiResourceDelegationDao {
             .bind(input.chain_code)
             .bind(input.owner_address)
             .bind(input.receiver_address)
+            .bind(input.delegation_mode.as_i64())
+            .bind(input.permission_id)
             .bind(input.resource_type.as_i64())
             .bind(input.native_amount)
             .bind(input.amount)
@@ -755,16 +760,17 @@ impl ApiResourceDelegationDao {
             INSERT INTO api_resource_delegation
                 (uid, source, operation_type, origin_trade_no, origin_trade_type,
                  resource_trade_no, chain_code, owner_address, receiver_address,
-                 resource_type, native_amount, amount, status, task_ack_sent_at,
+                 delegation_mode, permission_id, resource_type, native_amount, amount,
+                 status, task_ack_sent_at,
                  result_status, result_received_at, result_payload, fail_type,
                  created_at, updated_at)
             VALUES
-                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                 ?13,
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+                 ?15,
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                 ?14,
+                 ?16,
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                 ?15, ?16,
+                 ?17, ?18,
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT(resource_trade_no) DO UPDATE SET
@@ -776,6 +782,8 @@ impl ApiResourceDelegationDao {
                 chain_code = excluded.chain_code,
                 owner_address = excluded.owner_address,
                 receiver_address = excluded.receiver_address,
+                delegation_mode = excluded.delegation_mode,
+                permission_id = excluded.permission_id,
                 resource_type = excluded.resource_type,
                 native_amount = excluded.native_amount,
                 amount = excluded.amount,
@@ -804,6 +812,8 @@ impl ApiResourceDelegationDao {
         .bind(input.chain_code)
         .bind(input.owner_address)
         .bind(input.receiver_address)
+        .bind(input.delegation_mode.as_i64())
+        .bind(input.permission_id)
         .bind(input.resource_type.as_i64())
         .bind(input.native_amount)
         .bind(input.amount)

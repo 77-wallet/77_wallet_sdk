@@ -7,10 +7,7 @@ use chrono::Utc;
 use tracing::{error, info, warn};
 use wallet_chain_interact::{
     BillResourceConsume,
-    tron::operations::{
-        RawTransactionParams, TronTxOperation,
-        stake::{DelegateArgs, UnDelegateArgs},
-    },
+    tron::operations::{RawTransactionParams, TronTxOperation},
 };
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
@@ -58,6 +55,10 @@ use crate::{
         api_trans::{
             resource_amount::{
                 energy_shortfall_to_apply_amounts, parse_resource_delegation_native_trx_units,
+            },
+            resource_authorization::{
+                ResourceDelegationSigner, new_tron_delegate_args, new_tron_undelegate_args,
+                resolve_resource_delegation_signer,
             },
             withdraw::shadow::ShadowScanner,
         },
@@ -1498,29 +1499,32 @@ impl ShadowWithdrawWorker {
         let _guard =
             crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&delegation.chain_code)
                 .await;
+        let signer = resolve_resource_delegation_signer(delegation).await?;
 
         let raw = match delegation.operation_type {
             ApiResourceDelegationOperationType::Delegate => {
-                let args = DelegateArgs::new(
+                let args = new_tron_delegate_args(
                     &delegation.owner_address,
                     &delegation.receiver_address,
                     trx_amount,
                     resource,
+                    signer.permission_id,
                 )?;
                 args.build_raw_transaction(chain.get_provider()).await?
             }
             ApiResourceDelegationOperationType::Undelegate => {
-                let args = UnDelegateArgs::new(
+                let args = new_tron_undelegate_args(
                     &delegation.owner_address,
                     &delegation.receiver_address,
                     trx_amount,
                     resource,
-                    None,
+                    signer.permission_id,
                 )?;
                 args.build_raw_transaction(chain.get_provider()).await?
             }
         };
-        let (tx_hash, raw_tx) = self.sign_tron_resource_delegation(delegation, raw).await?;
+        let (tx_hash, raw_tx) =
+            self.sign_tron_resource_delegation(delegation, &signer, raw).await?;
         let tx_resp =
             ApiTransDomain::broadcast_transfer(&delegation.chain_code, raw_tx, Some(&tx_hash))
                 .await?;
@@ -1542,6 +1546,7 @@ impl ShadowWithdrawWorker {
     async fn sign_tron_resource_delegation(
         &self,
         delegation: &ApiResourceDelegationEntity,
+        signer: &ResourceDelegationSigner,
         mut raw: RawTransactionParams,
     ) -> Result<(String, RawTx), ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
@@ -1560,7 +1565,7 @@ impl ShadowWithdrawWorker {
         let handles = crate::context::get_context()?.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key = private_key_manager
-            .get_private_key(&delegation.owner_address, &delegation.chain_code)
+            .get_private_key(&signer.signer_address, &delegation.chain_code)
             .await?;
         let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
         raw.signature.push(sign);

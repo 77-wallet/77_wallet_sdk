@@ -113,6 +113,8 @@ mod tests {
             chain_code: "tron".to_string(),
             owner_address: "owner".to_string(),
             receiver_address: "receiver".to_string(),
+            delegation_mode: wallet_database::entities::api_resource_delegation::ApiResourceDelegationMode::WithdrawAddress,
+            permission_id: None,
             resource_type: ApiResourceType::Energy,
             native_amount: "1".to_string(),
             amount: "100".to_string(),

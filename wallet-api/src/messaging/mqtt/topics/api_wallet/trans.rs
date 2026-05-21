@@ -10,7 +10,9 @@ use crate::{
 };
 use wallet_database::{
     entities::{
-        api_resource_delegation::{ApiResourceDelegationOperationType, NewApiResourceDelegation},
+        api_resource_delegation::{
+            ApiResourceDelegationMode, ApiResourceDelegationOperationType, NewApiResourceDelegation,
+        },
         api_resource_operation::{ApiResourceOperationType, NewApiResourceOperation},
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
@@ -146,6 +148,8 @@ pub struct AwmResourceDelegationMsg {
         serialize_with = "wallet_utils::serde_func::u32_to_string"
     )]
     mode: u32,
+    #[serde(rename = "permissionId")]
+    permission_id: Option<String>,
     #[serde(rename = "chain")]
     pub chain_code: String,
     #[serde(
@@ -298,7 +302,8 @@ impl AwmResourceDelegationMsg {
             resource_type,
             self.resource_delegation_native_amount(),
             amount,
-        );
+        )
+        .with_delegation_auth(self.resource_delegation_mode(), self.normalized_permission_id());
 
         let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
         ApiResourceDelegationRepo::upsert(&pool, req).await?;
@@ -308,6 +313,7 @@ impl AwmResourceDelegationMsg {
             trade_type = %self.trade_type,
             rsc_type = %self.rsc_type,
             mode = %self.mode,
+            permission_id = ?self.permission_id,
             operation_type = ?operation_type,
             "平台资源代理/回收任务已落库，等待任务 ACK 扫描"
         );
@@ -326,6 +332,21 @@ impl AwmResourceDelegationMsg {
 
     fn resource_delegation_native_amount(&self) -> String {
         self.native_value.clone()
+    }
+
+    fn resource_delegation_mode(&self) -> ApiResourceDelegationMode {
+        match self.mode {
+            2 => ApiResourceDelegationMode::AuthorizedAddress,
+            _ => ApiResourceDelegationMode::WithdrawAddress,
+        }
+    }
+
+    fn normalized_permission_id(&self) -> Option<String> {
+        self.permission_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
     }
 }
 
@@ -648,7 +669,8 @@ mod tests {
             "rscType": "1",
             "tradeNo": trade_no,
             "tradeType": "7",
-            "uid": wallet_uid
+            "uid": wallet_uid,
+            "permissionId": "2"
         });
 
         let msg: AwmOrderTransMsg = serde_json::from_value(value)?;
@@ -661,6 +683,7 @@ mod tests {
         assert_eq!(inner.native_value, "3");
         assert_eq!(inner.rsc_value, "64000");
         assert_eq!(inner.mode, 2);
+        assert_eq!(inner.permission_id.as_deref(), Some("2"));
         assert_eq!(inner.chain_code, "tron");
         assert_eq!(inner.rsc_type, 1);
         assert_eq!(inner.trade_no, trade_no);
@@ -724,7 +747,8 @@ mod tests {
             "rscType": "1",
             "tradeNo": trade_no,
             "tradeType": "8",
-            "uid": wallet_uid
+            "uid": wallet_uid,
+            "permissionId": "2"
         });
 
         let msg: AwmOrderTransMsg = serde_json::from_value(value)?;
@@ -737,6 +761,7 @@ mod tests {
         assert_eq!(inner.native_value, "3");
         assert_eq!(inner.rsc_value, "64000");
         assert_eq!(inner.mode, 2);
+        assert_eq!(inner.permission_id.as_deref(), Some("2"));
         assert_eq!(inner.chain_code, "tron");
         assert_eq!(inner.rsc_type, 1);
         assert_eq!(inner.trade_no, trade_no);

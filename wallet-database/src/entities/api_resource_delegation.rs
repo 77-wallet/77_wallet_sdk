@@ -95,6 +95,28 @@ impl ApiResourceDelegationStatus {
     serde_repr::Deserialize_repr,
 )]
 #[repr(i64)]
+pub enum ApiResourceDelegationMode {
+    WithdrawAddress = 1,
+    AuthorizedAddress = 2,
+}
+
+impl ApiResourceDelegationMode {
+    pub fn as_i64(self) -> i64 {
+        self as i64
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
 pub enum ApiResourceDelegationResultStatus {
     Success = 1,
     Fail = 2,
@@ -144,6 +166,10 @@ pub struct ApiResourceDelegationEntity {
     pub chain_code: String,
     pub owner_address: String,
     pub receiver_address: String,
+    /// 资源代理/回收模式：1=平台出款地址自己签；2=授权地址 owner + 本地被授权地址签。
+    pub delegation_mode: ApiResourceDelegationMode,
+    /// 后端下发的 TRON active permission id，只有授权地址代理/回收时需要。
+    pub permission_id: Option<String>,
     pub resource_type: ApiResourceType,
     /// 链上 `delegateResource` 需要的 TRX 数量，来自平台代理任务的
     /// `nativeValue`；本地占位任务没有后端估算值时保持为 `0`。
@@ -182,6 +208,8 @@ pub struct NewApiResourceDelegation {
     pub chain_code: String,
     pub owner_address: String,
     pub receiver_address: String,
+    pub delegation_mode: ApiResourceDelegationMode,
+    pub permission_id: Option<String>,
     pub resource_type: ApiResourceType,
     pub native_amount: String,
     pub amount: String,
@@ -207,6 +235,8 @@ impl NewApiResourceDelegation {
             chain_code: "tron".to_string(),
             owner_address: owner_address.into(),
             receiver_address: receiver_address.into(),
+            delegation_mode: ApiResourceDelegationMode::WithdrawAddress,
+            permission_id: None,
             resource_type: ApiResourceType::Energy,
             native_amount: "0".to_string(),
             amount: amount.into(),
@@ -235,6 +265,8 @@ impl NewApiResourceDelegation {
             chain_code: chain_code.into(),
             owner_address: owner_address.into(),
             receiver_address: receiver_address.into(),
+            delegation_mode: ApiResourceDelegationMode::WithdrawAddress,
+            permission_id: None,
             resource_type,
             native_amount: native_amount.into(),
             amount: amount.into(),
@@ -261,6 +293,8 @@ impl NewApiResourceDelegation {
             chain_code: "tron".to_string(),
             owner_address: owner_address.into(),
             receiver_address: receiver_address.into(),
+            delegation_mode: ApiResourceDelegationMode::WithdrawAddress,
+            permission_id: None,
             resource_type: ApiResourceType::Energy,
             native_amount: native_amount.into(),
             amount: amount.into(),
@@ -287,9 +321,21 @@ impl NewApiResourceDelegation {
             chain_code: "tron".to_string(),
             owner_address: owner_address.into(),
             receiver_address: receiver_address.into(),
+            delegation_mode: ApiResourceDelegationMode::WithdrawAddress,
+            permission_id: None,
             resource_type: ApiResourceType::Energy,
             native_amount: native_amount.into(),
             amount: amount.into(),
         }
+    }
+
+    pub fn with_delegation_auth(
+        mut self,
+        delegation_mode: ApiResourceDelegationMode,
+        permission_id: Option<String>,
+    ) -> Self {
+        self.delegation_mode = delegation_mode;
+        self.permission_id = permission_id;
+        self
     }
 }

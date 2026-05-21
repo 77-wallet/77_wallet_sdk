@@ -440,8 +440,8 @@ mod tests {
     use crate::{
         entities::{
             api_resource_delegation::{
-                ApiResourceDelegationOperationType, ApiResourceDelegationSource,
-                ApiResourceDelegationStatus,
+                ApiResourceDelegationMode, ApiResourceDelegationOperationType,
+                ApiResourceDelegationSource, ApiResourceDelegationStatus,
             },
             api_resource_type::ApiResourceType,
             api_trade_type::ApiTradeType,
@@ -478,6 +478,34 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(list.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_authorized_mode_persists_permission_id() {
+        let pool = setup_api_transaction_pool("resource_delegation_authorized_mode").await;
+        let input = NewApiResourceDelegation::platform_delegate_task(
+            "uid_1",
+            "rsc_auth_delegate",
+            ApiTradeType::Collect,
+            ApiResourceDelegationOperationType::Delegate,
+            "tron",
+            "T_authorized_owner",
+            "T_receiver",
+            ApiResourceType::Energy,
+            "197",
+            "14650",
+        )
+        .with_delegation_auth(ApiResourceDelegationMode::AuthorizedAddress, Some("2".to_string()));
+
+        ApiResourceDelegationRepo::upsert(&pool, input).await.unwrap();
+
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_auth_delegate")
+            .await
+            .unwrap();
+        assert_eq!(got.delegation_mode, ApiResourceDelegationMode::AuthorizedAddress);
+        assert_eq!(got.permission_id.as_deref(), Some("2"));
+        assert_eq!(got.owner_address, "T_authorized_owner");
+        assert_eq!(got.receiver_address, "T_receiver");
     }
 
     #[tokio::test]
