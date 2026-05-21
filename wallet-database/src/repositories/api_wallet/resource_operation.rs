@@ -21,6 +21,23 @@ impl ApiResourceOperationRepo {
         ApiResourceOperationDao::get_by_resource_trade_no(pool.read_ref(), resource_trade_no).await
     }
 
+    pub async fn record_client_broadcast_success(
+        pool: &ApiTransactionDbPool,
+        input: NewApiResourceOperation,
+        tx_hash: &str,
+        raw_tx: &str,
+        transaction_fee: &str,
+    ) -> Result<(), crate::Error> {
+        ApiResourceOperationDao::record_client_broadcast_success(
+            pool.write_ref(),
+            input,
+            tx_hash,
+            raw_tx,
+            transaction_fee,
+        )
+        .await
+    }
+
     pub async fn mark_task_ack_sent(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -713,6 +730,59 @@ mod tests {
         assert!(got.tx_exec_receipt_uploaded_at.is_none());
         assert!(got.result_received_at.is_none());
         assert!(got.result_ack_sent_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn client_resource_operation_broadcast_persists_fact() {
+        let pool = setup_api_transaction_pool("client_resource_operation_broadcast").await;
+        let input = NewApiResourceOperation::client(
+            "uid_1",
+            "client_resource_1",
+            "owner",
+            ApiResourceType::Energy,
+            "1000",
+            ApiResourceOperationType::Stake,
+        );
+
+        ApiResourceOperationRepo::record_client_broadcast_success(
+            &pool,
+            input.clone(),
+            "0xhash_1",
+            "{\"raw\":\"tx_1\"}",
+            "10",
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::record_client_broadcast_success(
+            &pool,
+            input,
+            "0xhash_1",
+            "{\"raw\":\"tx_1\"}",
+            "10",
+        )
+        .await
+        .unwrap();
+
+        let got = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "client_resource_1")
+            .await
+            .unwrap();
+        assert_eq!(got.task_source, ApiResourceOperationTaskSource::Client);
+        assert_eq!(got.operation_type, ApiResourceOperationType::Stake);
+        assert_eq!(got.resource_type, ApiResourceType::Energy);
+        assert_eq!(got.amount, "1000");
+        assert_eq!(got.tx_hash.as_deref(), Some("0xhash_1"));
+        assert_eq!(got.raw_tx.as_deref(), Some("{\"raw\":\"tx_1\"}"));
+        assert_eq!(got.transaction_fee.as_deref(), Some("10"));
+        assert!(got.last_broadcast_at.is_some());
+        assert_eq!(got.tx_status.as_deref(), Some("success"));
+        assert_eq!(got.result_status.as_deref(), Some("success"));
+
+        assert!(ApiResourceOperationRepo::scan_need_task_ack(&pool, 100).await.unwrap().is_empty());
+        assert!(ApiResourceOperationRepo::scan_can_build(&pool, 100).await.unwrap().is_empty());
+        assert!(ApiResourceOperationRepo::scan_can_broadcast(&pool, 100).await.unwrap().is_empty());
+        assert!(
+            ApiResourceOperationRepo::scan_need_result_ack(&pool, 100).await.unwrap().is_empty()
+        );
     }
 
     #[tokio::test]

@@ -1,6 +1,9 @@
 use crate::{
     context::Context,
-    domain::{api_wallet::account::ApiAccountDomain, chain::adapter::ChainAdapterFactory},
+    domain::{
+        api_wallet::{account::ApiAccountDomain, adapter::tx::RawTx},
+        chain::adapter::ChainAdapterFactory,
+    },
     error::{
         business::{
             BusinessError,
@@ -30,6 +33,9 @@ pub(crate) struct ApiResourceDomain;
 
 pub(crate) struct ApiResourceBroadcastOutcome {
     pub(crate) tx_hash: String,
+    pub(crate) owner_address: String,
+    pub(crate) raw_tx: String,
+    pub(crate) transaction_fee: String,
 }
 
 impl ApiResourceDomain {
@@ -128,18 +134,42 @@ impl ApiResourceDomain {
         }
 
         let private_key = ApiAccountDomain::get_private_key(&owner_address, "tron").await?;
-        let tx_hash = chain.exec_transaction_v1(raw_tx, private_key).await?;
         let resource_consume =
             BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0).to_json_str()?;
+        let sign = wallet_utils::sign::sign_tron(&raw_tx.tx_id, &private_key, None)?;
+        let mut raw_tx = raw_tx;
+        raw_tx.signature.push(sign);
+        let tx_hash = raw_tx.tx_id.clone();
+        let transaction_fee = consumer.transaction_fee();
+        let raw_tx = RawTx::Tron(
+            raw_tx,
+            BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0),
+            transaction_fee.clone(),
+        );
+        let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
+        let RawTx::Tron(raw_tx, ..) = raw_tx else {
+            unreachable!("resource operation builds tron tx")
+        };
+        let broadcast_hash = chain.get_provider().exec_raw_transaction(raw_tx).await?.tx_id;
+        if broadcast_hash != tx_hash {
+            return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                "api wallet resource tx_hash mismatch after broadcast".to_string(),
+            )));
+        }
         tracing::info!(
             owner_address = %owner_address,
             tx_hash = %tx_hash,
-            transaction_fee = %consumer.transaction_fee(),
+            transaction_fee = %transaction_fee,
             resource_consume = %resource_consume,
             "API wallet foreground resource operation broadcasted"
         );
 
-        Ok(ApiResourceBroadcastOutcome { tx_hash })
+        Ok(ApiResourceBroadcastOutcome {
+            tx_hash,
+            owner_address,
+            raw_tx: raw_tx_str,
+            transaction_fee,
+        })
     }
 
     fn required_balance_sun(transaction_fee_sun: i64, stake_amount_trx: i64) -> i64 {

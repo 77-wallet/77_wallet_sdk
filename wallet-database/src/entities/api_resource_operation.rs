@@ -192,4 +192,25 @@ impl NewApiResourceOperation {
             ApiResourceOperationType::Stake,
         )
     }
+
+    pub fn client(
+        uid: impl Into<String>,
+        resource_trade_no: impl Into<String>,
+        owner_address: impl Into<String>,
+        resource_type: ApiResourceType,
+        amount: impl Into<String>,
+        operation_type: ApiResourceOperationType,
+    ) -> Self {
+        Self {
+            uid: uid.into(),
+            task_source: ApiResourceOperationTaskSource::Client,
+            operation_type,
+            resource_trade_no: resource_trade_no.into(),
+            chain_code: "tron".to_string(),
+            owner_address: owner_address.into(),
+            receiver_address: None,
+            resource_type,
+            amount: amount.into(),
+        }
+    }
 }

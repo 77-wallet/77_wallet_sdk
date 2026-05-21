@@ -62,6 +62,64 @@ impl ApiResourceOperationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn record_client_broadcast_success<'a, E>(
+        exec: E,
+        input: NewApiResourceOperation,
+        tx_hash: &str,
+        raw_tx: &str,
+        transaction_fee: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            INSERT INTO api_resource_operation
+                (uid, task_source, operation_type, resource_trade_no, chain_code,
+                 owner_address, receiver_address, resource_type, amount, raw_tx,
+                 tx_hash, transaction_fee, last_broadcast_at, tx_status, result_status,
+                 created_at, updated_at)
+            VALUES
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'success', 'success',
+                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            ON CONFLICT(resource_trade_no) DO UPDATE SET
+                uid = excluded.uid,
+                task_source = excluded.task_source,
+                operation_type = excluded.operation_type,
+                chain_code = excluded.chain_code,
+                owner_address = excluded.owner_address,
+                receiver_address = excluded.receiver_address,
+                resource_type = excluded.resource_type,
+                amount = excluded.amount,
+                raw_tx = COALESCE(api_resource_operation.raw_tx, excluded.raw_tx),
+                tx_hash = COALESCE(api_resource_operation.tx_hash, excluded.tx_hash),
+                transaction_fee = COALESCE(api_resource_operation.transaction_fee, excluded.transaction_fee),
+                last_broadcast_at = COALESCE(api_resource_operation.last_broadcast_at, excluded.last_broadcast_at),
+                tx_status = COALESCE(api_resource_operation.tx_status, excluded.tx_status),
+                result_status = COALESCE(api_resource_operation.result_status, excluded.result_status),
+                updated_at = excluded.updated_at
+        "#;
+
+        sqlx::query(sql)
+            .bind(input.uid)
+            .bind(input.task_source.as_i64())
+            .bind(input.operation_type.as_i64())
+            .bind(input.resource_trade_no)
+            .bind(input.chain_code)
+            .bind(input.owner_address)
+            .bind(input.receiver_address)
+            .bind(input.resource_type.as_i64())
+            .bind(input.amount)
+            .bind(raw_tx)
+            .bind(tx_hash)
+            .bind(transaction_fee)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
+    }
+
     pub async fn mark_task_ack_sent<'a, E>(
         exec: E,
         resource_trade_no: &str,

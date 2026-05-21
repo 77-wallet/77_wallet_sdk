@@ -43,7 +43,7 @@ mod tests {
     #[ignore = "manual test: broadcasts a real TRON stake transaction"]
     async fn manual_stake_api_withdraw_wallet_resource() -> Result<()> {
         wallet_utils::init_test_log();
-        let (wallet_manager, test_params) = get_manager_with_config("client1.toml").await?;
+        let (wallet_manager, test_params) = get_manager_with_config("client4.toml").await?;
         wallet_manager.init_api_swap().await?;
 
         let withdraw_wallet_uid = manual_withdraw_wallet_uid().await?;
