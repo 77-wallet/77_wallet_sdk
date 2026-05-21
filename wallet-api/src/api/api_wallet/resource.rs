@@ -36,7 +36,7 @@ mod tests {
     const MANUAL_WITHDRAW_UID: &str =
         "5bdb1b748bb617d6683f57565b1493cfa5f9e45f3086daf265ca2e0cd325c15e";
     const MANUAL_RESOURCE: ApiResourceType = ApiResourceType::Energy;
-    const MANUAL_FROZEN_BALANCE: &str = "1000";
+    const MANUAL_FROZEN_BALANCE: &str = "10";
     const MANUAL_PASSWORD: &str = "q1111111";
 
     #[tokio::test]

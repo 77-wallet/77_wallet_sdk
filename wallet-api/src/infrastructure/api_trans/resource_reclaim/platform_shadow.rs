@@ -374,6 +374,8 @@ pub struct PlatformResourceReclaimWorker {
 }
 
 impl PlatformResourceReclaimWorker {
+    const PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE: &'static str = "ERR_6008";
+
     pub fn new(pool: ApiTransactionDbPool) -> Self {
         Self { pool }
     }
@@ -564,7 +566,55 @@ impl PlatformResourceReclaimWorker {
         let Err(err) = result else {
             return Ok(());
         };
+        if Self::is_terminal_platform_undelegation_execute_error(&err) {
+            return self.mark_platform_undelegation_terminal_failure(resource_trade_no, &err).await;
+        }
         self.schedule_platform_undelegation_rebuild_retry(resource_trade_no, &err).await
+    }
+
+    fn is_terminal_platform_undelegation_execute_error(err: &ServiceError) -> bool {
+        let message = err.to_string();
+        matches!(err, ServiceError::Parameter(_))
+            && (message.contains("authorized resource delegation missing permissionId")
+                || message.contains("authorized resource signer not found"))
+    }
+
+    async fn mark_platform_undelegation_terminal_failure(
+        &self,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let err_msg = err.to_string();
+        let payload = format!("platform_undelegation_terminal_failure:{err_msg}");
+        let failed = ApiResourceDelegationRepo::mark_failed_if_unfinished(
+            &self.pool,
+            resource_trade_no,
+            Self::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE,
+            &err_msg,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let result = ApiResourceDelegationRepo::mark_result_received(
+            &self.pool,
+            resource_trade_no,
+            ApiResourceDelegationResultStatus::Fail,
+            Some(2),
+            Some(Self::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE),
+            Some(&err_msg),
+            Some(&payload),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        info!(
+            resource_trade_no = %resource_trade_no,
+            failed_rows = failed,
+            result_rows = result,
+            error = %err_msg,
+            source = "platform_resource_reclaim_shadow",
+            "Platform undelegation terminal failure recorded for backend reporting"
+        );
+        Ok(())
     }
 
     async fn process_platform_undelegation_execute(
@@ -1155,7 +1205,8 @@ pub async fn scan_and_process_once(pool: ApiTransactionDbPool) -> Result<(), Ser
 mod tests {
     use super::*;
     use wallet_database::{
-        SqliteContext, entities::api_resource_delegation::NewApiResourceDelegation,
+        SqliteContext,
+        entities::api_resource_delegation::{ApiResourceDelegationMode, NewApiResourceDelegation},
     };
 
     #[tokio::test]
@@ -1278,6 +1329,89 @@ mod tests {
             PlatformResourceReclaimIntent::ExecutePlatformUndelegation(trade_no)
                 if trade_no == "rsc_platform_undelegate_needs_ack"
         )));
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_terminal_failure_reports_receipt_and_result_ack() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_terminal_reclaim",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "100",
+            )
+            .with_delegation_auth(ApiResourceDelegationMode::AuthorizedAddress, None),
+        )
+        .await
+        .expect("insert platform reclaim");
+
+        let worker = PlatformResourceReclaimWorker::new(pool.clone());
+        worker
+            .handle_platform_undelegation_execute_failure_if_needed(
+                "rsc_terminal_reclaim",
+                Err(ServiceError::Parameter(
+                    "authorized resource delegation missing permissionId: trade_no=rsc_terminal_reclaim"
+                        .to_string(),
+                )),
+            )
+            .await
+            .expect("record terminal failure");
+
+        let got =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_terminal_reclaim")
+                .await
+                .expect("load reclaim");
+        assert_eq!(
+            got.err_code.as_deref(),
+            Some(PlatformResourceReclaimWorker::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE)
+        );
+        assert!(got.err_msg.as_deref().unwrap_or_default().contains("missing permissionId"));
+        assert_eq!(got.tx_status.as_deref(), Some("fail"));
+        assert_eq!(got.result_status, Some(ApiResourceDelegationResultStatus::Fail));
+        assert!(got.result_received_at.is_some());
+        assert!(
+            got.result_payload
+                .as_deref()
+                .unwrap_or_default()
+                .contains("platform_undelegation_terminal_failure")
+        );
+
+        let receipt_rows =
+            ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_source_and_operation(
+                &pool,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+                100,
+            )
+            .await
+            .expect("scan receipt upload");
+        assert!(receipt_rows.iter().any(|row| row.resource_trade_no == "rsc_terminal_reclaim"));
+
+        let result_ack_rows =
+            ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+                &pool,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+                100,
+            )
+            .await
+            .expect("scan result ack");
+        assert!(result_ack_rows.iter().any(|row| row.resource_trade_no == "rsc_terminal_reclaim"));
     }
 
     #[tokio::test]
