@@ -310,10 +310,16 @@ impl AwmOrderTransResMsg {
             )
             .await?;
         } else {
-            ApiCollectRepo::mark_resource_released(
+            // 平台代理失败不是归集资源链的最终出口。
+            // 文档顺序是：自身资源 -> 平台代理 -> 本地代理 -> 主链/手续费。
+            // 所以商户侧收到原单失败结果时，只把 collect 切回本地代理入口；
+            // 只有本地代理也失败后，才由 local delegation 收口释放 gate。
+            ApiCollectRepo::mark_resource_blocked(
                 api_transaction_pool,
                 &collect.trade_no,
-                ApiResourceGateResult::ResourceDelegationFailedBypass,
+                ApiResourceBlockReason::NeedLocalDelegate,
+                None,
+                Some(ApiResourceDependencyType::LocalDelegate),
             )
             .await?;
         }
@@ -692,7 +698,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn collect_resource_result_failure_releases_origin_with_bypass() -> anyhow::Result<()> {
+    async fn collect_resource_result_failure_switches_to_local_fallback() -> anyhow::Result<()> {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
@@ -711,13 +717,14 @@ mod tests {
         msg.collect_resource_delegation_result(&pool).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_fail").await?;
+        assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
+        assert!(collect.resource_gate_released_at.is_none());
+        assert!(collect.resource_gate_result.is_none());
+        assert!(collect.resource_dependency_trade_no.is_none());
         assert_eq!(
-            collect.resource_gate_result,
-            Some(ApiResourceGateResult::ResourceDelegationFailedBypass)
+            collect.resource_dependency_type,
+            Some(ApiResourceDependencyType::LocalDelegate)
         );
-        assert!(collect.resource_gate_released_at.is_some());
-        assert!(collect.resource_block_reason.is_none());
-        assert_eq!(collect.resource_dependency_trade_no.as_deref(), Some("DL_fail"));
         let result_fact =
             ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "DL_fail").await?;
         assert_eq!(result_fact.origin_trade_no.as_deref(), Some("C_wait_fail"));
@@ -773,11 +780,10 @@ mod tests {
         msg.resource_result(&pool).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_origin_result").await?;
-        assert!(collect.resource_gate_released_at.is_some());
-        assert_eq!(
-            collect.resource_gate_result,
-            Some(ApiResourceGateResult::ResourceDelegationFailedBypass)
-        );
+        assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
+        assert!(collect.resource_gate_released_at.is_none());
+        assert!(collect.resource_gate_result.is_none());
+        assert!(collect.resource_dependency_trade_no.is_none());
         assert!(collect.tx_res_received_at.is_none());
         assert!(collect.transaction_time.is_none());
         assert!(collect.finished_at.is_none());
