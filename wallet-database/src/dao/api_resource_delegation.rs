@@ -195,6 +195,36 @@ impl ApiResourceDelegationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_need_result_ack_by_source_and_operation<'a, E>(
+        exec: E,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = ?
+              AND operation_type = ?
+              AND result_received_at IS NOT NULL
+              AND result_payload IS NOT NULL
+              AND result_ack_sent_at IS NULL
+              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            ORDER BY result_received_at ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(source.as_i64())
+        .bind(operation_type.as_i64())
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn scan_can_execute_by_origin_type<'a, E>(
         exec: E,
         origin_trade_type: i64,

@@ -108,6 +108,21 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn scan_need_result_ack_for_source_and_operation(
+        pool: &ApiTransactionDbPool,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_need_result_ack_by_source_and_operation(
+            pool.read_ref(),
+            source,
+            operation_type,
+            limit,
+        )
+        .await
+    }
+
     pub async fn mark_result_ack_retry_wait(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -1000,6 +1015,78 @@ mod tests {
         let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
         assert!(!trade_nos.contains(&"rsc_reclaim_receipt_ready".to_string()));
         assert!(trade_nos.contains(&"rsc_withdraw_reclaim_receipt_ready".to_string()));
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_result_ack_scan_finds_reclaim_results() {
+        let pool = setup_api_transaction_pool("platform_undelegation_result_ack_scan").await;
+
+        for trade_no in [
+            "rsc_reclaim_result_ready",
+            "rsc_withdraw_reclaim_result_ready",
+            "rsc_reclaim_result_acked",
+            "rsc_delegate_result_ready",
+        ] {
+            let operation_type = if trade_no == "rsc_delegate_result_ready" {
+                ApiResourceDelegationOperationType::Delegate
+            } else {
+                ApiResourceDelegationOperationType::Undelegate
+            };
+            let origin_trade_type = if trade_no == "rsc_withdraw_reclaim_result_ready" {
+                ApiTradeType::Withdraw
+            } else {
+                ApiTradeType::Collect
+            };
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::platform_delegate_task(
+                    "uid_1",
+                    trade_no,
+                    origin_trade_type,
+                    operation_type,
+                    "tron",
+                    "owner",
+                    "receiver",
+                    ApiResourceType::Energy,
+                    "1",
+                    "100",
+                ),
+            )
+            .await
+            .unwrap();
+            ApiResourceDelegationRepo::mark_result_received(
+                &pool,
+                trade_no,
+                ApiResourceDelegationResultStatus::Success,
+                None,
+                None,
+                None,
+                Some("payload"),
+            )
+            .await
+            .unwrap();
+        }
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "rsc_reclaim_result_acked")
+                .await
+                .unwrap(),
+            1
+        );
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+            &pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Undelegate,
+            100,
+        )
+        .await
+        .unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+        assert!(trade_nos.contains(&"rsc_reclaim_result_ready".to_string()));
+        assert!(trade_nos.contains(&"rsc_withdraw_reclaim_result_ready".to_string()));
+        assert!(!trade_nos.contains(&"rsc_reclaim_result_acked".to_string()));
+        assert!(!trade_nos.contains(&"rsc_delegate_result_ready".to_string()));
     }
 
     #[tokio::test]

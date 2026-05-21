@@ -30,8 +30,11 @@ use crate::{
     error::{service::ServiceError, system::SystemError},
     infrastructure::{
         api_trans::{
-            resource_ack_type::platform_resource_task_trans_type,
-            resource_amount::parse_resource_delegation_native_trx_units, shadow_rpc_policy,
+            resource_ack_type::{
+                platform_resource_result_ack_type, platform_resource_task_trans_type,
+            },
+            resource_amount::parse_resource_delegation_native_trx_units,
+            shadow_rpc_policy,
         },
         runtime::time::new_production_interval,
     },
@@ -46,6 +49,7 @@ pub enum PlatformResourceReclaimIntent {
     ExecutePlatformUndelegation(String),
     RecoverPlatformUndelegation(String),
     UploadPlatformUndelegationTxExecReceipt(String),
+    SendPlatformUndelegationResultAck(String),
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +105,7 @@ impl PlatformResourceReclaimScanner {
         self.scan_collect_platform_undelegation_recover(&mut intents).await;
         self.scan_withdraw_platform_undelegation_recover(&mut intents).await;
         self.scan_platform_undelegation_receipt_upload(&mut intents).await;
+        self.scan_platform_undelegation_result_ack(&mut intents).await;
 
         intents
     }
@@ -290,6 +295,31 @@ impl PlatformResourceReclaimScanner {
             }
         }
     }
+
+    async fn scan_platform_undelegation_result_ack(
+        &self,
+        intents: &mut Vec<PlatformResourceReclaimIntent>,
+    ) {
+        match ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+            &self.pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Undelegate,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(PlatformResourceReclaimIntent::SendPlatformUndelegationResultAck(
+                        record.resource_trade_no,
+                    ));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan platform undelegation result ACK records");
+            }
+        }
+    }
 }
 
 pub struct PlatformResourceReclaimScannerActor {
@@ -364,6 +394,9 @@ impl PlatformResourceReclaimWorker {
             PlatformResourceReclaimIntent::UploadPlatformUndelegationTxExecReceipt(
                 resource_trade_no,
             ) => self.process_platform_undelegation_tx_exec_receipt(resource_trade_no).await,
+            PlatformResourceReclaimIntent::SendPlatformUndelegationResultAck(resource_trade_no) => {
+                self.process_platform_undelegation_result_ack(resource_trade_no).await
+            }
         }
     }
 
@@ -433,6 +466,86 @@ impl PlatformResourceReclaimWorker {
                 resource_trade_no = %resource_trade_no,
                 source = "platform_resource_reclaim_shadow",
                 "Platform undelegation task ACK sent successfully"
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn process_platform_undelegation_result_ack(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        info!(
+            resource_trade_no = %resource_trade_no,
+            source = "platform_resource_reclaim_shadow",
+            "Processing platform undelegation result ACK"
+        );
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if resource_task.result_ack_sent_at.is_some() {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation result ACK already sent"
+            );
+            return Ok(());
+        }
+
+        if resource_task.source != ApiResourceDelegationSource::Platform
+            || resource_task.operation_type != ApiResourceDelegationOperationType::Undelegate
+        {
+            return Err(ServiceError::Parameter(format!(
+                "platform undelegation result ACK requires source=Platform + Undelegate, got source={:?} operation={:?}",
+                resource_task.source, resource_task.operation_type
+            )));
+        }
+
+        if resource_task.result_received_at.is_none() || resource_task.result_payload.is_none() {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation result ACK skipped because result fact is incomplete"
+            );
+            return Ok(());
+        }
+
+        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        if let Err(e) = backend_api
+            .trans_event_ack(&TransEventAckReq::new(
+                &resource_trade_no,
+                platform_resource_task_trans_type(&resource_task),
+                platform_resource_result_ack_type(),
+            ))
+            .await
+        {
+            self.schedule_platform_undelegation_result_ack_retry(
+                &resource_trade_no,
+                resource_task.retry_count,
+            )
+            .await;
+            return Err(e.into());
+        }
+
+        let affected =
+            ApiResourceDelegationRepo::mark_result_ack_sent(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation result ACK marked 0 rows"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation result ACK sent successfully"
             );
         }
 
@@ -834,6 +947,36 @@ impl PlatformResourceReclaimWorker {
             "Platform undelegation recover scheduled for retry"
         );
         Ok(())
+    }
+
+    async fn schedule_platform_undelegation_result_ack_retry(
+        &self,
+        resource_trade_no: &str,
+        retry_count: i64,
+    ) {
+        let wait_secs = Self::platform_undelegation_retry_wait_secs(retry_count);
+        let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
+        match ApiResourceDelegationRepo::mark_result_ack_retry_wait(
+            &self.pool,
+            resource_trade_no,
+            &next_retry_at.to_rfc3339(),
+        )
+        .await
+        {
+            Ok(affected) => info!(
+                resource_trade_no = %resource_trade_no,
+                wait_secs,
+                affected,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation result ACK retry scheduled"
+            ),
+            Err(e) => warn!(
+                resource_trade_no = %resource_trade_no,
+                error = %e,
+                source = "platform_resource_reclaim_shadow",
+                "Failed to schedule platform undelegation result ACK retry"
+            ),
+        }
     }
 
     async fn schedule_platform_undelegation_rebuild_retry(
@@ -1331,6 +1474,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scanner_finds_platform_undelegation_result_ack_after_result() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        for trade_no in [
+            "rsc_platform_undelegate_collect_result",
+            "rsc_platform_undelegate_withdraw_result",
+            "rsc_platform_undelegate_acked_result",
+        ] {
+            let origin_trade_type = if trade_no == "rsc_platform_undelegate_withdraw_result" {
+                ApiTradeType::Withdraw
+            } else {
+                ApiTradeType::Collect
+            };
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::platform_delegate_task(
+                    "uid",
+                    trade_no,
+                    origin_trade_type,
+                    ApiResourceDelegationOperationType::Undelegate,
+                    "tron",
+                    "owner",
+                    "receiver",
+                    ApiResourceType::Energy,
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .expect("insert platform undelegate result candidate");
+            ApiResourceDelegationRepo::mark_result_received(
+                &pool,
+                trade_no,
+                ApiResourceDelegationResultStatus::Success,
+                None,
+                None,
+                None,
+                Some("payload"),
+            )
+            .await
+            .expect("mark result received");
+        }
+
+        ApiResourceDelegationRepo::mark_result_ack_sent(
+            &pool,
+            "rsc_platform_undelegate_acked_result",
+        )
+        .await
+        .expect("mark result acked");
+
+        let scanner = PlatformResourceReclaimScanner::with_config(
+            pool,
+            PlatformResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+
+        let intents = scanner.scan_round().await;
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::SendPlatformUndelegationResultAck(trade_no)
+                if trade_no == "rsc_platform_undelegate_collect_result"
+        )));
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::SendPlatformUndelegationResultAck(trade_no)
+                if trade_no == "rsc_platform_undelegate_withdraw_result"
+        )));
+        assert!(!intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::SendPlatformUndelegationResultAck(trade_no)
+                if trade_no == "rsc_platform_undelegate_acked_result"
+        )));
+    }
+
+    #[tokio::test]
     async fn platform_undelegation_receipt_payload_uses_reclaim_trans_type() {
         let task = ApiResourceDelegationEntity {
             id: 1,
@@ -1376,5 +1602,52 @@ mod tests {
         assert_eq!(value["type"], "COL_RSC_RC");
         assert_eq!(value["status"], "SUCCESS");
         assert_eq!(value["hash"], "tx_hash");
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_result_ack_payload_uses_reclaim_trans_type() {
+        let task = ApiResourceDelegationEntity {
+            id: 1,
+            uid: "uid".to_string(),
+            source: ApiResourceDelegationSource::Platform,
+            operation_type: ApiResourceDelegationOperationType::Undelegate,
+            origin_trade_no: None,
+            origin_trade_type: Some(ApiTradeType::Collect as i64),
+            resource_trade_no: "CR_1".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: "receiver".to_string(),
+            resource_type: ApiResourceType::Energy,
+            native_amount: "1".to_string(),
+            amount: "100".to_string(),
+            status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
+            task_ack_sent_at: None,
+            building_at: None,
+            tx_hash: Some("tx_hash".to_string()),
+            tx_status: Some("success".to_string()),
+            tx_exec_receipt_uploaded_at: None,
+            result_status: Some(ApiResourceDelegationResultStatus::Success),
+            result_received_at: Some(chrono::Utc::now()),
+            result_ack_sent_at: None,
+            result_payload: Some("payload".to_string()),
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+        };
+
+        let ack_req = TransEventAckReq::new(
+            &task.resource_trade_no,
+            platform_resource_task_trans_type(&task),
+            platform_resource_result_ack_type(),
+        );
+        let value = serde_json::to_value(ack_req).expect("serialize ack");
+        assert_eq!(value["tradeNo"], "CR_1");
+        assert_eq!(value["type"], "COL_RSC_RC");
+        assert_eq!(value["ackType"], "TX_RES");
     }
 }
