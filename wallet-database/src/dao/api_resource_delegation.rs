@@ -495,6 +495,44 @@ impl ApiResourceDelegationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_need_tx_exec_receipt_upload_by_origin_type_source_and_operation<'a, E>(
+        exec: E,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = ?
+              AND operation_type = ?
+              AND origin_trade_type = ?
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND (
+                    (
+                      tx_status = 'success'
+                      AND tx_hash IS NOT NULL
+                      AND trim(tx_hash) <> ''
+                    )
+                    OR err_code IS NOT NULL
+                  )
+            ORDER BY updated_at ASC, id ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(source.as_i64())
+        .bind(operation_type.as_i64())
+        .bind(origin_trade_type)
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn mark_tx_exec_receipt_uploaded<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -514,6 +552,35 @@ impl ApiResourceDelegationDao {
             "#,
         )
         .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_tx_exec_receipt_uploaded_by_source_and_operation<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND source = ?
+              AND operation_type = ?
+              AND tx_exec_receipt_uploaded_at IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(source.as_i64())
+        .bind(operation_type.as_i64())
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;

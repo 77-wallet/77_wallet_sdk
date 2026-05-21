@@ -258,6 +258,23 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn scan_need_tx_exec_receipt_upload_for_origin_type_source_and_operation(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_need_tx_exec_receipt_upload_by_origin_type_source_and_operation(
+            pool.read_ref(),
+            origin_trade_type,
+            source,
+            operation_type,
+            limit,
+        )
+        .await
+    }
+
     pub async fn scan_need_tx_exec_receipt_upload(
         pool: &ApiTransactionDbPool,
         limit: usize,
@@ -276,6 +293,21 @@ impl ApiResourceDelegationRepo {
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), resource_trade_no)
             .await
+    }
+
+    pub async fn mark_tx_exec_receipt_uploaded_for_source_and_operation(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_tx_exec_receipt_uploaded_by_source_and_operation(
+            pool.write_ref(),
+            resource_trade_no,
+            source,
+            operation_type,
+        )
+        .await
     }
 
     pub async fn mark_failed_if_unfinished(
@@ -841,6 +873,109 @@ mod tests {
 
         let rows =
             ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_receipt_upload_scan_finds_successful_reclaim_tasks() {
+        let pool = setup_api_transaction_pool("platform_undelegation_receipt_upload_scan").await;
+
+        for trade_no in [
+            "rsc_reclaim_receipt_ready",
+            "rsc_reclaim_receipt_uploaded",
+            "rsc_delegate_receipt_ready",
+        ] {
+            let operation_type = if trade_no == "rsc_delegate_receipt_ready" {
+                ApiResourceDelegationOperationType::Delegate
+            } else {
+                ApiResourceDelegationOperationType::Undelegate
+            };
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::platform_delegate_task(
+                    "uid_1",
+                    trade_no,
+                    ApiTradeType::Collect,
+                    operation_type,
+                    "tron",
+                    "owner",
+                    "receiver",
+                    ApiResourceType::Energy,
+                    "1",
+                    "100",
+                ),
+            )
+            .await
+            .unwrap();
+        }
+
+        sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET task_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                tx_hash = resource_trade_no || '_tx_hash',
+                tx_status = 'success',
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no IN (
+                'rsc_reclaim_receipt_ready',
+                'rsc_reclaim_receipt_uploaded',
+                'rsc_delegate_receipt_ready'
+            )
+            "#,
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded_for_source_and_operation(
+                &pool,
+                "rsc_reclaim_receipt_uploaded",
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+            )
+            .await
+            .unwrap(),
+            1
+        );
+
+        let rows =
+            ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type_source_and_operation(
+                &pool,
+                ApiTradeType::Collect as i64,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+                100,
+            )
+            .await
+            .unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+        assert!(trade_nos.contains(&"rsc_reclaim_receipt_ready".to_string()));
+        assert!(!trade_nos.contains(&"rsc_reclaim_receipt_uploaded".to_string()));
+        assert!(!trade_nos.contains(&"rsc_delegate_receipt_ready".to_string()));
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded_for_source_and_operation(
+                &pool,
+                "rsc_reclaim_receipt_ready",
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        let rows =
+            ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type_source_and_operation(
+                &pool,
+                ApiTradeType::Collect as i64,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+                100,
+            )
+            .await
+            .unwrap();
         assert!(rows.is_empty());
     }
 
