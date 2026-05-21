@@ -42,9 +42,9 @@ pub struct ResourceApplyReq {
     pub org_id: String,
     /// 链编码（可选）
     pub chain: Option<String>,
-    /// 申请的资源换算成本币的数量
+    /// 申请的资源换算成本币的数量，TRON 资源代理按整 TRX 执行
     #[serde(rename = "nativeTokenAmount")]
-    pub native_token_amount: f64,
+    pub native_token_amount: i64,
     /// 代理的资源数量（可选）
     #[serde(rename = "resourceAmount")]
     pub resource_amount: Option<f64>,
@@ -66,7 +66,7 @@ impl ResourceApplyReq {
     /// * `app_id` - 应用 appId
     /// * `org_id` - 商户 ID
     /// * `chain` - 链编码（可选）
-    /// * `native_token_amount` - 申请的资源换算成本币的数量
+    /// * `native_token_amount` - 申请的资源换算成本币的数量，整 TRX
     /// * `resource_amount` - 代理的资源数量（可选）
     /// * `resource_type` - 资源类型
     /// * `to` - 接收资源的地址
@@ -76,7 +76,7 @@ impl ResourceApplyReq {
         app_id: &str,
         org_id: &str,
         chain: Option<&str>,
-        native_token_amount: f64,
+        native_token_amount: i64,
         resource_amount: Option<f64>,
         resource_type: ResourceType,
         to: &str,
@@ -93,6 +93,31 @@ impl ResourceApplyReq {
             to: to.to_string(),
             r#type,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ResourceApplyReq, ResourceType};
+    use crate::request::api_wallet::transaction::TransType;
+
+    #[test]
+    fn resource_apply_req_serializes_integer_native_amount() {
+        let req = ResourceApplyReq::new(
+            "C1",
+            "app",
+            "org",
+            Some("tron"),
+            197,
+            Some(14650.0),
+            ResourceType::Energy,
+            "receiver",
+            TransType::Col,
+        );
+
+        let value = serde_json::to_value(req).expect("serialize request");
+        assert_eq!(value["nativeTokenAmount"], 197);
+        assert_eq!(value["resourceAmount"], 14650.0);
     }
 }
 

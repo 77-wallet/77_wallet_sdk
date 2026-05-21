@@ -2049,7 +2049,7 @@ mod tests {
             .expect("parse amount");
 
         assert_eq!(amounts.resource_amount, 800.0);
-        assert_eq!(amounts.native_token_amount, 2.0);
+        assert_eq!(amounts.native_token_amount, 2);
     }
 
     #[test]

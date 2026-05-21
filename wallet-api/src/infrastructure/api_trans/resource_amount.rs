@@ -8,7 +8,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct PlatformResourceApplyAmounts {
     pub(crate) resource_amount: f64,
-    pub(crate) native_token_amount: f64,
+    pub(crate) native_token_amount: i64,
 }
 
 pub(crate) fn energy_shortfall_to_apply_amounts(
@@ -33,7 +33,7 @@ pub(crate) fn energy_shortfall_to_apply_amounts(
 
     Ok(PlatformResourceApplyAmounts {
         resource_amount,
-        native_token_amount: resource_amount / energy_per_trx,
+        native_token_amount: (resource_amount / energy_per_trx).ceil() as i64,
     })
 }
 
@@ -66,7 +66,15 @@ mod tests {
         let amounts = energy_shortfall_to_apply_amounts("800", 400.0).expect("amounts");
 
         assert_eq!(amounts.resource_amount, 800.0);
-        assert_eq!(amounts.native_token_amount, 2.0);
+        assert_eq!(amounts.native_token_amount, 2);
+    }
+
+    #[test]
+    fn energy_shortfall_to_apply_amounts_rounds_native_amount_up_to_whole_trx() {
+        let amounts = energy_shortfall_to_apply_amounts("14650", 74.5807).expect("amounts");
+
+        assert_eq!(amounts.resource_amount, 14650.0);
+        assert_eq!(amounts.native_token_amount, 197);
     }
 
     #[test]
