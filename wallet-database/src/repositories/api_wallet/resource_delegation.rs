@@ -1606,4 +1606,127 @@ mod tests {
         );
         assert_eq!(persisted.retry_count, 1);
     }
+
+    #[tokio::test]
+    async fn platform_undelegation_reset_for_retry_releases_build_slot() {
+        let pool =
+            setup_api_transaction_pool("resource_delegation_platform_undelegation_retry").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "rsc_platform_undelegate_retry",
+                crate::entities::api_trade_type::ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_platform_undelegate_retry")
+            .await
+            .unwrap();
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_undelegate_retry")
+            .await
+            .unwrap();
+        ApiResourceDelegationRepo::mark_broadcast_success(
+            &pool,
+            "rsc_platform_undelegate_retry",
+            "tx_hash_retry",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::reset_for_retry(
+                &pool,
+                "rsc_platform_undelegate_retry",
+                ApiResourceDelegationRecoverStatus::RetryRecover,
+                "2099-01-01T00:00:00Z",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+
+        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_platform_undelegate_retry",
+        )
+        .await
+        .unwrap();
+        assert!(persisted.building_at.is_none());
+        assert_eq!(persisted.tx_hash, None);
+        assert_eq!(persisted.tx_status, None);
+        assert_eq!(
+            persisted.recover_status,
+            Some(ApiResourceDelegationRecoverStatus::RetryRecover)
+        );
+        assert_eq!(persisted.retry_count, 1);
+    }
+
+    #[tokio::test]
+    async fn stale_platform_undelegation_build_slot_can_be_reclaimed() {
+        let pool =
+            setup_api_transaction_pool("resource_delegation_platform_undelegation_stale").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "rsc_platform_undelegate_stale",
+                crate::entities::api_trade_type::ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_platform_undelegate_stale")
+            .await
+            .unwrap();
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_undelegate_stale")
+            .await
+            .unwrap();
+        sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-10 minutes')
+            WHERE resource_trade_no = ?
+            "#,
+        )
+        .bind("rsc_platform_undelegate_stale")
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+        let rows =
+            ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+                &pool,
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+                100,
+            )
+            .await
+            .unwrap();
+        assert!(rows.iter().any(|row| row.resource_trade_no == "rsc_platform_undelegate_stale"));
+
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_undelegate_stale")
+                .await
+                .unwrap(),
+            1
+        );
+    }
 }

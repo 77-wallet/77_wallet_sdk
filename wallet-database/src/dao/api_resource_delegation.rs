@@ -342,7 +342,13 @@ impl ApiResourceDelegationDao {
               AND err_code IS NULL
               {ack_clause}
               AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-              AND building_at IS NULL
+              AND (
+                    building_at IS NULL
+                    OR (
+                      operation_type = 2
+                      AND datetime(building_at) <= datetime('now', '-5 minutes')
+                    )
+                  )
               AND tx_hash IS NULL
             ORDER BY {order_expr} ASC, id ASC
             LIMIT ?
@@ -453,7 +459,13 @@ impl ApiResourceDelegationDao {
               AND result_received_at IS NULL
               AND err_code IS NULL
               AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-              AND building_at IS NULL
+              AND (
+                    building_at IS NULL
+                    OR (
+                      operation_type = 2
+                      AND datetime(building_at) <= datetime('now', '-5 minutes')
+                    )
+                  )
               AND tx_hash IS NULL
             "#,
         )
@@ -890,7 +902,6 @@ impl ApiResourceDelegationDao {
                 retry_count = retry_count + 1,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND source = 2
               AND operation_type = 2
               AND result_received_at IS NULL
               AND err_code IS NULL
@@ -926,7 +937,6 @@ impl ApiResourceDelegationDao {
                 retry_count = retry_count + 1,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND source = 2
               AND operation_type = 2
               AND result_received_at IS NULL
               AND err_code IS NULL
