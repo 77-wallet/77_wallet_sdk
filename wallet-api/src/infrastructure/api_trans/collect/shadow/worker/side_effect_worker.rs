@@ -685,6 +685,11 @@ impl SideEffectWorker {
                     ),
                 )
                 .await?;
+                if is_original_order_resource_result_fact(&resource_task) {
+                    if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
+                        self.advancer.try_advance(origin_trade_no).await;
+                    }
+                }
                 info!(resource_trade_no = %resource_trade_no, "Resource result ACK sent successfully");
             }
             Err(e) => {

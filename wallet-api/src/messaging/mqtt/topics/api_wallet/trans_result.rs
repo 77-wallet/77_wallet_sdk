@@ -341,6 +341,11 @@ impl AwmOrderTransResMsg {
         )
         .await?;
 
+        tracing::info!(
+            trade_no = %collect.trade_no,
+            resource_trade_no = %self.trade_no,
+            "Collect resource result persisted; shadow will ACK resource result before advancing"
+        );
         self.trigger_collect_shadow(&collect.trade_no).await;
 
         Ok(())

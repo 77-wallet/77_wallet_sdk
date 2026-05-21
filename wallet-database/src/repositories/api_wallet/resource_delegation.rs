@@ -108,6 +108,19 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn find_pending_result_ack_by_origin(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        origin_trade_no: &str,
+    ) -> Result<Option<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::find_pending_result_ack_by_origin(
+            pool.read_ref(),
+            origin_trade_type,
+            origin_trade_no,
+        )
+        .await
+    }
+
     pub async fn scan_need_result_ack_for_source_and_operation(
         pool: &ApiTransactionDbPool,
         source: ApiResourceDelegationSource,

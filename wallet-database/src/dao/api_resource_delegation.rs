@@ -200,6 +200,36 @@ impl ApiResourceDelegationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn find_pending_result_ack_by_origin<'a, E>(
+        exec: E,
+        origin_trade_type: i64,
+        origin_trade_no: &str,
+    ) -> Result<Option<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = 1
+              AND operation_type = 1
+              AND origin_trade_type = ?
+              AND origin_trade_no = ?
+              AND result_received_at IS NOT NULL
+              AND result_payload IS NOT NULL
+              AND result_ack_sent_at IS NULL
+              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            ORDER BY result_received_at ASC, id ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(origin_trade_type)
+        .bind(origin_trade_no)
+        .fetch_optional(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn scan_need_result_ack_by_source_and_operation<'a, E>(
         exec: E,
         source: ApiResourceDelegationSource,

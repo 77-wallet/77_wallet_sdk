@@ -18,7 +18,13 @@ use std::{
 use tokio::sync::{Semaphore, mpsc::Sender};
 use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
-use wallet_database::{ApiTransactionDbPool, repositories::api_wallet::collect::ApiCollectRepo};
+use wallet_database::{
+    ApiTransactionDbPool,
+    entities::api_trade_type::ApiTradeType,
+    repositories::api_wallet::{
+        collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+    },
+};
 
 /// 运行中记录的TTL（秒）
 const RUNNING_TTL: Duration = Duration::from_secs(30);
@@ -267,6 +273,42 @@ impl ShadowAdvancer {
             return;
         }
 
+        match tokio::time::timeout(
+            DB_QUERY_TIMEOUT,
+            self.pending_resource_result_ack_trade_no(trade_no),
+        )
+        .await
+        {
+            Ok(Ok(Some(resource_trade_no))) => {
+                info!(
+                    trade_no = %trade_no,
+                    resource_trade_no = %resource_trade_no,
+                    "Resource result ACK is pending; advancing ACK before collect main chain"
+                );
+                self.dispatch_intent(CollectIntent::SideEffect(
+                    SideEffectIntent::SendResourceResultAck(resource_trade_no),
+                ));
+                return;
+            }
+            Ok(Ok(None)) => {}
+            Ok(Err(e)) => {
+                error!(
+                    trade_no = %trade_no,
+                    error = %e,
+                    "Failed to check pending resource result ACK"
+                );
+                return;
+            }
+            Err(_) => {
+                error!(
+                    trade_no = %trade_no,
+                    timeout = ?DB_QUERY_TIMEOUT,
+                    "Pending resource result ACK query timeout"
+                );
+                return;
+            }
+        }
+
         // err_code 冻结：只允许 UploadTxExecReceipt
         if collect.err_code.is_some() {
             let eval = crate::infrastructure::api_trans::collect::shadow::predicate::evaluate_stage(
@@ -475,6 +517,19 @@ impl ShadowAdvancer {
             }
         }
     }
+
+    async fn pending_resource_result_ack_trade_no(
+        &self,
+        origin_trade_no: &str,
+    ) -> Result<Option<String>, wallet_database::Error> {
+        Ok(ApiResourceDelegationRepo::find_pending_result_ack_by_origin(
+            &self.pool,
+            ApiTradeType::Collect as i64,
+            origin_trade_no,
+        )
+        .await?
+        .map(|row| row.resource_trade_no))
+    }
 }
 
 #[cfg(test)]
@@ -482,6 +537,18 @@ mod tests {
     use super::*;
     use sqlx;
     use tokio::sync::mpsc;
+    use wallet_database::{
+        SqliteContext,
+        entities::{
+            api_collect::ApiCollectStatus,
+            api_resource_delegation::{
+                ApiResourceDelegationResultStatus, NewApiResourceDelegation,
+            },
+        },
+        repositories::api_wallet::{
+            collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+        },
+    };
 
     #[tokio::test]
     async fn test_try_advance() {
@@ -504,5 +571,77 @@ mod tests {
         // 实际测试时需要提供一个真实的数据库连接并确保表结构存在
         let trade_no = "test_trade_no";
         advancer.try_advance(trade_no).await;
+    }
+
+    #[tokio::test]
+    async fn try_advance_prioritizes_resource_result_ack_before_fee_upload() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let (diagnose_tx, _diagnose_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(pool.clone(), intent_tx, Some(diagnose_tx));
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid_1",
+            "collect",
+            "from_addr",
+            "to_addr",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            "C_pending_rsc_ack",
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE api_collect
+            SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                need_service_fee = true,
+                service_fee_uploaded_at = NULL
+            WHERE trade_no = ?
+            "#,
+        )
+        .bind("C_pending_rsc_ack")
+        .execute(pool.as_ref())
+        .await?;
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "C_pending_rsc_ack",
+                "C_pending_rsc_ack",
+                ApiTradeType::Collect as i64,
+                "",
+                "",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Fail,
+            Some(3),
+            Some(r#"{"tradeNo":"C_pending_rsc_ack","status":false}"#),
+        )
+        .await?;
+
+        advancer.try_advance("C_pending_rsc_ack").await;
+
+        let intent = intent_rx.try_recv().expect("resource ACK intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(ref trade_no))
+                if trade_no == "C_pending_rsc_ack"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+
+        Ok(())
     }
 }

@@ -731,6 +731,10 @@ impl ShadowScanner {
         let start = Instant::now();
         trace!("Starting collect shadow scan round");
 
+        // 资源结果 ACK 是后端允许原单继续推进的门槛。
+        // 如果先扫 BuildTx/UploadServiceFee，可能出现“先申请手续费、后 ACK 资源结果”的乱序。
+        self.scan_need_resource_result_ack().await;
+
         // 按推进顺序执行扫描，确保与推进顺序完全一致
         for stage in COLLECT_ADVANCEMENT_ORDER {
             self.scan_stage(*stage).await;
@@ -738,7 +742,6 @@ impl ShadowScanner {
         self.scan_need_resource_task_ack().await;
         self.scan_can_resource_delegation_execute().await;
         self.scan_need_resource_tx_exec_receipt_upload().await;
-        self.scan_need_resource_result_ack().await;
 
         trace!(elapsed = ?start.elapsed(), "Collect shadow scan round completed");
 
