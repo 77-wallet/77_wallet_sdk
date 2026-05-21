@@ -36,13 +36,16 @@ use crate::{
         runtime::time::new_production_interval,
     },
 };
-use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransEventAckReq};
+use wallet_transport_backend::request::api_wallet::transaction::{
+    TransAckType, TransEventAckReq, TransStatus, TxExecReceiptUploadReq,
+};
 
 #[derive(Debug, Clone)]
 pub enum PlatformResourceReclaimIntent {
     SendPlatformUndelegationTaskAck(String),
     ExecutePlatformUndelegation(String),
     RecoverPlatformUndelegation(String),
+    UploadPlatformUndelegationTxExecReceipt(String),
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +100,7 @@ impl PlatformResourceReclaimScanner {
         self.scan_withdraw_platform_undelegation(&mut intents).await;
         self.scan_collect_platform_undelegation_recover(&mut intents).await;
         self.scan_withdraw_platform_undelegation_recover(&mut intents).await;
+        self.scan_platform_undelegation_receipt_upload(&mut intents).await;
 
         intents
     }
@@ -256,6 +260,36 @@ impl PlatformResourceReclaimScanner {
             }
         }
     }
+
+    async fn scan_platform_undelegation_receipt_upload(
+        &self,
+        intents: &mut Vec<PlatformResourceReclaimIntent>,
+    ) {
+        match ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_source_and_operation(
+            &self.pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Undelegate,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(
+                        PlatformResourceReclaimIntent::UploadPlatformUndelegationTxExecReceipt(
+                            record.resource_trade_no,
+                        ),
+                    );
+                }
+            }
+            Err(e) => {
+                error!(
+                    error = %e,
+                    "Failed to scan platform undelegation receipt upload records"
+                );
+            }
+        }
+    }
 }
 
 pub struct PlatformResourceReclaimScannerActor {
@@ -327,6 +361,9 @@ impl PlatformResourceReclaimWorker {
             PlatformResourceReclaimIntent::RecoverPlatformUndelegation(resource_trade_no) => {
                 self.process_platform_undelegation_recover(resource_trade_no).await
             }
+            PlatformResourceReclaimIntent::UploadPlatformUndelegationTxExecReceipt(
+                resource_trade_no,
+            ) => self.process_platform_undelegation_tx_exec_receipt(resource_trade_no).await,
         }
     }
 
@@ -570,6 +607,107 @@ impl PlatformResourceReclaimWorker {
                 self.schedule_platform_undelegation_rebuild_retry(&resource_trade_no, &err).await
             }
         }
+    }
+
+    async fn process_platform_undelegation_tx_exec_receipt(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        info!(
+            resource_trade_no = %resource_trade_no,
+            source = "platform_resource_reclaim_shadow",
+            "Processing platform undelegation tx exec receipt upload"
+        );
+
+        let delegation =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if delegation.tx_exec_receipt_uploaded_at.is_some() {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation tx exec receipt already uploaded"
+            );
+            return Ok(());
+        }
+
+        if delegation.source != ApiResourceDelegationSource::Platform
+            || delegation.operation_type != ApiResourceDelegationOperationType::Undelegate
+        {
+            return Err(ServiceError::Parameter(format!(
+                "platform undelegation receipt upload requires source=Platform + Undelegate, got source={:?} operation={:?}",
+                delegation.source, delegation.operation_type
+            )));
+        }
+
+        let payload = Self::build_platform_undelegation_tx_exec_receipt_payload(&delegation)?;
+        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        backend_api.upload_tx_exec_receipt(&payload).await?;
+
+        let affected =
+            ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded_for_source_and_operation(
+                &self.pool,
+                &resource_trade_no,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if affected == 0 {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation tx exec receipt marked 0 rows"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation tx exec receipt uploaded successfully"
+            );
+        }
+
+        Ok(())
+    }
+
+    fn build_platform_undelegation_tx_exec_receipt_payload(
+        delegation: &ApiResourceDelegationEntity,
+    ) -> Result<TxExecReceiptUploadReq, ServiceError> {
+        if delegation.source != ApiResourceDelegationSource::Platform
+            || delegation.operation_type != ApiResourceDelegationOperationType::Undelegate
+        {
+            return Err(ServiceError::Parameter(format!(
+                "platform undelegation receipt payload requires source=Platform + Undelegate, got source={:?} operation={:?}",
+                delegation.source, delegation.operation_type
+            )));
+        }
+
+        let has_success_hash =
+            delegation.tx_hash.as_deref().map(str::trim).is_some_and(|s| !s.is_empty());
+        let is_success = delegation.tx_status.as_deref() == Some("success") && has_success_hash;
+        let upload_status = if is_success { TransStatus::Success } else { TransStatus::Fail };
+        let remark = if is_success { "" } else { delegation.err_msg.as_deref().unwrap_or("") };
+
+        let mut payload = TxExecReceiptUploadReq::new(
+            Some(&delegation.owner_address),
+            Some(&delegation.receiver_address),
+            &delegation.resource_trade_no,
+            platform_resource_task_trans_type(delegation),
+            delegation.tx_hash.as_deref(),
+            upload_status,
+            remark,
+        );
+
+        if !is_success {
+            if let Some(err_code) = delegation.err_code.as_deref().filter(|s| !s.is_empty()) {
+                payload = payload.with_error_code(err_code);
+            }
+        }
+
+        Ok(payload)
     }
 
     async fn execute_tron_platform_undelegation(
@@ -1095,5 +1233,148 @@ mod tests {
             PlatformResourceReclaimIntent::RecoverPlatformUndelegation(trade_no)
                 if trade_no == "rsc_platform_undelegate_withdraw_recover"
         )));
+    }
+
+    #[tokio::test]
+    async fn scanner_finds_platform_undelegation_receipt_upload_after_success() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        for trade_no in [
+            "rsc_platform_undelegate_collect_receipt",
+            "rsc_platform_undelegate_withdraw_receipt",
+            "rsc_platform_undelegate_uploaded_receipt",
+        ] {
+            let origin_trade_type = if trade_no == "rsc_platform_undelegate_withdraw_receipt" {
+                ApiTradeType::Withdraw
+            } else {
+                ApiTradeType::Collect
+            };
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::platform_delegate_task(
+                    "uid",
+                    trade_no,
+                    origin_trade_type,
+                    ApiResourceDelegationOperationType::Undelegate,
+                    "tron",
+                    "owner",
+                    "receiver",
+                    ApiResourceType::Energy,
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .expect("insert platform undelegate receipt candidate");
+        }
+
+        sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET task_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                tx_hash = resource_trade_no || '_tx_hash',
+                tx_status = 'success',
+                result_status = 1,
+                result_received_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no IN (
+                'rsc_platform_undelegate_collect_receipt',
+                'rsc_platform_undelegate_withdraw_receipt',
+                'rsc_platform_undelegate_uploaded_receipt'
+            )
+            "#,
+        )
+        .execute(pool.as_ref())
+        .await
+        .expect("mark platform undelegate success");
+
+        ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded_for_source_and_operation(
+            &pool,
+            "rsc_platform_undelegate_uploaded_receipt",
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Undelegate,
+        )
+        .await
+        .expect("mark uploaded receipt");
+
+        let scanner = PlatformResourceReclaimScanner::with_config(
+            pool,
+            PlatformResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+
+        let intents = scanner.scan_round().await;
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::UploadPlatformUndelegationTxExecReceipt(trade_no)
+                if trade_no == "rsc_platform_undelegate_collect_receipt"
+        )));
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::UploadPlatformUndelegationTxExecReceipt(trade_no)
+                if trade_no == "rsc_platform_undelegate_withdraw_receipt"
+        )));
+        assert!(!intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::UploadPlatformUndelegationTxExecReceipt(trade_no)
+                if trade_no == "rsc_platform_undelegate_uploaded_receipt"
+        )));
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_receipt_payload_uses_reclaim_trans_type() {
+        let task = ApiResourceDelegationEntity {
+            id: 1,
+            uid: "uid".to_string(),
+            source: ApiResourceDelegationSource::Platform,
+            operation_type: ApiResourceDelegationOperationType::Undelegate,
+            origin_trade_no: None,
+            origin_trade_type: Some(ApiTradeType::Collect as i64),
+            resource_trade_no: "CR_1".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: "receiver".to_string(),
+            resource_type: ApiResourceType::Energy,
+            native_amount: "1".to_string(),
+            amount: "100".to_string(),
+            status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
+            task_ack_sent_at: None,
+            building_at: None,
+            tx_hash: Some("tx_hash".to_string()),
+            tx_status: Some("success".to_string()),
+            tx_exec_receipt_uploaded_at: None,
+            result_status: Some(ApiResourceDelegationResultStatus::Success),
+            result_received_at: Some(chrono::Utc::now()),
+            result_ack_sent_at: None,
+            result_payload: None,
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+        };
+
+        let payload =
+            PlatformResourceReclaimWorker::build_platform_undelegation_tx_exec_receipt_payload(
+                &task,
+            )
+            .expect("build receipt payload");
+        let value = serde_json::to_value(payload).expect("serialize payload");
+        assert_eq!(value["tradeNo"], "CR_1");
+        assert_eq!(value["type"], "COL_RSC_RC");
+        assert_eq!(value["status"], "SUCCESS");
+        assert_eq!(value["hash"], "tx_hash");
     }
 }

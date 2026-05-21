@@ -533,6 +533,41 @@ impl ApiResourceDelegationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_need_tx_exec_receipt_upload_by_source_and_operation<'a, E>(
+        exec: E,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = ?
+              AND operation_type = ?
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND (
+                    (
+                      tx_status = 'success'
+                      AND tx_hash IS NOT NULL
+                      AND trim(tx_hash) <> ''
+                    )
+                    OR err_code IS NOT NULL
+                  )
+            ORDER BY updated_at ASC, id ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(source.as_i64())
+        .bind(operation_type.as_i64())
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn mark_tx_exec_receipt_uploaded<'a, E>(
         exec: E,
         resource_trade_no: &str,
