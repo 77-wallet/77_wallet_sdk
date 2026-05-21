@@ -22,7 +22,8 @@ use wallet_chain_interact::{
     },
 };
 use wallet_database::{
-    entities::api_wallet::ApiWalletType, repositories::api_wallet::wallet::ApiWalletRepo,
+    entities::api_wallet::ApiWalletType,
+    repositories::api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
 };
 
 pub(crate) struct ApiResourceDomain;
@@ -75,7 +76,14 @@ impl ApiResourceDomain {
             ));
         }
 
-        Ok(wallet.address)
+        let tron_accounts =
+            ApiAccountRepo::find_all_by_wallet_address_index(&pool, &wallet.address, "tron", 1)
+                .await?;
+        tron_accounts.into_iter().next().map(|account| account.address).ok_or_else(|| {
+            ServiceError::Parameter(format!(
+                "withdraw wallet tron account not found: uid={withdraw_wallet_uid}"
+            ))
+        })
     }
 
     fn parse_amount_trx(amount: &str) -> Result<i64, ServiceError> {
