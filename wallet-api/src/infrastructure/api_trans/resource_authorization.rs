@@ -1,6 +1,6 @@
 use wallet_chain_interact::tron::operations::stake::{DelegateArgs, UnDelegateArgs};
 use wallet_database::{
-    CoreDbPool,
+    CoreDbPool, DbPool,
     entities::{
         api_resource_delegation::{ApiResourceDelegationEntity, ApiResourceDelegationMode},
         permission::PermissionWithUserEntity,
@@ -8,7 +8,11 @@ use wallet_database::{
     repositories::{api_wallet::account::ApiAccountRepo, permission::PermissionRepo},
 };
 
-use crate::{domain::permission::PermissionDomain, error::service::ServiceError};
+use crate::{
+    domain::chain::adapter::ChainAdapterFactory, error::service::ServiceError,
+    messaging::mqtt::topics::NewPermissionUser,
+};
+use wallet_types::constant::chain_code;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResourceDelegationSigner {
@@ -77,7 +81,12 @@ async fn resolve_authorized_resource_signer(
         permission_id,
         || async {
             let pool = ctx.get_global_sqlite_pool()?;
-            PermissionDomain::recover_permission_from_chain(&pool, &delegation.owner_address).await
+            recover_api_wallet_authorized_permission_from_chain(
+                &pool,
+                &delegation.owner_address,
+                permission_id,
+            )
+            .await
         },
     )
     .await?
@@ -119,6 +128,79 @@ async fn resolve_authorized_resource_signer(
         "authorized resource signer not found: owner={}, permissionId={}",
         delegation.owner_address, permission_id
     )))
+}
+
+async fn recover_api_wallet_authorized_permission_from_chain(
+    pool: &DbPool,
+    owner_address: &str,
+    permission_id: &str,
+) -> Result<(), ServiceError> {
+    let active_id = permission_id.parse::<i64>().map_err(|_| {
+        ServiceError::Parameter(format!(
+            "authorized resource permissionId must be active id: owner={}, permissionId={}",
+            owner_address, permission_id
+        ))
+    })?;
+
+    let chain = ChainAdapterFactory::get_tron_adapter().await?;
+    let account = chain.account_info(owner_address).await?;
+    let Some(active_permission) = account
+        .active_permission
+        .iter()
+        .find(|permission| permission.id.unwrap_or_default() as i64 == active_id)
+    else {
+        tracing::warn!(
+            owner_address = %owner_address,
+            permission_id = %permission_id,
+            "Authorized resource permission not found on chain"
+        );
+        return Ok(());
+    };
+
+    let permission_with_user = NewPermissionUser::try_from((active_permission, owner_address))?;
+    let api_wallet_pool = crate::context::get_context()?.api_wallet_pool()?;
+    let mut users = Vec::with_capacity(permission_with_user.users.len());
+    let mut has_local_api_signer = false;
+    for mut user in permission_with_user.users {
+        if ApiAccountRepo::find_one_by_address_chain_code(
+            &user.address,
+            chain_code::TRON,
+            &api_wallet_pool,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?
+        .is_some()
+        {
+            user.is_self = 1;
+            has_local_api_signer = true;
+        }
+        users.push(user);
+    }
+
+    if !has_local_api_signer {
+        tracing::warn!(
+            owner_address = %owner_address,
+            permission_id = %permission_id,
+            "Authorized resource permission recovered from chain but has no local API signer"
+        );
+        return Ok(());
+    }
+
+    let core_pool = CoreDbPool::new(pool.clone());
+    if PermissionRepo::find_by_grantor_and_active(&core_pool, owner_address, active_id, true)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?
+        .is_some()
+    {
+        PermissionRepo::update_with_user(&core_pool, &permission_with_user.permission, &users)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+    } else {
+        PermissionRepo::add_with_user(&core_pool, &permission_with_user.permission, &users)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+    }
+    Ok(())
 }
 
 async fn find_authorized_permission_with_recovery<F, Fut>(

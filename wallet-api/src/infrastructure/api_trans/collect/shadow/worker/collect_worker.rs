@@ -110,6 +110,8 @@ struct ResourceGateSnapshot {
     available_energy: i64,
     /// 子账户当前可直接使用的带宽
     available_bandwidth: i64,
+    /// 当前链上每 1 TRX 可换算的 Energy，用于本地代理时把 energy 缺口换算为 TRX 数量
+    energy_price: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -920,6 +922,7 @@ impl ShadowCollectWorker {
         let resource = adapter.account_resource(&req.from_addr).await?;
         let available_energy = resource.available_energy();
         let available_bandwidth = resource.available_bandwidth();
+        let energy_price = resource.energy_price();
 
         self.commit_platform_delegation_block(
             &origin_trade_no,
@@ -929,6 +932,7 @@ impl ShadowCollectWorker {
             fee_details.bandwidth,
             available_energy,
             available_bandwidth,
+            energy_price,
         )
         .await
     }
@@ -971,6 +975,7 @@ impl ShadowCollectWorker {
             required_bandwidth: fee_details.bandwidth,
             available_energy: resource.available_energy(),
             available_bandwidth: resource.available_bandwidth(),
+            energy_price: resource.energy_price(),
         })
     }
 
@@ -1026,6 +1031,7 @@ impl ShadowCollectWorker {
                     snapshot.required_bandwidth,
                     snapshot.available_energy,
                     snapshot.available_bandwidth,
+                    snapshot.energy_price,
                 )
                 .await
             }
@@ -1036,6 +1042,7 @@ impl ShadowCollectWorker {
                     exec_to_addr,
                     snapshot.required_energy,
                     snapshot.available_energy,
+                    snapshot.energy_price,
                 )
                 .await
             }
@@ -1081,6 +1088,7 @@ impl ShadowCollectWorker {
         required_bandwidth: u64,
         available_energy: i64,
         available_bandwidth: i64,
+        energy_price: f64,
     ) -> Result<(), ServiceError> {
         let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
         let resource_trade_no = match self
@@ -1102,6 +1110,7 @@ impl ShadowCollectWorker {
                         &exec_to_addr,
                         required_energy,
                         available_energy,
+                        energy_price,
                     )
                     .await;
             }
@@ -1198,6 +1207,7 @@ impl ShadowCollectWorker {
         exec_to_addr: &str,
         required_energy: u64,
         available_energy: i64,
+        energy_price: f64,
     ) -> Result<(), ServiceError> {
         // local delegation 的 owner 是出款地址，receiver 是当前待归集子地址。
         // 这里写下的是“本地代理 fallback 已成为当前依赖”的事实，
@@ -1207,6 +1217,9 @@ impl ShadowCollectWorker {
         // 不会在资源链里继续承接主币/补币逻辑。
         let resource_trade_no = Self::collect_local_delegate_trade_no(origin_trade_no);
         let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
+        let native_amount = energy_shortfall_to_apply_amounts(&amount, energy_price)?
+            .native_token_amount
+            .to_string();
         let delegation = NewApiResourceDelegation::local_delegate(
             req.uid.clone(),
             resource_trade_no.clone(),
@@ -1214,7 +1227,7 @@ impl ShadowCollectWorker {
             i64::from(req.trade_type),
             exec_to_addr.to_string(),
             req.from_addr.clone(),
-            amount.clone(),
+            native_amount,
             amount,
         );
         ApiResourceDelegationRepo::upsert(&self.collect_pool, delegation)
@@ -4022,11 +4035,11 @@ mod tests {
             .expect("load collect");
 
         worker
-            .commit_local_delegation_block(trade_no, &req, "withdraw_owner", 100, 20)
+            .commit_local_delegation_block(trade_no, &req, "withdraw_owner", 100, 20, 10.0)
             .await
             .expect("first local block commit");
         worker
-            .commit_local_delegation_block(trade_no, &req, "withdraw_owner", 100, 20)
+            .commit_local_delegation_block(trade_no, &req, "withdraw_owner", 100, 20, 10.0)
             .await
             .expect("second local block commit");
 
@@ -4056,7 +4069,8 @@ mod tests {
         assert_eq!(delegation.origin_trade_no.as_deref(), Some(trade_no));
         assert_eq!(delegation.owner_address, "withdraw_owner");
         assert_eq!(delegation.receiver_address, "from");
-        assert_eq!(delegation.native_amount, "80");
+        assert_eq!(delegation.native_amount, "8");
+        assert_eq!(delegation.amount, "80");
     }
 
     #[tokio::test]
