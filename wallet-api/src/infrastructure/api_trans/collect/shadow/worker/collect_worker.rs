@@ -23,8 +23,8 @@ use wallet_database::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
-            NewApiResourceDelegation,
+            ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
+            ApiResourceDelegationSource, NewApiResourceDelegation,
         },
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
@@ -517,6 +517,7 @@ impl ShadowCollectWorker {
                 Ok(())
             }
             wallet_utils::RetryPolicy::Delay => {
+                self.schedule_resource_delegation_rebuild_retry(resource_trade_no, &err).await?;
                 info!(
                     resource_trade_no = %resource_trade_no,
                     error = %err,
@@ -526,6 +527,55 @@ impl ShadowCollectWorker {
                 Ok(())
             }
         }
+    }
+
+    fn resource_delegation_retry_wait_secs(retry_count: i64) -> i64 {
+        let exponent = retry_count.clamp(0, 6) as u32;
+        (60_i64 * (1_i64 << exponent)).min(3600)
+    }
+
+    async fn schedule_resource_delegation_rebuild_retry(
+        &self,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.collect_pool,
+            resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let wait_secs = Self::resource_delegation_retry_wait_secs(task.retry_count);
+        let next_retry_at = Utc::now() + chrono::Duration::seconds(wait_secs);
+        let next_status = if err.is_network_error() {
+            ApiResourceDelegationRecoverStatus::RetryBuild
+        } else {
+            ApiResourceDelegationRecoverStatus::RetryRecover
+        };
+
+        let affected = ApiResourceDelegationRepo::reset_for_retry(
+            &self.collect_pool,
+            resource_trade_no,
+            next_status,
+            &next_retry_at.to_rfc3339(),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        info!(
+            resource_trade_no = %resource_trade_no,
+            origin_trade_no = ?task.origin_trade_no,
+            affected = %affected,
+            retry_count = task.retry_count + 1,
+            recover_status = ?next_status,
+            next_retry_at = %next_retry_at.to_rfc3339(),
+            wait_secs,
+            error = %err,
+            source = "shadow_worker_v2",
+            "Resource delegation reset for retry"
+        );
+
+        Ok(())
     }
 
     async fn process_resource_delegation_execute(
@@ -3524,8 +3574,8 @@ mod tests {
         entities::{
             api_collect::{ApiCollectEntity, ApiCollectStatus},
             api_resource_delegation::{
-                ApiResourceDelegationOperationType, ApiResourceDelegationSource,
-                NewApiResourceDelegation,
+                ApiResourceDelegationOperationType, ApiResourceDelegationRecoverStatus,
+                ApiResourceDelegationSource, NewApiResourceDelegation,
             },
             api_resource_gate::{
                 ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
@@ -4236,6 +4286,76 @@ mod tests {
             .await
             .expect("scan result ack");
         assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_platform_failed"));
+    }
+
+    #[tokio::test]
+    async fn platform_delegate_retryable_error_releases_build_slot() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx,
+                None,
+            )),
+        );
+
+        ApiResourceDelegationRepo::upsert(
+            &collect_pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_delegate_retry",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "withdraw_owner",
+                "from",
+                ApiResourceType::Energy,
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert platform delegation");
+        ApiResourceDelegationRepo::mark_task_ack_sent(&collect_pool, "rsc_platform_delegate_retry")
+            .await
+            .expect("mark ack");
+        ApiResourceDelegationRepo::claim_build_slot(&collect_pool, "rsc_platform_delegate_retry")
+            .await
+            .expect("claim build slot");
+
+        worker
+            .schedule_resource_delegation_rebuild_retry(
+                "rsc_platform_delegate_retry",
+                &ServiceError::Parameter("retryable test error".to_string()),
+            )
+            .await
+            .expect("schedule retry");
+
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &collect_pool,
+            "rsc_platform_delegate_retry",
+        )
+        .await
+        .expect("load platform task");
+        assert!(task.building_at.is_none());
+        assert_eq!(task.tx_hash, None);
+        assert_eq!(task.retry_count, 1);
+        assert_eq!(task.recover_status, Some(ApiResourceDelegationRecoverStatus::RetryRecover));
+        assert!(task.next_retry_at.is_some());
     }
 
     #[tokio::test]

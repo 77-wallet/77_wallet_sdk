@@ -1685,6 +1685,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn platform_delegate_reset_for_retry_releases_build_slot() {
+        let pool = setup_api_transaction_pool("resource_delegation_platform_delegate_retry").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "rsc_platform_delegate_retry",
+                crate::entities::api_trade_type::ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_platform_delegate_retry")
+            .await
+            .unwrap();
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_delegate_retry")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::reset_for_retry(
+                &pool,
+                "rsc_platform_delegate_retry",
+                ApiResourceDelegationRecoverStatus::RetryRecover,
+                "2099-01-01T00:00:00Z",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+
+        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_platform_delegate_retry",
+        )
+        .await
+        .unwrap();
+        assert!(persisted.building_at.is_none());
+        assert_eq!(persisted.tx_hash, None);
+        assert_eq!(persisted.tx_status, None);
+        assert_eq!(
+            persisted.recover_status,
+            Some(ApiResourceDelegationRecoverStatus::RetryRecover)
+        );
+        assert_eq!(persisted.retry_count, 1);
+        assert!(persisted.next_retry_at.is_some());
+    }
+
+    #[tokio::test]
     async fn stale_platform_undelegation_build_slot_can_be_reclaimed() {
         let pool =
             setup_api_transaction_pool("resource_delegation_platform_undelegation_stale").await;
