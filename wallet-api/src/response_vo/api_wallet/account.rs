@@ -80,7 +80,6 @@ pub struct ApiWalletAddressSearchItem {
     pub account_name: Option<String>,
     pub address: String,
     pub chain_code: String,
-    pub wallet_address: String,
 }
 
 impl From<ApiAccountEntity> for ApiWalletAddressSearchItem {
@@ -90,7 +89,6 @@ impl From<ApiAccountEntity> for ApiWalletAddressSearchItem {
             account_name: Some(entity.name),
             address: entity.address,
             chain_code: entity.chain_code,
-            wallet_address: entity.wallet_address,
         }
     }
 }
