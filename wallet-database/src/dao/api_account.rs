@@ -1029,6 +1029,83 @@ mod tests {
         assert_eq!(active_count, 1);
         assert_eq!(inactive_count, 1);
     }
+
+    #[tokio::test]
+    async fn search_address_by_uid_filters_scope_and_status() {
+        let dir = make_temp_dir("wallet_db_api_account_search_uid");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+        let target_address = "0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24";
+
+        let reqs = vec![
+            CreateApiAccountVo::new(
+                0,
+                target_address,
+                "pk0",
+                "wallet_1",
+                "uid_1",
+                "m/44'/60'/0'/0/0",
+                0,
+                "eth",
+                "match",
+                ApiWalletType::SubAccount,
+            ),
+            CreateApiAccountVo::new(
+                1,
+                target_address,
+                "pk1",
+                "wallet_2",
+                "uid_2",
+                "m/44'/60'/0'/0/1",
+                1,
+                "eth",
+                "wrong_uid",
+                ApiWalletType::SubAccount,
+            ),
+            CreateApiAccountVo::new(
+                2,
+                "0x27f6a199862FD0ffb2d5C79f3DBBE37597162A24",
+                "pk2",
+                "wallet_1",
+                "uid_1",
+                "m/44'/60'/0'/0/2",
+                2,
+                "eth",
+                "inactive",
+                ApiWalletType::SubAccount,
+            ),
+        ];
+        insert_accounts(pool.as_ref(), reqs).await.unwrap();
+
+        sqlx::query("UPDATE api_account SET status = 0 WHERE account_id = ?")
+            .bind(2_u32)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let rows = ApiAccountDao::search_address_by_uid(
+            pool.as_ref(),
+            "uid_1",
+            &target_address.to_lowercase(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].uid, "uid_1");
+        assert_eq!(rows[0].wallet_address, "wallet_1");
+        assert_eq!(rows[0].address, target_address);
+        assert_eq!(rows[0].status, 1);
+
+        let inactive_rows = ApiAccountDao::search_address_by_uid(
+            pool.as_ref(),
+            "uid_1",
+            "0x27f6a199862fd0ffb2d5c79f3dbbe37597162a24",
+        )
+        .await
+        .unwrap();
+        assert!(inactive_rows.is_empty());
+    }
 }
 // all_data.account_id 				        AS account_id,
 // all_data.name 							AS account_name,
@@ -1325,19 +1402,19 @@ GROUP BY api_account.account_id
         Ok(result.is_some())
     }
 
-    /// 地址搜索：在指定钱包范围内搜索地址，支持大小写不敏感匹配
-    pub async fn search_address_by_wallet<'a, E>(
+    /// 地址搜索：在指定 API 钱包 uid 范围内搜索地址，支持大小写不敏感匹配
+    pub async fn search_address_by_uid<'a, E>(
         exec: E,
-        wallet_address: &str,
+        uid: &str,
         keyword: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         tracing::info!(
-            wallet_address = %wallet_address,
+            uid = %uid,
             keyword = %keyword,
-            "API_ACCOUNT_QUERY::search_address_by_wallet"
+            "API_ACCOUNT_QUERY::search_address_by_uid"
         );
 
         // 对关键词进行规范化处理（转为小写用于 EVM/TRON 地址匹配）
@@ -1349,13 +1426,13 @@ GROUP BY api_account.account_id
         // 2. 大小写不敏感匹配（通过 LOWER() 转换）
         let sql = r#"
             SELECT * FROM api_account 
-            WHERE wallet_address = ? 
+            WHERE uid = ?
               AND status = 1
               AND (address = ? OR LOWER(address) = ?)
         "#;
 
         let results = sqlx::query_as::<_, ApiAccountEntity>(sql)
-            .bind(wallet_address)
+            .bind(uid)
             .bind(keyword)
             .bind(keyword_lower)
             .fetch_all(exec)

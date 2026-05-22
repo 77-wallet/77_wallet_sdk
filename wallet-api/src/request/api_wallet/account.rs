@@ -91,13 +91,13 @@ impl fmt::Debug for CreateWithdrawalAccountReq {
 /// 地址搜索请求
 #[derive(serde::Deserialize, Clone)]
 pub struct ApiWalletAddressSearchReq {
-    pub wallet_address: String,
+    pub uid: String,
     pub keyword: String,
 }
 
 impl ApiWalletAddressSearchReq {
-    pub fn new(wallet_address: &str, keyword: &str) -> Self {
-        Self { wallet_address: wallet_address.to_string(), keyword: keyword.to_string() }
+    pub fn new(uid: &str, keyword: &str) -> Self {
+        Self { uid: uid.to_string(), keyword: keyword.to_string() }
     }
 }
 

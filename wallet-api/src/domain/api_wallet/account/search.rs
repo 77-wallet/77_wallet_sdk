@@ -7,13 +7,13 @@ use crate::{
 };
 
 impl ApiAccountDomain {
-    /// 地址搜索：在指定钱包范围内搜索账户地址
+    /// 地址搜索：在指定 API 钱包 uid 范围内搜索账户地址
     pub async fn search_address(
-        wallet_address: &str,
+        uid: &str,
         keyword: &str,
     ) -> Result<ApiWalletAddressSearchResp, ServiceError> {
         tracing::info!(
-            wallet_address = %wallet_address,
+            uid = %uid,
             keyword = %keyword,
             "ApiAccountService::search_address"
         );
@@ -26,8 +26,7 @@ impl ApiAccountDomain {
 
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
-        let entities =
-            ApiAccountRepo::search_address_by_wallet(&pool, wallet_address, keyword).await?;
+        let entities = ApiAccountRepo::search_address_by_uid(&pool, uid, keyword).await?;
 
         let items = entities.into_iter().map(|entity| entity.into()).collect();
 

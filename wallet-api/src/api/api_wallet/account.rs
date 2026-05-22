@@ -4,9 +4,7 @@ use crate::{
     api::ReturnType,
     manager::WalletManager,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    request::api_wallet::account::{
-        ApiWalletAddressSearchReq, CreateApiAccountReq, CreateWithdrawalAccountReq,
-    },
+    request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
     response_vo::{
         api_wallet::account::{
             ApiAccountInfo, ApiWalletAddressSearchResp, QueryApiAccountDerivationPath,
@@ -155,18 +153,18 @@ impl WalletManager {
             .await
     }
 
-    /// 地址搜索：在指定钱包范围内搜索账户地址
+    /// 地址搜索：在指定 API 钱包 uid 范围内搜索账户地址
     pub async fn search_api_wallet_address(
         &self,
-        wallet_address: &str,
+        uid: &str,
         keyword: &str,
     ) -> ReturnType<ApiWalletAddressSearchResp> {
         tracing::info!(
-            wallet_address = %wallet_address,
+            uid = %uid,
             keyword = %keyword,
             "WalletManager::search_api_wallet_address"
         );
-        ApiAccountService::new(self.ctx).search_address(wallet_address, keyword).await
+        ApiAccountService::new(self.ctx).search_address(uid, keyword).await
     }
 }
 
@@ -326,14 +324,14 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_search_api_wallet_address_by_wallet() -> Result<()> {
+    async fn test_search_api_wallet_address_by_uid() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager_with_config("client4.toml").await?;
         // let chain_code = "tron";
 
         let res = wallet_manager
             .search_api_wallet_address(
-                "0x7def9E4B7eF0D88bC77fc7C704E32AFdf505FF5D",
+                "5bdb1b748bb617d6683f57565b1493cfa5f9e45f3086daf265ca2e0cd325c15e",
                 "TW6h166qfNfibxgovAnVyDDMNV1BFXp5A5",
             )
             .await

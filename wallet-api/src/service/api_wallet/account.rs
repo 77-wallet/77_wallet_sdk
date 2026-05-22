@@ -484,14 +484,12 @@ impl ApiAccountService {
         Ok(r)
     }
 
-    /// 地址搜索：在指定钱包范围内搜索账户地址
+    /// 地址搜索：在指定 API 钱包 uid 范围内搜索账户地址
     pub async fn search_address(
         self,
-        wallet_address: &str,
+        uid: &str,
         keyword: &str,
     ) -> Result<ApiWalletAddressSearchResp, ServiceError> {
-        ApiAccountApplication::new(self.ctx)
-            .search_api_wallet_address(wallet_address, keyword)
-            .await
+        ApiAccountApplication::new(self.ctx).search_api_wallet_address(uid, keyword).await
     }
 }
