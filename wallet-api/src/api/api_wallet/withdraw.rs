@@ -81,7 +81,7 @@ impl WalletManager {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
-    use crate::test::env::get_manager;
+    use crate::test::env::{get_manager, get_manager_with_config};
     use anyhow::Result;
     use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
 
@@ -127,10 +127,10 @@ mod test {
     #[tokio::test]
     async fn test_sign_api_withdrawal_order() -> Result<()> {
         wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager_with_config("client4.toml").await?;
         wallet_manager.init_api_swap().await?;
 
-        let order_id = "W2026501771206762496";
+        let order_id = "W2057754810970705920";
         let res = wallet_manager.sign_api_withdrawal_order(order_id).await;
         tracing::info!("sign_api_withdrawal_order result: {:?}", res);
         Ok(())

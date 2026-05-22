@@ -23,7 +23,8 @@ use wallet_database::{
         api_withdraw::{ApiWithdrawEntity, ErrCode, WithdrawFailureStage},
     },
     repositories::api_wallet::{
-        resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
+        resource_delegation::ApiResourceDelegationRepo, wallet::ApiWalletRepo,
+        withdraw::ApiWithdrawRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::{
@@ -582,11 +583,12 @@ impl ShadowWithdrawWorker {
         let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
         let resource = adapter.account_resource(receiver_address).await?;
         let amounts = energy_shortfall_to_apply_amounts(amount, resource.energy_price())?;
+        let (app_id, org_id) = self.resolve_resource_apply_identity(uid).await?;
 
         let req = ResourceApplyReq::new(
             origin_trade_no,
-            uid,
-            uid,
+            &app_id,
+            &org_id,
             Some(chain_code),
             amounts.native_token_amount,
             Some(amounts.resource_amount),
@@ -614,6 +616,18 @@ impl ShadowWithdrawWorker {
             );
             Ok(PlatformApplyOutcome::Rejected)
         }
+    }
+
+    async fn resolve_resource_apply_identity(
+        &self,
+        uid: &str,
+    ) -> Result<(String, String), ServiceError> {
+        let wallet = ApiWalletRepo::find_by_uid(&self.core_pool, uid)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        let app_id = wallet.as_ref().and_then(|w| w.app_id.as_deref()).unwrap_or(uid);
+        let org_id = wallet.as_ref().and_then(|w| w.merchant_id.as_deref()).unwrap_or(uid);
+        Ok((app_id.to_string(), org_id.to_string()))
     }
 
     /// 执行 Recover Command - 外层wrapper，确保所有错误都被捕获
@@ -1983,11 +1997,13 @@ mod tests {
             },
             api_resource_type::ApiResourceType,
             api_trade_type::ApiTradeType,
+            api_wallet::ApiWalletType,
             api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
             asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::{
-            resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
+            resource_delegation::ApiResourceDelegationRepo, wallet::ApiWalletRepo,
+            withdraw::ApiWithdrawRepo,
         },
     };
 
@@ -2314,5 +2330,59 @@ mod tests {
         assert_eq!(task.retry_count, 1);
         assert_eq!(task.recover_status, Some(ApiResourceDelegationRecoverStatus::RetryRecover));
         assert!(task.next_retry_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn withdraw_resource_apply_identity_uses_wallet_app_and_merchant_ids() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let transaction_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let transaction_pool =
+            transaction_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+
+        ApiWalletRepo::upsert(
+            &wallet_pool,
+            "wallet_uid",
+            "api_wallet",
+            "wallet_address",
+            b"phrase",
+            b"seed",
+            ApiWalletType::Withdrawal,
+            None,
+            "sn_1",
+            0,
+        )
+        .await
+        .expect("insert wallet");
+        ApiWalletRepo::update_app_id(&wallet_pool, "wallet_address", Some("app_1"))
+            .await
+            .expect("set app id");
+        ApiWalletRepo::update_merchant_id(&wallet_pool, "wallet_address", "merchant_1")
+            .await
+            .expect("set merchant id");
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner =
+            Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
+                transaction_pool.clone(),
+                crate::infrastructure::api_trans::withdraw::shadow::ScannerConfig::default(),
+                intent_tx,
+                None,
+            ));
+        let worker = ShadowWithdrawWorker::new(transaction_pool, wallet_pool, scanner);
+
+        let (app_id, org_id) =
+            worker.resolve_resource_apply_identity("wallet_uid").await.expect("resolve identity");
+
+        assert_eq!(app_id, "app_1");
+        assert_eq!(org_id, "merchant_1");
     }
 }
