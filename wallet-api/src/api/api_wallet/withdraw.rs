@@ -284,6 +284,9 @@ mod unit_tests {
         entity.audit_reason = Some("reject reason".to_string());
         entity.err_code = Some(wallet_database::entities::api_withdraw::ErrCode::UnknownError);
         entity.notes = Some("internal note".to_string());
+        entity.transaction_fee = "1.23".to_string();
+        entity.resource_consume = r#"{"net_used":10,"energy_used":20}"#.to_string();
+        entity.block_height = Some("12345".to_string());
         entity.estimated_transaction_fee = Some("0.42".to_string());
         entity.estimated_resource_consume = Some(r#"{"bandwidth":1,"energy":2}"#.to_string());
         entity.fee_estimated_at = Some(now + Duration::minutes(3));
@@ -291,11 +294,17 @@ mod unit_tests {
         let json = serde_json::to_value(ApiWithdrawOrderVo::from(entity)).unwrap();
 
         assert_eq!(json.get("tradeNo").and_then(|v| v.as_str()), Some("T2024000000000000001"));
+        assert_eq!(json.get("transactionFee").and_then(|v| v.as_str()), Some("1.23"));
+        assert_eq!(json.get("blockHeight").and_then(|v| v.as_str()), Some("12345"));
+        assert_eq!(json.get("bandwidthConsume").and_then(|v| v.as_u64()), Some(10));
+        assert_eq!(json.get("energyConsume").and_then(|v| v.as_u64()), Some(20));
         assert_eq!(json.get("estimatedTransactionFee").and_then(|v| v.as_str()), Some("0.42"));
         assert_eq!(
             json.get("estimatedResourceConsume").and_then(|v| v.as_str()),
             Some(r#"{"bandwidth":1,"energy":2}"#)
         );
+        assert_eq!(json.get("estimatedBandwidthConsume").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(json.get("estimatedEnergyConsume").and_then(|v| v.as_u64()), Some(2));
         assert!(json.get("feeEstimatedAt").is_some());
         assert!(json.get("validate").is_none());
         assert!(json.get("auditReason").is_none());
@@ -312,6 +321,9 @@ mod unit_tests {
         entity.err_code = Some(wallet_database::entities::api_withdraw::ErrCode::UnknownError);
         entity.err_msg = Some("backend failed".to_string());
         entity.notes = Some("operator note".to_string());
+        entity.transaction_fee = "2.46".to_string();
+        entity.resource_consume = r#"{"bandwidth":30,"energy":40}"#.to_string();
+        entity.block_height = Some("67890".to_string());
         entity.estimated_transaction_fee = Some("0.84".to_string());
         entity.estimated_resource_consume = Some(r#"{"bandwidth":3,"energy":4}"#.to_string());
         entity.fee_estimated_at = Some(now + Duration::minutes(8));
@@ -322,13 +334,44 @@ mod unit_tests {
         assert_eq!(json.get("auditReason").and_then(|v| v.as_str()), Some("risk rejected"));
         assert_eq!(json.get("errMsg").and_then(|v| v.as_str()), Some("backend failed"));
         assert_eq!(json.get("notes").and_then(|v| v.as_str()), Some("operator note"));
+        assert_eq!(json.get("transactionFee").and_then(|v| v.as_str()), Some("2.46"));
+        assert_eq!(json.get("blockHeight").and_then(|v| v.as_str()), Some("67890"));
+        assert_eq!(json.get("bandwidthConsume").and_then(|v| v.as_u64()), Some(30));
+        assert_eq!(json.get("energyConsume").and_then(|v| v.as_u64()), Some(40));
         assert_eq!(json.get("estimatedTransactionFee").and_then(|v| v.as_str()), Some("0.84"));
         assert_eq!(
             json.get("estimatedResourceConsume").and_then(|v| v.as_str()),
             Some(r#"{"bandwidth":3,"energy":4}"#)
         );
+        assert_eq!(json.get("estimatedBandwidthConsume").and_then(|v| v.as_u64()), Some(3));
+        assert_eq!(json.get("estimatedEnergyConsume").and_then(|v| v.as_u64()), Some(4));
         assert!(json.get("feeEstimatedAt").is_some());
         assert!(json.get("audit_reason").is_none());
+    }
+
+    #[test]
+    fn api_withdraw_order_vo_exposes_tron_fee_display_fields() {
+        let now = Utc::now();
+        let mut entity = make_entity(now, None, None);
+        entity.transaction_fee = "5.67".to_string();
+        entity.resource_consume = r#"{"net_used":123,"energy_used":456}"#.to_string();
+        entity.estimated_transaction_fee = Some("1.23".to_string());
+        entity.estimated_resource_consume = Some(r#"{"bandwidth":12,"energy":34}"#.to_string());
+
+        let list_json = serde_json::to_value(ApiWithdrawOrderVo::from(entity.clone())).unwrap();
+        assert_eq!(list_json.get("transactionFee").and_then(|v| v.as_str()), Some("5.67"));
+        assert_eq!(list_json.get("bandwidthConsume").and_then(|v| v.as_u64()), Some(123));
+        assert_eq!(list_json.get("energyConsume").and_then(|v| v.as_u64()), Some(456));
+        assert_eq!(list_json.get("estimatedTransactionFee").and_then(|v| v.as_str()), Some("1.23"));
+        assert_eq!(list_json.get("estimatedBandwidthConsume").and_then(|v| v.as_u64()), Some(12));
+        assert_eq!(list_json.get("estimatedEnergyConsume").and_then(|v| v.as_u64()), Some(34));
+
+        let detail_json = serde_json::to_value(ApiWithdrawOrderDetailVo::from(entity)).unwrap();
+        assert_eq!(detail_json.get("transactionFee").and_then(|v| v.as_str()), Some("5.67"));
+        assert_eq!(detail_json.get("bandwidthConsume").and_then(|v| v.as_u64()), Some(123));
+        assert_eq!(detail_json.get("energyConsume").and_then(|v| v.as_u64()), Some(456));
+        assert_eq!(detail_json.get("estimatedBandwidthConsume").and_then(|v| v.as_u64()), Some(12));
+        assert_eq!(detail_json.get("estimatedEnergyConsume").and_then(|v| v.as_u64()), Some(34));
     }
 
     #[test]
