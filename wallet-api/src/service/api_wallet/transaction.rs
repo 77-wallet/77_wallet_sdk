@@ -430,11 +430,7 @@ impl ApiTransService {
     ) -> Result<BillEntity, ServiceError> {
         let bill = ApiWithdrawRepo::get_api_withdraw_by_id(api_transaction_pool, id).await?;
 
-        if bill.status != ApiWithdrawStatus::ConfirmSuccessReport
-            || bill.status != ApiWithdrawStatus::ConfirmFailureReport
-            || bill.status != ApiWithdrawStatus::SendingTxFailed
-            || bill.status != ApiWithdrawStatus::AuditReject
-        {
+        if !Self::should_query_chain_result(bill.status) {
             let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
             let e = self.convert_to_bill_entity(&bill, transfer_type);
             return Ok(e);
@@ -543,6 +539,16 @@ impl ApiTransService {
 
     fn default_transfer_type_by_trade_type(trade_type: ApiTradeType) -> i8 {
         if trade_type == ApiTradeType::SelfRecharge { 0 } else { 1 }
+    }
+
+    fn should_query_chain_result(status: ApiWithdrawStatus) -> bool {
+        matches!(
+            status,
+            ApiWithdrawStatus::ConfirmSuccessReport
+                | ApiWithdrawStatus::ConfirmFailureReport
+                | ApiWithdrawStatus::SendingTxFailed
+                | ApiWithdrawStatus::AuditReject
+        )
     }
 
     async fn build_reference_addrs(
@@ -734,6 +740,39 @@ mod tests {
             &selected,
         );
         assert_eq!(transfer_type, 1);
+    }
+
+    #[test]
+    fn query_tx_result_status_gate_allows_only_sync_statuses() {
+        let sync_statuses = [
+            ApiWithdrawStatus::ConfirmSuccessReport,
+            ApiWithdrawStatus::ConfirmFailureReport,
+            ApiWithdrawStatus::SendingTxFailed,
+            ApiWithdrawStatus::AuditReject,
+        ];
+        for status in sync_statuses {
+            assert!(
+                ApiTransService::should_query_chain_result(status),
+                "{status:?} should enter chain-result sync"
+            );
+        }
+
+        let local_statuses = [
+            ApiWithdrawStatus::InitOrder,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::AuditPass,
+            ApiWithdrawStatus::SendingTx,
+            ApiWithdrawStatus::SendingTxReport,
+            ApiWithdrawStatus::SendingTxFailedReport,
+            ApiWithdrawStatus::Success,
+            ApiWithdrawStatus::Failure,
+        ];
+        for status in local_statuses {
+            assert!(
+                !ApiTransService::should_query_chain_result(status),
+                "{status:?} should return local bill data"
+            );
+        }
     }
 
     #[test]
