@@ -2271,6 +2271,8 @@ impl ApiWithdrawDao {
                 audit_reason = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND audit_passed_at IS NULL
+              AND audit_rejected_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -2300,6 +2302,8 @@ impl ApiWithdrawDao {
                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND audit_passed_at IS NULL
+              AND audit_rejected_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)

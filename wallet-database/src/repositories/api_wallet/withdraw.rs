@@ -1541,6 +1541,36 @@ mod tests {
         repositories::test_helper::setup_api_transaction_pool,
     };
 
+    async fn seed_audit_withdraw(pool: &crate::ApiTransactionDbPool, trade_no: &str) {
+        ApiWithdrawRepo::upsert_api_withdraw(
+            pool,
+            "uid_audit",
+            "withdraw",
+            "FROM_AUDIT",
+            "TO_AUDIT",
+            "20",
+            "validate",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "TRX",
+            trade_no,
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+
     #[tokio::test]
     async fn withdraw_repo_upsert_and_get_success() {
         let pool = setup_api_transaction_pool("wallet_db_withdraw_success").await;
@@ -1591,6 +1621,92 @@ mod tests {
         let rows = ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].trade_no, trade_no);
+    }
+
+    #[tokio::test]
+    async fn withdraw_audit_decision_is_first_write_wins() {
+        let pool = setup_api_transaction_pool("wallet_db_withdraw_audit_first_write").await;
+
+        let pass_trade_no = "withdraw_audit_pass_first";
+        seed_audit_withdraw(&pool, pass_trade_no).await;
+
+        let rows = ApiWithdrawRepo::set_audit_passed(&pool, pass_trade_no).await.unwrap();
+        assert_eq!(rows, 1);
+
+        let passed = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            pass_trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        let audit_passed_at = passed.audit_passed_at;
+        assert!(audit_passed_at.is_some());
+        assert!(passed.audit_rejected_at.is_none());
+        assert!(passed.audit_reason.is_none());
+        assert_eq!(passed.status, ApiWithdrawStatus::AuditPass);
+
+        let repeat_rows = ApiWithdrawRepo::set_audit_passed(&pool, pass_trade_no).await.unwrap();
+        assert_eq!(repeat_rows, 0);
+
+        let reject_after_pass_rows =
+            ApiWithdrawRepo::set_audit_rejected(&pool, pass_trade_no, "late reject").await.unwrap();
+        assert_eq!(reject_after_pass_rows, 0);
+
+        let after_pass_conflict = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            pass_trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        assert_eq!(after_pass_conflict.audit_passed_at, audit_passed_at);
+        assert!(after_pass_conflict.audit_rejected_at.is_none());
+        assert!(after_pass_conflict.audit_reason.is_none());
+        assert_eq!(after_pass_conflict.status, ApiWithdrawStatus::AuditPass);
+
+        let reject_trade_no = "withdraw_audit_reject_first";
+        seed_audit_withdraw(&pool, reject_trade_no).await;
+
+        let rows = ApiWithdrawRepo::set_audit_rejected(&pool, reject_trade_no, "risk reject")
+            .await
+            .unwrap();
+        assert_eq!(rows, 1);
+
+        let rejected = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            reject_trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        let audit_rejected_at = rejected.audit_rejected_at;
+        assert!(rejected.audit_passed_at.is_none());
+        assert!(audit_rejected_at.is_some());
+        assert_eq!(rejected.audit_reason.as_deref(), Some("risk reject"));
+        assert_eq!(rejected.status, ApiWithdrawStatus::AuditReject);
+
+        let repeat_reject_rows =
+            ApiWithdrawRepo::set_audit_rejected(&pool, reject_trade_no, "new reason")
+                .await
+                .unwrap();
+        assert_eq!(repeat_reject_rows, 0);
+
+        let pass_after_reject_rows =
+            ApiWithdrawRepo::set_audit_passed(&pool, reject_trade_no).await.unwrap();
+        assert_eq!(pass_after_reject_rows, 0);
+
+        let after_reject_conflict = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            reject_trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        assert!(after_reject_conflict.audit_passed_at.is_none());
+        assert_eq!(after_reject_conflict.audit_rejected_at, audit_rejected_at);
+        assert_eq!(after_reject_conflict.audit_reason.as_deref(), Some("risk reject"));
+        assert_eq!(after_reject_conflict.status, ApiWithdrawStatus::AuditReject);
     }
 
     #[tokio::test]
