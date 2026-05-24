@@ -306,6 +306,14 @@ impl ShadowWithdrawWorker {
         required.saturating_sub(available.max(0) as u64)
     }
 
+    fn energy_delegation_shortfall_amount(
+        required_energy: u64,
+        available_energy: i64,
+    ) -> Option<String> {
+        let shortfall = Self::resource_shortfall(required_energy, available_energy);
+        if shortfall == 0 { None } else { Some(shortfall.to_string()) }
+    }
+
     pub fn new(
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
@@ -523,7 +531,30 @@ impl ShadowWithdrawWorker {
         available_energy: i64,
         available_bandwidth: i64,
     ) -> Result<(), ServiceError> {
-        let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
+        let Some(amount) =
+            Self::energy_delegation_shortfall_amount(required_energy, available_energy)
+        else {
+            let rows = ApiWithdrawRepo::mark_resource_released(
+                &self.pool,
+                origin_trade_no,
+                ApiResourceGateResult::FallbackAllowed,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+            if rows > 0 {
+                self.scanner.try_advance(origin_trade_no).await;
+            }
+            info!(
+                origin_trade_no = %origin_trade_no,
+                required_energy = %required_energy,
+                available_energy = %available_energy,
+                required_bandwidth = %required_bandwidth,
+                available_bandwidth = %available_bandwidth,
+                source = "shadow_withdraw_worker",
+                "TRON withdraw resource gate skipped ENERGY delegation because only bandwidth is short"
+            );
+            return Ok(());
+        };
         let resource_trade_no = match self
             .apply_platform_resource_delegation(
                 &req.uid,
@@ -2127,6 +2158,15 @@ mod tests {
 
         assert_eq!(amounts.resource_amount, 800.0);
         assert_eq!(amounts.native_token_amount, 2);
+    }
+
+    #[test]
+    fn withdraw_energy_delegation_amount_requires_real_energy_shortfall() {
+        assert_eq!(ShadowWithdrawWorker::energy_delegation_shortfall_amount(14650, 52769), None);
+        assert_eq!(
+            ShadowWithdrawWorker::energy_delegation_shortfall_amount(14650, 0),
+            Some("14650".to_string())
+        );
     }
 
     #[test]
