@@ -1,4 +1,5 @@
 use crate::{
+    application::api_wallet_withdraw::ApiWithdrawApplication,
     context::Context,
     domain::api_wallet::trans::withdraw::ApiWithdrawDomain,
     error::service::ServiceError,
@@ -7,14 +8,12 @@ use crate::{
 };
 use wallet_database::{
     entities::{
-        api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus,
         asset_token_key::AssetTokenKey,
     },
     pagination::Pagination,
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
-use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
 
 pub struct WithdrawService {
     ctx: &'static Context,
@@ -135,21 +134,11 @@ impl WithdrawService {
         }
     }
 
-    pub async fn sign_withdrawal_order(&self, order_id: &str) -> Result<(), ServiceError> {
-        let backend_api = self.ctx.get_global_backend_api();
-
-        let req = AuditResultReportReq::new(order_id.to_string(), true, "OK");
-        backend_api.report_audit_result(&req).await?;
-
-        ApiWithdrawDomain::sign_withdrawal_order(order_id).await
+    pub async fn sign_withdrawal_order(&self, trade_no: &str) -> Result<(), ServiceError> {
+        ApiWithdrawApplication::new(self.ctx).sign_withdrawal_order(trade_no).await
     }
 
-    pub async fn reject_withdrawal_order(&self, order_id: &str) -> Result<(), ServiceError> {
-        let backend_api = self.ctx.get_global_backend_api();
-
-        let req = AuditResultReportReq::new(order_id.to_string(), false, "user rejected");
-        backend_api.report_audit_result(&req).await?;
-
-        ApiWithdrawDomain::reject_withdrawal_order(order_id).await
+    pub async fn reject_withdrawal_order(&self, trade_no: &str) -> Result<(), ServiceError> {
+        ApiWithdrawApplication::new(self.ctx).reject_withdrawal_order(trade_no).await
     }
 }

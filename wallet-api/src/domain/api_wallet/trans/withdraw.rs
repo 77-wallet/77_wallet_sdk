@@ -35,6 +35,12 @@ fn is_row_not_found_db_error(err: &wallet_database::Error) -> bool {
 }
 
 impl ApiWithdrawDomain {
+    pub(crate) fn has_no_audit_decision(
+        entity: &wallet_database::entities::api_withdraw::ApiWithdrawEntity,
+    ) -> bool {
+        entity.audit_passed_at.is_none() && entity.audit_rejected_at.is_none()
+    }
+
     pub(crate) async fn withdraw(
         req: &ApiWithdrawReq,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -364,7 +370,80 @@ impl ApiWithdrawDomain {
 
 #[cfg(test)]
 mod tests {
-    use super::is_row_not_found_db_error;
+    use super::{ApiWithdrawDomain, is_row_not_found_db_error};
+    use chrono::Utc;
+    use wallet_database::entities::{
+        api_trade_type::ApiTradeType,
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        asset_token_key::AssetTokenKey,
+    };
+
+    fn make_entity(
+        audit_passed_at: Option<chrono::DateTime<Utc>>,
+        audit_rejected_at: Option<chrono::DateTime<Utc>>,
+    ) -> ApiWithdrawEntity {
+        let now = Utc::now();
+        ApiWithdrawEntity {
+            id: 0,
+            name: "test".to_string(),
+            uid: "test_uid".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "100".to_string(),
+            validate: "validate".to_string(),
+            chain_code: "TRX".to_string(),
+            token_addr: AssetTokenKey::Native,
+            symbol: "USDT".to_string(),
+            trade_no: "T2024000000000000001".to_string(),
+            out_order_id: None,
+            client_id: None,
+            create_time: None,
+            trade_type: ApiTradeType::Withdraw,
+            init_status: ApiWithdrawStatus::Init,
+            status: ApiWithdrawStatus::Init,
+            nonce: 0,
+            tx_hash: None,
+            raw_tx: None,
+            resource_consume: "0".to_string(),
+            transaction_fee: "0".to_string(),
+            estimated_transaction_fee: None,
+            estimated_resource_consume: None,
+            fee_estimated_at: None,
+            transaction_time: None,
+            block_height: None,
+            notes: None,
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: None,
+            resource_check_at: None,
+            resource_gate_released_at: None,
+            resource_gate_result: None,
+            resource_block_reason: None,
+            resource_dependency_trade_no: None,
+            resource_dependency_type: None,
+            tx_ack_sent_at: None,
+            building_at: None,
+            last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
+            tx_res_ack_sent_at: None,
+            tx_res_received_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+            audit_passed_at,
+            audit_rejected_at,
+            audit_reason: None,
+            chain_success_at: None,
+            chain_failed_at: None,
+            failure_stage: None,
+            created_at: now,
+            updated_at: None,
+        }
+    }
 
     #[test]
     fn withdraw_row_not_found_guard() {
@@ -375,5 +454,16 @@ mod tests {
 
         let other = wallet_database::Error::Database(wallet_database::DatabaseError::QueryFailed);
         assert!(!is_row_not_found_db_error(&other));
+    }
+
+    #[test]
+    fn withdraw_audit_report_gate_skips_existing_decisions() {
+        assert!(ApiWithdrawDomain::has_no_audit_decision(&make_entity(None, None)));
+        assert!(!ApiWithdrawDomain::has_no_audit_decision(&make_entity(Some(Utc::now()), None)));
+        assert!(!ApiWithdrawDomain::has_no_audit_decision(&make_entity(None, Some(Utc::now()))));
+        assert!(!ApiWithdrawDomain::has_no_audit_decision(&make_entity(
+            Some(Utc::now()),
+            Some(Utc::now())
+        )));
     }
 }

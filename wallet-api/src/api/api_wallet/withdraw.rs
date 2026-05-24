@@ -70,12 +70,12 @@ impl WalletManager {
             .await
     }
 
-    pub async fn sign_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new(self.ctx).sign_withdrawal_order(order_id).await
+    pub async fn sign_api_withdrawal_order(&self, trade_no: &str) -> ReturnType<()> {
+        WithdrawService::new(self.ctx).sign_withdrawal_order(trade_no).await
     }
 
-    pub async fn reject_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new(self.ctx).reject_withdrawal_order(order_id).await
+    pub async fn reject_api_withdrawal_order(&self, trade_no: &str) -> ReturnType<()> {
+        WithdrawService::new(self.ctx).reject_withdrawal_order(trade_no).await
     }
 }
 
@@ -92,9 +92,9 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
 
-        let order_id = "W2020535510761119744";
+        let trade_no = "W2020535510761119744";
 
-        let res = wallet_manager.reject_api_withdrawal_order(order_id).await;
+        let res = wallet_manager.reject_api_withdrawal_order(trade_no).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -130,8 +130,8 @@ mod test {
         let (wallet_manager, _test_params) = get_manager_with_config("client4.toml").await?;
         wallet_manager.init_api_swap().await?;
 
-        let order_id = "W2057777511428952064";
-        let res = wallet_manager.sign_api_withdrawal_order(order_id).await;
+        let trade_no = "W2057777511428952064";
+        let res = wallet_manager.sign_api_withdrawal_order(trade_no).await;
         tracing::info!("sign_api_withdrawal_order result: {:?}", res);
         Ok(())
     }
