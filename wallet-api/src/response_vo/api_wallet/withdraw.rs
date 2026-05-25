@@ -50,6 +50,9 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
+        let actual_resource = resource_consume_display(Some(&entity.resource_consume));
+        let estimated_resource =
+            resource_consume_display(entity.estimated_resource_consume.as_deref());
         Self {
             trade_no: entity.trade_no,
             chain_code: entity.chain_code,
@@ -131,6 +134,9 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
+        let actual_resource = resource_consume_display(Some(&entity.resource_consume));
+        let estimated_resource =
+            resource_consume_display(entity.estimated_resource_consume.as_deref());
         Self {
             trade_no: entity.trade_no,
             chain_code: entity.chain_code,
@@ -152,8 +158,14 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
             block_height: entity.block_height,
             bandwidth_consume: actual_resource.bandwidth,
             energy_consume: actual_resource.energy,
+            transaction_fee: entity.transaction_fee,
+            block_height: entity.block_height,
+            bandwidth_consume: actual_resource.bandwidth,
+            energy_consume: actual_resource.energy,
             estimated_transaction_fee: entity.estimated_transaction_fee,
             estimated_resource_consume: entity.estimated_resource_consume,
+            estimated_bandwidth_consume: estimated_resource.bandwidth,
+            estimated_energy_consume: estimated_resource.energy,
             estimated_bandwidth_consume: estimated_resource.bandwidth,
             estimated_energy_consume: estimated_resource.energy,
             fee_estimated_at: entity.fee_estimated_at,
