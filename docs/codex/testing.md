@@ -22,6 +22,16 @@
 - Integration：使用 fake/mock backend、fake/mock chain、本地临时数据和统一 fixture；必须断言返回值、DB、外部调用和副作用。
 - Smoke/Live：允许真实 backend/真实链路，但必须显式标记并手动运行，默认测试和 CI 主链不运行。
 
+## Directory Rules
+
+- 路径必须表达测试层级、业务模块、具体 flow；不要把多类测试混在一个大 `mod.rs`。
+- Unit / component 默认贴近被测代码；当一个模块超过 3 个测试或出现多个 flow 时，拆到同名目录下的 `*_tests.rs`。
+- Integration / smoke 统一放在 crate 的 `tests/` 下，
+  按 `integration/<module>/`、`smoke/<module>/` 拆分。
+- `tests/common/` 只放真正跨模块复用的 harness、fake、fixture、assertion；
+  禁止 `withdraw` 依赖 `collect` 私有 helper。
+- 新增测试优先用清晰文件名表达意图，例如 `confirm_tests.rs`、`resource_gate.rs`、`live_backend.rs`。
+
 ## Required Process
 
 1. 先确认改动边界与受影响 flow。
@@ -38,7 +48,8 @@
 - 标准集成测试显式使用 `--features integration-tests`。
 - 真实环境 smoke/live 测试必须使用独立 feature 或 `#[ignore]`。
 
-过渡期注意：当前 `wallet-api` default feature 仍包含 `integration-tests`，在拆分完成前不要把普通 `cargo test -p wallet-api` 视为纯单元测试。
+过渡期注意：当前 `wallet-api` default feature 仍包含 `integration-tests`。
+在拆分完成前，不要把普通 `cargo test -p wallet-api` 视为纯单元测试。
 
 ## Large-Repo Kickoff (Low Token)
 
