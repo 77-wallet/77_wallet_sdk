@@ -55,6 +55,9 @@ impl ServiceError {
 
     pub(crate) fn is_rpc_auth_unauthorized(&self) -> bool {
         match self {
+            ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(401, _)) => {
+                true
+            }
             ServiceError::ChainInteract(_)
             | ServiceError::Transport(_)
             | ServiceError::Utils(_)
@@ -96,6 +99,16 @@ mod tests {
         assert!(
             !ServiceError::Parameter("code=401 Unauthorized".into()).is_rpc_auth_unauthorized()
         );
+    }
+
+    #[test]
+    fn rpc_auth_unauthorized_matches_backend_401() {
+        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+            401,
+            Some("Unauthorized".to_string()),
+        ));
+
+        assert!(err.is_rpc_auth_unauthorized());
     }
 }
 

@@ -382,22 +382,8 @@ impl AwmOrderTransResMsg {
             )
             .await?;
 
-            if self.status {
-                if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
-                    ApiWithdrawRepo::mark_resource_released(
-                        api_transaction_pool,
-                        origin_trade_no,
-                        ApiResourceGateResult::PlatformDelegateSuccess,
-                    )
-                    .await?;
-                    tracing::info!(
-                        resource_trade_no = %self.trade_no,
-                        origin_trade_no = %origin_trade_no,
-                        "Withdraw resource gate released by platform delegation result"
-                    );
-
-                    self.trigger_withdraw_shadow(origin_trade_no).await;
-                }
+            if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
+                self.trigger_withdraw_shadow(origin_trade_no).await;
             }
 
             return Ok(());
@@ -426,17 +412,6 @@ impl AwmOrderTransResMsg {
         // Merchant wallet: the message trade number is the original withdraw
         // order, or a dependency that points back to it. Persist a projection
         // fact so the side-effect worker can ACK it as WD + TX_RSC_RES.
-        ApiWithdrawRepo::mark_resource_released(
-            api_transaction_pool,
-            &withdraw.trade_no,
-            if self.status {
-                ApiResourceGateResult::PlatformDelegateSuccess
-            } else {
-                ApiResourceGateResult::ResourceDelegationFailedBypass
-            },
-        )
-        .await?;
-
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
             api_transaction_pool,
             NewApiResourceDelegation::platform_delegate(

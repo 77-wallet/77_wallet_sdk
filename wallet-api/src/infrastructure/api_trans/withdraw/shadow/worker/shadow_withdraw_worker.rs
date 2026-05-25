@@ -1607,6 +1607,31 @@ impl ShadowWithdrawWorker {
         &self,
         delegation: &ApiResourceDelegationEntity,
     ) -> Result<String, ServiceError> {
+        let mut auth_retry_attempted = false;
+        loop {
+            match self.execute_tron_resource_delegation_once(delegation).await {
+                Ok(tx_hash) => return Ok(tx_hash),
+                Err(err)
+                    if !auth_retry_attempted
+                        && Self::should_retry_resource_delegation_after_rpc_auth_error(&err) =>
+                {
+                    auth_retry_attempted = true;
+                    Self::refresh_rpc_auth_for_resource_delegation(
+                        &delegation.chain_code,
+                        &delegation.resource_trade_no,
+                        &err,
+                    )
+                    .await?;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+    }
+
+    async fn execute_tron_resource_delegation_once(
+        &self,
+        delegation: &ApiResourceDelegationEntity,
+    ) -> Result<String, ServiceError> {
         if !delegation.chain_code.eq_ignore_ascii_case("tron") {
             return Err(ServiceError::Parameter(format!(
                 "resource delegation only supports tron, got {}",
@@ -1662,6 +1687,24 @@ impl ShadowWithdrawWorker {
         }
 
         Ok(tx_hash)
+    }
+
+    fn should_retry_resource_delegation_after_rpc_auth_error(err: &ServiceError) -> bool {
+        err.is_rpc_auth_unauthorized()
+    }
+
+    async fn refresh_rpc_auth_for_resource_delegation(
+        chain_code: &str,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        ApiTransDomain::refresh_rpc_auth_and_prepare_retry(
+            chain_code,
+            "withdraw_resource_delegation",
+            Some(resource_trade_no),
+            err,
+        )
+        .await
     }
 
     async fn sign_tron_resource_delegation(
@@ -2210,6 +2253,15 @@ mod tests {
             ShadowWithdrawWorker::platform_apply_outcome(true, Some("  ".to_string())),
             PlatformApplyOutcome::Rejected
         );
+    }
+
+    #[test]
+    fn withdraw_resource_delegation_retries_rpc_auth_unauthorized() {
+        let err = crate::error::service::ServiceError::TransportBackend(
+            wallet_transport_backend::Error::ApiBackend(401, Some("Unauthorized".to_string())),
+        );
+
+        assert!(ShadowWithdrawWorker::should_retry_resource_delegation_after_rpc_auth_error(&err));
     }
 
     #[test]

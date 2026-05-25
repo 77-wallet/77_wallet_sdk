@@ -374,7 +374,7 @@ impl ApiTransDomain {
         false
     }
 
-    async fn refresh_rpc_auth_and_prepare_retry(
+    pub(crate) async fn refresh_rpc_auth_and_prepare_retry(
         chain_code: &str,
         op: &str,
         rpc: Option<&str>,

@@ -4,7 +4,10 @@ use std::sync::Arc;
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
-    entities::{api_resource_gate::ApiResourceGateResult, api_trade_type::ApiTradeType},
+    entities::{
+        api_resource_delegation::ApiResourceDelegationResultStatus,
+        api_resource_gate::ApiResourceGateResult, api_trade_type::ApiTradeType,
+    },
     repositories::api_wallet::{
         resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
     },
@@ -462,16 +465,24 @@ impl SideEffectWorker {
     ) -> Result<(), ServiceError> {
         let release_result = match outcome {
             ResourceGateReleaseOutcome::Success(release_result) => {
-                if resource_task.err_code.is_some()
-                    || !matches!(resource_task.tx_status.as_deref(), Some("success"))
-                {
+                let success = if is_original_order_resource_result_fact(resource_task) {
+                    resource_task.result_status == Some(ApiResourceDelegationResultStatus::Success)
+                } else {
+                    resource_task.err_code.is_none()
+                        && matches!(resource_task.tx_status.as_deref(), Some("success"))
+                };
+                if !success {
                     return Ok(());
                 }
                 release_result
             }
             ResourceGateReleaseOutcome::FailureBypass(release_result) => {
-                let is_failure = resource_task.err_code.is_some()
-                    || matches!(resource_task.tx_status.as_deref(), Some("fail"));
+                let is_failure = if is_original_order_resource_result_fact(resource_task) {
+                    resource_task.result_status == Some(ApiResourceDelegationResultStatus::Fail)
+                } else {
+                    resource_task.err_code.is_some()
+                        || matches!(resource_task.tx_status.as_deref(), Some("fail"))
+                };
                 if !is_failure {
                     return Ok(());
                 }
@@ -705,10 +716,19 @@ fn tx_exec_receipt_upload_status(
 mod tests {
     use super::*;
     use chrono::Utc;
-    use wallet_database::entities::{
-        api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, WithdrawFailureStage},
-        asset_token_key::AssetTokenKey,
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+    use wallet_database::{
+        SqliteContext,
+        entities::{
+            api_resource_delegation::NewApiResourceDelegation,
+            api_trade_type::ApiTradeType,
+            api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, WithdrawFailureStage},
+            asset_token_key::AssetTokenKey,
+        },
+        repositories::api_wallet::{
+            resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
+        },
     };
 
     #[test]
@@ -814,5 +834,96 @@ mod tests {
             tx_exec_receipt_upload_status(&withdraw),
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         );
+    }
+
+    #[tokio::test]
+    async fn original_order_resource_success_releases_gate_after_ack_projection()
+    -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let db_root = dir.path().to_string_lossy().to_string();
+        let tx_pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+        let core_pool =
+            SqliteContext::new(&db_root, Some("api_wallet.db")).await?.into_api_wallet_db_pool()?;
+        let (intent_tx, _intent_rx) = mpsc::channel(8);
+        let scanner = Arc::new(ShadowScanner::new(
+            tx_pool.clone(),
+            crate::infrastructure::api_trans::withdraw::shadow::scanner::ScannerConfig::default(),
+            intent_tx,
+            None,
+        ));
+        let worker = SideEffectWorker::new(tx_pool.clone(), core_pool, scanner);
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &tx_pool,
+            "uid_1",
+            "withdraw",
+            "from_addr",
+            "to_addr",
+            "1",
+            "digest",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_rsc_ack_release",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await?;
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &tx_pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "W_rsc_ack_release",
+                "W_rsc_ack_release",
+                ApiTradeType::Withdraw as i64,
+                "",
+                "",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            Some(r#"{"tradeNo":"W_rsc_ack_release","status":true}"#),
+        )
+        .await?;
+        ApiResourceDelegationRepo::mark_result_ack_sent(&tx_pool, "W_rsc_ack_release").await?;
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&tx_pool, "W_rsc_ack_release")
+                .await?;
+        worker
+            .project_resource_task_outcome_to_withdraw_gate(
+                &resource_task,
+                ResourceGateReleaseOutcome::Success(
+                    ApiResourceGateResult::ResourceDelegationSuccess,
+                ),
+            )
+            .await?;
+
+        let withdraw = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &tx_pool,
+            "W_rsc_ack_release",
+            ApiTradeType::Withdraw,
+        )
+        .await?;
+        assert!(withdraw.resource_gate_released_at.is_some());
+        assert_eq!(
+            withdraw.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationSuccess)
+        );
+
+        Ok(())
     }
 }
