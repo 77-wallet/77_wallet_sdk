@@ -9,10 +9,18 @@
 
 - 测试改动必须遵循最小改动原则，不引入新的业务语义。
 - 测试必须默认离线可运行，不依赖真实 backend/真实网络。
+- 测试必须按 unit / component / integration / smoke-live 分层，不能把真实环境测试混入默认测试。
 - 每次功能改动必须新增或更新测试（至少覆盖一条成功路径）。
 - 每个关键 flow 必须至少有一条失败路径测试，并断言“不变性”。
 - 必须更新断言矩阵（涉及 flow 改动时）。
 - 仅运行受影响测试命令；非必要不跑全量。
+
+## Layer Rules
+
+- Unit：只测一个函数、规则或步骤；禁止真实网络、固定 `test_data`、`WalletManager::new()`、全局 `CONTEXT`。
+- Component：允许临时 SQLite + migration + 真实 repo/dao；禁止真实 backend/链 RPC；必须断言真实落库结果。
+- Integration：使用 fake/mock backend、fake/mock chain、本地临时数据和统一 fixture；必须断言返回值、DB、外部调用和副作用。
+- Smoke/Live：允许真实 backend/真实链路，但必须显式标记并手动运行，默认测试和 CI 主链不运行。
 
 ## Required Process
 
@@ -26,6 +34,11 @@
 
 - 优先运行最小验证集合（受影响 crate/test target）。
 - 若需要扩展验证，按风险逐步扩大范围。
+- 默认稳定测试优先使用 `cargo test --workspace --no-default-features`。
+- 标准集成测试显式使用 `--features integration-tests`。
+- 真实环境 smoke/live 测试必须使用独立 feature 或 `#[ignore]`。
+
+过渡期注意：当前 `wallet-api` default feature 仍包含 `integration-tests`，在拆分完成前不要把普通 `cargo test -p wallet-api` 视为纯单元测试。
 
 ## Large-Repo Kickoff (Low Token)
 
