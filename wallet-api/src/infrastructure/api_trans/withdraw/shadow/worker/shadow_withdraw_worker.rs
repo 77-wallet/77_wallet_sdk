@@ -62,6 +62,7 @@ use crate::{
                 ResourceDelegationSigner, new_tron_delegate_args, new_tron_undelegate_args,
                 resolve_resource_delegation_signer,
             },
+            resource_rpc_auth,
             withdraw::shadow::ShadowScanner,
         },
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
@@ -1613,11 +1614,12 @@ impl ShadowWithdrawWorker {
                 Ok(tx_hash) => return Ok(tx_hash),
                 Err(err)
                     if !auth_retry_attempted
-                        && Self::should_retry_resource_delegation_after_rpc_auth_error(&err) =>
+                        && resource_rpc_auth::should_retry_after_rpc_auth_error(&err) =>
                 {
                     auth_retry_attempted = true;
-                    Self::refresh_rpc_auth_for_resource_delegation(
+                    resource_rpc_auth::refresh_and_prepare_retry(
                         &delegation.chain_code,
+                        "withdraw_resource_delegation",
                         &delegation.resource_trade_no,
                         &err,
                     )
@@ -1687,24 +1689,6 @@ impl ShadowWithdrawWorker {
         }
 
         Ok(tx_hash)
-    }
-
-    fn should_retry_resource_delegation_after_rpc_auth_error(err: &ServiceError) -> bool {
-        err.is_rpc_auth_unauthorized()
-    }
-
-    async fn refresh_rpc_auth_for_resource_delegation(
-        chain_code: &str,
-        resource_trade_no: &str,
-        err: &ServiceError,
-    ) -> Result<(), ServiceError> {
-        ApiTransDomain::refresh_rpc_auth_and_prepare_retry(
-            chain_code,
-            "withdraw_resource_delegation",
-            Some(resource_trade_no),
-            err,
-        )
-        .await
     }
 
     async fn sign_tron_resource_delegation(
@@ -2261,7 +2245,11 @@ mod tests {
             wallet_transport_backend::Error::ApiBackend(401, Some("Unauthorized".to_string())),
         );
 
-        assert!(ShadowWithdrawWorker::should_retry_resource_delegation_after_rpc_auth_error(&err));
+        assert!(
+            crate::infrastructure::api_trans::resource_rpc_auth::should_retry_after_rpc_auth_error(
+                &err
+            )
+        );
     }
 
     #[test]

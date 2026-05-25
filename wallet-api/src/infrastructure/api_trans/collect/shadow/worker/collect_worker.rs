@@ -80,6 +80,7 @@ use crate::{
             ResourceDelegationSigner, new_tron_delegate_args, new_tron_undelegate_args,
             resolve_resource_delegation_signer,
         },
+        resource_rpc_auth,
     },
     request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
 };
@@ -648,6 +649,32 @@ impl ShadowCollectWorker {
     }
 
     async fn execute_tron_resource_delegation(
+        &self,
+        delegation: &ApiResourceDelegationEntity,
+    ) -> Result<String, ServiceError> {
+        let mut auth_retry_attempted = false;
+        loop {
+            match self.execute_tron_resource_delegation_once(delegation).await {
+                Ok(tx_hash) => return Ok(tx_hash),
+                Err(err)
+                    if !auth_retry_attempted
+                        && resource_rpc_auth::should_retry_after_rpc_auth_error(&err) =>
+                {
+                    auth_retry_attempted = true;
+                    resource_rpc_auth::refresh_and_prepare_retry(
+                        &delegation.chain_code,
+                        "collect_resource_delegation",
+                        &delegation.resource_trade_no,
+                        &err,
+                    )
+                    .await?;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+    }
+
+    async fn execute_tron_resource_delegation_once(
         &self,
         delegation: &ApiResourceDelegationEntity,
     ) -> Result<String, ServiceError> {
