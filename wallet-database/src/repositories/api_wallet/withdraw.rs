@@ -1259,7 +1259,8 @@ impl ApiWithdrawRepo {
             ApiWithdrawStatus::InitOrder => 0, // Pre-Flow
             ApiWithdrawStatus::Init
             | ApiWithdrawStatus::AuditPass
-            | ApiWithdrawStatus::SendingTx => 1, // Flow
+            | ApiWithdrawStatus::SendingTx
+            | ApiWithdrawStatus::SendingTxReport => 1, // Flow / legacy tx-report uploaded
             ApiWithdrawStatus::Success
             | ApiWithdrawStatus::Failure
             | ApiWithdrawStatus::AuditReject
@@ -1267,13 +1268,6 @@ impl ApiWithdrawRepo {
             ApiWithdrawStatus::SendingTxFailedReport
             | ApiWithdrawStatus::ConfirmFailureReport
             | ApiWithdrawStatus::ConfirmSuccessReport => 3, // Report
-            #[cfg(debug_assertions)]
-            _ => unreachable!("Unknown ApiWithdrawStatus: {:?}", status),
-            #[cfg(not(debug_assertions))]
-            _ => {
-                tracing::error!(status = ?status, "Unknown ApiWithdrawStatus detected in layer function");
-                u8::MAX
-            }
         };
 
         // 确保所有合法 layer < MAX_KNOWN_LAYER
@@ -1291,6 +1285,9 @@ impl ApiWithdrawRepo {
     /// 用于层内保护
     fn rank(status: ApiWithdrawStatus) -> u8 {
         match status {
+            // SendingTxReport is a legacy narrative status before final chain result.
+            // Keep it from falling back to weaker flow states, but allow result/report progress.
+            ApiWithdrawStatus::SendingTxReport => 1,
             // Result 层
             ApiWithdrawStatus::Failure => 1,
             ApiWithdrawStatus::AuditReject => 1, // AuditReject 与 Failure 同 rank，由 derive 负责语义
