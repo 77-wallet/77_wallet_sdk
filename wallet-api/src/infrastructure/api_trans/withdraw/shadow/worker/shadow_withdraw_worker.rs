@@ -572,6 +572,17 @@ impl ShadowWithdrawWorker {
             );
             return Ok(());
         };
+
+        info!(
+            origin_trade_no = %origin_trade_no,
+            required_energy = %required_energy,
+            available_energy = %available_energy,
+            energy_shortfall = %amount,
+            required_bandwidth = %required_bandwidth,
+            available_bandwidth = %available_bandwidth,
+            source = "shadow_withdraw_worker",
+            "TRON withdraw resource gate requires platform ENERGY delegation"
+        );
         let resource_trade_no = match self
             .apply_platform_resource_delegation(
                 &req.uid,
@@ -632,6 +643,16 @@ impl ShadowWithdrawWorker {
         let resource = adapter.account_resource(receiver_address).await?;
         let amounts = energy_shortfall_to_apply_amounts(amount, resource.energy_price())?;
         let (app_id, org_id) = self.resolve_resource_apply_identity(uid).await?;
+
+        info!(
+            origin_trade_no = %origin_trade_no,
+            receiver_address = %receiver_address,
+            energy_shortfall = %amounts.resource_amount,
+            energy_price = %resource.energy_price(),
+            native_token_amount = %amounts.native_token_amount,
+            source = "shadow_withdraw_worker",
+            "TRON withdraw platform resource delegation amount calculated"
+        );
 
         let req = ResourceApplyReq::new(
             origin_trade_no,
