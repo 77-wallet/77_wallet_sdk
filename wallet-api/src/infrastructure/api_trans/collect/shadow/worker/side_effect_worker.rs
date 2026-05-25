@@ -723,16 +723,24 @@ impl SideEffectWorker {
     ) -> Result<(), ServiceError> {
         let release_result = match outcome {
             ResourceGateReleaseOutcome::Success(release_result) => {
-                if resource_task.err_code.is_some()
-                    || !matches!(resource_task.tx_status.as_deref(), Some("success"))
-                {
+                let success = if is_original_order_resource_result_fact(resource_task) {
+                    resource_task.result_status == Some(ApiResourceDelegationResultStatus::Success)
+                } else {
+                    resource_task.err_code.is_none()
+                        && matches!(resource_task.tx_status.as_deref(), Some("success"))
+                };
+                if !success {
                     return Ok(());
                 }
                 release_result
             }
             ResourceGateReleaseOutcome::FailureBypass(release_result) => {
-                let is_failure = resource_task.err_code.is_some()
-                    || matches!(resource_task.tx_status.as_deref(), Some("fail"));
+                let is_failure = if is_original_order_resource_result_fact(resource_task) {
+                    resource_task.result_status == Some(ApiResourceDelegationResultStatus::Fail)
+                } else {
+                    resource_task.err_code.is_some()
+                        || matches!(resource_task.tx_status.as_deref(), Some("fail"))
+                };
                 if !is_failure {
                     return Ok(());
                 }
@@ -1561,7 +1569,7 @@ impl SideEffectWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::SideEffectWorker;
+    use super::*;
     use chrono::Utc;
     use rust_decimal::Decimal;
     use std::{str::FromStr, sync::Arc};
@@ -1596,6 +1604,82 @@ mod tests {
         assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(2), 300);
         assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(3), 600);
         assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(99), 600);
+    }
+
+    #[tokio::test]
+    async fn original_order_resource_success_releases_collect_gate_after_ack_projection()
+    -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let dir_path = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+        let wallet_pool = SqliteContext::new(&dir_path, Some("api_wallet.db"))
+            .await?
+            .into_api_wallet_db_pool()?;
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = SideEffectWorker::new(
+            pool.clone(),
+            wallet_pool,
+            Arc::new(ShadowAdvancer::new(pool.clone(), intent_tx, None)),
+        );
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid_1",
+            "collect",
+            "from_addr",
+            "to_addr",
+            "1",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            "C_rsc_ack_release",
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "C_rsc_ack_release",
+                "C_rsc_ack_release",
+                ApiTradeType::Collect as i64,
+                "",
+                "",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            Some(r#"{"tradeNo":"C_rsc_ack_release","status":true}"#),
+        )
+        .await?;
+        ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "C_rsc_ack_release").await?;
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "C_rsc_ack_release").await?;
+        worker
+            .project_resource_task_outcome_to_collect_gate(
+                &resource_task,
+                ResourceGateReleaseOutcome::Success(
+                    ApiResourceGateResult::ResourceDelegationSuccess,
+                ),
+            )
+            .await?;
+
+        let collect =
+            ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_rsc_ack_release").await?;
+        assert!(collect.resource_gate_released_at.is_some());
+        assert_eq!(
+            collect.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationSuccess)
+        );
+
+        Ok(())
     }
 
     fn make_coin(symbol: &str, token_address: AssetTokenKey, decimals: u8) -> ApiCoinEntity {
