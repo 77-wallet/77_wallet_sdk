@@ -567,7 +567,7 @@ impl ShadowWithdrawWorker {
                 required_bandwidth = %required_bandwidth,
                 available_bandwidth = %available_bandwidth,
                 source = "shadow_withdraw_worker",
-                "TRON withdraw resource gate skipped ENERGY delegation because only bandwidth is short"
+                "TRON withdraw resource gate skipped ENERGY delegation because local ENERGY is enough"
             );
             return Ok(());
         };
