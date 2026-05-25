@@ -36,7 +36,7 @@ use wallet_utils::RetryableError as _;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PlatformApplyOutcome {
-    Accepted(Option<String>),
+    Accepted(String),
     Rejected,
 }
 
@@ -314,6 +314,22 @@ impl ShadowWithdrawWorker {
         if shortfall == 0 { None } else { Some(shortfall.to_string()) }
     }
 
+    fn platform_apply_outcome(
+        is_success: bool,
+        dl_trade_no: Option<String>,
+    ) -> PlatformApplyOutcome {
+        if !is_success {
+            return PlatformApplyOutcome::Rejected;
+        }
+
+        match dl_trade_no {
+            Some(trade_no) if !trade_no.trim().is_empty() => {
+                PlatformApplyOutcome::Accepted(trade_no)
+            }
+            _ => PlatformApplyOutcome::Rejected,
+        }
+    }
+
     pub fn new(
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
@@ -584,7 +600,7 @@ impl ShadowWithdrawWorker {
             &self.pool,
             origin_trade_no,
             ApiResourceBlockReason::NeedPlatformDelegate,
-            resource_trade_no.as_deref(),
+            Some(resource_trade_no.as_str()),
             Some(ApiResourceDependencyType::PlatformDelegate),
         )
         .await
@@ -630,23 +646,34 @@ impl ShadowWithdrawWorker {
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let resp = backend_api.apply_resource_delegation(&req).await?;
+        let is_success = resp.is_success();
+        let outcome = Self::platform_apply_outcome(is_success, resp.dl_trade_no);
 
-        if resp.is_success() {
-            info!(
-                origin_trade_no = %origin_trade_no,
-                resource_trade_no = ?resp.dl_trade_no,
-                source = "shadow_withdraw_worker",
-                "Platform resource delegation apply succeeded"
-            );
-            Ok(PlatformApplyOutcome::Accepted(resp.dl_trade_no))
-        } else {
-            warn!(
-                origin_trade_no = %origin_trade_no,
-                source = "shadow_withdraw_worker",
-                "Platform resource delegation apply rejected, will proceed with main currency check"
-            );
-            Ok(PlatformApplyOutcome::Rejected)
+        match &outcome {
+            PlatformApplyOutcome::Accepted(resource_trade_no) => {
+                info!(
+                    origin_trade_no = %origin_trade_no,
+                    resource_trade_no = %resource_trade_no,
+                    source = "shadow_withdraw_worker",
+                    "Platform resource delegation apply succeeded"
+                );
+            }
+            PlatformApplyOutcome::Rejected if is_success => {
+                warn!(
+                    origin_trade_no = %origin_trade_no,
+                    source = "shadow_withdraw_worker",
+                    "Platform resource delegation apply succeeded without delegation trade no, will proceed with main currency check"
+                );
+            }
+            PlatformApplyOutcome::Rejected => {
+                warn!(
+                    origin_trade_no = %origin_trade_no,
+                    source = "shadow_withdraw_worker",
+                    "Platform resource delegation apply rejected, will proceed with main currency check"
+                );
+            }
         }
+        Ok(outcome)
     }
 
     async fn resolve_resource_apply_identity(
@@ -2012,7 +2039,7 @@ impl ShadowWithdrawWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::ShadowWithdrawWorker;
+    use super::{PlatformApplyOutcome, ShadowWithdrawWorker};
     use crate::{domain::api_wallet::adapter::tx::RawTx, error::system::SystemError};
     use chrono::Utc;
     use std::sync::Arc;
@@ -2166,6 +2193,22 @@ mod tests {
         assert_eq!(
             ShadowWithdrawWorker::energy_delegation_shortfall_amount(14650, 0),
             Some("14650".to_string())
+        );
+    }
+
+    #[test]
+    fn withdraw_platform_apply_success_requires_delegation_trade_no() {
+        assert_eq!(
+            ShadowWithdrawWorker::platform_apply_outcome(true, Some("DL_1".to_string())),
+            PlatformApplyOutcome::Accepted("DL_1".to_string())
+        );
+        assert_eq!(
+            ShadowWithdrawWorker::platform_apply_outcome(true, None),
+            PlatformApplyOutcome::Rejected
+        );
+        assert_eq!(
+            ShadowWithdrawWorker::platform_apply_outcome(true, Some("  ".to_string())),
+            PlatformApplyOutcome::Rejected
         );
     }
 
