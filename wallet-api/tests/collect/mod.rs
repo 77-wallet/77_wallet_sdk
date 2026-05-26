@@ -2619,46 +2619,6 @@ async fn collect_scanner_emits_tx_fee_res_ack_before_build_after_fee_result() {
     assert!(persisted_after.raw_tx.is_none());
 }
 
-#[tokio::test]
-async fn collect_scanner_emits_resource_receipt_upload_for_failed_delegation() {
-    let db = TestFundsDb::new().await;
-    let resource_trade_no = format!("RSC_FAIL_RECEIPT_SCAN_{}", next_unique_id());
-
-    sqlx::query(
-        r#"
-        INSERT INTO api_resource_delegation (
-            uid, source, operation_type, origin_trade_no, origin_trade_type,
-            resource_trade_no, chain_code, owner_address, receiver_address,
-            resource_type, native_amount, amount, status,
-            task_ack_sent_at, building_at, tx_status, err_code, err_msg,
-            created_at, updated_at
-        ) VALUES (
-            'uid', 1, 1, NULL, 2,
-            ?, 'tron', 'owner', 'receiver',
-            1, '2', '32000', 3,
-            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            'fail', 'ERR_6008', 'sdk internal error',
-            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        )
-        "#,
-    )
-    .bind(&resource_trade_no)
-    .execute(db.pool.as_ref())
-    .await
-    .expect("seed failed resource delegation row");
-
-    let labels = scan_collect_intent_labels_once(db.pool.clone())
-        .await
-        .expect("scanner round should succeed");
-
-    assert!(
-        labels.iter().any(|label| label == "UploadResourceTxExecReceipt"),
-        "failed resource delegation should emit UploadResourceTxExecReceipt"
-    );
-}
-
 #[serial]
 #[tokio::test]
 async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {

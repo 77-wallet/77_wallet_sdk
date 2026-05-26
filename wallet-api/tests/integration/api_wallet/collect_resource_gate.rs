@@ -1,8 +1,10 @@
 use crate::harness::{WorkerTestEnv, ensure_worker_env, next_unique_id, open_api_wallet_pool};
 use serial_test::serial;
 use sqlx;
+use tempfile::TempDir;
 use wallet_api::test::collect::{
-    send_resource_result_ack_via_worker, upload_resource_tx_exec_receipt_via_worker,
+    scan_collect_intent_labels_once, send_resource_result_ack_via_worker,
+    upload_resource_tx_exec_receipt_via_worker,
 };
 use wallet_database::{
     ApiTransactionDbPool, SqliteContext,
@@ -15,6 +17,23 @@ use wallet_database::{
     },
     repositories::api_wallet::collect::ApiCollectRepo,
 };
+
+struct LocalCollectDb {
+    _dir: TempDir,
+    pool: ApiTransactionDbPool,
+}
+
+impl LocalCollectDb {
+    async fn new() -> Self {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ctx =
+            SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_transaction.db"))
+                .await
+                .expect("init api_transaction.db");
+        let pool = ctx.into_transaction_db_pool().expect("transaction pool");
+        Self { _dir: dir, pool }
+    }
+}
 
 async fn open_collect_pool(env: &WorkerTestEnv) -> ApiTransactionDbPool {
     let collect_pool_ctx =
@@ -144,6 +163,46 @@ async fn seed_failed_resource_receipt_row(
     .execute(collect_pool.as_ref())
     .await
     .expect("seed failed collect delegation row");
+}
+
+#[tokio::test]
+async fn collect_scanner_emits_resource_receipt_upload_for_failed_delegation() {
+    let db = LocalCollectDb::new().await;
+    let resource_trade_no = format!("RSC_FAIL_RECEIPT_SCAN_{}", next_unique_id());
+
+    sqlx::query(
+        r#"
+        INSERT INTO api_resource_delegation (
+            uid, source, operation_type, origin_trade_no, origin_trade_type,
+            resource_trade_no, chain_code, owner_address, receiver_address,
+            resource_type, native_amount, amount, status,
+            task_ack_sent_at, building_at, tx_status, err_code, err_msg,
+            created_at, updated_at
+        ) VALUES (
+            'uid', 1, 1, NULL, 2,
+            ?, 'tron', 'owner', 'receiver',
+            1, '2', '32000', 3,
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            'fail', 'ERR_6008', 'sdk internal error',
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        )
+        "#,
+    )
+    .bind(&resource_trade_no)
+    .execute(db.pool.as_ref())
+    .await
+    .expect("seed failed resource delegation row");
+
+    let labels = scan_collect_intent_labels_once(db.pool.clone())
+        .await
+        .expect("scanner round should succeed");
+
+    assert!(
+        labels.iter().any(|label| label == "UploadResourceTxExecReceipt"),
+        "failed resource delegation should emit UploadResourceTxExecReceipt"
+    );
 }
 
 #[tokio::test]
