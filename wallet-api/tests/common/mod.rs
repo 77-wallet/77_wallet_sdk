@@ -43,6 +43,14 @@ pub const SMOKE_WALLET_PASSWORD: &str = "q1111111";
 const TEST_SN: &str = "smoke-test-sn";
 const TEST_DEVICE_TYPE: &str = "ANDROID";
 
+#[allow(dead_code)]
+pub(crate) mod worker_harness;
+
+#[allow(unused_imports)]
+pub(crate) use worker_harness::{
+    WorkerTestEnv, decrypt_captured_api_backend_body, ensure_worker_env, pop_request_with_retry,
+};
+
 static TEST_ENV: once_cell::sync::Lazy<tokio::sync::OnceCell<TestEnv>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::const_new);
 static UNIQUE_ID: AtomicU64 = AtomicU64::new(1);
@@ -538,6 +546,11 @@ async fn prepare_minimum_data(db_dir: &Path, sn: &str) {
 pub fn next_tag(prefix: &str) -> String {
     let id = UNIQUE_ID.fetch_add(1, Ordering::Relaxed);
     format!("{prefix}-{id}")
+}
+
+#[allow(dead_code)]
+pub fn next_unique_id() -> u64 {
+    UNIQUE_ID.fetch_add(1, Ordering::Relaxed)
 }
 
 fn next_eth_like_address() -> String {

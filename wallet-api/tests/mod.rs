@@ -14,7 +14,9 @@ mod chain;
 mod coin;
 mod collect;
 mod collect_fee;
+mod common;
 mod config;
+mod integration;
 mod layering_guard;
 mod mqtt;
 mod multisig_account;
@@ -24,7 +26,6 @@ mod phrase;
 mod stake;
 mod swap;
 mod transactions;
-mod withdraw;
 
 static TEST_LOG_INIT: Once = Once::new();
 

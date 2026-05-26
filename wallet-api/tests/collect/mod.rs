@@ -1,29 +1,24 @@
 #![cfg(feature = "integration-tests")]
 
-#[path = "../common/mod.rs"]
-mod common;
-
+use crate::common::{
+    SMOKE_WALLET_PASSWORD, WorkerTestEnv, decrypt_captured_api_backend_body, ensure_worker_env,
+    next_unique_id, open_api_wallet_pool, pop_request_with_retry, upsert_wallet,
+};
 use alloy::primitives::U256;
 use chrono::Utc;
-use common::{SMOKE_WALLET_PASSWORD, upsert_wallet};
 use serde_json::json;
 use serial_test::serial;
 use sqlx;
 use std::{
-    collections::VecDeque,
-    io::{self, Read, Write},
-    net::{Shutdown, TcpListener},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
-        Arc, Mutex,
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 use tempfile::TempDir;
-use tokio::sync::{OnceCell, mpsc};
+use tokio::sync::mpsc;
 use wallet_api::{
-    ApiWalletBackend,
-    dirs::Dirs,
     domain::{
         api_wallet::{RawTx, Tx},
         chain::adapter::sol_tx::TOKEN_ACCOUNT_RENT,
@@ -35,7 +30,6 @@ use wallet_api::{
     infrastructure::api_trans::{
         AddressLockManager, ShadowAdvancer, ShadowCollectCommand, ShadowCollectWorker,
     },
-    manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
     test::{
         collect::{
@@ -77,26 +71,9 @@ use wallet_database::{
         withdraw_strategy_chain_config::ApiWithdrawStrategyChainConfigRepo,
     },
 };
-use wallet_ecdh::GLOBAL_KEY;
-use wallet_transport_backend::{
-    request::{
-        KeysInitReq,
-        api_wallet::wallet::{
-            AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
-        },
-    },
-    response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
-};
 use wallet_types::chain::chain::ChainCode;
 
 const TEST_SN: &str = "collect-worker-test-sn";
-const TEST_DEVICE_TYPE: &str = "ANDROID";
-const TEST_PUB_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
-MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEWDZNP0ClbeWJey9hBr2rsjSayQEBywnv
-ZXi0RberQCAp+06fOjvr+jZI5qwYGglmMkGJw49tbni6qgm4QNV6WQ==
------END PUBLIC KEY-----"#;
-static WORKER_ENV: OnceCell<WorkerTestEnv> = OnceCell::const_new();
-pub(crate) static UNIQUE_ID: AtomicU64 = AtomicU64::new(1);
 
 struct TestFundsDb {
     _dir: TempDir,
@@ -112,122 +89,6 @@ impl TestFundsDb {
                 .expect("init api_transaction.db");
         let pool = ctx.into_transaction_db_pool().expect("transaction pool");
         Self { _dir: dir, pool }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct CapturedHttpRequest {
-    pub(crate) path: String,
-    pub(crate) body: String,
-}
-
-#[derive(Default)]
-struct MockBackendState {
-    requests: VecDeque<CapturedHttpRequest>,
-}
-
-#[derive(Clone, Default)]
-pub(crate) struct MockBackendRecorder {
-    state: Arc<Mutex<MockBackendState>>,
-}
-
-impl MockBackendRecorder {
-    fn push(&self, req: CapturedHttpRequest) {
-        let mut state = self.state.lock().expect("mock backend lock poisoned");
-        state.requests.push_back(req);
-    }
-
-    fn pop(&self) -> Option<CapturedHttpRequest> {
-        let mut state = self.state.lock().expect("mock backend lock poisoned");
-        state.requests.pop_front()
-    }
-
-    pub(crate) fn reset(&self) {
-        let mut state = self.state.lock().expect("mock backend lock poisoned");
-        state.requests.clear();
-    }
-
-    pub(crate) fn snapshot(&self) -> Vec<CapturedHttpRequest> {
-        let state = self.state.lock().expect("mock backend lock poisoned");
-        state.requests.iter().cloned().collect()
-    }
-}
-
-async fn pop_request_with_retry(recorder: &MockBackendRecorder) -> Option<CapturedHttpRequest> {
-    for _ in 0..20 {
-        if let Some(req) = recorder.pop() {
-            return Some(req);
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    }
-    None
-}
-
-#[derive(Default)]
-struct NoopApiWalletBackend;
-
-#[async_trait::async_trait]
-impl ApiWalletBackend for NoopApiWalletBackend {
-    async fn wallet_bind_appid(
-        &self,
-        _req: BindAppIdReq,
-    ) -> Result<(), wallet_api::error::service::ServiceError> {
-        Ok(())
-    }
-
-    async fn init_api_wallet(
-        &self,
-        _req: AppIdImportReq,
-    ) -> Result<(), wallet_api::error::service::ServiceError> {
-        Ok(())
-    }
-
-    async fn old_keys_init(
-        &self,
-        _req: KeysInitReq,
-    ) -> Result<(), wallet_api::error::service::ServiceError> {
-        Ok(())
-    }
-
-    async fn appid_import(
-        &self,
-        _req: AppIdImportReq,
-    ) -> Result<(), wallet_api::error::service::ServiceError> {
-        Ok(())
-    }
-
-    async fn appid_import_recharge_wallet(
-        &self,
-        _req: AppIdImportRechargeWalletReq,
-    ) -> Result<(), wallet_api::error::service::ServiceError> {
-        Ok(())
-    }
-
-    async fn keys_uid_check(
-        &self,
-        _uid: &str,
-    ) -> Result<KeysUidCheckRes, wallet_api::error::service::ServiceError> {
-        Err(wallet_api::error::service::ServiceError::System(
-            wallet_api::error::system::SystemError::Internal("noop".to_string()),
-        ))
-    }
-
-    async fn query_uid_bind_info(
-        &self,
-        _uid: &str,
-    ) -> Result<QueryUidBindInfoRes, wallet_api::error::service::ServiceError> {
-        Err(wallet_api::error::service::ServiceError::System(
-            wallet_api::error::system::SystemError::Internal("noop".to_string()),
-        ))
-    }
-
-    async fn appid_uid_usage(
-        &self,
-        _req: AppIdUidUsageReq,
-    ) -> Result<AppIdUidUsageRes, wallet_api::error::service::ServiceError> {
-        Err(wallet_api::error::service::ServiceError::System(
-            wallet_api::error::system::SystemError::Internal("noop".to_string()),
-        ))
     }
 }
 
@@ -865,7 +726,7 @@ async fn seed_wallet(
     wallet_type: ApiWalletType,
 ) -> String {
     let pool = open_api_wallet_pool(db_dir).await;
-    let address = format!("0xwallet{:016x}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let address = format!("0xwallet{:016x}", next_unique_id());
     let seed_enc = wallet_api::test::seed::encrypt_seed(SMOKE_WALLET_PASSWORD, b"seed").await;
     ApiWalletRepo::upsert(
         &pool,
@@ -884,180 +745,9 @@ async fn seed_wallet(
     address
 }
 
-pub(crate) struct WorkerTestEnv {
-    _manager: WalletManager,
-    pub(crate) backend_url: String,
-    pub(crate) db_dir: PathBuf,
-    pub(crate) recorder: MockBackendRecorder,
-}
-
-fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)> {
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    let addr = listener.local_addr()?;
-    let recorder = MockBackendRecorder::default();
-    let recorder_clone = recorder.clone();
-
-    std::thread::spawn(move || {
-        loop {
-            let Ok((mut stream, _)) = listener.accept() else {
-                break;
-            };
-            let recorder = recorder_clone.clone();
-            std::thread::spawn(move || {
-                let mut header_buf = Vec::new();
-                let mut temp = [0u8; 1024];
-                let header_end;
-                loop {
-                    let n = match stream.read(&mut temp) {
-                        Ok(0) => return,
-                        Ok(n) => n,
-                        Err(_) => return,
-                    };
-                    header_buf.extend_from_slice(&temp[..n]);
-                    if let Some(pos) = header_buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                        header_end = pos + 4;
-                        break;
-                    }
-                }
-
-                let header_text = String::from_utf8_lossy(&header_buf[..header_end]);
-                let path = header_text
-                    .lines()
-                    .next()
-                    .and_then(|line| line.split_whitespace().nth(1))
-                    .unwrap_or_default()
-                    .to_string();
-                let content_length = header_text
-                    .lines()
-                    .find_map(|line| {
-                        let lower = line.to_ascii_lowercase();
-                        lower
-                            .strip_prefix("content-length:")
-                            .and_then(|v| v.trim().parse::<usize>().ok())
-                    })
-                    .unwrap_or(0);
-
-                let mut body = header_buf[header_end..].to_vec();
-                while body.len() < content_length {
-                    let n = match stream.read(&mut temp) {
-                        Ok(0) => break,
-                        Ok(n) => n,
-                        Err(_) => return,
-                    };
-                    body.extend_from_slice(&temp[..n]);
-                }
-
-                recorder.push(CapturedHttpRequest {
-                    path,
-                    body: String::from_utf8_lossy(&body).to_string(),
-                });
-
-                let response_body = r#"{"success":true,"code":"200","msg":"ok","data":null}"#;
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
-                    response_body.len(),
-                    response_body
-                );
-                let _ = stream.write_all(response.as_bytes());
-                let _ = stream.flush();
-                let _ = stream.shutdown(Shutdown::Both);
-            });
-        }
-    });
-
-    Ok((format!("http://{}", addr), recorder))
-}
-
-fn create_test_root_dir() -> PathBuf {
-    let pid = std::process::id();
-    let id = UNIQUE_ID.fetch_add(1, Ordering::Relaxed);
-    let root = std::env::temp_dir().join(format!("wallet_api_collect_worker_{pid}_{id}"));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).expect("create test root");
-    root
-}
-
-pub(crate) async fn open_api_wallet_pool(db_dir: &Path) -> ApiWalletDbPool {
-    let sqlite = SqliteContext::new(&db_dir.to_string_lossy(), Some("api_wallet.db"))
-        .await
-        .expect("open api wallet sqlite");
-    let pool = sqlite.get_pool().expect("api wallet db pool");
-    ApiWalletDbPool::new(pool)
-}
-
-pub(crate) async fn ensure_worker_env() -> &'static WorkerTestEnv {
-    WORKER_ENV
-        .get_or_init(|| async {
-            let (backend_url, recorder) =
-                start_mock_backend_server().expect("start mock backend server");
-            // Match wallet-api test env setup and disable system proxy resolution for reqwest.
-            unsafe {
-                std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
-            }
-            let config = wallet_api::config::Config::new(&format!(
-                r#"
-app_code: "test"
-crypto:
-  aes_key: "1234567890abcdef"
-  aes_iv: "abcdef1234567890"
-backend_api:
-  dev_url: "{backend_url}"
-  test_url: "{backend_url}"
-  prod_url: "{backend_url}"
-aggregate_api:
-  dev_url: "{backend_url}"
-  test_url: "{backend_url}"
-  prod_url: "{backend_url}"
-oss:
-  access_key_id: "id"
-  access_key_secret: "secret"
-  bucket_name: "bucket"
-  endpoint: "oss-endpoint"
-"#
-            ))
-            .expect("parse test config");
-
-            let root = create_test_root_dir();
-            let dirs = Dirs::new(root.to_str().expect("utf8 root dir")).expect("create dirs");
-            GLOBAL_KEY.set_shared_secret(TEST_PUB_KEY).expect("set shared secret");
-            let manager = WalletManager::new_for_test(
-                TEST_SN,
-                TEST_DEVICE_TYPE,
-                config,
-                dirs.clone(),
-                Arc::new(NoopApiWalletBackend),
-            )
-            .await
-            .expect("create wallet manager");
-            wallet_api::infrastructure::system_ready::mark_system_ready();
-
-            WorkerTestEnv { _manager: manager, backend_url, db_dir: dirs.db_dir.clone(), recorder }
-        })
-        .await
-}
-
 async fn current_backend_url() -> Option<String> {
     let app_state = wallet_api::app_state::APP_STATE.read().await;
     app_state.url().backend.clone()
-}
-
-pub(crate) fn decrypt_captured_api_backend_body(body: &str) -> serde_json::Value {
-    #[derive(serde::Deserialize)]
-    struct CapturedApiBackendBody {
-        key: String,
-        data: String,
-    }
-    #[derive(serde::Deserialize)]
-    struct CapturedApiBackendRequest {
-        body: CapturedApiBackendBody,
-    }
-
-    let req: CapturedApiBackendRequest =
-        serde_json::from_str(body).expect("deserialize captured backend request");
-    let key = wallet_utils::base64_to_bytes(&req.body.key).expect("decode encrypted key");
-    let data = wallet_utils::base64_to_bytes(&req.body.data).expect("decode encrypted data");
-    let plain = GLOBAL_KEY.decrypt(&data, &key).expect("decrypt backend body");
-    serde_json::from_slice(&plain).expect("deserialize decrypted payload")
 }
 
 #[tokio::test]
@@ -1141,10 +831,7 @@ async fn collect_recover_queries_chain_before_any_expired_raw_rebuild_invalidati
             .await
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let trade_no = format!(
-        "C_collect_recover_expired_raw_probe_{}",
-        UNIQUE_ID.fetch_add(1, Ordering::Relaxed)
-    );
+    let trade_no = format!("C_collect_recover_expired_raw_probe_{}", next_unique_id());
     let tx_hash = "6f2f3e7f5dbe46e7b8ff8d3c9b62df9b2b7b6f3e3c9d4a1d2f5d8e9f0a1b2c3d4";
     let query_count = Arc::new(AtomicUsize::new(0));
     let _adapter_guard = install_collect_tron_recover_probe_adapter(
@@ -1228,8 +915,7 @@ async fn collect_recover_backfills_missing_tx_hash_before_receipt_upload() {
             .await
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let trade_no =
-        format!("C_collect_recover_backfill_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("C_collect_recover_backfill_{}", next_unique_id());
     let tx_hash = "6f2f3e7f5dbe46e7b8ff8d3c9b62df9b2b7b6f3e3c9d4a1d2f5d8e9f0a1b2c3d5";
 
     ApiCollectRepo::upsert_api_collect(
@@ -1483,8 +1169,7 @@ async fn collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
-    let trade_no =
-        format!("T_collect_worker_receipt_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_worker_receipt_{}", next_unique_id());
 
     ApiCollectRepo::upsert_api_collect(
         &collect_pool,
@@ -1572,7 +1257,7 @@ async fn collect_backend_api_direct_upload_hits_mock_server() {
     let env = ensure_worker_env().await;
     env.recorder.reset();
     let req = ApiCollectEntity {
-        trade_no: format!("T_collect_direct_backend_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed)),
+        trade_no: format!("T_collect_direct_backend_{}", next_unique_id()),
         tx_hash: Some("direct-hash".to_string()),
         to_addr: "direct-to".to_string(),
         from_addr: "direct-from".to_string(),
@@ -1605,8 +1290,8 @@ async fn collect_notification_retry_on_existing_trade_no() {
     let env = ensure_worker_env().await;
     env.recorder.reset();
 
-    let uid = format!("uid_collect_notify_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let trade_no = format!("T_collect_notify_retry_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let uid = format!("uid_collect_notify_{}", next_unique_id());
+    let trade_no = format!("T_collect_notify_retry_{}", next_unique_id());
     let _wallet_addr =
         seed_wallet(&env.db_dir, &uid, "collect-notify-wallet", ApiWalletType::SubAccount).await;
 
@@ -1681,8 +1366,8 @@ async fn withdraw_notification_retry_on_existing_trade_no() {
     let env = ensure_worker_env().await;
     env.recorder.reset();
 
-    let uid = format!("uid_withdraw_notify_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let trade_no = format!("T_withdraw_notify_retry_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let uid = format!("uid_withdraw_notify_{}", next_unique_id());
+    let trade_no = format!("T_withdraw_notify_retry_{}", next_unique_id());
     let _wallet_addr =
         seed_wallet(&env.db_dir, &uid, "withdraw-notify-wallet", ApiWalletType::Withdrawal).await;
 
@@ -1790,8 +1475,8 @@ async fn withdraw_single_tx_ack_request() {
     let env = ensure_worker_env().await;
     env.recorder.reset();
 
-    let uid = format!("uid_withdraw_ack_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let trade_no = format!("T_withdraw_ack_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let uid = format!("uid_withdraw_ack_{}", next_unique_id());
+    let trade_no = format!("T_withdraw_ack_{}", next_unique_id());
     let _wallet_addr =
         seed_wallet(&env.db_dir, &uid, "withdraw-ack-wallet", ApiWalletType::Withdrawal).await;
 
@@ -1877,7 +1562,7 @@ async fn collect_sol_native_fee_check_fails_on_uninitialized_recipient() {
             .await
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let trade_no = format!("T_collect_sol_rent_fail_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_sol_rent_fail_{}", next_unique_id());
     let req = seed_collect_order(
         &collect_pool,
         &trade_no,
@@ -1910,7 +1595,7 @@ async fn collect_sol_native_fee_check_allows_initialized_recipient() {
             .await
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let trade_no = format!("T_collect_sol_rent_ok_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_sol_rent_ok_{}", next_unique_id());
     let req = seed_collect_order(
         &collect_pool,
         &trade_no,
@@ -1942,8 +1627,7 @@ async fn collect_eth_native_fee_check_with_partial_oracle_fallback() {
             .await
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let trade_no =
-        format!("T_collect_eth_partial_oracle_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_eth_partial_oracle_{}", next_unique_id());
     let req = seed_eth_collect_order(
         &collect_pool,
         &trade_no,
@@ -1976,8 +1660,7 @@ async fn collect_eth_native_fee_check_fails_on_insufficient_balance() {
             .await
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let trade_no =
-        format!("T_collect_eth_insufficient_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_eth_insufficient_{}", next_unique_id());
     let req = seed_eth_collect_order(
         &collect_pool,
         &trade_no,
@@ -2010,7 +1693,7 @@ async fn collect_build_fee_estimation_shortage_reopens_fee_cycle() {
             .await
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let trade_no = format!("T_collect_fee_shortage_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_fee_shortage_{}", next_unique_id());
     let req = seed_collect_order(
         &collect_pool,
         &trade_no,
@@ -2076,10 +1759,9 @@ async fn collect_service_fee_upload_bypasses_local_sol_fee_gate() {
     .await
     .expect("seed sol usdc coin");
 
-    let trade_no =
-        format!("T_collect_service_fee_upload_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let collect_uid = format!("collect-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let withdrawal_uid = format!("withdraw-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_service_fee_upload_{}", next_unique_id());
+    let collect_uid = format!("collect-uid-{}", next_unique_id());
+    let withdrawal_uid = format!("withdraw-uid-{}", next_unique_id());
     let from_addr = "DLcQZyqoL7ghnENR4mboeuivCNAKXBWJ8RKQA9aK3ZW8";
     let to_addr = "72vgdLcQgdudUiGXudHNPhgCPNPCdxj2ijAGuXTQ5ppB";
 
@@ -2251,10 +1933,9 @@ async fn collect_service_fee_upload_includes_solana_recipient_ata_rent_when_miss
     .await
     .expect("seed sol usdc coin");
 
-    let trade_no =
-        format!("T_collect_service_fee_upload_ata_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let collect_uid = format!("collect-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let withdrawal_uid = format!("withdraw-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_service_fee_upload_ata_{}", next_unique_id());
+    let collect_uid = format!("collect-uid-{}", next_unique_id());
+    let withdrawal_uid = format!("withdraw-uid-{}", next_unique_id());
     let from_addr = "DLcQZyqoL7ghnENR4mboeuivCNAKXBWJ8RKQA9aK3ZW8";
     let to_addr = "72vgdLcQgdudUiGXudHNPhgCPNPCdxj2ijAGuXTQ5ppB";
 
@@ -2400,10 +2081,9 @@ async fn collect_eth_service_fee_upload_uses_estimated_fee_without_multiplier() 
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
     ensure_eth_main_coin(&core_pool).await;
 
-    let trade_no =
-        format!("T_collect_eth_fee_upload_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let collect_uid = format!("collect-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let withdrawal_uid = format!("withdraw-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_eth_fee_upload_{}", next_unique_id());
+    let collect_uid = format!("collect-uid-{}", next_unique_id());
+    let withdrawal_uid = format!("withdraw-uid-{}", next_unique_id());
     let from_addr = "0xFCa230313618af2a33fa00455D8A5d1466C91332";
     let to_addr = "0x477000C778C66FaAA36596Fb846Ce34C89bc652D";
 
@@ -2533,8 +2213,7 @@ async fn collect_build_fee_failure_reopens_fee_cycle_on_first_insufficient_balan
             .await
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let trade_no =
-        format!("T_collect_fee_reopen_initial_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_fee_reopen_initial_{}", next_unique_id());
     let req = seed_collect_order(
         &collect_pool,
         &trade_no,
@@ -2574,8 +2253,7 @@ async fn collect_build_fee_failure_preserves_completed_fee_cycle_facts() {
             .await
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let trade_no =
-        format!("T_collect_fee_reopen_rebuild_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_fee_reopen_rebuild_{}", next_unique_id());
     seed_collect_order(&collect_pool, &trade_no, "3m2vk1NSfKJK444bCLFCtigFyeHP4cHgvLrtjCJr7nrW")
         .await;
 
@@ -2627,7 +2305,7 @@ async fn collect_build_fee_failure_preserves_completed_fee_cycle_facts() {
 #[tokio::test]
 async fn collect_scanner_skips_stale_fee_cycle_rows() {
     let db = TestFundsDb::new().await;
-    let trade_no = format!("T_collect_scanner_stale_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_scanner_stale_{}", next_unique_id());
 
     ApiCollectRepo::upsert_api_collect(
         &db.pool,
@@ -2689,7 +2367,7 @@ async fn collect_scanner_skips_stale_fee_cycle_rows() {
 #[tokio::test]
 async fn collect_scanner_emits_upload_service_fee_when_need_service_fee_is_true() {
     let db = TestFundsDb::new().await;
-    let trade_no = format!("T_collect_wait_fee_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_wait_fee_{}", next_unique_id());
 
     ApiCollectRepo::upsert_api_collect(
         &db.pool,
@@ -2760,7 +2438,7 @@ async fn collect_scanner_emits_upload_service_fee_when_need_service_fee_is_true(
 #[tokio::test]
 async fn collect_scanner_builds_after_fee_cycle_reopen_without_service_fee_upload() {
     let db = TestFundsDb::new().await;
-    let trade_no = format!("T_collect_reopen_build_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_reopen_build_{}", next_unique_id());
 
     ApiCollectRepo::upsert_api_collect(
         &db.pool,
@@ -2833,7 +2511,7 @@ async fn collect_scanner_builds_after_fee_cycle_reopen_without_service_fee_uploa
 #[tokio::test]
 async fn collect_scanner_recovers_broadcast_visible_pending_result() {
     let db = TestFundsDb::new().await;
-    let trade_no = format!("T_collect_recover_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_recover_{}", next_unique_id());
 
     ApiCollectRepo::upsert_api_collect(
         &db.pool,
@@ -2897,7 +2575,7 @@ async fn collect_scanner_recovers_broadcast_visible_pending_result() {
 #[tokio::test]
 async fn collect_scanner_emits_tx_fee_res_ack_before_build_after_fee_result() {
     let db = TestFundsDb::new().await;
-    let trade_no = format!("T_collect_fee_ack_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_fee_ack_{}", next_unique_id());
 
     seed_collect_order(&db.pool, &trade_no, "to-fee-ack").await;
 
@@ -2948,8 +2626,7 @@ async fn collect_scanner_emits_tx_fee_res_ack_before_build_after_fee_result() {
 #[tokio::test]
 async fn collect_scanner_emits_resource_receipt_upload_for_failed_delegation() {
     let db = TestFundsDb::new().await;
-    let resource_trade_no =
-        format!("RSC_FAIL_RECEIPT_SCAN_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let resource_trade_no = format!("RSC_FAIL_RECEIPT_SCAN_{}", next_unique_id());
 
     sqlx::query(
         r#"
@@ -2999,7 +2676,7 @@ async fn collect_resource_result_ack_releases_origin_collect_gate() {
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let trade_no = format!("C_RSC_RELEASE_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("C_RSC_RELEASE_{}", next_unique_id());
     ApiCollectRepo::upsert_api_collect(
         &collect_pool,
         "uid",
@@ -3094,7 +2771,7 @@ async fn collect_resource_result_ack_does_not_release_gate_on_failure() {
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let trade_no = format!("C_RSC_FAIL_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("C_RSC_FAIL_{}", next_unique_id());
     ApiCollectRepo::upsert_api_collect(
         &collect_pool,
         "uid",
@@ -3179,7 +2856,7 @@ async fn withdraw_origin_resource_result_ack_does_not_release_collect_gate() {
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let trade_no = format!("C_WD_ORIGIN_SKIP_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("C_WD_ORIGIN_SKIP_{}", next_unique_id());
     ApiCollectRepo::upsert_api_collect(
         &collect_pool,
         "uid",
@@ -3263,7 +2940,7 @@ async fn collect_failed_resource_bypass_reopens_collect_build_flow() {
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let trade_no = format!("C_RSC_FAIL_BYPASS_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("C_RSC_FAIL_BYPASS_{}", next_unique_id());
     ApiCollectRepo::upsert_api_collect(
         &collect_pool,
         "uid",
@@ -3371,7 +3048,7 @@ async fn collect_resource_tx_exec_receipt_failure_without_origin_trade_no_does_n
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let trade_no = format!("C_RSC_NO_ORIGIN_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("C_RSC_NO_ORIGIN_{}", next_unique_id());
     ApiCollectRepo::upsert_api_collect(
         &collect_pool,
         "uid",
@@ -3454,7 +3131,7 @@ async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
             .expect("open api transaction sqlite");
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
-    let trade_no = format!("T_collect_scan_dispatch_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_scan_dispatch_{}", next_unique_id());
 
     ApiCollectRepo::upsert_api_collect(
         &collect_pool,

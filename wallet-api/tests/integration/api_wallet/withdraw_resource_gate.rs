@@ -1,6 +1,5 @@
 use serial_test::serial;
 use sqlx;
-use std::sync::atomic::Ordering;
 use wallet_api::test::withdraw::{
     scan_withdraw_intent_labels_once,
     send_resource_result_ack_via_worker as send_withdraw_resource_result_ack_via_worker,
@@ -18,8 +17,8 @@ use wallet_database::{
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 
-use crate::collect::{
-    UNIQUE_ID, decrypt_captured_api_backend_body, ensure_worker_env, open_api_wallet_pool,
+use crate::common::{
+    decrypt_captured_api_backend_body, ensure_worker_env, next_unique_id, open_api_wallet_pool,
 };
 
 #[serial]
@@ -34,7 +33,7 @@ async fn withdraw_resource_result_ack_uses_wd_rsc_dl_type() {
     let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let resource_trade_no = format!("RSC_WD_ACK_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let resource_trade_no = format!("RSC_WD_ACK_{}", next_unique_id());
     sqlx::query(
         r#"
         INSERT INTO api_resource_delegation (
@@ -81,7 +80,20 @@ async fn withdraw_resource_result_ack_uses_wd_rsc_dl_type() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     };
 
-    assert!(matched, "withdraw resource result ack must use WD_RSC_DL");
+    let captured_requests = env.recorder.snapshot();
+    let decoded_event_acks: Vec<_> = captured_requests
+        .iter()
+        .filter(|req| {
+            req.path
+                .contains(wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK)
+        })
+        .map(|req| decrypt_captured_api_backend_body(&req.body))
+        .collect();
+    assert!(
+        matched,
+        "withdraw resource result ack must use WD_RSC_DL; decoded event ack payloads: {:?}; captured requests: {:?}",
+        decoded_event_acks, captured_requests
+    );
 }
 
 #[serial]
@@ -96,7 +108,7 @@ async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
     let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let trade_no = format!("W_RSC_RELEASE_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("W_RSC_RELEASE_{}", next_unique_id());
     ApiWithdrawRepo::upsert_api_withdraw(
         &tx_pool,
         "uid",
@@ -203,7 +215,7 @@ async fn withdraw_failed_resource_bypass_reopens_withdraw_build_flow() {
     let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let trade_no = format!("W_RSC_FAIL_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("W_RSC_FAIL_{}", next_unique_id());
     ApiWithdrawRepo::upsert_api_withdraw(
         &tx_pool,
         "uid",
@@ -323,7 +335,7 @@ async fn withdraw_resource_result_ack_without_origin_trade_no_does_not_release_g
     let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let trade_no = format!("W_RSC_NO_ORIGIN_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("W_RSC_NO_ORIGIN_{}", next_unique_id());
     ApiWithdrawRepo::upsert_api_withdraw(
         &tx_pool,
         "uid",
@@ -419,7 +431,7 @@ async fn withdraw_resource_result_ack_for_collect_origin_does_not_release_withdr
     let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-    let trade_no = format!("W_RSC_WRONG_ORIGIN_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("W_RSC_WRONG_ORIGIN_{}", next_unique_id());
     ApiWithdrawRepo::upsert_api_withdraw(
         &tx_pool,
         "uid",
