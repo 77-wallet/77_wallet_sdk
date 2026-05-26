@@ -91,6 +91,82 @@ impl ResourceOperationScanner {
         Self { pool, config }
     }
 
+    pub async fn try_advance(&self, resource_trade_no: &str) -> Vec<ResourceOperationIntent> {
+        match ApiResourceOperationRepo::get_by_resource_trade_no(&self.pool, resource_trade_no)
+            .await
+        {
+            Ok(record) => self.intents_for_record(&record),
+            Err(e) => {
+                warn!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %e,
+                    "Failed to load resource operation for targeted shadow wakeup"
+                );
+                Vec::new()
+            }
+        }
+    }
+
+    fn intents_for_record(
+        &self,
+        record: &ApiResourceOperationEntity,
+    ) -> Vec<ResourceOperationIntent> {
+        use wallet_database::entities::api_resource_operation::ApiResourceOperationTaskSource;
+
+        if record.task_source != ApiResourceOperationTaskSource::Backend {
+            return Vec::new();
+        }
+
+        let mut intents = Vec::new();
+        let resource_trade_no = record.resource_trade_no.clone();
+
+        if record.task_ack_sent_at.is_none() {
+            intents.push(ResourceOperationIntent::SendTaskAck(resource_trade_no.clone()));
+        }
+
+        if record.task_ack_sent_at.is_some()
+            && record.building_at.is_none()
+            && record.raw_tx.is_none()
+            && record.err_code.is_none()
+        {
+            intents.push(ResourceOperationIntent::ClaimBuildSlot(resource_trade_no.clone()));
+        }
+
+        if Self::has_text(record.raw_tx.as_deref())
+            && Self::has_text(record.tx_hash.as_deref())
+            && record.last_broadcast_at.is_none()
+            && record.err_code.is_none()
+        {
+            intents.push(ResourceOperationIntent::BroadcastTx(resource_trade_no.clone()));
+        }
+
+        if Self::has_text(record.tx_hash.as_deref())
+            && Self::has_text(record.raw_tx.as_deref())
+            && record.last_broadcast_at.is_some()
+            && record.transaction_time.is_none()
+            && record.tx_exec_receipt_uploaded_at.is_none()
+            && record.err_code.is_none()
+        {
+            intents.push(ResourceOperationIntent::RecoverTx(resource_trade_no.clone()));
+        }
+
+        if record.tx_exec_receipt_uploaded_at.is_none()
+            && (record.transaction_time.is_some() || record.err_code.is_some())
+        {
+            intents.push(ResourceOperationIntent::UploadTxExecReceipt(resource_trade_no.clone()));
+        }
+
+        if record.result_received_at.is_some() && record.result_ack_sent_at.is_none() {
+            intents.push(ResourceOperationIntent::SendResultAck(resource_trade_no));
+        }
+
+        intents
+    }
+
+    fn has_text(value: Option<&str>) -> bool {
+        value.is_some_and(|value| !value.trim().is_empty())
+    }
+
     pub async fn scan_round(&self) -> Vec<ResourceOperationIntent> {
         let mut intents = Vec::new();
 
@@ -1029,6 +1105,8 @@ impl ResourceOperationDispatcherActor {
 #[derive(Debug)]
 pub struct ResourceOperationShadowActorSystem {
     shutdown_tx: broadcast::Sender<()>,
+    scanner: Arc<ResourceOperationScanner>,
+    intent_tx: mpsc::Sender<ResourceOperationIntent>,
     scanner_handle: Option<tokio::task::JoinHandle<()>>,
     dispatcher_handle: Option<tokio::task::JoinHandle<()>>,
 }
@@ -1049,10 +1127,11 @@ impl ResourceOperationShadowActorSystem {
         );
 
         let scanner_clone = scanner.clone();
-        let intent_tx_clone = intent_tx.clone();
+        let warm_intent_tx = intent_tx.clone();
+        let trigger_intent_tx = intent_tx.clone();
         tokio::spawn(async move {
             for intent in scanner_clone.scan_round().await {
-                if let Err(e) = intent_tx_clone.send(intent).await {
+                if let Err(e) = warm_intent_tx.send(intent).await {
                     error!(error = %e, "Failed to enqueue warm resource operation intent");
                     break;
                 }
@@ -1072,7 +1151,26 @@ impl ResourceOperationShadowActorSystem {
             dispatcher_actor.run().await;
         }));
 
-        Self { shutdown_tx, scanner_handle, dispatcher_handle }
+        Self {
+            shutdown_tx,
+            scanner,
+            intent_tx: trigger_intent_tx,
+            scanner_handle,
+            dispatcher_handle,
+        }
+    }
+
+    pub async fn trigger_resource_operation(
+        &self,
+        resource_trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        for intent in self.scanner.try_advance(resource_trade_no).await {
+            if let Err(e) = self.intent_tx.send(intent).await {
+                return Err(ServiceError::System(SystemError::ChannelSendFailed(e.to_string())));
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn stop(&mut self) {
@@ -1397,6 +1495,46 @@ mod tests {
                 intent,
                 ResourceOperationIntent::UploadTxExecReceipt(trade_no)
                     if trade_no == "op_terminal_failed"
+            )
+        }));
+    }
+
+    #[tokio::test]
+    async fn resource_operation_targeted_wakeup_emits_result_ack() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_target_result_ack", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_result_received(
+            &pool,
+            "op_target_result_ack",
+            "success",
+            Some(0),
+            None,
+            None,
+            Some("{\"status\":true}"),
+        )
+        .await
+        .unwrap();
+
+        let scanner = ResourceOperationScanner::new(pool);
+        let intents = scanner.try_advance("op_target_result_ack").await;
+
+        assert!(intents.iter().any(|intent| {
+            matches!(
+                intent,
+                ResourceOperationIntent::SendResultAck(trade_no)
+                    if trade_no == "op_target_result_ack"
             )
         }));
     }

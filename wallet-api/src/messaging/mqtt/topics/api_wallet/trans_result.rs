@@ -312,6 +312,8 @@ impl AwmOrderTransResMsg {
         )
         .await?;
 
+        self.trigger_resource_operation_shadow().await;
+
         Ok(())
     }
 
@@ -547,6 +549,26 @@ impl AwmOrderTransResMsg {
                 resource_trade_no = %self.trade_no,
                 origin_trade_no = %origin_trade_no,
                 "Trigger withdraw shadow failed after resource result, but continuing: {:?}",
+                e
+            );
+        }
+    }
+
+    async fn trigger_resource_operation_shadow(&self) {
+        let Some(context) = crate::context::CONTEXT.get() else {
+            tracing::debug!(
+                resource_trade_no = %self.trade_no,
+                "Skip resource operation shadow trigger: global context is not initialized"
+            );
+            return;
+        };
+        let Some(handles) = context.get_global_handles().await.upgrade() else {
+            return;
+        };
+        if let Err(e) = handles.trigger_resource_operation(&self.trade_no).await {
+            tracing::warn!(
+                resource_trade_no = %self.trade_no,
+                "Trigger resource operation shadow failed after resource operation result, but continuing: {:?}",
                 e
             );
         }

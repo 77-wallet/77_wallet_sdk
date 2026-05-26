@@ -166,6 +166,17 @@ impl Handles {
         self.process_collect_tx_handle.clone()
     }
 
+    pub(crate) async fn trigger_resource_operation(
+        &self,
+        resource_trade_no: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let resource_operation_shadow = self.resource_operation_shadow.lock().await;
+        if let Some(resource_operation_shadow) = resource_operation_shadow.as_ref() {
+            resource_operation_shadow.trigger_resource_operation(resource_trade_no).await?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn get_global_task_manager(&self) -> Arc<TaskManager> {
         self.task_manager.clone()
     }

@@ -130,7 +130,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager_with_config("client4.toml").await?;
         wallet_manager.init_api_swap().await?;
 
-        let trade_no = "W2058742735149666304";
+        let trade_no = "W2059218395332771840";
         let res = wallet_manager.sign_api_withdrawal_order(trade_no).await;
         tracing::info!("sign_api_withdrawal_order result: {:?}", res);
         Ok(())
