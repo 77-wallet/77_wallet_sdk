@@ -12,7 +12,10 @@ use crate::{
         },
         service::ServiceError,
     },
-    request::api_wallet::resource::ApiResourceType,
+    request::{
+        api_wallet::resource::ApiResourceType,
+        stake::{VoteWitnessReq, VotesReq, WithdrawBalanceReq},
+    },
 };
 use wallet_chain_interact::{
     BillResourceConsume,
@@ -45,7 +48,7 @@ impl ApiResourceDomain {
         resource: ApiResourceType,
         frozen_balance: &str,
     ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
-        let owner_address = Self::require_withdraw_wallet_address(ctx, withdraw_wallet_uid).await?;
+        let owner_address = Self::withdraw_wallet_address(ctx, withdraw_wallet_uid).await?;
         let frozen_balance_trx = Self::parse_amount_trx(frozen_balance)?;
         let resource = Self::tron_resource_name(resource);
         let args = FreezeBalanceArgs::new(&owner_address, resource, frozen_balance_trx, None)?;
@@ -59,7 +62,7 @@ impl ApiResourceDomain {
         resource: ApiResourceType,
         unfreeze_balance: &str,
     ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
-        let owner_address = Self::require_withdraw_wallet_address(ctx, withdraw_wallet_uid).await?;
+        let owner_address = Self::withdraw_wallet_address(ctx, withdraw_wallet_uid).await?;
         let unfreeze_balance_trx = Self::parse_amount_trx(unfreeze_balance)?;
         let resource = Self::tron_resource_name(resource);
         let args = UnFreezeBalanceArgs::new(&owner_address, resource, unfreeze_balance_trx, None)?;
@@ -67,7 +70,7 @@ impl ApiResourceDomain {
         Self::execute_tron_resource_operation(owner_address, 0, args).await
     }
 
-    async fn require_withdraw_wallet_address(
+    pub(crate) async fn withdraw_wallet_address(
         ctx: &'static Context,
         withdraw_wallet_uid: &str,
     ) -> Result<String, ServiceError> {
@@ -90,6 +93,19 @@ impl ApiResourceDomain {
                 "withdraw wallet tron account not found: uid={withdraw_wallet_uid}"
             ))
         })
+    }
+
+    pub(crate) fn votes_req_for_withdraw_wallet(
+        owner_address: String,
+        votes: Vec<VotesReq>,
+    ) -> VoteWitnessReq {
+        VoteWitnessReq::new(&owner_address, votes, None)
+    }
+
+    pub(crate) fn claim_votes_rewards_req_for_withdraw_wallet(
+        owner_address: String,
+    ) -> WithdrawBalanceReq {
+        WithdrawBalanceReq::new(&owner_address, None)
     }
 
     fn parse_amount_trx(amount: &str) -> Result<i64, ServiceError> {
@@ -202,5 +218,26 @@ mod tests {
     fn api_resource_type_maps_to_tron_resource_name() {
         assert_eq!(ApiResourceDomain::tron_resource_name(ApiResourceType::Energy), "energy");
         assert_eq!(ApiResourceDomain::tron_resource_name(ApiResourceType::Bandwidth), "bandwidth");
+    }
+
+    #[test]
+    fn api_withdraw_wallet_votes_req_uses_resolved_owner_address() {
+        let req = ApiResourceDomain::votes_req_for_withdraw_wallet(
+            "TWithdrawOwner".to_string(),
+            vec![crate::request::stake::VotesReq::new("TNode", 3, "node")],
+        );
+
+        assert_eq!(req.owner_address, "TWithdrawOwner");
+        assert_eq!(req.votes.len(), 1);
+        assert!(req.signer.is_none());
+    }
+
+    #[test]
+    fn api_withdraw_wallet_claim_votes_rewards_req_uses_resolved_owner_address() {
+        let req =
+            ApiResourceDomain::claim_votes_rewards_req_for_withdraw_wallet("TWithdrawOwner".into());
+
+        assert_eq!(req.owner_address, "TWithdrawOwner");
+        assert!(req.signer.is_none());
     }
 }

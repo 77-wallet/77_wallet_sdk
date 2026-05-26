@@ -3,8 +3,16 @@ use crate::{
     context::Context,
     domain::api_wallet::resource::ApiResourceDomain,
     error::service::ServiceError,
-    request::api_wallet::resource::{ApiResourceStakeReq, ApiResourceUnstakeReq},
-    response_vo::api_wallet::resource::ApiResourceOperationResp,
+    request::api_wallet::resource::{
+        ApiResourceStakeReq, ApiResourceUnstakeReq, ApiWithdrawWalletClaimVotesRewardsReq,
+        ApiWithdrawWalletVoterInfoReq, ApiWithdrawWalletVotesNodeListReq,
+        ApiWithdrawWalletVotesReq,
+    },
+    response_vo::{
+        api_wallet::resource::ApiResourceOperationResp,
+        standard_wallet::stake::{VoteListResp, VoterInfoResp},
+    },
+    service::stake::StackService,
 };
 use wallet_database::{
     entities::{
@@ -83,6 +91,47 @@ impl ApiResourceApplication {
         .await?;
 
         Ok(ApiResourceOperationResp::success(resource_trade_no, outcome.tx_hash))
+    }
+
+    pub(crate) async fn withdraw_wallet_votes(
+        &self,
+        req: ApiWithdrawWalletVotesReq,
+    ) -> Result<String, ServiceError> {
+        WalletApplication::validate_password(&req.password).await?;
+        let owner_address =
+            ApiResourceDomain::withdraw_wallet_address(self.ctx, &req.withdraw_wallet_uid).await?;
+        let vote_req = ApiResourceDomain::votes_req_for_withdraw_wallet(owner_address, req.votes);
+        StackService::new().await?.votes(vote_req, &req.password).await
+    }
+
+    pub(crate) async fn withdraw_wallet_voter_info(
+        &self,
+        req: ApiWithdrawWalletVoterInfoReq,
+    ) -> Result<VoterInfoResp, ServiceError> {
+        let owner_address =
+            ApiResourceDomain::withdraw_wallet_address(self.ctx, &req.withdraw_wallet_uid).await?;
+        StackService::new().await?.voter_info(&owner_address).await
+    }
+
+    pub(crate) async fn withdraw_wallet_votes_node_list(
+        &self,
+        req: ApiWithdrawWalletVotesNodeListReq,
+    ) -> Result<VoteListResp, ServiceError> {
+        let owner_address =
+            ApiResourceDomain::withdraw_wallet_address(self.ctx, &req.withdraw_wallet_uid).await?;
+        StackService::new().await?.vote_list(Some(&owner_address)).await
+    }
+
+    pub(crate) async fn withdraw_wallet_claim_votes_rewards(
+        &self,
+        req: ApiWithdrawWalletClaimVotesRewardsReq,
+    ) -> Result<String, ServiceError> {
+        WalletApplication::validate_password(&req.password).await?;
+        let owner_address =
+            ApiResourceDomain::withdraw_wallet_address(self.ctx, &req.withdraw_wallet_uid).await?;
+        let claim_req =
+            ApiResourceDomain::claim_votes_rewards_req_for_withdraw_wallet(owner_address);
+        StackService::new().await?.votes_claim_rewards(claim_req, &req.password).await
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -2,8 +2,15 @@ use crate::{
     application::api_wallet_resource::ApiResourceApplication,
     context::Context,
     error::service::ServiceError,
-    request::api_wallet::resource::{ApiResourceStakeReq, ApiResourceUnstakeReq},
-    response_vo::api_wallet::resource::ApiResourceOperationResp,
+    request::api_wallet::resource::{
+        ApiResourceStakeReq, ApiResourceUnstakeReq, ApiWithdrawWalletClaimVotesRewardsReq,
+        ApiWithdrawWalletVoterInfoReq, ApiWithdrawWalletVotesNodeListReq,
+        ApiWithdrawWalletVotesReq,
+    },
+    response_vo::{
+        api_wallet::resource::ApiResourceOperationResp,
+        standard_wallet::stake::{VoteListResp, VoterInfoResp},
+    },
 };
 
 pub(crate) struct ApiResourceService {
@@ -27,5 +34,33 @@ impl ApiResourceService {
         req: ApiResourceUnstakeReq,
     ) -> Result<ApiResourceOperationResp, ServiceError> {
         ApiResourceApplication::new(self.ctx).unstake_withdraw_wallet_resource(req).await
+    }
+
+    pub async fn withdraw_wallet_votes(
+        &self,
+        req: ApiWithdrawWalletVotesReq,
+    ) -> Result<String, ServiceError> {
+        ApiResourceApplication::new(self.ctx).withdraw_wallet_votes(req).await
+    }
+
+    pub async fn withdraw_wallet_voter_info(
+        &self,
+        req: ApiWithdrawWalletVoterInfoReq,
+    ) -> Result<VoterInfoResp, ServiceError> {
+        ApiResourceApplication::new(self.ctx).withdraw_wallet_voter_info(req).await
+    }
+
+    pub async fn withdraw_wallet_votes_node_list(
+        &self,
+        req: ApiWithdrawWalletVotesNodeListReq,
+    ) -> Result<VoteListResp, ServiceError> {
+        ApiResourceApplication::new(self.ctx).withdraw_wallet_votes_node_list(req).await
+    }
+
+    pub async fn withdraw_wallet_claim_votes_rewards(
+        &self,
+        req: ApiWithdrawWalletClaimVotesRewardsReq,
+    ) -> Result<String, ServiceError> {
+        ApiResourceApplication::new(self.ctx).withdraw_wallet_claim_votes_rewards(req).await
     }
 }
