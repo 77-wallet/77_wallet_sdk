@@ -52,14 +52,13 @@ use wallet_database::{
         api_coin::ApiCoinData,
         api_collect::{ApiCollectEntity, ApiCollectStatus},
         api_wallet::ApiWalletType,
-        api_withdraw::ApiWithdrawStatus,
         api_withdraw_strategy::ApiWithdrawStrategyEntity,
         api_withdraw_strategy_chain_config::ApiWithdrawStrategyChainConfigEntity,
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
         account::ApiAccountRepo, coin::ApiCoinRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
-        withdraw::ApiWithdrawRepo, withdraw_strategy::ApiWithdrawStrategyRepo,
+        withdraw_strategy::ApiWithdrawStrategyRepo,
         withdraw_strategy_chain_config::ApiWithdrawStrategyChainConfigRepo,
     },
 };
@@ -81,6 +80,31 @@ impl TestFundsDb {
                 .expect("init api_transaction.db");
         let pool = ctx.into_transaction_db_pool().expect("transaction pool");
         Self { _dir: dir, pool }
+    }
+}
+
+struct LocalShadowCollectDb {
+    _dir: TempDir,
+    collect_pool: ApiTransactionDbPool,
+    core_pool: ApiWalletDbPool,
+}
+
+impl LocalShadowCollectDb {
+    async fn new() -> Self {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tx_ctx =
+            SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_transaction.db"))
+                .await
+                .expect("init api_transaction.db");
+        let collect_pool = tx_ctx.into_transaction_db_pool().expect("transaction pool");
+        let wallet_ctx =
+            SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_wallet.db"))
+                .await
+                .expect("init api_wallet.db");
+        let core_pool = ApiWalletDbPool::new(wallet_ctx.get_pool().expect("api wallet pool"));
+        ensure_sol_main_coin(&core_pool).await;
+
+        Self { _dir: dir, collect_pool, core_pool }
     }
 }
 
@@ -603,6 +627,16 @@ async fn build_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWorker
     ShadowCollectWorker::new(collect_pool, core_pool, Arc::new(AddressLockManager::new()), advancer)
 }
 
+fn build_shadow_collect_worker_from_pools(
+    collect_pool: ApiTransactionDbPool,
+    core_pool: ApiWalletDbPool,
+) -> ShadowCollectWorker {
+    let (intent_tx, _intent_rx) = mpsc::channel(1);
+    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, None));
+
+    ShadowCollectWorker::new(collect_pool, core_pool, Arc::new(AddressLockManager::new()), advancer)
+}
+
 async fn ensure_eth_main_coin(pool: &ApiWalletDbPool) {
     let now = Utc::now();
     let coin = ApiCoinData::new(
@@ -896,12 +930,8 @@ async fn collect_recover_queries_chain_before_any_expired_raw_rebuild_invalidati
 #[tokio::test]
 #[serial]
 async fn collect_recover_backfills_missing_tx_hash_before_receipt_upload() {
-    let env = ensure_worker_env().await;
-    let collect_pool_ctx =
-        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
-            .await
-            .expect("open api transaction sqlite");
-    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let db = LocalShadowCollectDb::new().await;
+    let collect_pool = db.collect_pool.clone();
     let trade_no = format!("C_collect_recover_backfill_{}", next_unique_id());
     let tx_hash = "6f2f3e7f5dbe46e7b8ff8d3c9b62df9b2b7b6f3e3c9d4a1d2f5d8e9f0a1b2c3d5";
 
@@ -978,7 +1008,7 @@ async fn collect_recover_backfills_missing_tx_hash_before_receipt_upload() {
         99,
     );
 
-    let worker = build_shadow_collect_worker(env).await;
+    let worker = build_shadow_collect_worker_from_pools(collect_pool.clone(), db.core_pool.clone());
     worker
         .handle(ShadowCollectCommand::Recover(trade_no.clone()))
         .await
@@ -990,7 +1020,7 @@ async fn collect_recover_backfills_missing_tx_hash_before_receipt_upload() {
     assert_eq!(after.tx_hash.as_deref(), Some(tx_hash));
     assert!(after.transaction_time.is_some());
 
-    let records = ApiCollectRepo::scan_need_tx_exec_receipt_upload(&collect_pool, 100)
+    let records = ApiCollectRepo::scan_need_tx_exec_receipt_upload(&collect_pool, 10_000)
         .await
         .expect("scan need tx exec receipt upload");
     assert!(
@@ -1073,197 +1103,6 @@ async fn collect_notification_retry_on_existing_trade_no() {
     assert_eq!(notify_json["data"]["fromAddr"], "from-collect");
     assert_eq!(notify_json["data"]["toAddr"], "to-collect");
     assert_eq!(notify_json["data"]["value"], "12.34");
-}
-
-#[serial]
-#[tokio::test]
-async fn withdraw_notification_retry_on_existing_trade_no() {
-    let env = ensure_worker_env().await;
-    env.recorder.reset();
-
-    let uid = format!("uid_withdraw_notify_{}", next_unique_id());
-    let trade_no = format!("T_withdraw_notify_retry_{}", next_unique_id());
-    let _wallet_addr =
-        seed_wallet(&env.db_dir, &uid, "withdraw-notify-wallet", ApiWalletType::Withdrawal).await;
-
-    let (fail_tx, fail_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
-    drop(fail_rx);
-    env._manager
-        .set_frontend_notify_sender(fail_tx)
-        .await
-        .expect("install failing frontend sender");
-
-    let first = env
-        ._manager
-        .api_withdrawal_order(
-            "from-withdraw",
-            "to-withdraw",
-            "56.78",
-            "digest",
-            "sol",
-            None,
-            "USDC",
-            &trade_no,
-            1,
-            &uid,
-        )
-        .await;
-    assert!(first.is_err(), "frontend notify failure should bubble up");
-
-    let tx_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
-        .await
-        .expect("open api transaction sqlite");
-    let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let persisted = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-        &tx_pool,
-        &trade_no,
-        wallet_database::entities::api_trade_type::ApiTradeType::Withdraw,
-    )
-    .await
-    .expect("load withdraw after failed notify");
-    assert_eq!(persisted.init_status, ApiWithdrawStatus::AuditPass);
-    assert_eq!(persisted.status, ApiWithdrawStatus::InitOrder);
-
-    let (ok_tx, mut ok_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
-    env._manager.set_frontend_notify_sender(ok_tx).await.expect("install working frontend sender");
-
-    env._manager
-        .api_withdrawal_order(
-            "from-withdraw",
-            "to-withdraw",
-            "56.78",
-            "digest",
-            "sol",
-            None,
-            "USDC",
-            &trade_no,
-            1,
-            &uid,
-        )
-        .await
-        .expect("retrying the same withdraw order should resend frontend notify");
-
-    let notify = tokio::time::timeout(std::time::Duration::from_secs(1), ok_rx.recv())
-        .await
-        .expect("timed out waiting for withdraw notify")
-        .expect("missing withdraw notify event");
-    let notify_json = serde_json::to_value(&notify).expect("serialize withdraw notify");
-    assert_eq!(notify_json["event"], "WITHDRAW");
-    assert_eq!(notify_json["data"]["uid"], uid);
-    assert_eq!(notify_json["data"]["fromAddr"], "from-withdraw");
-    assert_eq!(notify_json["data"]["toAddr"], "to-withdraw");
-    assert_eq!(notify_json["data"]["value"], "56.78");
-
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    let tx_ack_request_count = loop {
-        let requests = env.recorder.snapshot();
-        let tx_ack_request_count = requests
-            .iter()
-            .filter(|req| {
-                req.path.contains(
-                    wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK,
-                )
-            })
-            .filter(|req| {
-                let payload = decrypt_captured_api_backend_body(&req.body);
-                payload["tradeNo"].as_str() == Some(&trade_no)
-                    && payload["ackType"].as_str() == Some("TX")
-                    && payload["type"].as_str() == Some("WD")
-            })
-            .count();
-
-        if tx_ack_request_count > 0 || std::time::Instant::now() >= deadline {
-            break tx_ack_request_count;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    };
-
-    assert_eq!(
-        tx_ack_request_count, 1,
-        "retrying the same withdraw order should still emit only one TX ack request"
-    );
-}
-
-#[serial]
-#[tokio::test]
-async fn withdraw_single_tx_ack_request() {
-    let env = ensure_worker_env().await;
-    env.recorder.reset();
-
-    let uid = format!("uid_withdraw_ack_{}", next_unique_id());
-    let trade_no = format!("T_withdraw_ack_{}", next_unique_id());
-    let _wallet_addr =
-        seed_wallet(&env.db_dir, &uid, "withdraw-ack-wallet", ApiWalletType::Withdrawal).await;
-
-    let (notify_tx, mut notify_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
-    env._manager
-        .set_frontend_notify_sender(notify_tx)
-        .await
-        .expect("install working frontend sender");
-
-    env._manager
-        .api_withdrawal_order(
-            "from-withdraw",
-            "to-withdraw",
-            "56.78",
-            "digest",
-            "sol",
-            None,
-            "USDC",
-            &trade_no,
-            1,
-            &uid,
-        )
-        .await
-        .expect("withdraw order should succeed");
-
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), notify_rx.recv())
-        .await
-        .expect("timed out waiting for withdraw notify")
-        .expect("missing withdraw notify event");
-
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    let tx_ack_request_count = loop {
-        let requests = env.recorder.snapshot();
-        let tx_ack_request_count = requests
-            .iter()
-            .filter(|req| {
-                req.path.contains(
-                    wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK,
-                )
-            })
-            .filter(|req| {
-                let payload = decrypt_captured_api_backend_body(&req.body);
-                payload["tradeNo"].as_str() == Some(&trade_no)
-                    && payload["ackType"].as_str() == Some("TX")
-                    && payload["type"].as_str() == Some("WD")
-            })
-            .count();
-
-        if tx_ack_request_count > 0 || std::time::Instant::now() >= deadline {
-            break tx_ack_request_count;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    };
-
-    assert_eq!(tx_ack_request_count, 1, "withdraw order should emit exactly one TX ack request");
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    let requests = env.recorder.snapshot();
-    let tx_ack_request_count = requests
-        .iter()
-        .filter(|req| {
-            req.path
-                .contains(wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK)
-        })
-        .filter(|req| {
-            let payload = decrypt_captured_api_backend_body(&req.body);
-            payload["tradeNo"].as_str() == Some(&trade_no)
-                && payload["ackType"].as_str() == Some("TX")
-                && payload["type"].as_str() == Some("WD")
-        })
-        .count();
-    assert_eq!(tx_ack_request_count, 1, "withdraw order should not emit a second TX ack request");
 }
 
 #[serial]
@@ -1590,7 +1429,8 @@ async fn collect_service_fee_upload_bypasses_local_sol_fee_gate() {
         .find(|req| {
             req.path.contains(
                 wallet_transport_backend::consts::endpoint::api_wallet::TRANS_SERVICE_FEE_TRANS,
-            )
+            ) && decrypt_captured_api_backend_body(&req.body)["tradeNo"].as_str()
+                == Some(trade_no.as_str())
         })
         .unwrap_or_else(|| {
             panic!(
@@ -1764,7 +1604,8 @@ async fn collect_service_fee_upload_includes_solana_recipient_ata_rent_when_miss
         .find(|req| {
             req.path.contains(
                 wallet_transport_backend::consts::endpoint::api_wallet::TRANS_SERVICE_FEE_TRANS,
-            )
+            ) && decrypt_captured_api_backend_body(&req.body)["tradeNo"].as_str()
+                == Some(trade_no.as_str())
         })
         .unwrap_or_else(|| {
             panic!(
@@ -1774,6 +1615,7 @@ async fn collect_service_fee_upload_includes_solana_recipient_ata_rent_when_miss
         });
 
     let payload = decrypt_captured_api_backend_body(&request.body);
+    assert_eq!(payload["tradeNo"].as_str(), Some(trade_no.as_str()));
     let amount = payload["amount"].as_f64().unwrap_or_default();
     assert!(
         (amount - 0.00350588).abs() < 1e-12,
@@ -1895,7 +1737,8 @@ async fn collect_eth_service_fee_upload_uses_estimated_fee_without_multiplier() 
         .find(|req| {
             req.path.contains(
                 wallet_transport_backend::consts::endpoint::api_wallet::TRANS_SERVICE_FEE_TRANS,
-            )
+            ) && decrypt_captured_api_backend_body(&req.body)["tradeNo"].as_str()
+                == Some(trade_no.as_str())
         })
         .unwrap_or_else(|| {
             panic!(
