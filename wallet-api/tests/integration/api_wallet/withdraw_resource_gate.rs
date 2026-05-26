@@ -70,7 +70,7 @@ async fn withdraw_resource_result_ack_uses_wd_rsc_dl_type() {
                 && {
                     let payload = decrypt_captured_api_backend_body(&req.body);
                     payload["tradeNo"].as_str() == Some(resource_trade_no.as_str())
-                        && payload["ackType"].as_str() == Some("TX_RSC_RES")
+                        && payload["ackType"].as_str() == Some("TX_RES")
                         && payload["type"].as_str() == Some("WD_RSC_DL")
                 }
         });
