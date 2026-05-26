@@ -425,6 +425,27 @@ impl ApiWithdrawRepo {
         .await
     }
 
+    pub async fn update_actual_fee(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        transaction_fee: Option<&str>,
+        resource_consume: Option<&str>,
+        block_height: Option<&str>,
+    ) -> Result<u64, crate::Error> {
+        if transaction_fee.is_none() && resource_consume.is_none() && block_height.is_none() {
+            return Ok(0);
+        }
+
+        ApiWithdrawDao::update_actual_fee(
+            pool.write_ref(),
+            trade_no,
+            transaction_fee,
+            resource_consume,
+            block_height,
+        )
+        .await
+    }
+
     pub async fn update_api_withdraw_tx_status_nonce(
         pool: &ApiTransactionDbPool,
         from_addr: &str,
@@ -1707,6 +1728,49 @@ mod tests {
         assert_eq!(after_reject_conflict.audit_rejected_at, audit_rejected_at);
         assert_eq!(after_reject_conflict.audit_reason.as_deref(), Some("risk reject"));
         assert_eq!(after_reject_conflict.status, ApiWithdrawStatus::AuditReject);
+    }
+
+    #[tokio::test]
+    async fn withdraw_actual_fee_updates_only_backend_present_fields() {
+        let pool = setup_api_transaction_pool("wallet_db_withdraw_actual_fee").await;
+        let trade_no = "withdraw_actual_fee_update";
+        seed_audit_withdraw(&pool, trade_no).await;
+
+        let rows = ApiWithdrawRepo::update_actual_fee(
+            &pool,
+            trade_no,
+            Some("1.23"),
+            Some(r#"{"bandwidth":345,"energy":678}"#),
+            Some("12345678"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let updated =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert_eq!(updated.transaction_fee, "1.23");
+        assert_eq!(updated.resource_consume, r#"{"bandwidth":345,"energy":678}"#);
+        assert_eq!(updated.block_height.as_deref(), Some("12345678"));
+
+        let rows = ApiWithdrawRepo::update_actual_fee(&pool, trade_no, Some("2.00"), None, None)
+            .await
+            .unwrap();
+        assert_eq!(rows, 1);
+
+        let partial =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert_eq!(partial.transaction_fee, "2.00");
+        assert_eq!(partial.resource_consume, r#"{"bandwidth":345,"energy":678}"#);
+        assert_eq!(partial.block_height.as_deref(), Some("12345678"));
+
+        let rows =
+            ApiWithdrawRepo::update_actual_fee(&pool, trade_no, None, None, None).await.unwrap();
+        assert_eq!(rows, 0);
     }
 
     #[tokio::test]

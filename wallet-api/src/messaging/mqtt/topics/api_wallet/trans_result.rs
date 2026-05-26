@@ -38,6 +38,92 @@ pub struct AwmOrderTransResMsg {
     /// 订单结失败型：0 默认，无意义 /  1 交易正常失败 / 2 手续费失败
     fail_type: Option<i32>,
     uid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tx_fee: Option<AwmOrderTransResTxFee>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_non_empty_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    block_number: Option<String>,
+}
+
+#[derive(Debug, Default, serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct AwmOrderTransResTxFee {
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_non_empty_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    native_fee: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
+    bandwidth: Option<u64>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
+    energy: Option<u64>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct WithdrawActualFeeUpdate {
+    transaction_fee: Option<String>,
+    resource_consume: Option<String>,
+    block_height: Option<String>,
+}
+
+fn deserialize_optional_non_empty_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = <Option<serde_json::Value> as serde::Deserialize>::deserialize(deserializer)?;
+    Ok(value.and_then(value_to_non_empty_string))
+}
+
+fn deserialize_optional_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = <Option<serde_json::Value> as serde::Deserialize>::deserialize(deserializer)?;
+    Ok(value.and_then(value_to_u64))
+}
+
+fn value_to_non_empty_string(value: serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(item) => {
+            let item = item.trim();
+            if item.is_empty() { None } else { Some(item.to_string()) }
+        }
+        serde_json::Value::Number(item) => Some(item.to_string()),
+        _ => None,
+    }
+}
+
+fn value_to_u64(value: serde_json::Value) -> Option<u64> {
+    match value {
+        serde_json::Value::Number(item) => item
+            .as_u64()
+            .or_else(|| item.as_i64().and_then(|item| u64::try_from(item).ok()))
+            .or_else(|| {
+                item.as_f64().and_then(|item| {
+                    if item.is_finite() && item >= 0.0 && item.fract() == 0.0 {
+                        Some(item as u64)
+                    } else {
+                        None
+                    }
+                })
+            }),
+        serde_json::Value::String(item) => item.trim().parse::<u64>().ok(),
+        _ => None,
+    }
 }
 
 // API钱包的订单结果消息
@@ -147,6 +233,7 @@ impl AwmOrderTransResMsg {
             1 => {
                 ApiWithdrawRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
                     .await?;
+                self.persist_withdraw_actual_fee(&api_transaction_pool).await?;
                 self.withdraw().await?;
             }
             2 => {
@@ -538,6 +625,62 @@ impl AwmOrderTransResMsg {
             e
         })
     }
+
+    fn withdraw_actual_fee_update(&self) -> Option<WithdrawActualFeeUpdate> {
+        let transaction_fee = self.tx_fee.as_ref().and_then(|tx_fee| tx_fee.native_fee.clone());
+
+        let resource_consume = self.tx_fee.as_ref().and_then(|tx_fee| {
+            let mut resource = serde_json::Map::new();
+            if let Some(bandwidth) = tx_fee.bandwidth {
+                resource.insert("bandwidth".to_string(), serde_json::Value::from(bandwidth));
+            }
+            if let Some(energy) = tx_fee.energy {
+                resource.insert("energy".to_string(), serde_json::Value::from(energy));
+            }
+            if resource.is_empty() {
+                None
+            } else {
+                Some(serde_json::Value::Object(resource).to_string())
+            }
+        });
+
+        let block_height = self.block_number.clone();
+
+        if transaction_fee.is_none() && resource_consume.is_none() && block_height.is_none() {
+            None
+        } else {
+            Some(WithdrawActualFeeUpdate { transaction_fee, resource_consume, block_height })
+        }
+    }
+
+    async fn persist_withdraw_actual_fee(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let Some(update) = self.withdraw_actual_fee_update() else {
+            return Ok(());
+        };
+
+        let rows = ApiWithdrawRepo::update_actual_fee(
+            api_transaction_pool,
+            &self.trade_no,
+            update.transaction_fee.as_deref(),
+            update.resource_consume.as_deref(),
+            update.block_height.as_deref(),
+        )
+        .await?;
+
+        tracing::info!(
+            trade_no = %self.trade_no,
+            rows,
+            has_transaction_fee = update.transaction_fee.is_some(),
+            has_resource_consume = update.resource_consume.is_some(),
+            has_block_height = update.block_height.is_some(),
+            "Persisted withdraw actual fee fields from AWM_ORDER_TRANS_RES"
+        );
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -571,6 +714,8 @@ mod tests {
             status: false,
             fail_type: Some(2),
             uid: "uid_1".to_string(),
+            tx_fee: None,
+            block_number: None,
         };
 
         msg.resource_operation_result(&pool).await?;
@@ -583,6 +728,84 @@ mod tests {
         assert!(got.result_payload.as_deref().unwrap_or_default().contains("op_result_msg"));
         assert!(got.result_ack_sent_at.is_none());
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn withdraw_result_actual_fee_persists_backend_fields() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_1",
+            "withdraw",
+            "from_addr",
+            "to_addr",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            "W_actual_fee",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            wallet_database::entities::api_withdraw::ApiWithdrawStatus::Init,
+            wallet_database::entities::api_withdraw::ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await?;
+
+        let msg: AwmOrderTransResMsg = serde_json::from_value(serde_json::json!({
+            "tradeNo": "W_actual_fee",
+            "tradeType": "1",
+            "status": true,
+            "failType": 0,
+            "uid": "uid_1",
+            "txFee": {
+                "nativeFee": "1.23",
+                "bandwidth": 345,
+                "energy": "678"
+            },
+            "blockNumber": 12345678
+        }))?;
+
+        msg.persist_withdraw_actual_fee(&pool).await?;
+
+        let withdraw = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_actual_fee",
+            ApiTradeType::Withdraw,
+        )
+        .await?;
+        assert_eq!(withdraw.transaction_fee, "1.23");
+        assert_eq!(withdraw.resource_consume, r#"{"bandwidth":345,"energy":678}"#);
+        assert_eq!(withdraw.block_height.as_deref(), Some("12345678"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn withdraw_result_actual_fee_missing_fields_keeps_fallback_empty() -> anyhow::Result<()> {
+        let msg: AwmOrderTransResMsg = serde_json::from_value(serde_json::json!({
+            "tradeNo": "W_no_fee",
+            "tradeType": "1",
+            "status": true,
+            "failType": null,
+            "uid": "uid_1"
+        }))?;
+
+        assert_eq!(msg.withdraw_actual_fee_update(), None);
         Ok(())
     }
 
@@ -636,6 +859,8 @@ mod tests {
             status: true,
             fail_type: None,
             uid: "uid_1".to_string(),
+            tx_fee: None,
+            block_number: None,
         };
 
         msg.collect_resource_delegation_result(&pool).await?;
@@ -671,6 +896,8 @@ mod tests {
             status: false,
             fail_type: Some(1),
             uid: "uid_1".to_string(),
+            tx_fee: None,
+            block_number: None,
         };
 
         msg.collect_resource_delegation_result(&pool).await?;
@@ -734,6 +961,8 @@ mod tests {
             status: false,
             fail_type: Some(3),
             uid: "uid_1".to_string(),
+            tx_fee: None,
+            block_number: None,
         };
 
         msg.resource_result(&pool).await?;
@@ -817,6 +1046,8 @@ mod tests {
             status: true,
             fail_type: None,
             uid: "uid_1".to_string(),
+            tx_fee: None,
+            block_number: None,
         };
 
         msg.resource_result(&pool).await?;

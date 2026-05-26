@@ -1026,6 +1026,39 @@ impl ApiWithdrawDao {
         Ok(())
     }
 
+    pub async fn update_actual_fee<'a, E>(
+        exec: E,
+        trade_no: &str,
+        transaction_fee: Option<&str>,
+        resource_consume: Option<&str>,
+        block_height: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                transaction_fee = CASE WHEN $2 IS NULL THEN transaction_fee ELSE $2 END,
+                resource_consume = CASE WHEN $3 IS NULL THEN resource_consume ELSE $3 END,
+                block_height = CASE WHEN $4 IS NULL THEN block_height ELSE $4 END,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND ($2 IS NOT NULL OR $3 IS NOT NULL OR $4 IS NOT NULL)
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(transaction_fee)
+            .bind(resource_consume)
+            .bind(block_height)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
     pub async fn update_post_tx_count<'a, E>(
         exec: E,
         trade_no: &str,
