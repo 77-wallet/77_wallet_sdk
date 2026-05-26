@@ -37,6 +37,7 @@ use wallet_utils::RetryableError as _;
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PlatformApplyOutcome {
     Accepted(String),
+    AcceptedOriginalOrderResult,
     Rejected,
 }
 
@@ -325,9 +326,9 @@ impl ShadowWithdrawWorker {
 
         match dl_trade_no {
             Some(trade_no) if !trade_no.trim().is_empty() => {
-                PlatformApplyOutcome::Accepted(trade_no)
+                PlatformApplyOutcome::Accepted(trade_no.trim().to_string())
             }
-            _ => PlatformApplyOutcome::Rejected,
+            _ => PlatformApplyOutcome::AcceptedOriginalOrderResult,
         }
     }
 
@@ -594,6 +595,12 @@ impl ShadowWithdrawWorker {
             .await?
         {
             PlatformApplyOutcome::Accepted(resource_trade_no) => resource_trade_no,
+            // Some backend versions accept the platform delegation request but
+            // push the resource result with the original withdraw trade number
+            // instead of returning a dedicated WD... delegation trade number.
+            // Keep the gate blocked on the original order until TX_RSC_RES is
+            // received and ACKed; otherwise BuildTx can outrun the delegation.
+            PlatformApplyOutcome::AcceptedOriginalOrderResult => origin_trade_no.to_string(),
             PlatformApplyOutcome::Rejected => {
                 let rows = ApiWithdrawRepo::mark_resource_released(
                     &self.pool,
@@ -680,11 +687,11 @@ impl ShadowWithdrawWorker {
                     "Platform resource delegation apply succeeded"
                 );
             }
-            PlatformApplyOutcome::Rejected if is_success => {
+            PlatformApplyOutcome::AcceptedOriginalOrderResult => {
                 warn!(
                     origin_trade_no = %origin_trade_no,
                     source = "shadow_withdraw_worker",
-                    "Platform resource delegation apply succeeded without delegation trade no, will proceed with main currency check"
+                    "Platform resource delegation apply succeeded without delegation trade no; waiting original-order resource result"
                 );
             }
             PlatformApplyOutcome::Rejected => {
@@ -2245,18 +2252,30 @@ mod tests {
     }
 
     #[test]
-    fn withdraw_platform_apply_success_requires_delegation_trade_no() {
+    fn withdraw_platform_apply_success_accepts_delegation_trade_no() {
         assert_eq!(
             ShadowWithdrawWorker::platform_apply_outcome(true, Some("DL_1".to_string())),
             PlatformApplyOutcome::Accepted("DL_1".to_string())
         );
         assert_eq!(
-            ShadowWithdrawWorker::platform_apply_outcome(true, None),
+            ShadowWithdrawWorker::platform_apply_outcome(true, Some(" DL_1 ".to_string())),
+            PlatformApplyOutcome::Accepted("DL_1".to_string())
+        );
+        assert_eq!(
+            ShadowWithdrawWorker::platform_apply_outcome(false, None),
             PlatformApplyOutcome::Rejected
+        );
+    }
+
+    #[test]
+    fn withdraw_platform_apply_success_without_delegation_trade_no_waits_original_order_result() {
+        assert_eq!(
+            ShadowWithdrawWorker::platform_apply_outcome(true, None),
+            PlatformApplyOutcome::AcceptedOriginalOrderResult
         );
         assert_eq!(
             ShadowWithdrawWorker::platform_apply_outcome(true, Some("  ".to_string())),
-            PlatformApplyOutcome::Rejected
+            PlatformApplyOutcome::AcceptedOriginalOrderResult
         );
     }
 
