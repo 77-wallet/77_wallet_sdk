@@ -34,13 +34,6 @@ use wallet_transport_backend::request::api_wallet::{
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PlatformApplyOutcome {
-    Accepted(String),
-    AcceptedOriginalOrderResult,
-    Rejected,
-}
-
 use crate::{
     domain::{
         api_wallet::{
@@ -59,6 +52,7 @@ use crate::{
             resource_amount::{
                 energy_shortfall_to_apply_amounts, parse_resource_delegation_native_trx_units,
             },
+            resource_apply_outcome::PlatformApplyOutcome,
             resource_authorization::{
                 ResourceDelegationSigner, new_tron_delegate_args, new_tron_undelegate_args,
                 resolve_resource_delegation_signer,
@@ -320,16 +314,7 @@ impl ShadowWithdrawWorker {
         is_success: bool,
         dl_trade_no: Option<String>,
     ) -> PlatformApplyOutcome {
-        if !is_success {
-            return PlatformApplyOutcome::Rejected;
-        }
-
-        match dl_trade_no {
-            Some(trade_no) if !trade_no.trim().is_empty() => {
-                PlatformApplyOutcome::Accepted(trade_no.trim().to_string())
-            }
-            _ => PlatformApplyOutcome::AcceptedOriginalOrderResult,
-        }
+        PlatformApplyOutcome::from_backend_response(is_success, dl_trade_no)
     }
 
     pub fn new(
@@ -594,13 +579,15 @@ impl ShadowWithdrawWorker {
             )
             .await?
         {
-            PlatformApplyOutcome::Accepted(resource_trade_no) => resource_trade_no,
+            PlatformApplyOutcome::AcceptedWithResourceTradeNo(resource_trade_no) => {
+                resource_trade_no
+            }
             // Some backend versions accept the platform delegation request but
             // push the resource result with the original withdraw trade number
             // instead of returning a dedicated WD... delegation trade number.
             // Keep the gate blocked on the original order until TX_RSC_RES is
             // received and ACKed; otherwise BuildTx can outrun the delegation.
-            PlatformApplyOutcome::AcceptedOriginalOrderResult => origin_trade_no.to_string(),
+            PlatformApplyOutcome::AcceptedWithOriginalTradeNo => origin_trade_no.to_string(),
             PlatformApplyOutcome::Rejected => {
                 let rows = ApiWithdrawRepo::mark_resource_released(
                     &self.pool,
@@ -679,7 +666,7 @@ impl ShadowWithdrawWorker {
         let outcome = Self::platform_apply_outcome(is_success, resp.dl_trade_no);
 
         match &outcome {
-            PlatformApplyOutcome::Accepted(resource_trade_no) => {
+            PlatformApplyOutcome::AcceptedWithResourceTradeNo(resource_trade_no) => {
                 info!(
                     origin_trade_no = %origin_trade_no,
                     resource_trade_no = %resource_trade_no,
@@ -687,7 +674,7 @@ impl ShadowWithdrawWorker {
                     "Platform resource delegation apply succeeded"
                 );
             }
-            PlatformApplyOutcome::AcceptedOriginalOrderResult => {
+            PlatformApplyOutcome::AcceptedWithOriginalTradeNo => {
                 warn!(
                     origin_trade_no = %origin_trade_no,
                     source = "shadow_withdraw_worker",
@@ -2094,8 +2081,11 @@ impl ShadowWithdrawWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::{PlatformApplyOutcome, ShadowWithdrawWorker};
-    use crate::{domain::api_wallet::adapter::tx::RawTx, error::system::SystemError};
+    use super::ShadowWithdrawWorker;
+    use crate::{
+        domain::api_wallet::adapter::tx::RawTx, error::system::SystemError,
+        infrastructure::api_trans::resource_apply_outcome::PlatformApplyOutcome,
+    };
     use chrono::Utc;
     use std::sync::Arc;
     use tempfile::tempdir;
@@ -2255,11 +2245,11 @@ mod tests {
     fn withdraw_platform_apply_success_accepts_delegation_trade_no() {
         assert_eq!(
             ShadowWithdrawWorker::platform_apply_outcome(true, Some("DL_1".to_string())),
-            PlatformApplyOutcome::Accepted("DL_1".to_string())
+            PlatformApplyOutcome::AcceptedWithResourceTradeNo("DL_1".to_string())
         );
         assert_eq!(
             ShadowWithdrawWorker::platform_apply_outcome(true, Some(" DL_1 ".to_string())),
-            PlatformApplyOutcome::Accepted("DL_1".to_string())
+            PlatformApplyOutcome::AcceptedWithResourceTradeNo("DL_1".to_string())
         );
         assert_eq!(
             ShadowWithdrawWorker::platform_apply_outcome(false, None),
@@ -2271,11 +2261,11 @@ mod tests {
     fn withdraw_platform_apply_success_without_delegation_trade_no_waits_original_order_result() {
         assert_eq!(
             ShadowWithdrawWorker::platform_apply_outcome(true, None),
-            PlatformApplyOutcome::AcceptedOriginalOrderResult
+            PlatformApplyOutcome::AcceptedWithOriginalTradeNo
         );
         assert_eq!(
             ShadowWithdrawWorker::platform_apply_outcome(true, Some("  ".to_string())),
-            PlatformApplyOutcome::AcceptedOriginalOrderResult
+            PlatformApplyOutcome::AcceptedWithOriginalTradeNo
         );
     }
 

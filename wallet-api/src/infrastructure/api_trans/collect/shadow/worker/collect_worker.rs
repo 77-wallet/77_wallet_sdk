@@ -76,6 +76,7 @@ use crate::{
         resource_amount::{
             energy_shortfall_to_apply_amounts, parse_resource_delegation_native_trx_units,
         },
+        resource_apply_outcome::PlatformApplyOutcome,
         resource_authorization::{
             ResourceDelegationSigner, new_tron_delegate_args, new_tron_undelegate_args,
             resolve_resource_delegation_signer,
@@ -126,12 +127,6 @@ enum ResourceGateNextStep {
     Release,
     BlockOnPlatform,
     BlockOnLocal,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PlatformApplyOutcome {
-    Accepted(Option<String>),
-    Rejected,
 }
 
 /// Shadow Worker
@@ -1178,7 +1173,10 @@ impl ShadowCollectWorker {
             )
             .await?
         {
-            PlatformApplyOutcome::Accepted(resource_trade_no) => resource_trade_no,
+            PlatformApplyOutcome::AcceptedWithResourceTradeNo(resource_trade_no) => {
+                Some(resource_trade_no)
+            }
+            PlatformApplyOutcome::AcceptedWithOriginalTradeNo => None,
             PlatformApplyOutcome::Rejected => {
                 return self
                     .commit_local_delegation_block(
@@ -1266,7 +1264,7 @@ impl ShadowCollectWorker {
                 source = "shadow_worker_v2",
                 "Platform resource delegation apply succeeded"
             );
-            Ok(PlatformApplyOutcome::Accepted(resp.dl_trade_no))
+            Ok(PlatformApplyOutcome::from_backend_response(true, resp.dl_trade_no))
         } else {
             warn!(
                 origin_trade_no = %origin_trade_no,
