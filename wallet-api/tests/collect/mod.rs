@@ -1,6 +1,6 @@
 #![cfg(feature = "integration-tests")]
 
-use crate::common::{
+use crate::harness::{
     SMOKE_WALLET_PASSWORD, WorkerTestEnv, decrypt_captured_api_backend_body, ensure_worker_env,
     next_unique_id, open_api_wallet_pool, pop_request_with_retry, upsert_wallet,
 };

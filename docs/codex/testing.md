@@ -28,7 +28,7 @@
 - Unit / component 默认贴近被测代码；当一个模块超过 3 个测试或出现多个 flow 时，拆到同名目录下的 `*_tests.rs`。
 - Integration / smoke 统一放在 crate 的 `tests/` 下，
   按 `integration/<module>/`、`smoke/<module>/` 拆分。
-- `tests/common/` 只放真正跨模块复用的 harness、fake、fixture、assertion；
+- `tests/harness/` 只放真正跨模块复用的 test harness、fake、fixture、assertion；
   禁止 `withdraw` 依赖 `collect` 私有 helper。
 - 新增测试优先用清晰文件名表达意图，例如 `confirm_tests.rs`、`resource_gate.rs`、`live_backend.rs`。
 
@@ -86,7 +86,7 @@
 
 ### Iteration 3 — Reusable Test Infra
 
-- 抽取模块内 `tests/common` fixture/helper。
+- 抽取模块内 `tests/harness` fixture/helper。
 - 形成可复制模板，用于下一条 flow。
 
 ### Iteration 4 — Scale to Next Module

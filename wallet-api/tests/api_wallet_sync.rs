@@ -1,9 +1,9 @@
 #![cfg(feature = "integration-tests")]
 
-mod common;
+mod harness;
 
 use chrono::Utc;
-use common::{ensure_env, next_tag, open_api_wallet_pool, reset_fake, upsert_wallet};
+use harness::{ensure_env, next_tag, open_api_wallet_pool, reset_fake, upsert_wallet};
 use serial_test::serial;
 use std::sync::{
     Arc,

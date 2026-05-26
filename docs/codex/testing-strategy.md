@@ -205,8 +205,9 @@ Integration 和 smoke/live 不放在 `src/`，统一放在 crate 的 `tests/` �
 ```text
 wallet-api/
   tests/
-    common/
-      harness.rs
+    harness/
+      mod.rs
+      worker.rs
       fixtures.rs
       fake_backend.rs
       fake_chain.rs
@@ -237,7 +238,7 @@ wallet-api/
 ```text
 wallet-database/
   tests/
-    common/
+    harness/
       sqlite.rs
       assertions.rs
     component/
@@ -253,14 +254,14 @@ wallet-database/
 
 - `tests/integration/<module>/<flow>.rs`：标准集成测试。
 - `tests/smoke/<module>/<flow>.rs`：真实环境 smoke/live。
-- `tests/common/<capability>.rs`：跨模块测试能力。
+- `tests/harness/<capability>.rs`：跨模块 test harness 能力。
 - `src/.../<module>/<flow>_tests.rs`：贴近源码的 unit/component 测试。
 
 ### Helper Ownership
 
 - 模块私有 helper 只能服务本模块，放在同模块测试目录。
-- 跨模块 helper 才能进入 `tests/common/`。
-- 如果 `withdraw` 需要复用 `collect` 里的 helper，应先把 helper 上移到 `tests/common/`，再由两个模块共同依赖。
+- 跨模块 helper 才能进入 `tests/harness/`。
+- 如果 `withdraw` 需要复用 `collect` 里的 helper，应先把 helper 上移到 `tests/harness/`，再由两个模块共同依赖。
 - helper 只能做数据准备、fake 配置、结果断言，不承载业务决策。
 
 ## Default Commands

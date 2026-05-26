@@ -17,10 +17,7 @@ use wallet_database::{
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 
-#[path = "../../common/mod.rs"]
-mod common;
-
-use common::{
+use crate::harness::{
     decrypt_captured_api_backend_body, ensure_worker_env, next_unique_id, open_api_wallet_pool,
 };
 

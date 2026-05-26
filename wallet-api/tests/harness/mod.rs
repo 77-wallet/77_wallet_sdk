@@ -44,10 +44,10 @@ const TEST_SN: &str = "smoke-test-sn";
 const TEST_DEVICE_TYPE: &str = "ANDROID";
 
 #[allow(dead_code)]
-pub(crate) mod worker_harness;
+pub(crate) mod worker;
 
 #[allow(unused_imports)]
-pub(crate) use worker_harness::{
+pub(crate) use worker::{
     WorkerTestEnv, decrypt_captured_api_backend_body, ensure_worker_env, pop_request_with_retry,
 };
 

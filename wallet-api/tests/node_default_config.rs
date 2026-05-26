@@ -1,6 +1,6 @@
 #![cfg(feature = "integration-tests")]
 
-mod common;
+mod harness;
 
 use serial_test::serial;
 use wallet_api::{config::Config, domain::node::NodeDomain};
@@ -9,8 +9,8 @@ use wallet_database::repositories::node::NodeRepo;
 #[tokio::test]
 #[serial]
 async fn init_load_default_nodes_respects_feature_profile() {
-    let env = common::ensure_env().await;
-    let core_pool = common::open_core_pool(&env.db_dir).await;
+    let env = harness::ensure_env().await;
+    let core_pool = harness::open_core_pool(&env.db_dir).await;
 
     NodeDomain::init_load_default_nodes().await.expect("load default nodes");
 

@@ -1,10 +1,10 @@
 #![cfg(feature = "integration-tests")]
 
-mod common;
+mod harness;
 
 use alloy::primitives::U256;
 use chrono::Utc;
-use common::{SMOKE_WALLET_PASSWORD, ensure_env, next_tag, reset_fake, upsert_wallet};
+use harness::{SMOKE_WALLET_PASSWORD, ensure_env, next_tag, reset_fake, upsert_wallet};
 use serial_test::serial;
 use std::{
     sync::{
@@ -209,10 +209,10 @@ async fn open_api_transaction_pool(
     sqlite.into_transaction_db_pool().expect("api transaction pool")
 }
 
-async fn ensure_bnb_transfer_fixture(env: &common::TestEnv) -> anyhow::Result<String> {
+async fn ensure_bnb_transfer_fixture(env: &harness::TestEnv) -> anyhow::Result<String> {
     reset_fake(env);
 
-    let api_pool = common::open_api_wallet_pool(&env.db_dir).await;
+    let api_pool = harness::open_api_wallet_pool(&env.db_dir).await;
 
     if ApiCoinRepo::coin_by_chain_token_key_opt("bnb", AssetTokenKey::Native, &api_pool)
         .await?
