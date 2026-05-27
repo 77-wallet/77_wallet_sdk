@@ -1,10 +1,8 @@
-#![cfg(feature = "integration-tests")]
-
-mod harness;
-
+use crate::harness::{
+    self, SMOKE_WALLET_PASSWORD, ensure_env, next_tag, reset_fake, upsert_wallet,
+};
 use alloy::primitives::U256;
 use chrono::Utc;
-use harness::{SMOKE_WALLET_PASSWORD, ensure_env, next_tag, reset_fake, upsert_wallet};
 use serial_test::serial;
 use std::{
     sync::{

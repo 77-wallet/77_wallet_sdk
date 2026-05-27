@@ -1,7 +1,4 @@
-#![cfg(feature = "integration-tests")]
-
-mod harness;
-
+use crate::harness;
 use serial_test::serial;
 use wallet_api::{config::Config, domain::node::NodeDomain};
 use wallet_database::repositories::node::NodeRepo;

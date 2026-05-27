@@ -15,7 +15,6 @@ mod config;
 mod harness;
 mod integration;
 mod layering_guard;
-mod mqtt;
 mod multisig_account;
 mod multisig_tx;
 mod permission;
