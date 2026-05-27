@@ -18,8 +18,8 @@ use crate::{
         FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
     },
     response_vo::{
-        api_wallet::account::ApiAccountInfo,
-        standard_wallet::{account::BalanceInfo, wallet::ChainInfo},
+        api_wallet::account::{ApiAccountChainInfo, ApiAccountInfo},
+        standard_wallet::account::BalanceInfo,
     },
     service::api_wallet::asset::AddressChainCode,
 };
@@ -869,15 +869,12 @@ impl ApiAccountDomain {
             for one in acc.get_chain_info_list()?.into_iter() {
                 let address_type =
                     AccountDomain::get_show_address_type(&one.chain_code, one.address_type())?;
-                let r = ChainInfo {
+                let r = ApiAccountChainInfo {
                     address: one.account_address,
-                    wallet_address: one.wallet_address,
                     derivation_path: one.derivation_path,
                     chain_code: one.chain_code,
                     name: one.chain_name,
                     address_type,
-                    created_at: one.created_at,
-                    updated_at: one.updated_at,
                 };
                 if has_chain.contains(&r.chain_code) {
                     continue;

@@ -15,7 +15,7 @@ impl ApiAccountDomain {
         tracing::info!(
             uid = %uid,
             keyword = %keyword,
-            "ApiAccountService::search_address"
+            "ApiAccountDomain::search_address"
         );
 
         // 地址格式预校验：只在格式有效时才触发数据库查询

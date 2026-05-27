@@ -1,4 +1,4 @@
-use crate::{domain::account::AccountDomain, response_vo::standard_wallet::wallet::ChainInfo};
+use crate::domain::account::AccountDomain;
 use wallet_database::entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType};
 use wallet_types::chain::address::category::AddressCategory;
 
@@ -9,8 +9,22 @@ pub struct ApiAccountInfo {
     pub account_index_map: wallet_utils::address::AccountIndexMap,
     pub name: String,
     pub balance: crate::response_vo::standard_wallet::account::BalanceInfo,
-    pub chain: Vec<ChainInfo>,
+    pub chain: Vec<ApiAccountChainInfo>,
     pub api_wallet_type: ApiWalletType,
+}
+
+/// API 钱包账户的链展示信息。
+///
+/// API 钱包账户列表请求已经由 `wallet_address` 锁定钱包范围，所以这里不再返回
+/// 普通钱包 `ChainInfo` 里的所属钱包地址，避免 App 展示一个对用户无意义的字段。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiAccountChainInfo {
+    pub address: String,
+    pub derivation_path: String,
+    pub chain_code: String,
+    pub name: Option<String>,
+    pub address_type: AddressCategory,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -98,4 +112,41 @@ impl From<ApiAccountEntity> for ApiWalletAddressSearchItem {
 #[serde(rename_all = "camelCase")]
 pub struct ApiWalletAddressSearchResp {
     pub items: Vec<ApiWalletAddressSearchItem>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ApiAccountChainInfo, ApiAccountInfo};
+    use crate::response_vo::standard_wallet::account::BalanceInfo;
+    use wallet_database::entities::api_wallet::ApiWalletType;
+    use wallet_types::chain::address::category::AddressCategory;
+
+    #[test]
+    fn api_wallet_account_chain_info_omits_owner_wallet_address() {
+        let account = ApiAccountInfo {
+            account_id: 1,
+            account_index_map: wallet_utils::address::AccountIndexMap::from_account_id(1)
+                .expect("valid account id"),
+            name: "account-1".to_string(),
+            balance: BalanceInfo {
+                amount: 0.0,
+                currency: "USD".to_string(),
+                unit_price: Some(0.0),
+                fiat_value: Some(0.0),
+            },
+            chain: vec![ApiAccountChainInfo {
+                address: "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE".to_string(),
+                derivation_path: "m/44'/195'/0'/0/0".to_string(),
+                chain_code: "tron".to_string(),
+                name: Some("TRON".to_string()),
+                address_type: AddressCategory::Other,
+            }],
+            api_wallet_type: ApiWalletType::SubAccount,
+        };
+
+        let value = serde_json::to_value(&account).expect("serialize account info");
+
+        assert_eq!(value["chain"][0]["address"], "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE");
+        assert!(value["chain"][0].get("walletAddress").is_none());
+    }
 }
