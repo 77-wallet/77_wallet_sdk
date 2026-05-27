@@ -122,6 +122,22 @@ async fn withdraw_success_should_write_facts_and_ack_backend() {
 }
 ```
 
+当前代码如果还没有流式 `TestHarness`，用显式分段保持同一结构：
+
+```rust
+#[serial]
+#[tokio::test]
+async fn withdraw_tx_ack_template_sends_once_and_persists_fact() {
+    // Arrange: temp db, fake backend recorder, unique uid/trade_no.
+
+    // Act: execute one business entry or one worker step.
+
+    // Assert: returned result, DB facts, captured backend calls.
+
+    // Assert: repeat act, scanner label, or retry path stays idempotent.
+}
+```
+
 集成测试优先覆盖：
 
 - 成功路径：状态、事实字段、返回值正确。
@@ -232,6 +248,32 @@ wallet-api/
       live_backend.rs
       live_chain.rs
 ```
+
+`wallet-api` 当前 `api_wallet` 模块推荐按 flow 拆分：
+
+```text
+wallet-api/
+  tests/
+    integration/
+      api_wallet/
+        mod.rs
+        withdraw_resource_gate.rs     # 提币资源门控/资源 ACK
+        withdraw_notification.rs      # 提币通知、TX ACK、副作用幂等
+        collect_resource_gate.rs      # 归集资源门控/资源 receipt
+        collect_receipt.rs            # 归集交易执行 receipt
+        collect_fee_cycle.rs          # 归集 fee-cycle scanner
+        collect_fee.rs                # 归集手续费/服务费流程
+        collect_notification.rs       # 归集通知重试
+        collect_recovery.rs           # 归集恢复/重建路径
+        collect_local_reclaim.rs      # 归集本地回收路径
+```
+
+拆分原则：
+
+- 文件名回答“这是什么 flow”，而不是回答“它从哪个旧文件迁来”。
+- 一个文件可以包含同一 flow 的成功、失败、幂等、恢复用例。
+- 不同副作用边界应拆开，例如 notification、backend ACK、receipt、fee。
+- 旧测试迁移时优先改文件归属和命名，业务行为保持不变。
 
 `wallet-database` 推荐结构：
 

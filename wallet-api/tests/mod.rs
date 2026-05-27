@@ -6,13 +6,11 @@ use wallet_utils::init_test_log;
 
 mod account;
 mod address_book;
-mod api_wallet;
 mod assets;
 mod backend;
 mod bill;
 mod chain;
 mod coin;
-mod collect_fee;
 mod config;
 mod harness;
 mod integration;

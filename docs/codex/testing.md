@@ -32,6 +32,24 @@
   禁止 `withdraw` 依赖 `collect` 私有 helper。
 - 新增测试优先用清晰文件名表达意图，例如 `confirm_tests.rs`、`resource_gate.rs`、`live_backend.rs`。
 
+目录契约：
+
+```text
+<crate>/
+  src/...                         # unit / component tests live near code
+  tests/
+    harness/                      # cross-module test environment and fakes
+    integration/<business_module>/<flow>.rs
+    smoke/<business_module>/<flow>.rs
+```
+
+命名契约：
+
+- `<business_module>` 使用业务归属，例如 `api_wallet`、`transaction`、`stake`。
+- `<flow>.rs` 使用具体流程或风险点，例如 `withdraw_notification.rs`、`collect_resource_gate.rs`。
+- 一个 integration 文件只覆盖同一类业务流程；如果同时出现 fee、notification、receipt，应拆成多个文件。
+- `harness` 是专业测试术语，表示测试夹具/执行环境总成；它只能承载通用环境、fake、fixture、assertion，不能变成新的业务模块。
+
 ## Required Process
 
 1. 先确认改动边界与受影响 flow。
