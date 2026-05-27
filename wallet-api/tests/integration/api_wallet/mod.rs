@@ -1,5 +1,5 @@
+mod collect_fee;
 mod collect_fee_cycle;
-mod collect_legacy;
 mod collect_local_reclaim;
 mod collect_notification;
 mod collect_receipt;
