@@ -3,6 +3,7 @@ use anyhow::Result;
 use wallet_api::domain::app::config::ConfigDomain;
 
 #[tokio::test]
+#[ignore = "smoke test requires config backend availability"]
 async fn test_config_list() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -13,6 +14,7 @@ async fn test_config_list() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires config backend availability"]
 async fn test_set_min_value_config() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -26,6 +28,7 @@ async fn test_set_min_value_config() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires config backend availability"]
 async fn test_get_min_value_config() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -37,6 +40,7 @@ async fn test_get_min_value_config() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires global message backend availability"]
 async fn test_global_msg() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -47,6 +51,7 @@ async fn test_global_msg() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires invite backend availability"]
 async fn test_request_invite_summary() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -61,6 +66,7 @@ async fn test_request_invite_summary() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test exercises jpush processing with environment state"]
 async fn test_jpush() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -73,6 +79,7 @@ async fn test_jpush() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test reads environment mqtt config"]
 async fn test_mqtt_uri() {
     let _wallet_manager = get_manager().await;
 
@@ -82,6 +89,7 @@ async fn test_mqtt_uri() {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires backend config endpoint"]
 async fn test_backend_config() -> Result<()> {
     let wallet_manager = get_manager().await;
 
