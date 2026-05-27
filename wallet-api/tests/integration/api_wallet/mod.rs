@@ -6,6 +6,7 @@ mod collect_notification;
 mod collect_receipt;
 mod collect_recovery;
 mod collect_resource_gate;
+mod import_bind;
 mod sync;
 mod transfer_nonce;
 mod withdraw_notification;

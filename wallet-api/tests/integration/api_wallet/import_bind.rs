@@ -1,9 +1,5 @@
-#![cfg(feature = "integration-tests")]
-
-// These smoke tests must run serially because wallet-api relies on a global OnceCell CONTEXT.
-mod harness;
-
-use harness::{
+// These integration tests must run serially because wallet-api relies on a global OnceCell CONTEXT.
+use crate::harness::{
     ApiWalletBackendCall, ExpectedBindReq, assert_bind_call_once, derive_uid, ensure_env,
     find_wallet_by_uid, load_wallet_by_uid, next_tag, open_api_wallet_pool, prepare_wallet_pair,
     reset_fake, snapshot_bind_fields, upsert_wallet, upsert_wallet_with_import_stage,

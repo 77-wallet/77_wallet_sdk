@@ -47,3 +47,44 @@ impl Drop for ProductionInterval {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_production_interval_barrier() {
+        let mut interval = new_production_interval(Duration::from_secs(1));
+        let start = std::time::Instant::now();
+
+        interval.tick().await;
+        interval.tick().await;
+
+        let elapsed = start.elapsed();
+        assert!(elapsed >= Duration::from_secs(1));
+        assert!(elapsed < Duration::from_secs(3));
+    }
+
+    #[tokio::test]
+    async fn test_production_interval_basic() {
+        let mut interval = new_production_interval(Duration::from_millis(100));
+
+        interval.tick().await;
+
+        let start = std::time::Instant::now();
+        interval.tick().await;
+
+        let elapsed = start.elapsed();
+        assert!(elapsed >= Duration::from_millis(50));
+        assert!(elapsed < Duration::from_millis(300));
+    }
+
+    #[tokio::test]
+    async fn test_production_interval_zero_duration() {
+        let result = std::panic::catch_unwind(|| {
+            let _ = new_production_interval(Duration::ZERO);
+        });
+
+        assert!(result.is_err(), "duration zero should panic");
+    }
+}
