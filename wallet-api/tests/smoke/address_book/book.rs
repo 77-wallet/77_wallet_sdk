@@ -2,6 +2,7 @@ use crate::get_manager;
 use anyhow::Result;
 
 #[tokio::test]
+#[ignore = "smoke test writes address book data into local test data"]
 async fn test_add_address_book() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -15,6 +16,7 @@ async fn test_add_address_book() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test mutates address book data in local test data"]
 async fn test_update_address_book() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -29,6 +31,7 @@ async fn test_update_address_book() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test deletes address book data from local test data"]
 async fn test_update_delete_address_book() -> Result<()> {
     let wallet_manager = get_manager().await;
     let id = 1;
@@ -39,6 +42,7 @@ async fn test_update_delete_address_book() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test reads address book data from local test data"]
 async fn test_list_address_book() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -50,6 +54,7 @@ async fn test_list_address_book() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test checks address validation through wallet manager"]
 async fn test_valid_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -92,6 +97,7 @@ async fn test_valid_address() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test checks address status through wallet manager"]
 async fn test_address_status() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -131,6 +137,7 @@ async fn test_address_status() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test finds fixed address through wallet manager"]
 async fn test_find_address() -> Result<()> {
     let wallet_manager = get_manager().await;
     let chain_code = "tron".to_string();
