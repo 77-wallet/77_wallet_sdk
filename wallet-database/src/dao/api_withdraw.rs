@@ -399,6 +399,34 @@ impl ApiWithdrawDao {
         Ok(result)
     }
 
+    pub async fn scan_need_fee_estimate<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+              AND lower(chain_code) = 'tron'
+              AND fee_estimated_at IS NULL
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     /// Find withdraw candidates for acct_change-driven tx_hash backfill.
     ///
     /// Notes:
@@ -2497,6 +2525,7 @@ impl ApiWithdrawDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = ?1
               AND trade_type = ?4
+              AND fee_estimated_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -2552,6 +2581,41 @@ mod tests {
             None,
             ApiWithdrawStatus::Init,
             ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+
+    async fn seed_withdraw_for_fee_estimate(
+        pool: &crate::ApiTransactionDbPool,
+        trade_no: &str,
+        chain_code: &str,
+        trade_type: ApiTradeType,
+    ) {
+        ApiWithdrawRepo::upsert_api_withdraw(
+            pool,
+            "uid_fee_estimate",
+            "withdraw",
+            "FROM_FEE_ESTIMATE",
+            "TO_FEE_ESTIMATE",
+            "8.88",
+            "validate",
+            chain_code,
+            AssetTokenKey::Native,
+            if chain_code.eq_ignore_ascii_case("tron") { "TRX" } else { "ETH" },
+            trade_no,
+            None,
+            None,
+            None,
+            trade_type,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::InitOrder,
             "0",
             "0",
             None,
@@ -2637,44 +2701,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_fee_estimate_persists_pre_execution_estimate() {
+    async fn withdraw_fee_estimate_snapshot_update_is_first_write_wins() {
         let dir = make_temp_dir("wallet_db_api_withdraw_fee_estimate");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
         let pool = ctx.into_transaction_db_pool().unwrap();
 
-        ApiWithdrawRepo::upsert_api_withdraw(
-            &pool,
-            "uid_estimate",
-            "withdraw",
-            "FROM_ESTIMATE",
-            "TO_ESTIMATE",
-            "8.88",
-            "validate",
-            "tron",
-            AssetTokenKey::Native,
-            "TRX",
-            "W_FEE_ESTIMATE",
-            None,
-            None,
-            None,
-            ApiTradeType::Withdraw,
-            0,
-            None,
-            ApiWithdrawStatus::Init,
-            ApiWithdrawStatus::InitOrder,
-            r#"{"bandwidth":1,"energy":2}"#,
-            "0.123",
-            None,
-            None,
-        )
-        .await
-        .unwrap();
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE", "tron", ApiTradeType::Withdraw)
+            .await;
 
         let affected = ApiWithdrawRepo::update_fee_estimate(
             &pool,
             "W_FEE_ESTIMATE",
             "0.456",
             r#"{"bandwidth":10,"energy":20}"#,
+        )
+        .await
+        .unwrap();
+
+        let retry_affected = ApiWithdrawRepo::update_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE",
+            "9.999",
+            r#"{"bandwidth":99,"energy":99}"#,
         )
         .await
         .unwrap();
@@ -2688,14 +2736,73 @@ mod tests {
         .unwrap();
 
         assert_eq!(affected, 1);
+        assert_eq!(retry_affected, 0);
         assert_eq!(after.estimated_transaction_fee.as_deref(), Some("0.456"));
         assert_eq!(
             after.estimated_resource_consume.as_deref(),
             Some(r#"{"bandwidth":10,"energy":20}"#)
         );
         assert!(after.fee_estimated_at.is_some());
-        assert_eq!(after.transaction_fee, "0.123");
-        assert_eq!(after.resource_consume, r#"{"bandwidth":1,"energy":2}"#);
+        assert_eq!(after.transaction_fee, "0");
+        assert_eq!(after.resource_consume, "0");
+    }
+
+    #[tokio::test]
+    async fn withdraw_fee_estimate_snapshot_scan_finds_pending_tron_only() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_fee_estimate_scan");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_PENDING",
+            "TRON",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_ETH", "eth", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_SELF",
+            "tron",
+            ApiTradeType::SelfWithdraw,
+        )
+        .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_EXISTING",
+            "tron",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_RAW_TX",
+            "tron",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+
+        ApiWithdrawRepo::update_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_EXISTING",
+            "0.456",
+            r#"{"bandwidth":10,"energy":20}"#,
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE api_withdraws SET raw_tx = ? WHERE trade_no = ?")
+            .bind("raw")
+            .bind("W_FEE_ESTIMATE_RAW_TX")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let rows = ApiWithdrawRepo::scan_need_fee_estimate(&pool, 100).await.unwrap();
+        let trade_nos = rows.into_iter().map(|row| row.trade_no).collect::<Vec<_>>();
+
+        assert_eq!(trade_nos, vec!["W_FEE_ESTIMATE_PENDING"]);
     }
 
     #[tokio::test]

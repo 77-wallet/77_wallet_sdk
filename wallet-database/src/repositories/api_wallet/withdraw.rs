@@ -145,6 +145,13 @@ impl ApiWithdrawRepo {
         .await
     }
 
+    pub async fn scan_need_fee_estimate(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_fee_estimate(pool.read_ref(), limit).await
+    }
+
     pub async fn mark_resource_blocked(
         pool: &ApiTransactionDbPool,
         trade_no: &str,
