@@ -7,7 +7,9 @@ use crate::harness::{
 use serial_test::serial;
 use wallet_api::{
     messaging::notify::FrontendNotifyEvent,
-    test::withdraw::send_tx_ack_via_worker as send_withdraw_tx_ack_via_worker,
+    test::withdraw::{
+        scan_withdraw_intent_labels_once, send_tx_ack_via_worker as send_withdraw_tx_ack_via_worker,
+    },
 };
 use wallet_database::{
     SqliteContext,
@@ -151,7 +153,8 @@ async fn withdraw_notification_retry_on_existing_trade_no() {
 
 #[serial]
 #[tokio::test]
-async fn withdraw_single_tx_ack_request() {
+async fn withdraw_tx_ack_template_sends_once_and_persists_fact() {
+    // Arrange
     let env = ensure_worker_env().await;
     env.recorder.reset();
 
@@ -194,13 +197,29 @@ async fn withdraw_single_tx_ack_request() {
     .await
     .expect("insert withdraw");
 
+    // Act
     send_withdraw_tx_ack_via_worker(tx_pool.clone(), core_pool.clone(), &trade_no)
         .await
         .expect("send withdraw tx ack");
 
+    // Assert: backend side effect and DB fact
     let tx_ack_request_count = wait_for_withdraw_tx_ack_count(&trade_no).await;
     assert_eq!(tx_ack_request_count, 1, "withdraw order should emit exactly one TX ack request");
 
+    let persisted =
+        ApiWithdrawRepo::get_api_withdraw_by_trade_no(&tx_pool, &trade_no, ApiTradeType::Withdraw)
+            .await
+            .expect("load withdraw after tx ack");
+    assert!(persisted.tx_ack_sent_at.is_some(), "successful tx ack should persist tx_ack_sent_at");
+
+    let labels =
+        scan_withdraw_intent_labels_once(tx_pool.clone()).await.expect("scan withdraw intents");
+    assert!(
+        labels.iter().all(|label| label != "SendTxAck"),
+        "withdraw with tx_ack_sent_at must not re-enter SendTxAck; labels: {labels:?}"
+    );
+
+    // Assert: repeated act stays idempotent
     send_withdraw_tx_ack_via_worker(tx_pool.clone(), core_pool, &trade_no)
         .await
         .expect("repeat withdraw tx ack should be idempotent");
@@ -209,10 +228,4 @@ async fn withdraw_single_tx_ack_request() {
     let requests = env.recorder.snapshot();
     let tx_ack_request_count = count_withdraw_tx_ack_requests(&requests, &trade_no);
     assert_eq!(tx_ack_request_count, 1, "withdraw order should not emit a second TX ack request");
-
-    let persisted =
-        ApiWithdrawRepo::get_api_withdraw_by_trade_no(&tx_pool, &trade_no, ApiTradeType::Withdraw)
-            .await
-            .expect("load withdraw after tx ack");
-    assert!(persisted.tx_ack_sent_at.is_some(), "successful tx ack should persist tx_ack_sent_at");
 }
