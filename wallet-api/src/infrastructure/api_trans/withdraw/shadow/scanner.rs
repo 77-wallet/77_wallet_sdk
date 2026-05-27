@@ -483,6 +483,9 @@ impl ShadowScanner {
         // result cannot be followed by BuildTx/Broadcast before TX_RSC_RES ACK.
         self.scan_need_resource_result_ack().await;
 
+        // 手续费预估是审计展示用旁路快照，不参与主链路强顺序推进。
+        self.scan_need_fee_estimate().await;
+
         // 执行扫描逻辑：基于事实驱动
         // 推荐顺序：
         // - 正向推进（Build / Broadcast）
@@ -506,6 +509,34 @@ impl ShadowScanner {
         self.scan_need_resource_tx_exec_receipt_upload().await;
 
         trace!("Withdraw shadow scan round completed in {:?}", start.elapsed());
+    }
+
+    /// 扫描需要写入手续费预估快照的提币。
+    ///
+    /// 事实条件：
+    /// - TRON 普通提币
+    /// - fee_estimated_at IS NULL
+    /// - 未构建、未上链、未终止、无错误
+    ///
+    /// 该 intent 只补审计展示快照，不推进 BuildTx/ResourceGate。
+    async fn scan_need_fee_estimate(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw fee estimate records");
+
+        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_fee_estimate(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan withdraw fee estimate records");
+                return;
+            }
+        };
+
+        for record in records {
+            let intent = WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(record.trade_no));
+            self.dispatch_intent(intent);
+        }
     }
 
     /// 扫描需要发送交易 ACK 的交易
@@ -928,7 +959,8 @@ impl ShadowScanner {
             Err(tokio::sync::mpsc::error::TrySendError::Full(intent))
             | Err(tokio::sync::mpsc::error::TrySendError::Closed(intent)) => {
                 let trade_no = match &intent {
-                    WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no))
+                    WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(trade_no))
+                    | WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(
                         trade_no,
                     ))
@@ -1391,6 +1423,55 @@ mod tests {
                 if trade_no == "W_pending_rsc_ack"
         ));
         assert!(intent_rx.try_recv().is_err());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn withdraw_fee_estimate_snapshot_scan_dispatches_before_audit() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let scanner = ShadowScanner::new(pool.clone(), ScannerConfig::default(), intent_tx, None);
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_1",
+            "withdraw",
+            "from_addr",
+            "to_addr",
+            "1",
+            "digest",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_fee_estimate_before_audit",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await?;
+
+        scanner.scan_round().await;
+
+        let intent = intent_rx.try_recv().expect("fee estimate intent should be dispatched");
+        assert!(matches!(
+            intent,
+            WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(ref trade_no))
+                if trade_no == "W_fee_estimate_before_audit"
+        ));
 
         Ok(())
     }

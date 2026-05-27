@@ -20,6 +20,7 @@ use wallet_database::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
         },
         api_resource_type::ApiResourceType,
+        api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ErrCode, WithdrawFailureStage},
     },
     repositories::api_wallet::{
@@ -288,6 +289,32 @@ impl ShadowWithdrawWorker {
         chain_code.eq_ignore_ascii_case("tron")
     }
 
+    fn can_write_fee_estimate_snapshot(req: &ApiWithdrawEntity) -> bool {
+        req.trade_type == ApiTradeType::Withdraw
+            && Self::is_tron_withdraw(&req.chain_code)
+            && req.fee_estimated_at.is_none()
+            && req.raw_tx.is_none()
+            && req.transaction_time.is_none()
+            && req.finished_at.is_none()
+            && req.err_code.is_none()
+    }
+
+    fn format_estimated_fee_amount(amount: f64) -> String {
+        let mut text = format!("{amount:.8}");
+        if text.contains('.') {
+            text = text.trim_end_matches('0').trim_end_matches('.').to_string();
+        }
+        if text == "-0" { "0".to_string() } else { text }
+    }
+
+    fn tron_fee_estimate_resource_json(energy: u64, bandwidth: u64) -> String {
+        serde_json::json!({
+            "bandwidth": bandwidth,
+            "energy": energy,
+        })
+        .to_string()
+    }
+
     fn tron_resource_ready(
         available_energy: i64,
         available_bandwidth: i64,
@@ -328,6 +355,9 @@ impl ShadowWithdrawWorker {
     /// 处理命令
     pub async fn handle(&self, command: super::ShadowWithdrawCommand) -> Result<(), ServiceError> {
         match command {
+            super::ShadowWithdrawCommand::EstimateFee(trade_no) => {
+                self.process_fee_estimate(trade_no).await
+            }
             super::ShadowWithdrawCommand::EvalResourceGate(trade_no) => {
                 self.process_eval_resource_gate(trade_no).await
             }
@@ -348,6 +378,39 @@ impl ShadowWithdrawWorker {
     async fn process_eval_resource_gate(&self, trade_no: String) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Processing EvalResourceGate command");
         self.process_resource_gate_inner(&trade_no).await
+    }
+
+    async fn process_fee_estimate(&self, trade_no: String) -> Result<(), ServiceError> {
+        info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Processing EstimateFee command");
+        let req = self.get_withdraw_entity(&trade_no).await?;
+        if !Self::can_write_fee_estimate_snapshot(&req) {
+            return Ok(());
+        }
+
+        let fee_details = self.estimate_tron_fee_details_for_withdraw(&req).await?;
+        let estimated_transaction_fee =
+            Self::format_estimated_fee_amount(fee_details.estimate_fee.amount);
+        let estimated_resource_consume =
+            Self::tron_fee_estimate_resource_json(fee_details.energy, fee_details.bandwidth);
+
+        let rows = ApiWithdrawRepo::update_fee_estimate(
+            &self.pool,
+            &trade_no,
+            &estimated_transaction_fee,
+            &estimated_resource_consume,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        info!(
+            trade_no = %trade_no,
+            affected = rows,
+            estimated_transaction_fee = %estimated_transaction_fee,
+            estimated_resource_consume = %estimated_resource_consume,
+            source = "shadow_withdraw_worker",
+            "Withdraw fee estimate snapshot write attempted"
+        );
+        Ok(())
     }
 
     async fn handle_resource_delegation_terminal_failure_if_needed(
@@ -467,29 +530,7 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
-        let main_coin =
-            ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, AssetTokenKey::Native)
-                .await?;
-        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                    .await?;
-            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
-        } else {
-            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
-        };
-
-        let fee_details = self
-            .estimate_tron_fee_details(
-                &req.from_addr,
-                &req.to_addr,
-                &req.value,
-                &token_symbol,
-                &main_coin.symbol,
-                token_key,
-                token_decimals,
-            )
-            .await?;
+        let fee_details = self.estimate_tron_fee_details_for_withdraw(&req).await?;
         let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
         let resource = adapter.account_resource(&req.from_addr).await?;
         let available_energy = resource.available_energy();
@@ -1619,6 +1660,34 @@ impl ShadowWithdrawWorker {
         Ok(details)
     }
 
+    async fn estimate_tron_fee_details_for_withdraw(
+        &self,
+        req: &ApiWithdrawEntity,
+    ) -> Result<TronFeeDetails, ServiceError> {
+        let main_coin =
+            ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, AssetTokenKey::Native)
+                .await?;
+        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
+            let token_coin =
+                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
+                    .await?;
+            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+        } else {
+            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
+        };
+
+        self.estimate_tron_fee_details(
+            &req.from_addr,
+            &req.to_addr,
+            &req.value,
+            &token_symbol,
+            &main_coin.symbol,
+            token_key,
+            token_decimals,
+        )
+        .await
+    }
+
     async fn execute_tron_resource_delegation(
         &self,
         delegation: &ApiResourceDelegationEntity,
@@ -2172,6 +2241,24 @@ mod tests {
             client_id: None,
             create_time: None,
         }
+    }
+
+    #[test]
+    fn withdraw_fee_estimate_snapshot_fee_amount_trims_display_value() {
+        assert_eq!(ShadowWithdrawWorker::format_estimated_fee_amount(1.0), "1");
+        assert_eq!(ShadowWithdrawWorker::format_estimated_fee_amount(0.12340000), "0.1234");
+        assert_eq!(ShadowWithdrawWorker::format_estimated_fee_amount(0.000005), "0.000005");
+    }
+
+    #[test]
+    fn withdraw_fee_estimate_snapshot_resource_json_uses_product_keys() {
+        let json = ShadowWithdrawWorker::tron_fee_estimate_resource_json(345, 210);
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(value["energy"], 345);
+        assert_eq!(value["bandwidth"], 210);
+        assert!(value.get("energy_used").is_none());
+        assert!(value.get("net_used").is_none());
     }
 
     fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {

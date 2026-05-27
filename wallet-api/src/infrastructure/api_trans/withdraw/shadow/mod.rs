@@ -49,6 +49,13 @@ pub(crate) static WITHDRAW_SHADOW_ENABLED: AtomicBool = AtomicBool::new(false);
 /// 🔒 规则：只有 Confirm（transaction_time != NULL）才是"世界已发生"
 #[derive(Debug, Clone)]
 pub enum WithdrawChainIntent {
+    /// 预估 TRON 提币手续费快照。
+    ///
+    /// 这是审计页展示用的旁路快照：
+    /// - 只在 fee_estimated_at 缺失时尝试写入
+    /// - 不参与 ADVANCEMENT_ORDER
+    /// - 失败后留给下一轮扫描重试，不写 err_code/status
+    EstimateFee(String),
     /// 评估 TRON 资源闸门。
     ///
     /// 这是真实操作步骤：

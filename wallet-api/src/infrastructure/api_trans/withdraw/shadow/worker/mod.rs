@@ -8,6 +8,8 @@ pub use side_effect_worker::SideEffectWorker;
 /// ShadowWithdrawWorker 命令
 #[derive(Debug, Clone)]
 pub enum ShadowWithdrawCommand {
+    /// 写入审计展示用手续费预估快照
+    EstimateFee(String),
     /// 评估资源闸门
     EvalResourceGate(String),
     /// 执行平台代理资源代理任务
