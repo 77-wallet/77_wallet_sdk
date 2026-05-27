@@ -2,6 +2,7 @@ use crate::get_manager;
 use anyhow::Result;
 
 #[tokio::test]
+#[ignore = "smoke test requires seeded bill data"]
 async fn bill_detail() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -14,6 +15,7 @@ async fn bill_detail() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires seeded bill data"]
 async fn bill_list_by_hashs() -> Result<()> {
     let owner = "UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY".to_string();
     let hashs = vec![
@@ -29,6 +31,7 @@ async fn bill_list_by_hashs() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires seeded bill data"]
 async fn bill_lists() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -64,12 +67,12 @@ async fn bill_lists() -> Result<()> {
             page_size,
         )
         .await?;
-    // tracing::info!("{}", serde_json::to_string(&detail).unwrap());
     tracing::info!("{:#?}", detail);
     Ok(())
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires seeded transaction result data"]
 async fn query_bill_result() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -82,6 +85,7 @@ async fn query_bill_result() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires backend/chain bill sync availability"]
 async fn test_sync_bill() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -93,6 +97,7 @@ async fn test_sync_bill() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires seeded wallet and backend bill sync availability"]
 async fn test_sync_bill_by_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -104,6 +109,7 @@ async fn test_sync_bill_by_address() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires backend recent bill availability"]
 async fn recent_bill() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -120,6 +126,7 @@ async fn recent_bill() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires backend price availability"]
 async fn coin_currency_price() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -133,6 +140,7 @@ async fn coin_currency_price() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test writes a sample bill into local test data"]
 async fn test_create_bill() -> Result<()> {
     let _wallet_manager = get_manager().await;
 
@@ -156,6 +164,7 @@ async fn test_create_bill() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "manual calculation check without assertions"]
 async fn test_create() -> Result<()> {
     let value = wallet_utils::unit::convert_to_u256("0.00330888", 18).unwrap();
 

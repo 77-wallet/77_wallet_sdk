@@ -2,6 +2,7 @@ use crate::get_manager;
 use anyhow::Result;
 
 #[tokio::test]
+#[ignore = "smoke test requires seeded asset data and backend availability"]
 async fn test_asset_detail() -> Result<()> {
     let wallet = get_manager().await;
 
@@ -17,6 +18,7 @@ async fn test_asset_detail() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires seeded asset data and backend availability"]
 async fn sync_assets() -> Result<()> {
     let wallet_manager = get_manager().await;
     let addr = "0xEB2b4F967D9a6BeA958dDe3e5814BbE33A5CBfE2".to_string();
@@ -29,6 +31,7 @@ async fn sync_assets() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires chain/backend availability"]
 async fn sync_assets_from_chain() -> Result<()> {
     let wallet_manager = get_manager().await;
     let addr = "0xEB2b4F967D9a6BeA958dDe3e5814BbE33A5CBfE2".to_string();
@@ -41,6 +44,7 @@ async fn sync_assets_from_chain() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "smoke test requires seeded wallet data and backend availability"]
 async fn sync_assets_by_wallet() -> Result<()> {
     let wallet_manager = get_manager().await;
     let wallet_address = "0xEB2b4F967D9a6BeA958dDe3e5814BbE33A5CBfE2".to_string();

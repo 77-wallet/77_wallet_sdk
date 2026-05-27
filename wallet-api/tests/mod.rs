@@ -6,8 +6,6 @@ use wallet_utils::init_test_log;
 
 mod account;
 mod address_book;
-mod assets;
-mod bill;
 mod harness;
 mod integration;
 mod multisig_account;
