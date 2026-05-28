@@ -3,7 +3,12 @@ use crate::{
     domain::api_wallet::trans::{
         collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
     },
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+    messaging::{
+        mqtt::topics::api_wallet::result_fields::{
+            AwmResultTxFee, deserialize_optional_non_empty_string,
+        },
+        notify::{FrontendNotifyEvent, event::NotifyEvent},
+    },
 };
 use tracing;
 use wallet_database::{
@@ -39,7 +44,7 @@ pub struct AwmOrderTransResMsg {
     fail_type: Option<i32>,
     uid: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    tx_fee: Option<AwmOrderTransResTxFee>,
+    tx_fee: Option<AwmResultTxFee>,
     #[serde(
         default,
         deserialize_with = "deserialize_optional_non_empty_string",
@@ -48,82 +53,11 @@ pub struct AwmOrderTransResMsg {
     block_number: Option<String>,
 }
 
-#[derive(Debug, Default, serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-struct AwmOrderTransResTxFee {
-    #[serde(
-        default,
-        deserialize_with = "deserialize_optional_non_empty_string",
-        skip_serializing_if = "Option::is_none"
-    )]
-    native_fee: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_optional_u64",
-        skip_serializing_if = "Option::is_none"
-    )]
-    bandwidth: Option<u64>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_optional_u64",
-        skip_serializing_if = "Option::is_none"
-    )]
-    energy: Option<u64>,
-}
-
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct WithdrawActualFeeUpdate {
     transaction_fee: Option<String>,
     resource_consume: Option<String>,
     block_height: Option<String>,
-}
-
-fn deserialize_optional_non_empty_string<'de, D>(
-    deserializer: D,
-) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = <Option<serde_json::Value> as serde::Deserialize>::deserialize(deserializer)?;
-    Ok(value.and_then(value_to_non_empty_string))
-}
-
-fn deserialize_optional_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = <Option<serde_json::Value> as serde::Deserialize>::deserialize(deserializer)?;
-    Ok(value.and_then(value_to_u64))
-}
-
-fn value_to_non_empty_string(value: serde_json::Value) -> Option<String> {
-    match value {
-        serde_json::Value::String(item) => {
-            let item = item.trim();
-            if item.is_empty() { None } else { Some(item.to_string()) }
-        }
-        serde_json::Value::Number(item) => Some(item.to_string()),
-        _ => None,
-    }
-}
-
-fn value_to_u64(value: serde_json::Value) -> Option<u64> {
-    match value {
-        serde_json::Value::Number(item) => item
-            .as_u64()
-            .or_else(|| item.as_i64().and_then(|item| u64::try_from(item).ok()))
-            .or_else(|| {
-                item.as_f64().and_then(|item| {
-                    if item.is_finite() && item >= 0.0 && item.fract() == 0.0 {
-                        Some(item as u64)
-                    } else {
-                        None
-                    }
-                })
-            }),
-        serde_json::Value::String(item) => item.trim().parse::<u64>().ok(),
-        _ => None,
-    }
 }
 
 // API钱包的订单结果消息
@@ -715,6 +649,83 @@ mod tests {
         },
         repositories::api_wallet::resource_operation::ApiResourceOperationRepo,
     };
+
+    #[test]
+    fn mqtt_result_mock_data_parses_order_trans_actual_fee_fields() -> anyhow::Result<()> {
+        let msg: AwmOrderTransResMsg = serde_json::from_value(serde_json::json!({
+            "tradeNo": "W_mqtt_mock",
+            "tradeType": "1",
+            "status": true,
+            "failType": 0,
+            "uid": "uid_1",
+            "txFee": {
+                "nativeFee": "1.23",
+                "bandwidth": 345,
+                "energy": "678"
+            },
+            "blockNumber": 12345678
+        }))?;
+
+        assert_eq!(msg.trade_no, "W_mqtt_mock");
+        assert_eq!(msg.trade_type, 1);
+        assert!(msg.status);
+        assert_eq!(msg.fail_type, Some(0));
+        assert_eq!(msg.uid, "uid_1");
+        assert_eq!(msg.block_number.as_deref(), Some("12345678"));
+
+        let tx_fee = msg.tx_fee.as_ref().expect("txFee should parse");
+        assert_eq!(tx_fee.native_fee.as_deref(), Some("1.23"));
+        assert_eq!(tx_fee.bandwidth, Some(345));
+        assert_eq!(tx_fee.energy, Some(678));
+
+        let update = msg.withdraw_actual_fee_update().expect("actual fee update should be created");
+        assert_eq!(update.transaction_fee.as_deref(), Some("1.23"));
+        assert_eq!(update.resource_consume.as_deref(), Some(r#"{"bandwidth":345,"energy":678}"#));
+        assert_eq!(update.block_height.as_deref(), Some("12345678"));
+
+        let serialized = serde_json::to_value(&msg)?;
+        assert_eq!(serialized["txFee"]["nativeFee"], "1.23");
+        assert_eq!(serialized["txFee"]["bandwidth"], 345);
+        assert_eq!(serialized["txFee"]["energy"], 678);
+        assert_eq!(serialized["blockNumber"], "12345678");
+        Ok(())
+    }
+
+    #[test]
+    fn mqtt_result_mock_data_parses_resource_actual_fee_fields() -> anyhow::Result<()> {
+        let msg: AwmOrderTransResMsg = serde_json::from_value(serde_json::json!({
+            "tradeNo": "DL_mqtt_mock",
+            "tradeType": "5",
+            "status": true,
+            "failType": null,
+            "uid": "uid_1",
+            "txFee": {
+                "nativeFee": 0,
+                "bandwidth": "0",
+                "energy": 1200
+            },
+            "blockNumber": "12345679"
+        }))?;
+
+        assert_eq!(msg.trade_no, "DL_mqtt_mock");
+        assert_eq!(msg.trade_type, 5);
+        assert!(msg.status);
+        assert_eq!(msg.fail_type, None);
+        assert_eq!(msg.uid, "uid_1");
+        assert_eq!(msg.block_number.as_deref(), Some("12345679"));
+
+        let tx_fee = msg.tx_fee.as_ref().expect("txFee should parse");
+        assert_eq!(tx_fee.native_fee.as_deref(), Some("0"));
+        assert_eq!(tx_fee.bandwidth, Some(0));
+        assert_eq!(tx_fee.energy, Some(1200));
+
+        let serialized = serde_json::to_value(&msg)?;
+        assert_eq!(serialized["txFee"]["nativeFee"], "0");
+        assert_eq!(serialized["txFee"]["bandwidth"], 0);
+        assert_eq!(serialized["txFee"]["energy"], 1200);
+        assert_eq!(serialized["blockNumber"], "12345679");
+        Ok(())
+    }
 
     #[tokio::test]
     async fn resource_operation_result_persists_trade_type_4_result_fact() -> anyhow::Result<()> {

@@ -1,4 +1,9 @@
-use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
+use crate::messaging::{
+    mqtt::topics::api_wallet::result_fields::{
+        AwmResultTxFee, deserialize_optional_non_empty_string,
+    },
+    notify::{FrontendNotifyEvent, event::NotifyEvent},
+};
 use wallet_database::repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo};
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
@@ -15,7 +20,20 @@ pub struct AwmCmdFeeResMsg {
     trade_type: u32,
     /// 交易结果： true 成功 /false 失败
     status: bool,
+    /// 失败类型由后端透传给前端展示；FeeRes 业务逻辑当前只关心 status。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fail_type: Option<i32>,
     uid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    remark: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tx_fee: Option<AwmResultTxFee>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_non_empty_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    block_number: Option<String>,
 }
 
 // API手续费结果事件
@@ -98,6 +116,49 @@ impl AwmCmdFeeResMsg {
             }
         }
 
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn awm_cmd_fee_res_mock_data_parses_actual_fee_fields() -> anyhow::Result<()> {
+        let msg: AwmCmdFeeResMsg = serde_json::from_value(serde_json::json!({
+            "tradeNo": "FEE_mock_1",
+            "tradeType": "3",
+            "status": true,
+            "failType": 0,
+            "uid": "uid_1",
+            "remark": "mock fee result",
+            "txFee": {
+                "nativeFee": 1.23,
+                "bandwidth": "345",
+                "energy": 678
+            },
+            "blockNumber": 12345678
+        }))?;
+
+        assert_eq!(msg.trade_no, "FEE_mock_1");
+        assert_eq!(msg.trade_type, 3);
+        assert!(msg.status);
+        assert_eq!(msg.fail_type, Some(0));
+        assert_eq!(msg.uid, "uid_1");
+        assert_eq!(msg.remark.as_deref(), Some("mock fee result"));
+        assert_eq!(msg.block_number.as_deref(), Some("12345678"));
+
+        let tx_fee = msg.tx_fee.as_ref().expect("txFee should parse");
+        assert_eq!(tx_fee.native_fee.as_deref(), Some("1.23"));
+        assert_eq!(tx_fee.bandwidth, Some(345));
+        assert_eq!(tx_fee.energy, Some(678));
+
+        let serialized = serde_json::to_value(&msg)?;
+        assert_eq!(serialized["txFee"]["nativeFee"], "1.23");
+        assert_eq!(serialized["txFee"]["bandwidth"], 345);
+        assert_eq!(serialized["txFee"]["energy"], 678);
+        assert_eq!(serialized["blockNumber"], "12345678");
         Ok(())
     }
 }
