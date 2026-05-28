@@ -127,7 +127,7 @@ async fn withdraw_success_should_write_facts_and_ack_backend() {
 ```rust
 #[serial]
 #[tokio::test]
-async fn withdraw_tx_ack_template_sends_once_and_persists_fact() {
+async fn withdraw_tx_ack_sends_once_and_persists_fact() {
     // Arrange: temp db, fake backend recorder, unique uid/trade_no.
 
     // Act: execute one business entry or one worker step.

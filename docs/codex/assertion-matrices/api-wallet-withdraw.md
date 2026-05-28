@@ -29,7 +29,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
   ```text
   tests/integration/api_wallet/withdraw_notification.rs
-  withdraw_tx_ack_template_sends_once_and_persists_fact
+  withdraw_tx_ack_sends_once_and_persists_fact
   ```
 
 - Backend: exactly one `TRANS_EVENT_ACK` with `type = WD`,
