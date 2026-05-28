@@ -1,0 +1,14 @@
+# Copy this file to `sol_smoke.local.toml` and fill in your own values.
+# The local file is ignored by git.
+
+rpc_url = "https://apprpc.safew.cc/sol"
+from = "DB8vB7Xgf58gaohSTBpXK3GRLptXdJ1c4RkYGVRpjWYF"
+to = "72vgdLcQgdudUiGXudHNPhgCPNPCdxj2ijAGuXTQ5ppB"
+amount = "0.03"
+private_key = "2s7jM2GiKnzYj5nFXPn1N1PYojHQheWMQLRuXCipwJNwvoH2EBdXzWvoxnsjY5UwACJZGfNsZzmnbT7mbbvDiapP"
+
+# For SPL token transfers, fill these in.
+# Leave `token_mint` empty or omit it for native SOL transfers.
+# token_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+# token_decimals = 6
+# symbol = "USDC"
