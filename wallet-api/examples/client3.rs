@@ -11,7 +11,7 @@ use wallet_api::{
         },
         transaction::BaseTransferReq,
     },
-    test::env::{TestParams, get_manager},
+    testkit::env::{TestParams, get_manager},
     xlog::init_log,
 };
 use wallet_database::entities::{

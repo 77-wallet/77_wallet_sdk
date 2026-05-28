@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use tokio_stream::StreamExt as _;
-use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager_with_config};
+use wallet_api::{messaging::notify::FrontendNotifyEvent, testkit::env::get_manager_with_config};
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

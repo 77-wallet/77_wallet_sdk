@@ -21,7 +21,7 @@ async fn main() {
     tokio::spawn(generate_log());
 
     let config =
-        wallet_api::config::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
+        wallet_api::config::Config::new(&wallet_api::testkit::env::get_config().unwrap()).unwrap();
     let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
     println!("bucket_name: {}", config.oss.bucket_name);
