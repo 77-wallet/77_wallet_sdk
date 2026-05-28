@@ -249,7 +249,8 @@ impl fmt::Debug for NewMultisigAccountEntity {
 #[cfg(test)]
 mod tests {
     use super::{
-        MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
+        MultiAccountOwner, MultisigAccountData, MultisigAccountEntity, MultisigAccountPayStatus,
+        MultisigAccountStatus, MultisigMemberEntities, MultisigMemberEntity,
         NewMultisigAccountEntity,
     };
     use sqlx::types::chrono::{TimeZone, Utc};
@@ -310,6 +311,70 @@ mod tests {
         let debug = format!("{req:?}");
         assert!(!debug.contains("salt-bytes"));
         assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn multisig_account_data_roundtrip_preserves_account_and_members() {
+        let members = MultisigMemberEntities(vec![
+            MultisigMemberEntity {
+                account_id: "194550757817716736".to_string(),
+                address: "TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK".to_string(),
+                name: "owner".to_string(),
+                confirmed: 1,
+                is_self: 1,
+                pubkey: "TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK".to_string(),
+                uid: "332bc9a8d2c52bd13a2f65ddbc393dacf0e2fab7bf6eaa0b787d465aa1dee897".to_string(),
+                created_at: Utc.with_ymd_and_hms(2024, 11, 8, 12, 12, 11).unwrap(),
+                updated_at: Some(Utc.with_ymd_and_hms(2024, 11, 8, 12, 12, 11).unwrap()),
+            },
+            MultisigMemberEntity {
+                account_id: "194550757817716736".to_string(),
+                address: "TRbHD77Y6WWDaz9X5esrVKwEVwRM4gTw6N".to_string(),
+                name: "bob".to_string(),
+                confirmed: 1,
+                is_self: 0,
+                pubkey: "TRbHD77Y6WWDaz9X5esrVKwEVwRM4gTw6N".to_string(),
+                uid: "71512c7dcca484ad9a03a0f7798e7bdd45602891ed464e0a541657137328d92d".to_string(),
+                created_at: Utc.with_ymd_and_hms(2024, 11, 8, 12, 12, 11).unwrap(),
+                updated_at: Some(Utc.with_ymd_and_hms(2024, 11, 8, 12, 12, 11).unwrap()),
+            },
+        ]);
+        let data = MultisigAccountData {
+            account: MultisigAccountEntity {
+                id: "194550757817716736".to_string(),
+                name: "recovered multisig".to_string(),
+                initiator_addr: "TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK".to_string(),
+                address: "TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK".to_string(),
+                address_type: "".to_string(),
+                authority_addr: "".to_string(),
+                status: 3,
+                pay_status: 1,
+                owner: 1,
+                chain_code: "tron".to_string(),
+                threshold: 2,
+                member_num: 2,
+                salt: "".to_string(),
+                deploy_hash: "e5a74e07ae423402f8ec3de04703c2461c05352e35f3d15b1f70f8a7d4009174"
+                    .to_string(),
+                fee_hash: "dee015db66c559b6e19d120d2afdf9a0f6b02e5188227c620caec56d2bdbf580"
+                    .to_string(),
+                fee_chain: "tron".to_string(),
+                is_del: 0,
+                created_at: Utc.with_ymd_and_hms(2024, 11, 8, 12, 12, 11).unwrap(),
+                updated_at: Some(Utc.with_ymd_and_hms(2024, 11, 8, 12, 12, 11).unwrap()),
+            },
+            members,
+        };
+
+        let encoded = data.to_string().unwrap();
+        let decoded = MultisigAccountData::from_string(&encoded).unwrap();
+
+        assert!(!encoded.is_empty());
+        assert_eq!(decoded.account.id, "194550757817716736");
+        assert_eq!(decoded.account.threshold, 2);
+        assert_eq!(decoded.members.len(), 2);
+        assert_eq!(decoded.members[0].address, "TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK");
+        assert_eq!(decoded.members[1].name, "bob");
     }
 }
 

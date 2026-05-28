@@ -4,17 +4,9 @@ use tokio_stream::StreamExt;
 use wallet_api::{dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent};
 use wallet_utils::init_test_log;
 
-mod account;
 mod harness;
 mod integration;
-mod multisig_account;
-mod multisig_tx;
-mod permission;
-mod phrase;
 mod smoke;
-mod stake;
-mod swap;
-mod transactions;
 
 static TEST_LOG_INIT: Once = Once::new();
 
