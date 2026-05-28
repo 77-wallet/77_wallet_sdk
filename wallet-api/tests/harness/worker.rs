@@ -38,6 +38,7 @@ pub(crate) struct CapturedHttpRequest {
 #[derive(Default)]
 struct MockBackendState {
     requests: VecDeque<CapturedHttpRequest>,
+    responses: VecDeque<String>,
 }
 
 #[derive(Clone, Default)]
@@ -59,11 +60,32 @@ impl MockBackendRecorder {
     pub(crate) fn reset(&self) {
         let mut state = self.state.lock().expect("mock backend lock poisoned");
         state.requests.clear();
+        state.responses.clear();
     }
 
     pub(crate) fn snapshot(&self) -> Vec<CapturedHttpRequest> {
         let state = self.state.lock().expect("mock backend lock poisoned");
         state.requests.iter().cloned().collect()
+    }
+
+    pub(crate) fn fail_next_api_backend_call(&self, code: i64, msg: &str) {
+        let mut state = self.state.lock().expect("mock backend lock poisoned");
+        state.responses.push_back(
+            serde_json::json!({
+                "success": false,
+                "code": code.to_string(),
+                "msg": msg,
+                "data": null,
+            })
+            .to_string(),
+        );
+    }
+
+    fn next_response_body(&self) -> String {
+        let mut state = self.state.lock().expect("mock backend lock poisoned");
+        state.responses.pop_front().unwrap_or_else(|| {
+            r#"{"success":true,"code":"200","msg":"ok","data":null}"#.to_string()
+        })
     }
 }
 
@@ -215,7 +237,7 @@ fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)> {
                     body: String::from_utf8_lossy(&body).to_string(),
                 });
 
-                let response_body = r#"{"success":true,"code":"200","msg":"ok","data":null}"#;
+                let response_body = recorder.next_response_body();
                 let response = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
                     response_body.len(),

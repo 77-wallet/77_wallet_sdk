@@ -1,3 +1,8 @@
+//! Test-only adapter override registry.
+//!
+//! Integration and crate-side tests use this module to replace transaction
+//! adapters without reaching real chain RPCs.
+
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::sync::Arc;

@@ -472,7 +472,7 @@ mod tests {
     use super::{
         AwmOrderTransMsg, AwmOrderTransNormalMsg, AwmResourceDelegationMsg, AwmResourceOperationMsg,
     };
-    use crate::test::{
+    use crate::testkit::{
         env::get_manager,
         mqtt::{api_transaction_pool, api_wallet_pool},
     };

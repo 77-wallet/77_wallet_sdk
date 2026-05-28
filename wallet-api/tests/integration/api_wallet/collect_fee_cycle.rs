@@ -1,7 +1,7 @@
 use crate::harness::next_unique_id;
 use sqlx;
 use tempfile::TempDir;
-use wallet_api::test::collect::scan_collect_intent_labels_once;
+use wallet_api::testkit::collect::scan_collect_intent_labels_once;
 use wallet_database::{
     ApiTransactionDbPool, SqliteContext, entities::api_collect::ApiCollectStatus,
     repositories::api_wallet::collect::ApiCollectRepo,

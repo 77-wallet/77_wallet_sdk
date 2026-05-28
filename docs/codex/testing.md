@@ -4,6 +4,7 @@
 
 本文件是测试规则摘要，供 Codex 在执行任务时优先读取。
 详细说明见 `docs/codex/testing-strategy.md`。
+可复制测试模板见 `docs/codex/testing-templates.md`。
 
 ## Required Rules
 
@@ -30,6 +31,8 @@
   按 `integration/<module>/`、`smoke/<module>/` 拆分。
 - `tests/harness/` 只放真正跨模块复用的 test harness、fake、fixture、assertion；
   禁止 `withdraw` 依赖 `collect` 私有 helper。
+- `src/testkit/` 只放 crate 内部测试入口，例如 worker/scanner/domain
+  step wrappers；它不是测试环境，也不是通用 helper 垃圾桶。
 - 新增测试优先用清晰文件名表达意图，例如 `confirm_tests.rs`、`resource_gate.rs`、`live_backend.rs`。
 
 目录契约：
@@ -37,6 +40,7 @@
 ```text
 <crate>/
   src/...                         # unit / component tests live near code
+  src/testkit/                    # crate-side test-only internal entrypoints
   tests/
     harness/                      # cross-module test environment and fakes
     integration/<business_module>/<flow>.rs
@@ -49,6 +53,8 @@
 - `<flow>.rs` 使用具体流程或风险点，例如 `withdraw_notification.rs`、`collect_resource_gate.rs`。
 - 一个 integration 文件只覆盖同一类业务流程；如果同时出现 fee、notification、receipt，应拆成多个文件。
 - `harness` 是专业测试术语，表示测试夹具/执行环境总成；它只能承载通用环境、fake、fixture、assertion，不能变成新的业务模块。
+- `testkit` 表示 crate 内部测试工具包，只暴露测试需要的内部步骤入口；
+  integration 测试环境仍然归 `tests/harness`。
 
 ## Required Process
 

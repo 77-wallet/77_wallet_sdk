@@ -551,6 +551,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn withdraw_confirm_failure_writes_transaction_time_and_chain_failed() {
+        let db = TestWithdrawDb::new().await;
+        let trade_no = "W_CONFIRM_FAILURE_FACTS";
+        db.insert_withdraw(trade_no, ApiWithdrawStatus::SendingTxReport).await;
+
+        let outcome = ApiWithdrawDomain::confirm_tx_in_pool(&db.pool, trade_no, false)
+            .await
+            .expect("confirm withdraw failure");
+
+        assert!(outcome.should_notify, "new confirmation facts should notify once");
+        assert!(outcome.tx.transaction_time.is_some(), "transaction_time fact must be written");
+        assert!(outcome.tx.chain_failed_at.is_some(), "chain_failed_at fact must be written");
+        assert!(outcome.tx.chain_success_at.is_none(), "failure must clear success fact");
+        assert_eq!(outcome.tx.status, ApiWithdrawStatus::Failure);
+
+        let saved = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &db.pool,
+            trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .expect("reload withdraw");
+        assert!(saved.transaction_time.is_some());
+        assert!(saved.chain_failed_at.is_some());
+        assert!(saved.chain_success_at.is_none());
+        assert_eq!(saved.status, ApiWithdrawStatus::Failure);
+    }
+
+    #[tokio::test]
     async fn withdraw_confirm_repeat_success_does_not_notify_again() {
         let db = TestWithdrawDb::new().await;
         let trade_no = "W_CONFIRM_REPEAT_SUCCESS";

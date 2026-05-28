@@ -65,7 +65,7 @@ impl WalletManager {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::test::env::get_manager;
+    use crate::testkit::env::get_manager;
     use anyhow::Result;
 
     #[tokio::test]

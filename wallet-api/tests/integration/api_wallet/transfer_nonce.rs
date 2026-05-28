@@ -14,7 +14,7 @@ use std::{
 use tokio::sync::Notify;
 use wallet_api::{
     request::api_wallet::{trans::ApiBaseTransferReq, transfer::ApiTransferExReq},
-    test_support::adapter_factory::{
+    testkit::adapter_factory::{
         clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
     },
 };

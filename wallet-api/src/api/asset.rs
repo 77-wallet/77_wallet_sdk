@@ -158,7 +158,7 @@ impl WalletManager {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
-    use crate::{response_vo::standard_wallet::chain::ChainList, test::env::get_manager};
+    use crate::{response_vo::standard_wallet::chain::ChainList, testkit::env::get_manager};
     use anyhow::Result;
     use std::collections::HashMap;
 

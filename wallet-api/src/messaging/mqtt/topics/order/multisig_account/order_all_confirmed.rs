@@ -56,7 +56,7 @@ impl OrderAllConfirmed {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
-    use crate::{messaging::mqtt::topics::OrderAllConfirmed, test::env::get_manager};
+    use crate::{messaging::mqtt::topics::OrderAllConfirmed, testkit::env::get_manager};
 
     #[tokio::test]
     async fn test_() {

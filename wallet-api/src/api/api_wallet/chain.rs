@@ -38,7 +38,7 @@ mod test {
 
     use anyhow::Result;
 
-    use crate::test::env::get_manager;
+    use crate::testkit::env::get_manager;
 
     #[tokio::test]
     async fn test_get_api_chain_list() -> Result<()> {

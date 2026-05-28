@@ -1,3 +1,5 @@
+//! Test-only seed fixture helpers.
+
 use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
 pub async fn encrypt_seed(password: &str, seed: &[u8]) -> Vec<u8> {

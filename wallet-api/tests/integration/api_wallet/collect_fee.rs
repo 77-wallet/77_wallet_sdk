@@ -21,12 +21,11 @@ use wallet_api::{
         chain::{ChainError, InsufficientBalanceDetail},
     },
     infrastructure::api_trans::{AddressLockManager, ShadowAdvancer, ShadowCollectWorker},
-    test::collect::upload_collect_service_fee_via_worker,
-    test_support::{
+    testkit::{
         adapter_factory::{
             clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
         },
-        collect::shadow_collect_check_fee,
+        collect::{shadow_collect_check_fee, upload_collect_service_fee_via_worker},
     },
 };
 use wallet_database::{

@@ -1,6 +1,6 @@
 use serial_test::serial;
 use sqlx;
-use wallet_api::test::withdraw::{
+use wallet_api::testkit::withdraw::{
     scan_withdraw_intent_labels_once,
     send_resource_result_ack_via_worker as send_withdraw_resource_result_ack_via_worker,
     upload_resource_tx_exec_receipt_via_worker as upload_withdraw_resource_tx_exec_receipt_via_worker,

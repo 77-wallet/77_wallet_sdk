@@ -1,6 +1,6 @@
 use serial_test::serial;
 use tempfile::TempDir;
-use wallet_api::test::{
+use wallet_api::testkit::{
     collect::scan_collect_intent_labels_once,
     resource_reclaim::scan_local_reclaim_intent_labels_once,
 };

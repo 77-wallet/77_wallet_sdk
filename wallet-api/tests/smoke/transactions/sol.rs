@@ -1,6 +1,8 @@
 use crate::get_manager;
 use alloy::primitives::U256;
-use wallet_api::{request::transaction, test_support::sol_tx::sol_native_transfer_rent_precheck};
+use wallet_api::{
+    request::transaction, testkit::sol_transaction::sol_native_transfer_rent_precheck,
+};
 
 // 余额测试
 #[tokio::test]

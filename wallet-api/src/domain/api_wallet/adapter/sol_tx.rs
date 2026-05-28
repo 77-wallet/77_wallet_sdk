@@ -907,7 +907,7 @@ mod tests {
         },
         error::service::ServiceError,
         request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        test::env::get_manager,
+        testkit::env::get_manager,
     };
     use alloy::primitives::U256;
     use serde::Deserialize;

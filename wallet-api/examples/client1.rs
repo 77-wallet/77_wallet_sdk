@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio_stream::StreamExt as _;
 use wallet_api::{
     messaging::notify::FrontendNotifyEvent,
-    test::env::{get_manager, get_manager_with_config},
+    testkit::env::{get_manager, get_manager_with_config},
 };
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB

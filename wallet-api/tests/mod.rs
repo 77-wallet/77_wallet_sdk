@@ -33,7 +33,7 @@ pub async fn get_manager() -> WalletManager {
     });
     let dirs = Dirs::new(&path).unwrap();
 
-    let config_text = wallet_api::test::env::get_config().unwrap_or_else(|_| {
+    let config_text = wallet_api::testkit::env::get_config().unwrap_or_else(|_| {
         r#"
 app_code: "test"
 crypto:

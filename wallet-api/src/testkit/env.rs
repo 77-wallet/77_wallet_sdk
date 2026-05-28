@@ -1,3 +1,5 @@
+//! Test-only wallet manager and config helpers.
+
 use crate::{dirs::Dirs, manager::WalletManager};
 use anyhow::{Context, Result};
 use std::{env, path::PathBuf};
@@ -92,7 +94,7 @@ pub async fn get_manager_with_config(config_file: &str) -> Result<(WalletManager
     // )
     // .await?;
     let config = crate::config::Config::new(
-        &crate::test::env::get_config().with_context(|| "crate::test::env::get_config()")?,
+        &crate::testkit::env::get_config().with_context(|| "crate::testkit::env::get_config()")?,
     )
     .with_context(|| "config = crate::config::Co")?;
     let wallet_manager = WalletManager::new(

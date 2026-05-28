@@ -172,7 +172,7 @@ impl WalletManager {
 mod test {
     use crate::{
         request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
-        test::env::{get_manager, get_manager_with_config},
+        testkit::env::{get_manager, get_manager_with_config},
     };
 
     use anyhow::Result;

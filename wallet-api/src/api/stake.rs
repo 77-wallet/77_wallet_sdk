@@ -234,7 +234,7 @@ impl WalletManager {
 mod tests {
     use crate::{
         request::stake::{VoteWitnessReq, VotesReq},
-        test::env::get_manager,
+        testkit::env::get_manager,
     };
     use anyhow::Result;
 

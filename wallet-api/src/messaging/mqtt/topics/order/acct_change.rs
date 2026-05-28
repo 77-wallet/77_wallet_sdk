@@ -365,7 +365,7 @@ impl AcctChange {
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
 
-    use crate::{messaging::mqtt::topics::AcctChange, test::env::get_manager};
+    use crate::{messaging::mqtt::topics::AcctChange, testkit::env::get_manager};
 
     async fn init_manager() {
         wallet_utils::init_test_log();

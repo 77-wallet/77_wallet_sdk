@@ -5,7 +5,7 @@ use crate::{
 
 /// Test-facing wrapper for the Solana fee rent helper.
 ///
-/// Keeping this in `test_support` allows integration tests to exercise the
+/// Keeping this in `testkit` allows integration tests to exercise the
 /// behavior without embedding test code inside the deprecated fee worker module.
 pub async fn bump_sol_native_transfer_value_for_rent(
     params: &mut ApiBaseTransferReq,
@@ -30,7 +30,7 @@ mod tests {
             chain::{ChainError, InsufficientBalanceDetail},
         },
         request::api_wallet::trans::ApiBaseTransferReq,
-        test_support::adapter_factory::{
+        testkit::adapter_factory::{
             clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
         },
     };
