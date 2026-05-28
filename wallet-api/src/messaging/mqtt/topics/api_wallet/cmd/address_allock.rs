@@ -140,7 +140,7 @@ mod test {
     use crate::{
         infrastructure::task_queue::mqtt_api::ApiMqttStruct,
         messaging::mqtt::{Message, topics::api_wallet::cmd::address_allock::AwmCmdAddrExpandMsg},
-        test::env::get_manager,
+        testkit::env::get_manager,
     };
 
     #[test]

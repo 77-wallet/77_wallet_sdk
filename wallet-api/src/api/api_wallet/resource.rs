@@ -26,7 +26,7 @@ impl WalletManager {
 mod tests {
     use super::*;
     use crate::{
-        request::api_wallet::resource::ApiResourceType, test::env::get_manager_with_config,
+        request::api_wallet::resource::ApiResourceType, testkit::env::get_manager_with_config,
     };
     use anyhow::{Context, Result};
     use wallet_database::{

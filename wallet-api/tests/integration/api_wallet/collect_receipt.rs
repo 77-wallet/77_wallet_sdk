@@ -6,7 +6,7 @@ use chrono::Utc;
 use serial_test::serial;
 use sqlx;
 use tempfile::TempDir;
-use wallet_api::test::collect::{
+use wallet_api::testkit::collect::{
     build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
     upload_collect_tx_exec_receipt_via_backend, upload_collect_tx_exec_receipt_via_worker,
 };

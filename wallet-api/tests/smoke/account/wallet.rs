@@ -24,7 +24,7 @@ async fn get_manager() -> WalletManager {
         .to_string_lossy()
         .to_string();
     let config =
-        wallet_api::config::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
+        wallet_api::config::Config::new(&wallet_api::testkit::env::get_config().unwrap()).unwrap();
     let dirs = Dirs::new(&path).unwrap();
 
     WalletManager::new("guangxiang", "ANDROID", None, config, dirs).await.unwrap()

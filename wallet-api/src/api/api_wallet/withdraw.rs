@@ -81,7 +81,7 @@ impl WalletManager {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
-    use crate::test::env::{get_manager, get_manager_with_config};
+    use crate::testkit::env::{get_manager, get_manager_with_config};
     use anyhow::Result;
     use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
 

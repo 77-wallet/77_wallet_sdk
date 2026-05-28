@@ -14,9 +14,11 @@ use wallet_api::{
     infrastructure::api_trans::{
         AddressLockManager, ShadowAdvancer, ShadowCollectCommand, ShadowCollectWorker,
     },
-    test::collect::scan_collect_intent_labels_once,
-    testkit::adapter_factory::{
-        clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
+    testkit::{
+        adapter_factory::{
+            clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
+        },
+        collect::scan_collect_intent_labels_once,
     },
 };
 use wallet_chain_interact::{

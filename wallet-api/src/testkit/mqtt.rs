@@ -1,3 +1,5 @@
+//! Test-only MQTT message execution helpers.
+
 use rumqttc::v5::mqttbytes::v5::Publish;
 use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool, DbPool, TaskDbPool};
 

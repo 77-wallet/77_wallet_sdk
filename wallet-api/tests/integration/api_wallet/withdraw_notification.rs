@@ -179,7 +179,7 @@ async fn seed_wallet(
 ) -> String {
     let pool = open_api_wallet_pool(db_dir).await;
     let address = format!("0xwallet{:016x}", next_unique_id());
-    let seed_enc = wallet_api::test::seed::encrypt_seed(SMOKE_WALLET_PASSWORD, b"seed").await;
+    let seed_enc = wallet_api::testkit::seed::encrypt_seed(SMOKE_WALLET_PASSWORD, b"seed").await;
     ApiWalletRepo::upsert(
         &pool,
         uid,

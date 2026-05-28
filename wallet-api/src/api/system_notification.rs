@@ -40,7 +40,7 @@ mod test {
         messaging::system_notification::{
             AccountType, Notification, NotificationType, TransactionStatus,
         },
-        test::env::get_manager,
+        testkit::env::get_manager,
     };
     use anyhow::Result;
     use wallet_database::entities::bill::BillKind;

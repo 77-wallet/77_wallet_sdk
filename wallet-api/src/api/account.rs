@@ -142,7 +142,7 @@ impl WalletManager {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
-    use crate::test::env::get_manager;
+    use crate::testkit::env::get_manager;
     use anyhow::{Context, Result};
 
     #[tokio::test]

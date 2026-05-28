@@ -387,7 +387,7 @@ async fn exec_verify_api_mqtt_st(
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod tests {
-    use crate::{messaging::mqtt::handle::exec_incoming_publish, test::env::get_manager};
+    use crate::{messaging::mqtt::handle::exec_incoming_publish, testkit::env::get_manager};
 
     #[tokio::test]
     async fn test_multi_signature_transfer_is_successful() -> anyhow::Result<()> {

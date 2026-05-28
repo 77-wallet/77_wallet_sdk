@@ -1450,7 +1450,7 @@ impl ApiWalletAcctChange {
 mod test {
     use crate::{
         messaging::mqtt::topics::api_wallet::acct_change::ApiWalletAcctChange,
-        test::env::get_manager,
+        testkit::env::get_manager,
     };
 
     async fn init_manager() {

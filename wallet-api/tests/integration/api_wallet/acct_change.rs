@@ -2,7 +2,7 @@ use crate::get_manager;
 use anyhow::Result;
 use serde_json::json;
 use serial_test::serial;
-use wallet_api::test::mqtt::{api_wallet_pool, core_pool, exec_wallet_order_payload, task_pool};
+use wallet_api::testkit::mqtt::{api_wallet_pool, core_pool, exec_wallet_order_payload, task_pool};
 use wallet_database::{
     dao::{
         assets::{AssetsDao, CreateAssetsVo},

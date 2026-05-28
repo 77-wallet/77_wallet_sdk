@@ -131,7 +131,7 @@ impl OrderMultiSignCreated {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
-    use crate::test::env::get_manager;
+    use crate::testkit::env::get_manager;
 
     #[tokio::test]
     async fn update_multisig_address() -> anyhow::Result<()> {

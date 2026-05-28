@@ -1,3 +1,5 @@
+//! Test-only entrypoints for local resource reclaim scanner steps.
+
 use wallet_database::ApiTransactionDbPool;
 
 use crate::{

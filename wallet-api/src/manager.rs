@@ -218,7 +218,7 @@ mod tests {
         let dir = &root_dir.to_string_lossy().to_string();
         let dirs = Dirs::new(dir)?;
 
-        let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
+        let config = crate::config::Config::new(&crate::testkit::env::get_config()?)?;
         let _manager =
             crate::manager::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();

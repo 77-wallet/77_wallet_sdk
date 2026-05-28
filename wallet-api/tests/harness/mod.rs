@@ -566,7 +566,7 @@ async fn encrypt_test_secret(data: &[u8]) -> Vec<u8> {
 }
 
 async fn encrypt_test_seed(data: &[u8]) -> Vec<u8> {
-    wallet_api::test::seed::encrypt_seed(SMOKE_WALLET_PASSWORD, data).await
+    wallet_api::testkit::seed::encrypt_seed(SMOKE_WALLET_PASSWORD, data).await
 }
 
 pub async fn upsert_wallet(

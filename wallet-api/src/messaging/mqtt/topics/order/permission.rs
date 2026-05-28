@@ -274,7 +274,7 @@ impl PermissionAccept {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
-    use crate::{messaging::mqtt::topics::PermissionAccept, test::env::get_manager};
+    use crate::{messaging::mqtt::topics::PermissionAccept, testkit::env::get_manager};
 
     #[tokio::test]
     async fn new_permission() -> anyhow::Result<()> {

@@ -240,7 +240,7 @@ impl WalletManager {
 mod test {
     use std::time::Duration;
 
-    use crate::{request::api_wallet::transfer::ApiTransferExReq, test::env::get_manager};
+    use crate::{request::api_wallet::transfer::ApiTransferExReq, testkit::env::get_manager};
 
     use crate::request::api_wallet::trans::ApiBaseTransferReq;
     use anyhow::Result;

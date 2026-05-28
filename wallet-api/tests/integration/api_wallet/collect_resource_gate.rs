@@ -2,7 +2,7 @@ use crate::harness::{WorkerTestEnv, ensure_worker_env, next_unique_id, open_api_
 use serial_test::serial;
 use sqlx;
 use tempfile::TempDir;
-use wallet_api::test::collect::{
+use wallet_api::testkit::collect::{
     scan_collect_intent_labels_once, send_resource_result_ack_via_worker,
     upload_resource_tx_exec_receipt_via_worker,
 };

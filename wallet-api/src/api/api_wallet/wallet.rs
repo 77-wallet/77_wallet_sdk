@@ -164,7 +164,7 @@ impl WalletManager {
 
 #[cfg(all(feature = "integration-tests"))]
 mod test {
-    use crate::test::env::{ApiWalletImportParams, get_manager, get_manager_with_config};
+    use crate::testkit::env::{ApiWalletImportParams, get_manager, get_manager_with_config};
 
     use anyhow::{Context, Result};
 
@@ -278,7 +278,7 @@ mod test {
 
     async fn import_configured_api_wallets(
         wallet_manager: &crate::manager::WalletManager,
-        test_params: &crate::test::env::TestParams,
+        test_params: &crate::testkit::env::TestParams,
         config_file: &str,
     ) -> Result<()> {
         let import_config = test_params
