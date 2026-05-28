@@ -22,9 +22,11 @@ use wallet_api::{
     },
     infrastructure::api_trans::{AddressLockManager, ShadowAdvancer, ShadowCollectWorker},
     test::collect::upload_collect_service_fee_via_worker,
-    test_support::collect::shadow_collect_check_fee,
-    testkit::adapter_factory::{
-        clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
+    testkit::{
+        adapter_factory::{
+            clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
+        },
+        collect::shadow_collect_check_fee,
     },
 };
 use wallet_database::{

@@ -4,4 +4,6 @@
 //! intentional test-only entrypoints into internal wallet-api workflows.
 
 pub mod adapter_factory;
+pub mod collect;
+pub mod collect_fee;
 pub mod withdraw;

@@ -1,8 +1,5 @@
-//! Test-only helpers for integration tests.
+//! Legacy test-only helpers for integration tests.
 //!
-//! These helpers keep test harness access out of the business modules while
-//! still allowing integration tests to exercise internal workflows.
+//! New crate-side internal test entrypoints belong in `crate::testkit`.
 
-pub mod collect;
-pub mod collect_fee;
 pub mod sol_tx;
