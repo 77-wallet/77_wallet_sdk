@@ -11,7 +11,7 @@ use serial_test::serial;
 use wallet_api::{
     error::service::ServiceError,
     messaging::notify::FrontendNotifyEvent,
-    test_support::withdraw::{
+    testkit::withdraw::{
         scan_withdraw_intent_labels_for_trade_once,
         send_tx_ack_via_worker as send_withdraw_tx_ack_via_worker,
     },

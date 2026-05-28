@@ -1,3 +1,8 @@
+//! Test-only entrypoints for withdraw worker and scanner steps.
+//!
+//! Integration tests use these wrappers when the behavior under test lives
+//! behind crate-private workflow types.
+
 use std::sync::Arc;
 
 use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};

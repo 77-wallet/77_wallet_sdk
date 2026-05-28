@@ -243,6 +243,10 @@ Rules:
 
 Prefer local helpers first.
 
+Use `src/testkit/` when integration tests need a stable test-only entrypoint
+into crate-private worker, scanner, or domain steps. Do not put environment
+setup there.
+
 Keep helpers inside the same test file when they serve one flow:
 
 - `seed_withdraw`
@@ -259,6 +263,9 @@ the same capability:
 
 Harness helpers must not contain business decisions. They prepare data, fake
 dependencies, run a step, or assert observations.
+
+`testkit` helpers must not create the integration test environment. They expose
+internal steps so integration tests can call them intentionally.
 
 Recommended helper prefixes:
 
