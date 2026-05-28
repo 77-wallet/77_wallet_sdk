@@ -229,3 +229,76 @@ async fn withdraw_tx_ack_template_sends_once_and_persists_fact() {
     let tx_ack_request_count = count_withdraw_tx_ack_requests(&requests, &trade_no);
     assert_eq!(tx_ack_request_count, 1, "withdraw order should not emit a second TX ack request");
 }
+
+#[serial]
+#[tokio::test]
+async fn withdraw_tx_ack_backend_failure_keeps_fact_unset_and_retryable() {
+    // Arrange
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let uid = format!("uid_withdraw_ack_fail_{}", next_unique_id());
+    let trade_no = format!("T_withdraw_ack_fail_{}", next_unique_id());
+    let from_addr = format!("from-withdraw-ack-fail-{}", next_unique_id());
+    let to_addr = format!("to-withdraw-ack-fail-{}", next_unique_id());
+
+    let tx_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+        .await
+        .expect("open api transaction sqlite");
+    let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+
+    ApiWithdrawRepo::upsert_api_withdraw(
+        &tx_pool,
+        &uid,
+        "withdraw",
+        &from_addr,
+        &to_addr,
+        "56.78",
+        "digest",
+        "sol",
+        None,
+        "USDC",
+        &trade_no,
+        None,
+        None,
+        None,
+        ApiTradeType::Withdraw,
+        1,
+        None,
+        ApiWithdrawStatus::AuditPass,
+        ApiWithdrawStatus::InitOrder,
+        "",
+        "",
+        None,
+        None,
+    )
+    .await
+    .expect("insert withdraw");
+    env.recorder.fail_next_api_backend_call(503, "ack unavailable");
+
+    // Act
+    send_withdraw_tx_ack_via_worker(tx_pool.clone(), core_pool, &trade_no)
+        .await
+        .expect("backend ack failure should leave the worker retryable");
+
+    // Assert: backend was called, but the durable ACK fact was not written.
+    let tx_ack_request_count = wait_for_withdraw_tx_ack_count(&trade_no).await;
+    assert_eq!(tx_ack_request_count, 1, "withdraw order should attempt one TX ACK request");
+
+    let persisted =
+        ApiWithdrawRepo::get_api_withdraw_by_trade_no(&tx_pool, &trade_no, ApiTradeType::Withdraw)
+            .await
+            .expect("load withdraw after failed tx ack");
+    assert!(
+        persisted.tx_ack_sent_at.is_none(),
+        "failed backend ACK must not persist tx_ack_sent_at"
+    );
+
+    let labels =
+        scan_withdraw_intent_labels_once(tx_pool.clone()).await.expect("scan withdraw intents");
+    assert!(
+        labels.iter().any(|label| label == "SendTxAck"),
+        "withdraw with failed TX ACK should stay retryable; labels: {labels:?}"
+    );
+}
