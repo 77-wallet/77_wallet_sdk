@@ -215,7 +215,7 @@ impl ApiChainAdapterFactory {
     ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
         #[cfg(any(test, feature = "integration-tests"))]
         if let Some(adapter) =
-            crate::test_support::adapter_factory::maybe_get_transaction_adapter_override(chain_code)
+            crate::testkit::adapter_factory::maybe_get_transaction_adapter_override(chain_code)
         {
             return Ok(adapter);
         }

@@ -7,7 +7,7 @@ use std::sync::{
 };
 use wallet_api::{
     domain::api_wallet::Tx,
-    test_support::adapter_factory::{
+    testkit::adapter_factory::{
         clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
     },
 };

@@ -3,4 +3,5 @@
 //! `tests/harness` owns the external test environment. `testkit` exposes
 //! intentional test-only entrypoints into internal wallet-api workflows.
 
+pub mod adapter_factory;
 pub mod withdraw;

@@ -30,7 +30,7 @@ mod tests {
             chain::{ChainError, InsufficientBalanceDetail},
         },
         request::api_wallet::trans::ApiBaseTransferReq,
-        test_support::adapter_factory::{
+        testkit::adapter_factory::{
             clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
         },
     };
