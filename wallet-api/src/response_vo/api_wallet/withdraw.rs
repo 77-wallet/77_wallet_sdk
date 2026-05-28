@@ -50,9 +50,6 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
-        let actual_resource = resource_consume_display(Some(&entity.resource_consume));
-        let estimated_resource =
-            resource_consume_display(entity.estimated_resource_consume.as_deref());
         Self {
             trade_no: entity.trade_no,
             chain_code: entity.chain_code,
@@ -131,9 +128,6 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
         let sign_time = entity.audit_passed_at.or(entity.audit_rejected_at);
         let failure_reason_display =
             failure_reason_display(entity.status, entity.err_code, entity.failure_stage);
-        let actual_resource = resource_consume_display(Some(&entity.resource_consume));
-        let estimated_resource =
-            resource_consume_display(entity.estimated_resource_consume.as_deref());
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
