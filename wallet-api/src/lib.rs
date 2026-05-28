@@ -40,8 +40,6 @@ pub mod response_vo;
 pub mod service;
 pub mod test;
 #[cfg(any(test, feature = "integration-tests"))]
-pub mod test_support;
-#[cfg(any(test, feature = "integration-tests"))]
 pub mod testkit;
 
 pub mod handles;
