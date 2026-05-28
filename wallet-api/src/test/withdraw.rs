@@ -33,6 +33,25 @@ pub async fn send_resource_result_ack_via_worker(
         .await
 }
 
+pub async fn send_tx_ack_via_worker(
+    tx_pool: ApiTransactionDbPool,
+    core_pool: ApiWalletDbPool,
+    trade_no: &str,
+) -> Result<(), ServiceError> {
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let scanner = Arc::new(WithdrawShadowScanner::new(
+        tx_pool.clone(),
+        WithdrawShadowScannerConfig {
+            scan_interval: std::time::Duration::from_secs(60),
+            max_items_per_scan: 8,
+        },
+        intent_tx,
+        None,
+    ));
+    let worker = WithdrawShadowSideEffectWorker::new(tx_pool, core_pool, scanner);
+    worker.handle(WithdrawShadowSideEffectCommand::SendTxAck(trade_no.to_string())).await
+}
+
 pub async fn upload_resource_tx_exec_receipt_via_worker(
     tx_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,

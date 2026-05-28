@@ -22,6 +22,34 @@
 - Integration：使用 fake/mock backend、fake/mock chain、本地临时数据和统一 fixture；必须断言返回值、DB、外部调用和副作用。
 - Smoke/Live：允许真实 backend/真实链路，但必须显式标记并手动运行，默认测试和 CI 主链不运行。
 
+## Directory Rules
+
+- 路径必须表达测试层级、业务模块、具体 flow；不要把多类测试混在一个大 `mod.rs`。
+- Unit / component 默认贴近被测代码；当一个模块超过 3 个测试或出现多个 flow 时，拆到同名目录下的 `*_tests.rs`。
+- Integration / smoke 统一放在 crate 的 `tests/` 下，
+  按 `integration/<module>/`、`smoke/<module>/` 拆分。
+- `tests/harness/` 只放真正跨模块复用的 test harness、fake、fixture、assertion；
+  禁止 `withdraw` 依赖 `collect` 私有 helper。
+- 新增测试优先用清晰文件名表达意图，例如 `confirm_tests.rs`、`resource_gate.rs`、`live_backend.rs`。
+
+目录契约：
+
+```text
+<crate>/
+  src/...                         # unit / component tests live near code
+  tests/
+    harness/                      # cross-module test environment and fakes
+    integration/<business_module>/<flow>.rs
+    smoke/<business_module>/<flow>.rs
+```
+
+命名契约：
+
+- `<business_module>` 使用业务归属，例如 `api_wallet`、`transaction`、`stake`。
+- `<flow>.rs` 使用具体流程或风险点，例如 `withdraw_notification.rs`、`collect_resource_gate.rs`。
+- 一个 integration 文件只覆盖同一类业务流程；如果同时出现 fee、notification、receipt，应拆成多个文件。
+- `harness` 是专业测试术语，表示测试夹具/执行环境总成；它只能承载通用环境、fake、fixture、assertion，不能变成新的业务模块。
+
 ## Required Process
 
 1. 先确认改动边界与受影响 flow。
@@ -38,7 +66,8 @@
 - 标准集成测试显式使用 `--features integration-tests`。
 - 真实环境 smoke/live 测试必须使用独立 feature 或 `#[ignore]`。
 
-过渡期注意：当前 `wallet-api` default feature 仍包含 `integration-tests`，在拆分完成前不要把普通 `cargo test -p wallet-api` 视为纯单元测试。
+过渡期注意：当前 `wallet-api` default feature 仍包含 `integration-tests`。
+在拆分完成前，不要把普通 `cargo test -p wallet-api` 视为纯单元测试。
 
 ## Large-Repo Kickoff (Low Token)
 
@@ -75,7 +104,7 @@
 
 ### Iteration 3 — Reusable Test Infra
 
-- 抽取模块内 `tests/common` fixture/helper。
+- 抽取模块内 `tests/harness` fixture/helper。
 - 形成可复制模板，用于下一条 flow。
 
 ### Iteration 4 — Scale to Next Module

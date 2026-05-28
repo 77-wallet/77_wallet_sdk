@@ -122,6 +122,22 @@ async fn withdraw_success_should_write_facts_and_ack_backend() {
 }
 ```
 
+当前代码如果还没有流式 `TestHarness`，用显式分段保持同一结构：
+
+```rust
+#[serial]
+#[tokio::test]
+async fn withdraw_tx_ack_template_sends_once_and_persists_fact() {
+    // Arrange: temp db, fake backend recorder, unique uid/trade_no.
+
+    // Act: execute one business entry or one worker step.
+
+    // Assert: returned result, DB facts, captured backend calls.
+
+    // Assert: repeat act, scanner label, or retry path stays idempotent.
+}
+```
+
 集成测试优先覆盖：
 
 - 成功路径：状态、事实字段、返回值正确。
@@ -144,6 +160,151 @@ Smoke/live 测试用于验证真实环境联通性，有价值但不能作为默
 - 测试名或模块名包含 `live` 或 `smoke`。
 - 使用独立 feature 或 `#[ignore]` 手动运行。
 - 不打印私钥、助记词、生产凭据或生产配置。
+
+## Directory Layout Standard
+
+目录结构必须让读代码的人直接看出三件事：
+
+- 测试层级：unit / component / integration / smoke-live
+- 业务模块：withdraw / collect / fee / transaction / stake 等
+- 具体 flow：confirm / resource gate / ack / worker / live backend 等
+
+### Source-side Unit / Component Tests
+
+适用场景：
+
+- 需要访问 private / `pub(crate)` 函数。
+- 只测一个函数、一个状态转换、一个 repo/dao 事实写入。
+- 不需要 fake backend、fake chain 或完整 `WalletManager`。
+
+少量测试可以留在文件底部：
+
+```text
+wallet-api/src/domain/api_wallet/trans/withdraw.rs
+```
+
+当测试超过 3 个，或同一模块出现多个 flow，必须拆到同名目录：
+
+```text
+wallet-api/src/domain/api_wallet/trans/
+  withdraw.rs
+  withdraw/
+    confirm_tests.rs
+    audit_tests.rs
+    resource_gate_tests.rs
+```
+
+在 `withdraw.rs` 中只保留测试模块入口：
+
+```rust
+#[cfg(test)]
+mod confirm_tests;
+#[cfg(test)]
+mod audit_tests;
+#[cfg(test)]
+mod resource_gate_tests;
+```
+
+如果 Rust 模块路径不适合嵌套，也可以保留同级 `*_tests.rs`，但文件名必须说明 flow：
+
+```text
+wallet-api/src/domain/api_wallet/trans/
+  confirm_tx_tests.rs
+```
+
+### Crate-level Integration / Smoke Tests
+
+Integration 和 smoke/live 不放在 `src/`，统一放在 crate 的 `tests/` 下。
+
+推荐结构：
+
+```text
+wallet-api/
+  tests/
+    harness/
+      mod.rs
+      worker.rs
+      fixtures.rs
+      fake_backend.rs
+      fake_chain.rs
+      assertions.rs
+    integration/
+      mod.rs
+      api_wallet/
+        mod.rs
+        withdraw_resource_gate.rs
+        withdraw_confirm.rs
+        collect_worker.rs
+        fee_worker.rs
+      transaction/
+        mod.rs
+        transfer.rs
+        nonce.rs
+      stake/
+        mod.rs
+        tron_stake.rs
+    smoke/
+      mod.rs
+      live_backend.rs
+      live_chain.rs
+```
+
+`wallet-api` 当前 `api_wallet` 模块推荐按 flow 拆分：
+
+```text
+wallet-api/
+  tests/
+    integration/
+      api_wallet/
+        mod.rs
+        withdraw_resource_gate.rs     # 提币资源门控/资源 ACK
+        withdraw_notification.rs      # 提币通知、TX ACK、副作用幂等
+        collect_resource_gate.rs      # 归集资源门控/资源 receipt
+        collect_receipt.rs            # 归集交易执行 receipt
+        collect_fee_cycle.rs          # 归集 fee-cycle scanner
+        collect_fee.rs                # 归集手续费/服务费流程
+        collect_notification.rs       # 归集通知重试
+        collect_recovery.rs           # 归集恢复/重建路径
+        collect_local_reclaim.rs      # 归集本地回收路径
+```
+
+拆分原则：
+
+- 文件名回答“这是什么 flow”，而不是回答“它从哪个旧文件迁来”。
+- 一个文件可以包含同一 flow 的成功、失败、幂等、恢复用例。
+- 不同副作用边界应拆开，例如 notification、backend ACK、receipt、fee。
+- 旧测试迁移时优先改文件归属和命名，业务行为保持不变。
+
+`wallet-database` 推荐结构：
+
+```text
+wallet-database/
+  tests/
+    harness/
+      sqlite.rs
+      assertions.rs
+    component/
+      api_wallet/
+        withdraw_repo.rs
+        collect_repo.rs
+        fee_repo.rs
+      migrations/
+        api_transaction_schema.rs
+```
+
+过渡期允许保留当前 `tests/<module>/mod.rs` 结构，但新增文件应按以下规则命名：
+
+- `tests/integration/<module>/<flow>.rs`：标准集成测试。
+- `tests/smoke/<module>/<flow>.rs`：真实环境 smoke/live。
+- `tests/harness/<capability>.rs`：跨模块 test harness 能力。
+- `src/.../<module>/<flow>_tests.rs`：贴近源码的 unit/component 测试。
+
+### Helper Ownership
+
+- 模块私有 helper 只能服务本模块，放在同模块测试目录。
+- 跨模块 helper 才能进入 `tests/harness/`。
+- 如果 `withdraw` 需要复用 `collect` 里的 helper，应先把 helper 上移到 `tests/harness/`，再由两个模块共同依赖。
+- helper 只能做数据准备、fake 配置、结果断言，不承载业务决策。
 
 ## Default Commands
 
@@ -223,9 +384,13 @@ cargo test -p wallet-transport-backend --features live-smoke -- --ignored --noca
 
 ## Assertion Matrix Template
 
-| Flow      | 输入组合（关键参数） | 预期 backend 调用（接口/次数/字段） | 预期 DB 变化（表/字段） | 失败不变性（必须保持不变字段） |
-|-----------|----------------------|-------------------------------------|-------------------------|--------------------------------|
-| 示例 flow | 参数组合             | API + count + fields                | 表字段变化              | 不变字段列表                   |
+每条 flow 按以下字段记录：
+
+- Flow：示例 flow
+- 输入组合：关键参数组合
+- 预期 backend 调用：接口、次数、关键字段
+- 预期 DB 变化：表、字段、状态
+- 失败不变性：失败时必须保持不变的字段
 
 填写原则：
 

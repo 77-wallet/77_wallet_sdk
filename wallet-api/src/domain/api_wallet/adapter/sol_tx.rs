@@ -920,7 +920,7 @@ mod tests {
     use wallet_database::entities::asset_token_key::AssetTokenKey;
 
     const SOL_SMOKE_CONFIG_PATH: &str =
-        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/transactions/sol_smoke.local.toml");
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/smoke/transactions/sol_smoke.local.toml");
 
     #[derive(Debug, Deserialize)]
     struct SolSmokeConfig {
@@ -1184,7 +1184,7 @@ mod tests {
     async fn sol_transfer_onchain_smoke() {
         let config = load_sol_smoke_config().unwrap_or_else(|| {
             panic!(
-                "create wallet-api/tests/transactions/sol_smoke.local.toml with rpc_url, from, to, amount, private_key, and optional token_mint/token_decimals/symbol"
+                "create wallet-api/tests/smoke/transactions/sol_smoke.local.toml with rpc_url, from, to, amount, private_key, and optional token_mint/token_decimals/symbol"
             )
         });
 

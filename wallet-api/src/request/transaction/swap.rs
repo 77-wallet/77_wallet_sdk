@@ -395,3 +395,18 @@ pub struct RouteInDex {
     // #[serde(rename = "minAmountOut", alias = "min_amount_out")]
     pub min_amount_out: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::QuoteReq;
+
+    #[test]
+    fn addr_tron_to_eth_converts_tron_base58_address() {
+        let converted = QuoteReq::addr_tron_to_eth("TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR").unwrap();
+
+        assert_eq!(
+            converted.to_string().to_lowercase(),
+            "0x891cdb91d149f23b1a45d9c5ca78a88d0cb44c18"
+        );
+    }
+}

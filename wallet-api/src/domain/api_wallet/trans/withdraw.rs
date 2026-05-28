@@ -372,11 +372,65 @@ impl ApiWithdrawDomain {
 mod tests {
     use super::{ApiWithdrawDomain, is_row_not_found_db_error};
     use chrono::Utc;
-    use wallet_database::entities::{
-        api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-        asset_token_key::AssetTokenKey,
+    use tempfile::TempDir;
+    use wallet_database::{
+        ApiTransactionDbPool, SqliteContext,
+        entities::{
+            api_trade_type::ApiTradeType,
+            api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+            asset_token_key::AssetTokenKey,
+        },
+        repositories::api_wallet::withdraw::ApiWithdrawRepo,
     };
+
+    struct TestWithdrawDb {
+        _dir: TempDir,
+        pool: ApiTransactionDbPool,
+    }
+
+    impl TestWithdrawDb {
+        async fn new() -> Self {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let ctx = SqliteContext::new(
+                dir.path().to_string_lossy().as_ref(),
+                Some("api_transaction.db"),
+            )
+            .await
+            .expect("init api_transaction.db");
+            let pool = ctx.into_transaction_db_pool().expect("transaction pool");
+            Self { _dir: dir, pool }
+        }
+
+        async fn insert_withdraw(&self, trade_no: &str, status: ApiWithdrawStatus) {
+            ApiWithdrawRepo::upsert_api_withdraw(
+                &self.pool,
+                "uid",
+                "withdraw",
+                "from",
+                "to",
+                "1",
+                "validate",
+                "tron",
+                AssetTokenKey::Native,
+                "TRX",
+                trade_no,
+                None,
+                None,
+                None,
+                ApiTradeType::Withdraw,
+                0,
+                None,
+                ApiWithdrawStatus::Init,
+                status,
+                "0",
+                "0",
+                None,
+                None,
+            )
+            .await
+            .expect("insert withdraw");
+        }
+    }
 
     fn make_entity(
         audit_passed_at: Option<chrono::DateTime<Utc>>,
@@ -465,5 +519,76 @@ mod tests {
             Some(Utc::now()),
             Some(Utc::now())
         )));
+    }
+
+    #[tokio::test]
+    async fn withdraw_confirm_success_writes_transaction_time_and_chain_success() {
+        let db = TestWithdrawDb::new().await;
+        let trade_no = "W_CONFIRM_SUCCESS_FACTS";
+        db.insert_withdraw(trade_no, ApiWithdrawStatus::SendingTxReport).await;
+
+        let outcome = ApiWithdrawDomain::confirm_tx_in_pool(&db.pool, trade_no, true)
+            .await
+            .expect("confirm withdraw success");
+
+        assert!(outcome.should_notify, "new confirmation facts should notify once");
+        assert!(outcome.tx.transaction_time.is_some(), "transaction_time fact must be written");
+        assert!(outcome.tx.chain_success_at.is_some(), "chain_success_at fact must be written");
+        assert!(outcome.tx.chain_failed_at.is_none(), "success must clear failure fact");
+        assert_eq!(outcome.tx.status, ApiWithdrawStatus::Success);
+
+        let saved = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &db.pool,
+            trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .expect("reload withdraw");
+        assert!(saved.transaction_time.is_some());
+        assert!(saved.chain_success_at.is_some());
+        assert!(saved.chain_failed_at.is_none());
+        assert_eq!(saved.status, ApiWithdrawStatus::Success);
+    }
+
+    #[tokio::test]
+    async fn withdraw_confirm_repeat_success_does_not_notify_again() {
+        let db = TestWithdrawDb::new().await;
+        let trade_no = "W_CONFIRM_REPEAT_SUCCESS";
+        db.insert_withdraw(trade_no, ApiWithdrawStatus::Success).await;
+        let existing_time = Utc::now();
+        sqlx::query(
+            r#"
+            UPDATE api_withdraws
+            SET transaction_time = ?,
+                chain_success_at = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+            "#,
+        )
+        .bind(existing_time)
+        .bind(existing_time)
+        .bind(trade_no)
+        .execute(db.pool.as_ref())
+        .await
+        .expect("seed existing success facts");
+
+        let outcome = ApiWithdrawDomain::confirm_tx_in_pool(&db.pool, trade_no, true)
+            .await
+            .expect("repeat confirm withdraw success");
+
+        assert!(!outcome.should_notify, "repeat confirmation must not notify again");
+        assert_eq!(outcome.tx.status, ApiWithdrawStatus::Success);
+        assert_eq!(outcome.tx.transaction_time, Some(existing_time));
+        assert_eq!(outcome.tx.chain_success_at, Some(existing_time));
+        assert!(outcome.tx.chain_failed_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn withdraw_confirm_missing_trade_no_errors() {
+        let db = TestWithdrawDb::new().await;
+
+        let res = ApiWithdrawDomain::confirm_tx_in_pool(&db.pool, "W_CONFIRM_MISSING", true).await;
+
+        assert!(res.is_err(), "pool seam should surface missing withdraw rows");
     }
 }
