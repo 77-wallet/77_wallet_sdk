@@ -8,6 +8,7 @@ use crate::harness::{
     open_api_wallet_pool,
 };
 use serial_test::serial;
+use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use wallet_api::{
     error::service::ServiceError,
     messaging::notify::FrontendNotifyEvent,
@@ -28,7 +29,7 @@ use wallet_database::{
 
 use crate::harness::worker::{CapturedHttpRequest, WorkerTestEnv};
 
-const TEST_SN: &str = "collect-worker-test-sn";
+const WITHDRAW_NOTIFICATION_TEST_SN: &str = "withdraw-notification-test-sn";
 const WITHDRAW_VALUE: &str = "56.78";
 const WITHDRAW_VALIDATE: &str = "digest";
 const WITHDRAW_CHAIN: &str = "sol";
@@ -53,13 +54,13 @@ impl WithdrawOrderFixture {
     }
 }
 
-struct WithdrawNotificationTest {
+struct WithdrawNotificationScenario {
     env: &'static WorkerTestEnv,
     tx_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
 }
 
-impl WithdrawNotificationTest {
+impl WithdrawNotificationScenario {
     async fn new() -> Self {
         let env = ensure_worker_env().await;
         env.recorder.reset();
@@ -126,6 +127,29 @@ impl WithdrawNotificationTest {
             .await
     }
 
+    async fn install_closed_frontend_notify_sender(&self) {
+        let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
+        drop(rx);
+
+        self.env
+            ._manager
+            .set_frontend_notify_sender(tx)
+            .await
+            .expect("install closed frontend sender");
+    }
+
+    async fn install_frontend_notify_collector(&self) -> UnboundedReceiver<FrontendNotifyEvent> {
+        let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
+
+        self.env
+            ._manager
+            .set_frontend_notify_sender(tx)
+            .await
+            .expect("install working frontend sender");
+
+        rx
+    }
+
     async fn send_tx_ack(&self, trade_no: &str) -> Result<(), ServiceError> {
         send_withdraw_tx_ack_via_worker(self.tx_pool.clone(), self.core_pool.clone(), trade_no)
             .await
@@ -189,7 +213,7 @@ async fn seed_wallet(
         &seed_enc,
         wallet_type,
         None,
-        TEST_SN,
+        WITHDRAW_NOTIFICATION_TEST_SN,
         0,
     )
     .await
@@ -213,136 +237,164 @@ fn count_withdraw_tx_ack_requests(requests: &[CapturedHttpRequest], trade_no: &s
         .count()
 }
 
-#[serial]
-#[tokio::test]
-async fn withdraw_notification_retry_on_existing_trade_no() {
-    // Arrange: environment
-    let t = WithdrawNotificationTest::new().await;
-
-    // Arrange: data and failing frontend notification channel
-    let order = WithdrawOrderFixture::new("withdraw_notify_retry");
-    let _wallet_addr = t.seed_withdrawal_wallet(&order.uid).await;
-
-    let (fail_tx, fail_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
-    drop(fail_rx);
-    t.env
-        ._manager
-        .set_frontend_notify_sender(fail_tx)
-        .await
-        .expect("install failing frontend sender");
-
-    // Act: first submit fails after the withdraw row is persisted.
-    let first = t.submit_withdraw_order(&order).await;
-
-    // Assert: failed notification bubbles up and leaves retryable DB facts.
-    assert!(first.is_err(), "frontend notify failure should bubble up");
-
-    let persisted = t.load_withdraw(&order.trade_no).await;
-    assert_eq!(persisted.init_status, ApiWithdrawStatus::AuditPass);
-    assert_eq!(persisted.status, ApiWithdrawStatus::InitOrder);
-
-    // Arrange: restore a working notification channel.
-    let (ok_tx, mut ok_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
-    t.env
-        ._manager
-        .set_frontend_notify_sender(ok_tx)
-        .await
-        .expect("install working frontend sender");
-
-    // Act: retry the same order.
-    t.submit_withdraw_order(&order)
-        .await
-        .expect("retrying the same withdraw order should resend frontend notify");
-
-    // Assert: retry emits the expected frontend notification.
-    let notify = tokio::time::timeout(Duration::from_secs(1), ok_rx.recv())
+async fn recv_withdraw_notify(
+    notifications: &mut UnboundedReceiver<FrontendNotifyEvent>,
+) -> FrontendNotifyEvent {
+    tokio::time::timeout(Duration::from_secs(1), notifications.recv())
         .await
         .expect("timed out waiting for withdraw notify")
-        .expect("missing withdraw notify event");
-    let notify_json = serde_json::to_value(&notify).expect("serialize withdraw notify");
+        .expect("missing withdraw notify event")
+}
+
+async fn assert_withdraw_order_retryable_after_notify_failure(
+    scenario: &WithdrawNotificationScenario,
+    order: &WithdrawOrderFixture,
+) {
+    let persisted = scenario.load_withdraw(&order.trade_no).await;
+
+    assert_eq!(persisted.init_status, ApiWithdrawStatus::AuditPass);
+    assert_eq!(persisted.status, ApiWithdrawStatus::InitOrder);
+}
+
+fn assert_frontend_withdraw_notify_matches_order(
+    notify: &FrontendNotifyEvent,
+    order: &WithdrawOrderFixture,
+) {
+    let notify_json = serde_json::to_value(notify).expect("serialize withdraw notify");
+
     assert_eq!(notify_json["event"], "WITHDRAW");
     assert_eq!(notify_json["data"]["uid"], order.uid);
     assert_eq!(notify_json["data"]["fromAddr"], order.from_addr);
     assert_eq!(notify_json["data"]["toAddr"], order.to_addr);
     assert_eq!(notify_json["data"]["value"], WITHDRAW_VALUE);
+}
 
-    // Act: send TX ACK after the retry path.
-    t.send_tx_ack(&order.trade_no).await.expect("send withdraw tx ack after retry");
+async fn assert_withdraw_tx_ack_request_count(
+    scenario: &WithdrawNotificationScenario,
+    trade_no: &str,
+    expected: usize,
+) {
+    let tx_ack_request_count = scenario.wait_for_tx_ack_count(trade_no).await;
 
-    // Assert: retrying the order still produces only one backend TX ACK.
-    let tx_ack_request_count = t.wait_for_tx_ack_count(&order.trade_no).await;
     assert_eq!(
-        tx_ack_request_count, 1,
-        "retrying the same withdraw order should still emit only one TX ack request"
+        tx_ack_request_count, expected,
+        "withdraw order should emit {expected} TX ack request(s)"
+    );
+}
+
+async fn assert_withdraw_tx_ack_fact_persisted(
+    scenario: &WithdrawNotificationScenario,
+    trade_no: &str,
+) {
+    let persisted = scenario.load_withdraw(trade_no).await;
+    assert!(persisted.tx_ack_sent_at.is_some(), "successful tx ack should persist tx_ack_sent_at");
+
+    let labels = scenario.scan_intent_labels(trade_no).await;
+    assert!(
+        labels.iter().all(|label| label != "SendTxAck"),
+        "withdraw with tx_ack_sent_at must not re-enter SendTxAck; labels: {labels:?}"
+    );
+}
+
+async fn assert_withdraw_tx_ack_retryable(scenario: &WithdrawNotificationScenario, trade_no: &str) {
+    let persisted = scenario.load_withdraw(trade_no).await;
+    assert!(
+        persisted.tx_ack_sent_at.is_none(),
+        "failed backend ACK must not persist tx_ack_sent_at"
+    );
+
+    let labels = scenario.scan_intent_labels(trade_no).await;
+    assert!(
+        labels.iter().any(|label| label == "SendTxAck"),
+        "withdraw with failed TX ACK should stay retryable; labels: {labels:?}"
     );
 }
 
 #[serial]
 #[tokio::test]
+async fn withdraw_notification_retry_on_existing_trade_no() {
+    // Arrange: scenario
+    let scenario = WithdrawNotificationScenario::new().await;
+
+    // Arrange: data and failing frontend notification channel
+    let order = WithdrawOrderFixture::new("withdraw_notify_retry");
+    let _wallet_addr = scenario.seed_withdrawal_wallet(&order.uid).await;
+    scenario.install_closed_frontend_notify_sender().await;
+
+    // Act: first submit fails after the withdraw row is persisted.
+    let first = scenario.submit_withdraw_order(&order).await;
+
+    // Assert: failed notification bubbles up and leaves retryable DB facts.
+    assert!(first.is_err(), "frontend notify failure should bubble up");
+    assert_withdraw_order_retryable_after_notify_failure(&scenario, &order).await;
+
+    // Arrange: restore a working notification channel.
+    let mut notifications = scenario.install_frontend_notify_collector().await;
+
+    // Act: retry the same order.
+    scenario
+        .submit_withdraw_order(&order)
+        .await
+        .expect("retrying the same withdraw order should resend frontend notify");
+
+    // Assert: retry emits the expected frontend notification.
+    let notify = recv_withdraw_notify(&mut notifications).await;
+    assert_frontend_withdraw_notify_matches_order(&notify, &order);
+
+    // Act: send TX ACK after the retry path.
+    scenario.send_tx_ack(&order.trade_no).await.expect("send withdraw tx ack after retry");
+
+    // Assert: retrying the order still produces only one backend TX ACK.
+    assert_withdraw_tx_ack_request_count(&scenario, &order.trade_no, 1).await;
+}
+
+#[serial]
+#[tokio::test]
 async fn withdraw_tx_ack_sends_once_and_persists_fact() {
-    // Arrange: environment
-    let t = WithdrawNotificationTest::new().await;
+    // Arrange: scenario
+    let scenario = WithdrawNotificationScenario::new().await;
 
     // Arrange: data
     let order = WithdrawOrderFixture::new("withdraw_ack");
-    t.seed_withdraw_order(&order).await;
+    scenario.seed_withdraw_order(&order).await;
 
     // Act
-    t.send_tx_ack(&order.trade_no).await.expect("send withdraw tx ack");
+    scenario.send_tx_ack(&order.trade_no).await.expect("send withdraw tx ack");
 
     // Assert: backend side effect
-    let tx_ack_request_count = t.wait_for_tx_ack_count(&order.trade_no).await;
-    assert_eq!(tx_ack_request_count, 1, "withdraw order should emit exactly one TX ack request");
+    assert_withdraw_tx_ack_request_count(&scenario, &order.trade_no, 1).await;
+    assert_withdraw_tx_ack_fact_persisted(&scenario, &order.trade_no).await;
 
-    // Assert: DB fact and scanner state
-    let persisted = t.load_withdraw(&order.trade_no).await;
-    assert!(persisted.tx_ack_sent_at.is_some(), "successful tx ack should persist tx_ack_sent_at");
+    // Act: repeat the same worker step.
+    scenario
+        .send_tx_ack(&order.trade_no)
+        .await
+        .expect("repeat withdraw tx ack should be idempotent");
 
-    let labels = t.scan_intent_labels(&order.trade_no).await;
-    assert!(
-        labels.iter().all(|label| label != "SendTxAck"),
-        "withdraw with tx_ack_sent_at must not re-enter SendTxAck; labels: {labels:?}"
-    );
-
-    // Assert: repeated act stays idempotent
-    t.send_tx_ack(&order.trade_no).await.expect("repeat withdraw tx ack should be idempotent");
-
+    // Assert: repeated act stays idempotent.
     tokio::time::sleep(Duration::from_millis(500)).await;
-    let tx_ack_request_count = t.tx_ack_request_count(&order.trade_no);
+    let tx_ack_request_count = scenario.tx_ack_request_count(&order.trade_no);
     assert_eq!(tx_ack_request_count, 1, "withdraw order should not emit a second TX ack request");
 }
 
 #[serial]
 #[tokio::test]
 async fn withdraw_tx_ack_backend_failure_keeps_fact_unset_and_retryable() {
-    // Arrange: environment
-    let t = WithdrawNotificationTest::new().await;
+    // Arrange: scenario
+    let scenario = WithdrawNotificationScenario::new().await;
 
     // Arrange: data and fake backend failure
     let order = WithdrawOrderFixture::new("withdraw_ack_fail");
-    t.seed_withdraw_order(&order).await;
-    t.env.recorder.fail_next_api_backend_call(503, "ack unavailable");
+    scenario.seed_withdraw_order(&order).await;
+    scenario.env.recorder.fail_next_api_backend_call(503, "ack unavailable");
 
     // Act
-    t.send_tx_ack(&order.trade_no)
+    scenario
+        .send_tx_ack(&order.trade_no)
         .await
         .expect("backend ack failure should leave the worker retryable");
 
     // Assert: backend was called, but the durable ACK fact was not written.
-    let tx_ack_request_count = t.wait_for_tx_ack_count(&order.trade_no).await;
-    assert_eq!(tx_ack_request_count, 1, "withdraw order should attempt one TX ACK request");
-
-    // Assert: DB fact remains unset
-    let persisted = t.load_withdraw(&order.trade_no).await;
-    assert!(
-        persisted.tx_ack_sent_at.is_none(),
-        "failed backend ACK must not persist tx_ack_sent_at"
-    );
-
-    // Assert: scanner can retry the ACK side effect
-    let labels = t.scan_intent_labels(&order.trade_no).await;
-    assert!(
-        labels.iter().any(|label| label == "SendTxAck"),
-        "withdraw with failed TX ACK should stay retryable; labels: {labels:?}"
-    );
+    assert_withdraw_tx_ack_request_count(&scenario, &order.trade_no, 1).await;
+    assert_withdraw_tx_ack_retryable(&scenario, &order.trade_no).await;
 }

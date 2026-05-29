@@ -115,6 +115,110 @@ Rules:
 - Reset fake state at the start of each test.
 - Do not use real backend, real chain RPC, or fixed `test_data`.
 
+## API Wallet Integration Scenario Template
+
+Use this shape for API wallet worker, notification, ACK, receipt, and retry
+flows. The first standard example is:
+
+```text
+wallet-api/tests/integration/api_wallet/withdraw_notification.rs
+```
+
+Local roles:
+
+- `*Scenario`: owns one test environment view, DB pools, fake backend recorder,
+  and flow-specific actions.
+- `*Fixture`: creates unique immutable input data, such as `uid`, `trade_no`,
+  addresses, and fixed test amounts.
+- `seed_*`: inserts local DB facts needed before the act step.
+- `install_*`: configures fake behavior or notification collectors.
+- `send_*`, `submit_*`, `run_*`: executes one business entrypoint or worker
+  step.
+- `assert_*`: checks result, DB facts, backend calls, notifications, scanner
+  labels, retryability, or idempotency.
+
+Copyable structure:
+
+```rust
+struct FlowFixture {
+    uid: String,
+    trade_no: String,
+}
+
+impl FlowFixture {
+    fn new(prefix: &str) -> Self {
+        let id = next_unique_id();
+        Self {
+            uid: format!("uid_{prefix}_{id}"),
+            trade_no: format!("T_{prefix}_{id}"),
+        }
+    }
+}
+
+struct FlowScenario {
+    env: &'static WorkerTestEnv,
+    tx_pool: ApiTransactionDbPool,
+    core_pool: ApiWalletDbPool,
+}
+
+impl FlowScenario {
+    async fn new() -> Self {
+        let env = ensure_worker_env().await;
+        env.recorder.reset();
+
+        let tx_pool = open_transaction_pool(&env.db_dir).await;
+        let core_pool = open_api_wallet_pool(&env.db_dir).await;
+
+        Self { env, tx_pool, core_pool }
+    }
+
+    async fn seed_flow_row(&self, fixture: &FlowFixture) {
+        // Insert only the facts required by this flow.
+    }
+
+    async fn run_target_step(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        // Call one manager entrypoint or one testkit worker step.
+    }
+}
+
+#[serial]
+#[tokio::test]
+async fn flow_condition_expected_result() {
+    // Arrange: scenario
+    let scenario = FlowScenario::new().await;
+
+    // Arrange: data and fake behavior
+    let fixture = FlowFixture::new("flow_case");
+    scenario.seed_flow_row(&fixture).await;
+    scenario.env.recorder.fail_next_api_backend_call(503, "temporary failure");
+
+    // Act
+    scenario
+        .run_target_step(&fixture.trade_no)
+        .await
+        .expect("worker step should leave the flow retryable");
+
+    // Assert: backend side effects, DB facts, and next scanner state
+    assert_backend_attempted_once(&scenario, &fixture.trade_no).await;
+    assert_db_fact_not_written(&scenario, &fixture.trade_no).await;
+    assert_flow_retryable(&scenario, &fixture.trade_no).await;
+}
+```
+
+Rules:
+
+- Keep `Scenario` local until a helper is proven useful to another flow.
+- `Scenario` may hold `WorkerTestEnv`, DB pools, and notification collectors;
+  it must not hide the business assertion being proven.
+- `Fixture` should be cheap, unique, and immutable after construction.
+- Use `tests/harness` only for cross-flow environment and fake capabilities.
+- Use `src/testkit` only for crate-private worker or scanner entrypoints.
+- Keep the test body as the readable spec; helpers should remove plumbing, not
+  the core business expectation.
+
 ## Component Template
 
 Use this for source-side module tests that need SQLite or repositories but not

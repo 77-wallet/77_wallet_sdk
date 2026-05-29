@@ -192,13 +192,21 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
-New withdraw integration tests should follow this structure:
+`withdraw_notification.rs` is the first standard API wallet integration
+scenario template. New withdraw integration tests should follow this structure:
 
-1. Arrange a unique `uid`, `trade_no`, temp DB facts, fake backend recorder,
+1. Keep local immutable data in a `*Fixture`.
+2. Keep environment, DB pools, fake backend, and flow-specific actions in a
+   local `*Scenario`.
+3. Arrange a unique `uid`, `trade_no`, temp DB facts, fake backend recorder,
    and notification receiver when needed.
-2. Act through one business entrypoint or one worker step.
-3. Assert result, DB facts, backend calls, and scanner labels or notifications.
-4. Repeat the act or run a negative variant when the flow must be idempotent.
+4. Act through one business entrypoint or one worker step.
+5. Assert result, DB facts, backend calls, and scanner labels or notifications.
+6. Repeat the act or run a negative variant when the flow must be idempotent.
+
+`tests/harness` remains reserved for cross-flow environment and fake
+capabilities. `src/testkit` remains reserved for crate-private worker or
+scanner entrypoints.
 
 ## Gaps To Close Next
 
