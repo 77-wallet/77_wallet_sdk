@@ -1,17 +1,119 @@
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 use crate::harness::{
     SMOKE_WALLET_PASSWORD, ensure_worker_env, next_unique_id, open_api_wallet_pool,
+    worker::WorkerTestEnv,
 };
 use serial_test::serial;
-use wallet_api::messaging::notify::FrontendNotifyEvent;
+use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use wallet_api::{error::service::ServiceError, messaging::notify::FrontendNotifyEvent};
 use wallet_database::{
-    SqliteContext,
-    entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
+    ApiTransactionDbPool, SqliteContext,
+    entities::{
+        api_collect::{ApiCollectEntity, ApiCollectStatus},
+        api_wallet::ApiWalletType,
+    },
     repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo},
 };
 
-const TEST_SN: &str = "collect-worker-test-sn";
+const COLLECT_NOTIFICATION_TEST_SN: &str = "collect-notification-test-sn";
+const COLLECT_VALUE: &str = "12.34";
+const COLLECT_VALIDATE: &str = "digest";
+const COLLECT_CHAIN: &str = "sol";
+const COLLECT_SYMBOL: &str = "USDC";
+
+struct CollectOrderFixture {
+    uid: String,
+    trade_no: String,
+    from_addr: String,
+    to_addr: String,
+}
+
+impl CollectOrderFixture {
+    fn new(prefix: &str) -> Self {
+        let id = next_unique_id();
+        Self {
+            uid: format!("uid_{prefix}_{id}"),
+            trade_no: format!("T_{prefix}_{id}"),
+            from_addr: format!("from-{prefix}-{id}"),
+            to_addr: format!("to-{prefix}-{id}"),
+        }
+    }
+}
+
+struct CollectNotificationScenario {
+    env: &'static WorkerTestEnv,
+    tx_pool: ApiTransactionDbPool,
+}
+
+impl CollectNotificationScenario {
+    async fn new() -> Self {
+        let env = ensure_worker_env().await;
+        env.recorder.reset();
+
+        let tx_pool = open_transaction_pool(&env.db_dir).await;
+
+        Self { env, tx_pool }
+    }
+
+    async fn seed_sub_account_wallet(&self, uid: &str) -> String {
+        seed_wallet(&self.env.db_dir, uid, "collect-notify-wallet", ApiWalletType::SubAccount).await
+    }
+
+    async fn submit_collect_order(&self, order: &CollectOrderFixture) -> Result<(), ServiceError> {
+        self.env
+            ._manager
+            .api_collect_order(
+                &order.from_addr,
+                &order.to_addr,
+                COLLECT_VALUE,
+                COLLECT_VALIDATE,
+                COLLECT_CHAIN,
+                None,
+                COLLECT_SYMBOL,
+                &order.trade_no,
+                2,
+                &order.uid,
+            )
+            .await
+    }
+
+    async fn install_closed_frontend_notify_sender(&self) {
+        let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
+        drop(rx);
+
+        self.env
+            ._manager
+            .set_frontend_notify_sender(tx)
+            .await
+            .expect("install closed frontend sender");
+    }
+
+    async fn install_frontend_notify_collector(&self) -> UnboundedReceiver<FrontendNotifyEvent> {
+        let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
+
+        self.env
+            ._manager
+            .set_frontend_notify_sender(tx)
+            .await
+            .expect("install working frontend sender");
+
+        rx
+    }
+
+    async fn load_collect(&self, trade_no: &str) -> ApiCollectEntity {
+        ApiCollectRepo::get_api_collect_by_trade_no(&self.tx_pool, trade_no)
+            .await
+            .expect("load collect")
+    }
+}
+
+async fn open_transaction_pool(db_dir: &Path) -> ApiTransactionDbPool {
+    let tx_pool_ctx = SqliteContext::new(&db_dir.to_string_lossy(), Some("api_transaction.db"))
+        .await
+        .expect("open api transaction sqlite");
+    tx_pool_ctx.into_transaction_db_pool().expect("transaction pool")
+}
 
 async fn seed_wallet(
     db_dir: &Path,
@@ -31,7 +133,7 @@ async fn seed_wallet(
         &seed_enc,
         wallet_type,
         None,
-        TEST_SN,
+        COLLECT_NOTIFICATION_TEST_SN,
         0,
     )
     .await
@@ -39,62 +141,65 @@ async fn seed_wallet(
     address
 }
 
+async fn recv_collect_notify(
+    notifications: &mut UnboundedReceiver<FrontendNotifyEvent>,
+) -> FrontendNotifyEvent {
+    tokio::time::timeout(Duration::from_secs(1), notifications.recv())
+        .await
+        .expect("timed out waiting for collect notify")
+        .expect("missing collect notify event")
+}
+
+async fn assert_collect_order_retryable_after_notify_failure(
+    scenario: &CollectNotificationScenario,
+    order: &CollectOrderFixture,
+) {
+    let persisted = scenario.load_collect(&order.trade_no).await;
+
+    assert_eq!(persisted.status, ApiCollectStatus::Init);
+}
+
+fn assert_frontend_collect_notify_matches_order(
+    notify: &FrontendNotifyEvent,
+    order: &CollectOrderFixture,
+) {
+    let notify_json = serde_json::to_value(notify).expect("serialize collect notify");
+
+    assert_eq!(notify_json["event"], "COLLECT");
+    assert_eq!(notify_json["data"]["uid"], order.uid);
+    assert_eq!(notify_json["data"]["fromAddr"], order.from_addr);
+    assert_eq!(notify_json["data"]["toAddr"], order.to_addr);
+    assert_eq!(notify_json["data"]["value"], COLLECT_VALUE);
+}
+
 #[serial]
 #[tokio::test]
 async fn collect_notification_retry_on_existing_trade_no() {
-    let env = ensure_worker_env().await;
-    env.recorder.reset();
+    // Arrange: scenario
+    let scenario = CollectNotificationScenario::new().await;
 
-    let uid = format!("uid_collect_notify_{}", next_unique_id());
-    let trade_no = format!("T_collect_notify_retry_{}", next_unique_id());
-    let from_addr = format!("from-collect-notify-{}", next_unique_id());
-    let to_addr = format!("to-collect-notify-{}", next_unique_id());
-    let _wallet_addr =
-        seed_wallet(&env.db_dir, &uid, "collect-notify-wallet", ApiWalletType::SubAccount).await;
+    // Arrange: data and failing frontend notification channel
+    let order = CollectOrderFixture::new("collect_notify_retry");
+    let _wallet_addr = scenario.seed_sub_account_wallet(&order.uid).await;
+    scenario.install_closed_frontend_notify_sender().await;
 
-    let (fail_tx, fail_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
-    drop(fail_rx);
-    env._manager
-        .set_frontend_notify_sender(fail_tx)
-        .await
-        .expect("install failing frontend sender");
+    // Act: first submit fails after the collect row is persisted.
+    let first = scenario.submit_collect_order(&order).await;
 
-    let first = env
-        ._manager
-        .api_collect_order(
-            &from_addr, &to_addr, "12.34", "digest", "sol", None, "USDC", &trade_no, 2, &uid,
-        )
-        .await;
+    // Assert: failed notification bubbles up and leaves retryable DB facts.
     assert!(first.is_err(), "frontend notify failure should bubble up");
+    assert_collect_order_retryable_after_notify_failure(&scenario, &order).await;
 
-    let collect_pool_ctx =
-        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
-            .await
-            .expect("open api transaction sqlite");
-    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
-    let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
-        .await
-        .expect("load collect after failed notify");
-    assert_eq!(persisted.status, ApiCollectStatus::Init);
+    // Arrange: restore a working notification channel.
+    let mut notifications = scenario.install_frontend_notify_collector().await;
 
-    let (ok_tx, mut ok_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
-    env._manager.set_frontend_notify_sender(ok_tx).await.expect("install working frontend sender");
-
-    env._manager
-        .api_collect_order(
-            &from_addr, &to_addr, "12.34", "digest", "sol", None, "USDC", &trade_no, 2, &uid,
-        )
+    // Act: retry the same order.
+    scenario
+        .submit_collect_order(&order)
         .await
         .expect("retrying the same collect order should resend frontend notify");
 
-    let notify = tokio::time::timeout(std::time::Duration::from_secs(1), ok_rx.recv())
-        .await
-        .expect("timed out waiting for collect notify")
-        .expect("missing collect notify event");
-    let notify_json = serde_json::to_value(&notify).expect("serialize collect notify");
-    assert_eq!(notify_json["event"], "COLLECT");
-    assert_eq!(notify_json["data"]["uid"], uid);
-    assert_eq!(notify_json["data"]["fromAddr"], from_addr);
-    assert_eq!(notify_json["data"]["toAddr"], to_addr);
-    assert_eq!(notify_json["data"]["value"], "12.34");
+    // Assert: retry emits the expected frontend notification.
+    let notify = recv_collect_notify(&mut notifications).await;
+    assert_frontend_collect_notify_matches_order(&notify, &order);
 }
