@@ -64,6 +64,7 @@ struct Message<T> {
 | `TOKEN_PRICE_CHANGE` | 代币价格变动 |
 | `AWM_ORDER_TRANS` | API 钱包订单消息，详见商户侧推送协议 |
 | `AWM_ORDER_TRANS_RES` | API 钱包订单结果消息，详见商户侧推送协议 |
+| `AWM_CMD_RSC_RES` | API 钱包资源结果消息，详见商户侧推送协议 |
 | `AWM_CMD_ADDR_EXPAND` | API 钱包地址扩容消息，详见商户侧推送协议 |
 | `AWM_CMD_FEE_RES` | API 钱包手续费结果消息，详见商户侧推送协议 |
 | `AWM_CMD_ACTIVE` | API 钱包激活消息，详见商户侧推送协议 |
