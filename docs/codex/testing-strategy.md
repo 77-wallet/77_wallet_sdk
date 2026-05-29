@@ -21,6 +21,7 @@
 ### Unit
 
 单元测试只验证一个函数、一个规则或一个步骤。
+表达风格使用 Arrange-Act-Assert，保持直接。
 
 允许：
 
@@ -55,6 +56,8 @@ fn diagnose_withdraw_should_wait_for_audit_when_tx_ack_sent() {
 ### Component
 
 组件测试验证一个模块与本地依赖的协作，例如 DAO/repository/domain + SQLite。
+表达风格使用 Arrange-Act-Assert；如果 DB 准备很吵，可以用少量
+`given_*` helper，但不要依赖 integration harness。
 
 允许：
 
@@ -93,50 +96,48 @@ async fn list_running_by_uid_returns_only_running() {
 
 标准集成测试验证一条业务流程中多个模块的协作。它不是 live 测试，不依赖真实 backend 或真实链 RPC。
 
-集成测试统一使用 `arrange -> act -> assert`：
+集成测试统一使用 Given-When-Then 业务剧本风格：
 
-- `arrange`: 准备 DB、订单、fake/mock backend、fake/mock chain、通知收集器。
-- `act`: 执行一个业务入口或一个明确步骤。
-- `assert`: 断言返回值、DB、backend 调用、通知、task queue 等副作用。
+- `given_*`: 准备业务事实、DB 事实、fake/mock backend、fake/mock chain、
+  通知收集器。
+- `when_*`: 执行一个业务入口、worker step、scanner step 或 retry。
+- `then_*`: 断言返回值、DB、backend 调用、通知、task queue、scanner
+  label、幂等或重试结果。
+
+这不是否定 Arrange-Act-Assert；Given-When-Then 是 integration 层对 AAA
+的业务化命名。Unit、component、smoke/live 仍使用 AAA，integration 用业务剧本
+提高可读性。
 
 模板：
 
 ```rust
-#[tokio::test]
-async fn withdraw_success_should_write_facts_and_ack_backend() {
-    let mut t = TestHarness::new().await;
-
-    t.arrange()
-        .api_wallet()
-        .withdraw_order("W_test_001")
-        .chain_balance_sufficient()
-        .backend_ack_ok();
-
-    let res = t.act().process_withdraw("W_test_001").await;
-
-    t.assert_result(res).is_ok();
-    t.assert_db().withdraw("W_test_001").status_success();
-    t.assert_db().withdraw("W_test_001").has_tx_hash();
-    t.assert_backend().sent_tx_ack("W_test_001");
-    t.assert_notifications().contains_withdraw_success("W_test_001");
-}
-```
-
-当前代码如果还没有流式 `TestHarness`，用显式分段保持同一结构：
-
-```rust
 #[serial]
 #[tokio::test]
-async fn withdraw_tx_ack_sends_once_and_persists_fact() {
-    // Arrange: temp db, fake backend recorder, unique uid/trade_no.
+async fn withdraw_tx_ack_backend_failure_keeps_fact_unset_and_retryable() {
+    let scenario = WithdrawNotificationScenario::new().await;
+    let order = WithdrawOrderFixture::new("withdraw_ack_fail");
 
-    // Act: execute one business entry or one worker step.
+    scenario.given_withdraw_order(&order).await;
+    scenario.given_backend_next_ack_fails(503, "ack unavailable");
 
-    // Assert: returned result, DB facts, captured backend calls.
+    let result = scenario.when_tx_ack_is_sent(&order).await;
 
-    // Assert: repeat act, scanner label, or retry path stays idempotent.
+    then_worker_left_flow_retryable(result);
+    scenario.then_backend_tx_ack_attempted_once(&order).await;
+    scenario.then_tx_ack_fact_is_not_persisted(&order).await;
+    scenario.then_scanner_can_retry_tx_ack(&order).await;
 }
 ```
+
+集成测试正文应该避免直接暴露底层噪音，例如：
+
+- `SqliteContext`
+- `serde_json::to_value`
+- notification channel 创建
+- backend recorder 解密
+- repo 查询细节
+
+这些可以放在 scenario 私有 helper 中，但测试正文要保留业务含义。
 
 集成测试优先覆盖：
 

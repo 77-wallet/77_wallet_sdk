@@ -15,13 +15,30 @@
 - 每个关键 flow 必须至少有一条失败路径测试，并断言“不变性”。
 - 必须更新断言矩阵（涉及 flow 改动时）。
 - 仅运行受影响测试命令；非必要不跑全量。
+- 表达风格必须按层选择：Unit / Component / Smoke 使用
+  Arrange-Act-Assert；Integration 使用 Given-When-Then 业务剧本。
 
 ## Layer Rules
 
 - Unit：只测一个函数、规则或步骤；禁止真实网络、固定 `test_data`、`WalletManager::new()`、全局 `CONTEXT`。
 - Component：允许临时 SQLite + migration + 真实 repo/dao；禁止真实 backend/链 RPC；必须断言真实落库结果。
-- Integration：使用 fake/mock backend、fake/mock chain、本地临时数据和统一 fixture；必须断言返回值、DB、外部调用和副作用。
+- Integration：使用 fake/mock backend、fake/mock chain、本地临时数据和统一 fixture；测试正文必须用
+  `given_*` / `when_*` / `then_*` 表达业务场景，并断言返回值、DB、外部调用和副作用。
 - Smoke/Live：允许真实 backend/真实链路，但必须显式标记并手动运行，默认测试和 CI 主链不运行。
+
+## Style Rules
+
+- Unit：使用 Arrange-Act-Assert；保持直接，不引入 integration harness。
+- Component：使用 Arrange-Act-Assert；可用少量 `given_*` helper 减少 DB
+  准备噪音，但测试正文仍要能看到被测模块和核心断言。
+- Integration：使用 Given-When-Then。测试正文应像业务剧本：
+  `given_*` 准备业务事实或 fake 行为，`when_*` 执行一个业务入口或 worker
+  step，`then_*` 断言 DB、backend、通知、scanner、幂等或重试结果。
+- Smoke/Live：使用 Arrange-Act-Assert；保持手工验证步骤直白，必须
+  `#[ignore]` 或独立 feature。
+- Integration test body 禁止直接暴露低层噪音，例如 `SqliteContext`、
+  `serde_json::to_value`、backend recorder 解密、channel 创建。低层动作可以在
+  scenario 私有 helper 中出现。
 
 ## Directory Rules
 
@@ -60,7 +77,8 @@
 
 1. 先确认改动边界与受影响 flow。
 2. 先补黄金路径，再补失败路径。
-3. 用 fixture/helper 复用测试准备逻辑。
+3. 用 fixture/scenario/helper 复用测试准备逻辑；integration 测试正文使用
+   Given-When-Then。
 4. 记录并汇报执行的测试命令与结果摘要。
 5. 按 `docs/codex/checklists/pr-definition-of-done.md` 逐项完成 DoD。
 
