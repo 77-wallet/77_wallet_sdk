@@ -58,7 +58,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/withdraw_resource_gate.rs
+  tests/integration/api_wallet/withdraw_resource_gate/mod.rs
   withdraw_resource_result_ack_uses_wd_rsc_dl_type
   ```
 
@@ -74,7 +74,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/withdraw_resource_gate.rs
+  tests/integration/api_wallet/withdraw_resource_gate/mod.rs
   withdraw_resource_result_ack_releases_origin_withdraw_gate
   ```
 
@@ -90,7 +90,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/withdraw_resource_gate.rs
+  tests/integration/api_wallet/withdraw_resource_gate/mod.rs
   withdraw_failed_resource_bypass_reopens_withdraw_build_flow
   ```
 
@@ -107,7 +107,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/withdraw_resource_gate.rs
+  tests/integration/api_wallet/withdraw_resource_gate/mod.rs
   withdraw_resource_result_ack_without_origin_trade_no_does_not_release_gate
   ```
 
@@ -122,7 +122,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/withdraw_resource_gate.rs
+  tests/integration/api_wallet/withdraw_resource_gate/mod.rs
   withdraw_resource_result_ack_for_collect_origin_does_not_release_withdraw_gate
   ```
 
@@ -208,6 +208,21 @@ scenario template:
 7. Keep wallet seed, notification channel, DB pool, scanner labels, backend ACK
    counting, and payload decryption details below the scenario layer in
    `withdraw_notification/support.rs`.
+
+`withdraw_resource_gate/mod.rs` uses the same read-first shape for resource
+gate flows:
+
+1. Keep the resource gate test cases in `withdraw_resource_gate/mod.rs`.
+2. Keep unique trade data in `WithdrawResourceGateFixture`.
+3. Keep environment, DB pools, resource delegation setup, worker entrypoints,
+   backend ACK matching, scanner labels, and DB assertions in
+   `WithdrawResourceGateScenario`.
+4. Use `given_*` methods for blocked withdraw and resource delegation facts.
+5. Use `when_*` methods for result ACK and receipt upload worker entrypoints.
+6. Use `then_*` methods for backend payload, gate release, no-release, and
+   scanner build eligibility assertions.
+7. Keep SQL setup and backend payload decryption details below the scenario
+   layer in `withdraw_resource_gate/support.rs`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or

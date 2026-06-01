@@ -25,6 +25,96 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: failed frontend notification must not lose the persisted collect
   order, so retrying the same `trade_no` can notify again.
 
+### Collect Resource Receipt Scanner
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_resource_gate/mod.rs
+  collect_scanner_emits_resource_receipt_upload_for_failed_delegation
+  ```
+
+- Backend: none.
+- DB facts: failed resource delegation row is ready for receipt upload scan.
+- Scanner: emits `UploadResourceTxExecReceipt`.
+- Invariant: failed delegation rows must remain observable by the scanner.
+
+### Collect Resource Result ACK Release
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_resource_gate/mod.rs
+  collect_resource_result_ack_releases_origin_collect_gate
+  ```
+
+- Backend: resource result ACK is sent for the delegation trade.
+- DB facts: origin collect writes `resource_gate_released_at` and
+  `resource_gate_result = ResourceDelegationSuccess`.
+- Scanner: released collect becomes eligible for `BuildTx`.
+- Invariant: only a successful collect-origin delegation releases the gate.
+
+### Collect Resource Result ACK Failure
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_resource_gate/mod.rs
+  collect_resource_result_ack_does_not_release_gate_on_failure
+  ```
+
+- Backend: resource result ACK can be sent for the failed delegation.
+- DB facts: origin collect keeps `resource_gate_released_at = NULL` and
+  `resource_gate_result = NULL`.
+- Invariant: failed delegation result ACK must not release the collect gate.
+
+### Collect Gate Ignores Withdraw-Origin ACK
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_resource_gate/mod.rs
+  withdraw_origin_resource_result_ack_does_not_release_collect_gate
+  ```
+
+- Backend: resource result ACK can be sent.
+- DB facts: collect gate remains unreleased.
+- Invariant: withdraw-origin delegation must not release a collect gate.
+
+### Collect Failed Resource Bypass
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_resource_gate/mod.rs
+  collect_failed_resource_bypass_reopens_collect_build_flow
+  ```
+
+- Backend: resource execution receipt upload is attempted for the delegation.
+- DB facts: collect remains blocked on platform delegation dependency.
+- Scanner: collect is still not eligible for `BuildTx`.
+- Invariant: failed platform delegation must not reopen collect build before
+  local fallback facts exist.
+
+### Collect Resource Receipt Without Origin
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_resource_gate/mod.rs
+  collect_resource_tx_exec_receipt_failure_without_origin_trade_no_does_not_release_gate
+  ```
+
+- Backend: resource execution receipt upload can run.
+- DB facts: collect gate remains unreleased.
+- Invariant: missing `origin_trade_no` must not release any collect gate.
+
 ### Collect Receipt Payload Uses Persisted Address
 
 - Layer: component.
@@ -145,6 +235,22 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 7. Keep low-level details such as SQL updates, payload serialization, and
    backend body decryption below the scenario layer in
    `collect_receipt/support.rs`.
+
+`collect_resource_gate/mod.rs` uses the same read-first shape for resource gate
+flows:
+
+1. Keep resource gate test cases in `collect_resource_gate/mod.rs`.
+2. Keep unique trade data in `CollectResourceGateFixture`.
+3. Keep local scanner-only DB setup in `LocalCollectResourceDb`.
+4. Keep environment, DB pools, resource delegation setup, worker entrypoints,
+   scanner/build checks, and DB assertions in `CollectResourceGateScenario`.
+5. Use `given_*` methods for blocked collect and resource delegation facts.
+6. Use `when_*` methods for resource result ACK, receipt upload, and scanner
+   rounds.
+7. Use `then_*` methods for scanner labels, gate release, no-release, platform
+   dependency, and build eligibility assertions.
+8. Keep SQL setup and scanner/build plumbing below the scenario layer in
+   `collect_resource_gate/support.rs`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or
