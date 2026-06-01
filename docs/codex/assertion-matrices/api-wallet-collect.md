@@ -31,7 +31,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/collect_receipt.rs
+  tests/integration/api_wallet/collect_receipt/mod.rs
   collect_tx_exec_receipt_uses_persisted_to_addr
   ```
 
@@ -48,7 +48,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/collect_receipt.rs
+  tests/integration/api_wallet/collect_receipt/mod.rs
   collect_rebuild_then_receipt_upload_uses_rebuilt_to_addr
   ```
 
@@ -66,7 +66,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/collect_receipt.rs
+  tests/integration/api_wallet/collect_receipt/mod.rs
   collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild
   ```
 
@@ -84,7 +84,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/collect_receipt.rs
+  tests/integration/api_wallet/collect_receipt/mod.rs
   collect_backend_api_direct_upload_hits_mock_server
   ```
 
@@ -101,7 +101,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/collect_receipt.rs
+  tests/integration/api_wallet/collect_receipt/mod.rs
   collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt
   ```
 
@@ -127,7 +127,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 6. Use `then_*` methods for surfaced error, DB retry fact, and notification
    payload.
 
-`collect_receipt.rs` uses a mixed-layer receipt contract:
+`collect_receipt/mod.rs` uses a mixed-layer receipt contract:
 
 1. Keep payload-only and local SQLite receipt tests as component-style
    Arrange-Act-Assert tests.
@@ -141,7 +141,8 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 6. Use `then_*` methods for durable DB upload facts, receipt payload facts,
    backend execute-complete capture, and selected scanner trade.
 7. Keep low-level details such as SQL updates, payload serialization, and
-   backend body decryption below the scenario layer.
+   backend body decryption below the scenario layer in
+   `collect_receipt/support.rs`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or

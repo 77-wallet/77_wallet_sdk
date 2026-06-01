@@ -4,7 +4,6 @@ use crate::harness::{
 };
 use chrono::Utc;
 use serde_json::Value;
-use serial_test::serial;
 use sqlx;
 use tempfile::TempDir;
 use wallet_api::testkit::collect::{
@@ -20,16 +19,16 @@ use wallet_database::{
     repositories::api_wallet::collect::ApiCollectRepo,
 };
 
-struct CollectReceiptFixture {
-    trade_no: String,
+pub(super) struct CollectReceiptFixture {
+    pub(super) trade_no: String,
     from_addr: String,
     initial_to_addr: String,
-    receipt_to_addr: String,
-    tx_hash: String,
+    pub(super) receipt_to_addr: String,
+    pub(super) tx_hash: String,
 }
 
 impl CollectReceiptFixture {
-    fn new(prefix: &str) -> Self {
+    pub(super) fn new(prefix: &str) -> Self {
         let id = next_unique_id();
         Self {
             trade_no: format!("T_{prefix}_{id}"),
@@ -52,13 +51,13 @@ impl CollectReceiptFixture {
     }
 }
 
-struct LocalCollectDb {
+pub(super) struct LocalCollectDb {
     _dir: TempDir,
     pool: ApiTransactionDbPool,
 }
 
 impl LocalCollectDb {
-    async fn new() -> Self {
+    pub(super) async fn new() -> Self {
         let dir = tempfile::tempdir().expect("tempdir");
         let ctx =
             SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_transaction.db"))
@@ -68,15 +67,34 @@ impl LocalCollectDb {
         Self { _dir: dir, pool }
     }
 
-    async fn seed_collect(&self, fixture: &CollectReceiptFixture, status: ApiCollectStatus) {
+    pub(super) async fn seed_stale_collect_build(&self, fixture: &CollectReceiptFixture) {
         insert_collect(
             &self.pool,
             &fixture.trade_no,
             &fixture.from_addr,
             &fixture.initial_to_addr,
-            status,
+            ApiCollectStatus::Init,
         )
         .await;
+        persist_stale_build_facts(&self.pool, &fixture.trade_no).await;
+    }
+
+    pub(super) async fn rebuild_collect_execution(&self, fixture: &CollectReceiptFixture) {
+        ApiCollectRepo::invalidate_raw_tx_for_rebuild(&self.pool, &fixture.trade_no, None)
+            .await
+            .expect("invalidate raw tx for rebuild");
+        persist_rebuilt_execution_facts(
+            &self.pool,
+            &fixture.trade_no,
+            &fixture.receipt_to_addr,
+            &fixture.tx_hash,
+        )
+        .await;
+    }
+
+    pub(super) async fn receipt_payload_json(&self, fixture: &CollectReceiptFixture) -> Value {
+        let rebuilt = self.load_collect(&fixture.trade_no).await;
+        collect_receipt_payload_json(&rebuilt, &fixture.trade_no)
     }
 
     async fn load_collect(&self, trade_no: &str) -> ApiCollectEntity {
@@ -86,14 +104,14 @@ impl LocalCollectDb {
     }
 }
 
-struct CollectReceiptScenario {
+pub(super) struct CollectReceiptScenario {
     env: &'static WorkerTestEnv,
     collect_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
 }
 
 impl CollectReceiptScenario {
-    async fn new() -> Self {
+    pub(super) async fn new() -> Self {
         let env = ensure_worker_env().await;
         env.recorder.reset();
 
@@ -103,25 +121,28 @@ impl CollectReceiptScenario {
         Self { env, collect_pool, core_pool }
     }
 
-    async fn given_mock_backend_is_active(&self) {
+    pub(super) async fn given_mock_backend_is_active(&self) {
         let backend_url = current_backend_url().await.expect("backend url set in app state");
         assert_eq!(backend_url, self.env.backend_url, "worker should use the mock backend URL");
     }
 
-    async fn given_rebuilt_collect_execution(&self, fixture: &CollectReceiptFixture) {
+    pub(super) async fn given_rebuilt_collect_execution(&self, fixture: &CollectReceiptFixture) {
         self.given_collect_order(fixture, ApiCollectStatus::Init).await;
         self.persist_stale_build_facts(&fixture.trade_no).await;
         self.invalidate_for_rebuild(&fixture.trade_no).await;
         self.persist_rebuilt_execution_facts(fixture).await;
     }
 
-    async fn given_scanner_ready_collect_execution(&self, fixture: &CollectReceiptFixture) {
+    pub(super) async fn given_scanner_ready_collect_execution(
+        &self,
+        fixture: &CollectReceiptFixture,
+    ) {
         self.given_collect_order(fixture, ApiCollectStatus::SendingTx).await;
         self.persist_rebuilt_execution_facts(fixture).await;
         self.persist_scanner_receipt_facts(fixture).await;
     }
 
-    async fn when_worker_uploads_receipt(&self, fixture: &CollectReceiptFixture) {
+    pub(super) async fn when_worker_uploads_receipt(&self, fixture: &CollectReceiptFixture) {
         upload_collect_tx_exec_receipt_via_worker(
             self.collect_pool.clone(),
             self.core_pool.clone(),
@@ -131,7 +152,10 @@ impl CollectReceiptScenario {
         .expect("upload tx exec receipt should succeed");
     }
 
-    async fn when_direct_backend_uploads_receipt(&self, fixture: &CollectReceiptFixture) {
+    pub(super) async fn when_direct_backend_uploads_receipt(
+        &self,
+        fixture: &CollectReceiptFixture,
+    ) {
         let req = fixture.receipt_entity();
 
         upload_collect_tx_exec_receipt_via_backend(&req, &req.trade_no)
@@ -139,7 +163,7 @@ impl CollectReceiptScenario {
             .expect("direct backend upload should succeed");
     }
 
-    async fn when_scanner_dispatches_receipt(&self) -> Option<String> {
+    pub(super) async fn when_scanner_dispatches_receipt(&self) -> Option<String> {
         scan_and_dispatch_collect_tx_exec_receipt_once(
             self.collect_pool.clone(),
             self.core_pool.clone(),
@@ -148,12 +172,15 @@ impl CollectReceiptScenario {
         .expect("scanner-dispatcher flow should succeed")
     }
 
-    async fn then_receipt_upload_is_persisted(&self, fixture: &CollectReceiptFixture) {
+    pub(super) async fn then_receipt_upload_is_persisted(&self, fixture: &CollectReceiptFixture) {
         let rec = self.load_collect(&fixture.trade_no).await;
         assert_collect_tx_exec_receipt_uploaded(&rec);
     }
 
-    async fn then_receipt_payload_uses_execution_facts(&self, fixture: &CollectReceiptFixture) {
+    pub(super) async fn then_receipt_payload_uses_execution_facts(
+        &self,
+        fixture: &CollectReceiptFixture,
+    ) {
         let rec = self.load_collect(&fixture.trade_no).await;
         let payload_json = collect_receipt_payload_json(&rec, &fixture.trade_no);
 
@@ -165,7 +192,10 @@ impl CollectReceiptScenario {
         );
     }
 
-    async fn then_backend_received_execute_complete(&self, fixture: &CollectReceiptFixture) {
+    pub(super) async fn then_backend_received_execute_complete(
+        &self,
+        fixture: &CollectReceiptFixture,
+    ) {
         let payload_json = self.pop_execute_complete_payload().await;
 
         assert_collect_receipt_payload(
@@ -176,7 +206,7 @@ impl CollectReceiptScenario {
         );
     }
 
-    fn then_scanner_selected_trade(
+    pub(super) fn then_scanner_selected_trade(
         &self,
         dispatched_trade_no: Option<String>,
         fixture: &CollectReceiptFixture,
@@ -258,7 +288,7 @@ async fn current_backend_url() -> Option<String> {
     app_state.url().backend.clone()
 }
 
-fn base_collect_for_receipt() -> ApiCollectEntity {
+pub(super) fn base_collect_for_receipt() -> ApiCollectEntity {
     ApiCollectEntity {
         id: 1,
         name: "collect".to_string(),
@@ -410,12 +440,12 @@ async fn persist_scanner_receipt_facts(pool: &ApiTransactionDbPool, trade_no: &s
     .expect("persist scan facts");
 }
 
-fn collect_receipt_payload_json(req: &ApiCollectEntity, trade_no: &str) -> Value {
+pub(super) fn collect_receipt_payload_json(req: &ApiCollectEntity, trade_no: &str) -> Value {
     serde_json::to_value(build_collect_tx_exec_receipt_payload(req, trade_no))
         .expect("serialize receipt payload")
 }
 
-fn assert_collect_receipt_payload(
+pub(super) fn assert_collect_receipt_payload(
     payload_json: &Value,
     trade_no: &str,
     to_addr: &str,
@@ -432,89 +462,4 @@ fn assert_collect_tx_exec_receipt_uploaded(rec: &ApiCollectEntity) {
         rec.tx_exec_receipt_uploaded_at.is_some(),
         "collect receipt upload should mark tx_exec_receipt_uploaded_at"
     );
-}
-
-#[tokio::test]
-async fn collect_tx_exec_receipt_uses_persisted_to_addr() {
-    // Arrange: payload input
-    let req = base_collect_for_receipt();
-
-    // Act
-    let payload_json = collect_receipt_payload_json(&req, &req.trade_no);
-
-    // Assert: persisted execution facts are used in the receipt payload.
-    assert_collect_receipt_payload(&payload_json, &req.trade_no, "persisted-to", "hash");
-}
-
-#[tokio::test]
-async fn collect_rebuild_then_receipt_upload_uses_rebuilt_to_addr() {
-    // Arrange: local DB and stale build facts
-    let db = LocalCollectDb::new().await;
-    let fixture = CollectReceiptFixture::new("collect_rebuild_then_receipt");
-
-    db.seed_collect(&fixture, ApiCollectStatus::Init).await;
-    persist_stale_build_facts(&db.pool, &fixture.trade_no).await;
-
-    // Act: invalidate and persist rebuilt execution facts.
-    ApiCollectRepo::invalidate_raw_tx_for_rebuild(&db.pool, &fixture.trade_no, None)
-        .await
-        .expect("invalidate raw tx for rebuild");
-    persist_rebuilt_execution_facts(
-        &db.pool,
-        &fixture.trade_no,
-        &fixture.receipt_to_addr,
-        &fixture.tx_hash,
-    )
-    .await;
-
-    // Assert: receipt payload uses rebuilt facts, not stale build facts.
-    let rebuilt = db.load_collect(&fixture.trade_no).await;
-    let payload_json = collect_receipt_payload_json(&rebuilt, &fixture.trade_no);
-    assert_collect_receipt_payload(
-        &payload_json,
-        &fixture.trade_no,
-        &fixture.receipt_to_addr,
-        &fixture.tx_hash,
-    );
-}
-
-#[serial]
-#[tokio::test]
-async fn collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild() {
-    let scenario = CollectReceiptScenario::new().await;
-    let fixture = CollectReceiptFixture::new("collect_worker_receipt");
-
-    scenario.given_mock_backend_is_active().await;
-    scenario.given_rebuilt_collect_execution(&fixture).await;
-
-    scenario.when_worker_uploads_receipt(&fixture).await;
-
-    scenario.then_receipt_upload_is_persisted(&fixture).await;
-    scenario.then_receipt_payload_uses_execution_facts(&fixture).await;
-}
-
-#[serial]
-#[tokio::test]
-async fn collect_backend_api_direct_upload_hits_mock_server() {
-    let scenario = CollectReceiptScenario::new().await;
-    let fixture = CollectReceiptFixture::new("collect_direct_backend");
-
-    scenario.when_direct_backend_uploads_receipt(&fixture).await;
-
-    scenario.then_backend_received_execute_complete(&fixture).await;
-}
-
-#[serial]
-#[tokio::test]
-async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
-    let scenario = CollectReceiptScenario::new().await;
-    let fixture = CollectReceiptFixture::new("collect_scan_dispatch");
-
-    scenario.given_scanner_ready_collect_execution(&fixture).await;
-
-    let dispatched_trade_no = scenario.when_scanner_dispatches_receipt().await;
-
-    scenario.then_scanner_selected_trade(dispatched_trade_no, &fixture);
-    scenario.then_receipt_upload_is_persisted(&fixture).await;
-    scenario.then_receipt_payload_uses_execution_facts(&fixture).await;
 }
