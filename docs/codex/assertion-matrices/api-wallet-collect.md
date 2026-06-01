@@ -204,6 +204,74 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: scanner-dispatcher must upload the rebuilt receipt once and
   persist the durable upload fact.
 
+### Collect Blockhash Rebuild Clears Stale Facts
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_recovery/mod.rs
+  collect_blockhash_rebuild_clears_stale_build_facts_and_persists_new_to_addr
+  ```
+
+- Backend: none.
+- DB facts: stale `raw_tx` and `tx_hash` are cleared before rebuild; persisted
+  `to_addr` is updated only by the next build step.
+- Invariant: rebuilding after an expired blockhash must not keep stale execution
+  facts or silently invent a replacement execution address.
+
+### Collect Recover Queries Chain Before Rebuild
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_recovery/mod.rs
+  collect_recover_queries_chain_before_any_expired_raw_rebuild_invalidation
+  ```
+
+- Backend: none.
+- Chain: fake TRON adapter is queried once before any rebuild invalidation.
+- DB facts: `transaction_time` is persisted, `last_broadcast_at` remains, and
+  `raw_tx` is not cleared before the visible chain confirmation is handled.
+- Invariant: recovery must prefer durable chain evidence over rebuilding an
+  expired raw transaction too early.
+
+### Collect Recover Backfills Missing Hash
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_recovery/mod.rs
+  collect_recover_backfills_missing_tx_hash_before_receipt_upload
+  ```
+
+- Backend: none.
+- Chain: fake TRON adapter confirms the recovered transaction.
+- DB facts: recovered `tx_hash` is restored, `transaction_time` is persisted,
+  and the row becomes eligible for execution-receipt upload.
+- Invariant: receipt upload readiness must not depend on a transient missing
+  local hash when the chain result can provide it.
+
+### Collect Scanner Recovers Broadcast Visible Pending
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_recovery/mod.rs
+  collect_scanner_recovers_broadcast_visible_pending_result
+  ```
+
+- Backend: none.
+- Scanner: emits `RecoverTx`, and does not emit `BuildTx` or
+  `UploadServiceFee`.
+- DB facts: pending row keeps `tx_hash`; `transaction_time` remains empty until
+  recovery confirms the broadcast.
+- Invariant: scanner routing must recover broadcast-visible pending rows instead
+  of re-entering build or fee upload.
+
 ## Template Contract
 
 `collect_notification/mod.rs` is the first V2 Given-When-Then gold sample:
@@ -251,6 +319,23 @@ flows:
    dependency, and build eligibility assertions.
 8. Keep SQL setup and scanner/build plumbing below the scenario layer in
    `collect_resource_gate/support.rs`.
+
+`collect_recovery/mod.rs` uses a mixed-layer recovery contract:
+
+1. Keep recovery test cases read-first in `collect_recovery/mod.rs`.
+2. Keep unique trade and hash data in `CollectRecoveryFixture`.
+3. Keep local SQLite-only recovery checks in `LocalCollectRecoveryDb`.
+4. Keep shadow-worker recovery setup, fake chain probes, worker entrypoint, and
+   DB assertions in `ShadowCollectRecoveryScenario`.
+5. Use `given_*` methods for persisted stale facts, recoverable collect rows,
+   and fake chain evidence.
+6. Use `when_*` methods for invalidation, rebuild persistence, scanner rounds,
+   and recover command execution.
+7. Use `then_*` methods for cleared facts, scanner labels, chain query counts,
+   hash backfill, and receipt-upload readiness.
+8. Keep raw SQL setup, TRON probe adapter, raw transaction JSON, scanner helper,
+   and worker construction below the scenario layer in
+   `collect_recovery/support.rs`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or
