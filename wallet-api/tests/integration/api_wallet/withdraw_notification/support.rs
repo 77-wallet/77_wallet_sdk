@@ -7,7 +7,6 @@ use crate::harness::{
     SMOKE_WALLET_PASSWORD, decrypt_captured_api_backend_body, ensure_worker_env, next_unique_id,
     open_api_wallet_pool,
 };
-use serial_test::serial;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use wallet_api::{
     error::service::ServiceError,
@@ -35,7 +34,7 @@ const WITHDRAW_VALIDATE: &str = "digest";
 const WITHDRAW_CHAIN: &str = "sol";
 const WITHDRAW_SYMBOL: &str = "USDC";
 
-struct WithdrawOrderFixture {
+pub(super) struct WithdrawOrderFixture {
     uid: String,
     trade_no: String,
     from_addr: String,
@@ -43,7 +42,7 @@ struct WithdrawOrderFixture {
 }
 
 impl WithdrawOrderFixture {
-    fn new(prefix: &str) -> Self {
+    pub(super) fn new(prefix: &str) -> Self {
         let id = next_unique_id();
         Self {
             uid: format!("uid_{prefix}_{id}"),
@@ -54,14 +53,14 @@ impl WithdrawOrderFixture {
     }
 }
 
-struct WithdrawNotificationScenario {
+pub(super) struct WithdrawNotificationScenario {
     env: &'static WorkerTestEnv,
     tx_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
 }
 
 impl WithdrawNotificationScenario {
-    async fn new() -> Self {
+    pub(super) async fn new() -> Self {
         let env = ensure_worker_env().await;
         env.recorder.reset();
 
@@ -71,7 +70,7 @@ impl WithdrawNotificationScenario {
         Self { env, tx_pool, core_pool }
     }
 
-    async fn given_withdrawal_wallet(&self, order: &WithdrawOrderFixture) {
+    pub(super) async fn given_withdrawal_wallet(&self, order: &WithdrawOrderFixture) {
         seed_wallet(
             &self.env.db_dir,
             &order.uid,
@@ -81,7 +80,7 @@ impl WithdrawNotificationScenario {
         .await;
     }
 
-    async fn given_withdraw_order(&self, order: &WithdrawOrderFixture) {
+    pub(super) async fn given_withdraw_order(&self, order: &WithdrawOrderFixture) {
         ApiWithdrawRepo::upsert_api_withdraw(
             &self.tx_pool,
             &order.uid,
@@ -111,7 +110,7 @@ impl WithdrawNotificationScenario {
         .expect("insert withdraw");
     }
 
-    async fn given_frontend_notification_closed(&self) {
+    pub(super) async fn given_frontend_notification_closed(&self) {
         let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
         drop(rx);
 
@@ -122,7 +121,7 @@ impl WithdrawNotificationScenario {
             .expect("install closed frontend sender");
     }
 
-    async fn given_frontend_notification_collector(&self) -> WithdrawNotificationInbox {
+    pub(super) async fn given_frontend_notification_collector(&self) -> WithdrawNotificationInbox {
         let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
 
         self.env
@@ -134,11 +133,11 @@ impl WithdrawNotificationScenario {
         WithdrawNotificationInbox { rx }
     }
 
-    fn given_backend_next_ack_fails(&self, status: i64, body: &str) {
+    pub(super) fn given_backend_next_ack_fails(&self, status: i64, body: &str) {
         self.env.recorder.fail_next_api_backend_call(status, body);
     }
 
-    async fn when_withdraw_order_submitted(
+    pub(super) async fn when_withdraw_order_submitted(
         &self,
         order: &WithdrawOrderFixture,
     ) -> Result<(), ServiceError> {
@@ -159,13 +158,16 @@ impl WithdrawNotificationScenario {
             .await
     }
 
-    async fn when_withdraw_order_retried(&self, order: &WithdrawOrderFixture) {
+    pub(super) async fn when_withdraw_order_retried(&self, order: &WithdrawOrderFixture) {
         self.when_withdraw_order_submitted(order)
             .await
             .expect("retrying the same withdraw order should resend frontend notify");
     }
 
-    async fn when_tx_ack_is_sent(&self, order: &WithdrawOrderFixture) -> Result<(), ServiceError> {
+    pub(super) async fn when_tx_ack_is_sent(
+        &self,
+        order: &WithdrawOrderFixture,
+    ) -> Result<(), ServiceError> {
         send_withdraw_tx_ack_via_worker(
             self.tx_pool.clone(),
             self.core_pool.clone(),
@@ -174,7 +176,7 @@ impl WithdrawNotificationScenario {
         .await
     }
 
-    async fn then_withdraw_order_is_retryable_after_notification_failure(
+    pub(super) async fn then_withdraw_order_is_retryable_after_notification_failure(
         &self,
         order: &WithdrawOrderFixture,
     ) {
@@ -184,13 +186,13 @@ impl WithdrawNotificationScenario {
         assert_eq!(persisted.status, ApiWithdrawStatus::InitOrder);
     }
 
-    async fn then_backend_tx_ack_attempted_once(&self, order: &WithdrawOrderFixture) {
+    pub(super) async fn then_backend_tx_ack_attempted_once(&self, order: &WithdrawOrderFixture) {
         let tx_ack_request_count = self.wait_for_tx_ack_count(&order.trade_no).await;
 
         assert_eq!(tx_ack_request_count, 1, "withdraw order should emit 1 TX ack request");
     }
 
-    async fn then_backend_tx_ack_remains_once_after_quiet_period(
+    pub(super) async fn then_backend_tx_ack_remains_once_after_quiet_period(
         &self,
         order: &WithdrawOrderFixture,
     ) {
@@ -203,7 +205,7 @@ impl WithdrawNotificationScenario {
         );
     }
 
-    async fn then_tx_ack_fact_is_persisted(&self, order: &WithdrawOrderFixture) {
+    pub(super) async fn then_tx_ack_fact_is_persisted(&self, order: &WithdrawOrderFixture) {
         let persisted = self.load_withdraw(&order.trade_no).await;
         assert!(
             persisted.tx_ack_sent_at.is_some(),
@@ -211,7 +213,7 @@ impl WithdrawNotificationScenario {
         );
     }
 
-    async fn then_tx_ack_fact_is_not_persisted(&self, order: &WithdrawOrderFixture) {
+    pub(super) async fn then_tx_ack_fact_is_not_persisted(&self, order: &WithdrawOrderFixture) {
         let persisted = self.load_withdraw(&order.trade_no).await;
         assert!(
             persisted.tx_ack_sent_at.is_none(),
@@ -219,7 +221,7 @@ impl WithdrawNotificationScenario {
         );
     }
 
-    async fn then_scanner_will_not_retry_tx_ack(&self, order: &WithdrawOrderFixture) {
+    pub(super) async fn then_scanner_will_not_retry_tx_ack(&self, order: &WithdrawOrderFixture) {
         let labels = self.scan_intent_labels(&order.trade_no).await;
         assert!(
             labels.iter().all(|label| label != "SendTxAck"),
@@ -227,7 +229,7 @@ impl WithdrawNotificationScenario {
         );
     }
 
-    async fn then_scanner_can_retry_tx_ack(&self, order: &WithdrawOrderFixture) {
+    pub(super) async fn then_scanner_can_retry_tx_ack(&self, order: &WithdrawOrderFixture) {
         let labels = self.scan_intent_labels(&order.trade_no).await;
         assert!(
             labels.iter().any(|label| label == "SendTxAck"),
@@ -268,12 +270,12 @@ impl WithdrawNotificationScenario {
     }
 }
 
-struct WithdrawNotificationInbox {
+pub(super) struct WithdrawNotificationInbox {
     rx: UnboundedReceiver<FrontendNotifyEvent>,
 }
 
 impl WithdrawNotificationInbox {
-    async fn then_received_withdraw_order(&mut self, order: &WithdrawOrderFixture) {
+    pub(super) async fn then_received_withdraw_order(&mut self, order: &WithdrawOrderFixture) {
         let notify = tokio::time::timeout(Duration::from_secs(1), self.rx.recv())
             .await
             .expect("timed out waiting for withdraw notify")
@@ -338,78 +340,14 @@ fn count_withdraw_tx_ack_requests(requests: &[CapturedHttpRequest], trade_no: &s
         .count()
 }
 
-fn then_frontend_notification_failed(result: Result<(), ServiceError>) {
+pub(super) fn then_frontend_notification_failed(result: Result<(), ServiceError>) {
     assert!(result.is_err(), "frontend notify failure should bubble up");
 }
 
-fn then_tx_ack_sent(result: Result<(), ServiceError>) {
+pub(super) fn then_tx_ack_sent(result: Result<(), ServiceError>) {
     result.expect("send withdraw tx ack");
 }
 
-fn then_worker_left_flow_retryable(result: Result<(), ServiceError>) {
+pub(super) fn then_worker_left_flow_retryable(result: Result<(), ServiceError>) {
     result.expect("backend ack failure should leave the worker retryable");
-}
-
-#[serial]
-#[tokio::test]
-async fn withdraw_notification_retry_on_existing_trade_no() {
-    let scenario = WithdrawNotificationScenario::new().await;
-    let order = WithdrawOrderFixture::new("withdraw_notify_retry");
-
-    scenario.given_withdrawal_wallet(&order).await;
-    scenario.given_frontend_notification_closed().await;
-
-    let result = scenario.when_withdraw_order_submitted(&order).await;
-
-    then_frontend_notification_failed(result);
-    scenario.then_withdraw_order_is_retryable_after_notification_failure(&order).await;
-
-    let mut notifications = scenario.given_frontend_notification_collector().await;
-
-    scenario.when_withdraw_order_retried(&order).await;
-
-    notifications.then_received_withdraw_order(&order).await;
-
-    let ack_result = scenario.when_tx_ack_is_sent(&order).await;
-
-    then_tx_ack_sent(ack_result);
-    scenario.then_backend_tx_ack_attempted_once(&order).await;
-}
-
-#[serial]
-#[tokio::test]
-async fn withdraw_tx_ack_sends_once_and_persists_fact() {
-    let scenario = WithdrawNotificationScenario::new().await;
-    let order = WithdrawOrderFixture::new("withdraw_ack");
-
-    scenario.given_withdraw_order(&order).await;
-
-    let result = scenario.when_tx_ack_is_sent(&order).await;
-
-    then_tx_ack_sent(result);
-    scenario.then_backend_tx_ack_attempted_once(&order).await;
-    scenario.then_tx_ack_fact_is_persisted(&order).await;
-    scenario.then_scanner_will_not_retry_tx_ack(&order).await;
-
-    let repeat_result = scenario.when_tx_ack_is_sent(&order).await;
-
-    then_tx_ack_sent(repeat_result);
-    scenario.then_backend_tx_ack_remains_once_after_quiet_period(&order).await;
-}
-
-#[serial]
-#[tokio::test]
-async fn withdraw_tx_ack_backend_failure_keeps_fact_unset_and_retryable() {
-    let scenario = WithdrawNotificationScenario::new().await;
-    let order = WithdrawOrderFixture::new("withdraw_ack_fail");
-
-    scenario.given_withdraw_order(&order).await;
-    scenario.given_backend_next_ack_fails(503, "ack unavailable");
-
-    let result = scenario.when_tx_ack_is_sent(&order).await;
-
-    then_worker_left_flow_retryable(result);
-    scenario.then_backend_tx_ack_attempted_once(&order).await;
-    scenario.then_tx_ack_fact_is_not_persisted(&order).await;
-    scenario.then_scanner_can_retry_tx_ack(&order).await;
 }

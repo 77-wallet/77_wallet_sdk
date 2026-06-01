@@ -12,7 +12,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/withdraw_notification.rs
+  tests/integration/api_wallet/withdraw_notification/mod.rs
   withdraw_notification_retry_on_existing_trade_no
   ```
 
@@ -28,7 +28,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/withdraw_notification.rs
+  tests/integration/api_wallet/withdraw_notification/mod.rs
   withdraw_tx_ack_sends_once_and_persists_fact
   ```
 
@@ -43,7 +43,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/withdraw_notification.rs
+  tests/integration/api_wallet/withdraw_notification/mod.rs
   withdraw_tx_ack_backend_failure_keeps_fact_unset_and_retryable
   ```
 
@@ -192,7 +192,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
-`withdraw_notification.rs` follows the V2 Given-When-Then integration
+`withdraw_notification/mod.rs` follows the V2 Given-When-Then integration
 scenario template:
 
 1. Keep local immutable data in a `*Fixture`.
@@ -205,6 +205,9 @@ scenario template:
 5. Use `when_*` methods for initial submit, retry, and TX ACK worker execution.
 6. Use `then_*` methods for surfaced error, DB facts, backend TX ACK calls,
    scanner retry state, notification payload, and idempotency.
+7. Keep wallet seed, notification channel, DB pool, scanner labels, backend ACK
+   counting, and payload decryption details below the scenario layer in
+   `withdraw_notification/support.rs`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or
