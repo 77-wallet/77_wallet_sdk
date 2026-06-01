@@ -617,6 +617,11 @@ pub async fn prepare_wallet_pair(env: &TestEnv) -> WalletPair {
     let withdrawal_address =
         upsert_wallet(&env.db_dir, &env.sn, &withdrawal_uid, ApiWalletType::Withdrawal, None).await;
 
+    env.manager
+        .set_passwd_cache(SMOKE_WALLET_PASSWORD)
+        .await
+        .expect("refresh unlock session for prepared wallet pair");
+
     WalletPair { recharge_uid, withdrawal_uid, recharge_address, withdrawal_address }
 }
 

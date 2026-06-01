@@ -218,6 +218,61 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: fee-result ACK must be sent before build is allowed after a
   completed fee upload.
 
+### Collect Fee Check
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_fee/fee_check.rs
+  collect_sol_native_fee_check_*
+  collect_eth_native_fee_check_*
+  collect_build_fee_estimation_shortage_reopens_fee_cycle
+  ```
+
+- Chain adapter: Solana and Ethereum transaction adapters are faked through the
+  test adapter override.
+- DB facts: collect rows remain in `Init` during pure fee check; fee shortage
+  reopens the service-fee cycle without raw transaction facts.
+- Invariant: fee-check failures must report the correct reason or reopen the
+  fee cycle without mutating completed execution facts.
+
+### Collect Service Fee Upload
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_fee/service_fee_upload.rs
+  collect_service_fee_upload_*
+  collect_eth_service_fee_upload_uses_estimated_fee_without_multiplier
+  ```
+
+- Backend: fake backend recorder captures service-fee upload requests.
+- DB facts: collect row is in service-fee wait state before upload.
+- Payload: service-fee upload uses the withdrawal-to-subaccount direction,
+  correct token metadata, and correct amount for Solana base shortfall, Solana
+  recipient ATA rent, or Ethereum estimated fee.
+- Invariant: service-fee upload must bypass the local balance gate and must not
+  multiply the already estimated fee amount.
+
+### Collect Build Fee Reopen
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_fee/build_fee.rs
+  collect_build_fee_failure_*
+  ```
+
+- Chain adapter: fake Solana fee adapter returns insufficient balance.
+- DB facts: first insufficient-balance build attempt marks
+  `need_service_fee = true`; completed fee-cycle facts keep
+  `service_fee_uploaded_at` and `tx_fee_res_ack_sent_at`.
+- Invariant: failed build-fee checks reopen only the needed part of the fee
+  cycle and must not erase completed service-fee facts.
+
 ### Collect Receipt Payload Uses Persisted Address
 
 - Layer: component.
