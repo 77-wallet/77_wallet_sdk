@@ -9,8 +9,9 @@ pub(super) use adapters::{
 };
 pub(super) use orders::{seed_collect_order, seed_eth_collect_order};
 pub(super) use service_fee::{
-    given_eth_service_fee_upload_waiting, given_sol_service_fee_upload_waiting,
-    then_service_fee_upload_payload, when_upload_collect_service_fee,
+    ServiceFeeUploadScenario, given_eth_service_fee_upload_waiting,
+    given_sol_service_fee_upload_waiting, then_service_fee_upload_payload,
+    when_upload_collect_service_fee,
 };
 pub(super) use worker::{
     build_eth_shadow_collect_worker, build_shadow_collect_worker, ensure_eth_main_coin,
