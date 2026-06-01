@@ -115,6 +115,109 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - DB facts: collect gate remains unreleased.
 - Invariant: missing `origin_trade_no` must not release any collect gate.
 
+### Collect Scanner Does Not Own Local Reclaim
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_local_reclaim/mod.rs
+  collect_shadow_scanner_no_longer_owns_local_undelegation_intents
+  ```
+
+- Backend: none.
+- Scanner: collect scanner does not emit `ExecuteLocalUndelegation` or
+  `RecoverLocalUndelegation`.
+- DB facts: local undelegation task is present in the local transaction DB.
+- Invariant: collect shadow scanner must not own local undelegation execution or
+  recovery after those intents move to the local reclaim scanner.
+
+### Local Reclaim Scanner Owns Local Undelegation
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_local_reclaim/mod.rs
+  local_reclaim_shadow_scanner_owns_local_undelegation_intents
+  ```
+
+- Backend: none.
+- Scanner: local reclaim scanner emits both `ExecuteLocalUndelegation` and
+  `RecoverLocalUndelegation`.
+- DB facts: one local undelegation task is build-ready, and one has broadcast
+  success facts for recovery.
+- Invariant: local reclaim scanner must be the owner for local undelegation
+  execution and recovery intents.
+
+### Collect Fee Cycle Skips Stale Rows
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_fee_cycle/mod.rs
+  collect_scanner_skips_stale_fee_cycle_rows
+  ```
+
+- Backend: none.
+- Scanner: emits no collect intent.
+- DB facts: `need_service_fee = true`, `service_fee_uploaded_at` remains set,
+  and `raw_tx` / `tx_hash` remain empty.
+- Invariant: stale fee-cycle residue must not re-enter build or fee-result ACK
+  scanning.
+
+### Collect Fee Cycle Uploads Service Fee
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_fee_cycle/mod.rs
+  collect_scanner_emits_upload_service_fee_when_need_service_fee_is_true
+  ```
+
+- Backend: none.
+- Scanner: emits `UploadServiceFee` and does not emit `BuildTx`.
+- DB facts: `need_service_fee = true`; service-fee order and upload timestamps
+  remain empty until the upload step runs.
+- Invariant: fee upload gating must run before collect build when service fee is
+  still required.
+
+### Collect Fee Cycle Reopen Builds Without Upload
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_fee_cycle/mod.rs
+  collect_scanner_builds_after_fee_cycle_reopen_without_service_fee_upload
+  ```
+
+- Backend: none.
+- Scanner: emits `BuildTx` and does not emit `SendTxFeeResAck`.
+- DB facts: `need_service_fee = false`, `service_fee_uploaded_at = NULL`,
+  `tx_fee_res_ack_sent_at = NULL`, and execution facts remain empty.
+- Invariant: a reopened fee cycle without a real upload in the current cycle
+  must not be blocked by historical ACK residue.
+
+### Collect Fee Cycle ACKs Before Build
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_fee_cycle/mod.rs
+  collect_scanner_emits_tx_fee_res_ack_before_build_after_fee_result
+  ```
+
+- Backend: none.
+- Scanner: emits `SendTxFeeResAck` and does not emit `BuildTx`.
+- DB facts: `need_service_fee = false`, `tx_fee_res_ack_sent_at = NULL`, and
+  `raw_tx` remains empty.
+- Invariant: fee-result ACK must be sent before build is allowed after a
+  completed fee upload.
+
 ### Collect Receipt Payload Uses Persisted Address
 
 - Layer: component.
@@ -319,6 +422,32 @@ flows:
    dependency, and build eligibility assertions.
 8. Keep SQL setup and scanner/build plumbing below the scenario layer in
    `collect_resource_gate/support.rs`.
+
+`collect_local_reclaim/mod.rs` uses a local scanner ownership contract:
+
+1. Keep scanner ownership cases read-first in `collect_local_reclaim/mod.rs`.
+2. Keep local SQLite setup and local undelegation seed data in
+   `LocalReclaimScannerDb`.
+3. Use `given_*` methods for local undelegation setup and broadcast-success
+   recovery setup.
+4. Use `when_*` methods for collect scanner and local reclaim scanner rounds.
+5. Use `then_*` methods for scanner label ownership assertions.
+6. Keep repository setup and scanner helper calls below the scenario layer in
+   `collect_local_reclaim/support.rs`.
+
+`collect_fee_cycle/mod.rs` uses a local scanner routing contract:
+
+1. Keep fee-cycle scanner cases read-first in `collect_fee_cycle/mod.rs`.
+2. Keep unique collect trade data in `CollectFeeCycleFixture`.
+3. Keep local SQLite setup, collect seed data, fee-cycle SQL facts, scanner
+   calls, and DB reloads in `LocalCollectFeeCycleDb`.
+4. Use `given_*` methods for stale, waiting, reopened, and completed fee-cycle
+   facts.
+5. Use `when_*` methods for collect scanner rounds.
+6. Use `then_*` methods for scanner label routing and persisted DB fact
+   assertions.
+7. Keep SQL setup and scanner helper calls below the scenario layer in
+   `collect_fee_cycle/support.rs`.
 
 `collect_recovery/mod.rs` uses a mixed-layer recovery contract:
 
