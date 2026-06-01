@@ -4,7 +4,6 @@ use crate::harness::{
     SMOKE_WALLET_PASSWORD, ensure_worker_env, next_unique_id, open_api_wallet_pool,
     worker::WorkerTestEnv,
 };
-use serial_test::serial;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use wallet_api::{error::service::ServiceError, messaging::notify::FrontendNotifyEvent};
 use wallet_database::{
@@ -22,15 +21,15 @@ const COLLECT_VALIDATE: &str = "digest";
 const COLLECT_CHAIN: &str = "sol";
 const COLLECT_SYMBOL: &str = "USDC";
 
-struct CollectOrderFixture {
-    uid: String,
+pub(super) struct CollectOrderFixture {
+    pub(super) uid: String,
     trade_no: String,
     from_addr: String,
     to_addr: String,
 }
 
 impl CollectOrderFixture {
-    fn new(prefix: &str) -> Self {
+    pub(super) fn new(prefix: &str) -> Self {
         let id = next_unique_id();
         Self {
             uid: format!("uid_{prefix}_{id}"),
@@ -41,13 +40,13 @@ impl CollectOrderFixture {
     }
 }
 
-struct CollectNotificationScenario {
+pub(super) struct CollectNotificationScenario {
     env: &'static WorkerTestEnv,
     tx_pool: ApiTransactionDbPool,
 }
 
 impl CollectNotificationScenario {
-    async fn new() -> Self {
+    pub(super) async fn new() -> Self {
         let env = ensure_worker_env().await;
         env.recorder.reset();
 
@@ -56,7 +55,7 @@ impl CollectNotificationScenario {
         Self { env, tx_pool }
     }
 
-    async fn given_sub_account_wallet(&self, order: &CollectOrderFixture) {
+    pub(super) async fn given_sub_account_wallet(&self, order: &CollectOrderFixture) {
         seed_wallet(
             &self.env.db_dir,
             &order.uid,
@@ -66,7 +65,7 @@ impl CollectNotificationScenario {
         .await;
     }
 
-    async fn given_frontend_notification_closed(&self) {
+    pub(super) async fn given_frontend_notification_closed(&self) {
         let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
         drop(rx);
 
@@ -77,7 +76,7 @@ impl CollectNotificationScenario {
             .expect("install closed frontend sender");
     }
 
-    async fn given_frontend_notification_collector(&self) -> CollectNotificationInbox {
+    pub(super) async fn given_frontend_notification_collector(&self) -> CollectNotificationInbox {
         let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
 
         self.env
@@ -89,7 +88,7 @@ impl CollectNotificationScenario {
         CollectNotificationInbox { rx }
     }
 
-    async fn when_collect_order_submitted(
+    pub(super) async fn when_collect_order_submitted(
         &self,
         order: &CollectOrderFixture,
     ) -> Result<(), ServiceError> {
@@ -110,13 +109,13 @@ impl CollectNotificationScenario {
             .await
     }
 
-    async fn when_collect_order_retried(&self, order: &CollectOrderFixture) {
+    pub(super) async fn when_collect_order_retried(&self, order: &CollectOrderFixture) {
         self.when_collect_order_submitted(order)
             .await
             .expect("retrying the same collect order should resend frontend notify");
     }
 
-    async fn then_collect_order_is_retryable(&self, order: &CollectOrderFixture) {
+    pub(super) async fn then_collect_order_is_retryable(&self, order: &CollectOrderFixture) {
         let persisted = self.load_collect(&order.trade_no).await;
 
         assert_eq!(persisted.status, ApiCollectStatus::Init);
@@ -129,12 +128,12 @@ impl CollectNotificationScenario {
     }
 }
 
-struct CollectNotificationInbox {
+pub(super) struct CollectNotificationInbox {
     rx: UnboundedReceiver<FrontendNotifyEvent>,
 }
 
 impl CollectNotificationInbox {
-    async fn then_received_collect_order(&mut self, order: &CollectOrderFixture) {
+    pub(super) async fn then_received_collect_order(&mut self, order: &CollectOrderFixture) {
         let notify = tokio::time::timeout(Duration::from_secs(1), self.rx.recv())
             .await
             .expect("timed out waiting for collect notify")
@@ -183,27 +182,6 @@ async fn seed_wallet(
     address
 }
 
-fn then_frontend_notification_failed(result: Result<(), ServiceError>) {
+pub(super) fn then_frontend_notification_failed(result: Result<(), ServiceError>) {
     assert!(result.is_err(), "frontend notify failure should bubble up");
-}
-
-#[serial]
-#[tokio::test]
-async fn collect_notification_retry_on_existing_trade_no() {
-    let scenario = CollectNotificationScenario::new().await;
-    let order = CollectOrderFixture::new("collect_notify_retry");
-
-    scenario.given_sub_account_wallet(&order).await;
-    scenario.given_frontend_notification_closed().await;
-
-    let result = scenario.when_collect_order_submitted(&order).await;
-
-    then_frontend_notification_failed(result);
-    scenario.then_collect_order_is_retryable(&order).await;
-
-    let mut notifications = scenario.given_frontend_notification_collector().await;
-
-    scenario.when_collect_order_retried(&order).await;
-
-    notifications.then_received_collect_order(&order).await;
 }

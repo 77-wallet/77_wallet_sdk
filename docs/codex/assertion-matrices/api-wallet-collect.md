@@ -12,7 +12,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Entrypoint:
 
   ```text
-  tests/integration/api_wallet/collect_notification.rs
+  tests/integration/api_wallet/collect_notification/mod.rs
   collect_notification_retry_on_existing_trade_no
   ```
 
@@ -116,7 +116,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
-`collect_notification.rs` is the first V2 Given-When-Then gold sample:
+`collect_notification/mod.rs` is the first V2 Given-When-Then gold sample:
 
 1. Keep unique collect input data in `CollectOrderFixture`.
 2. Keep environment, DB pool, notification setup, and collect actions in
@@ -126,6 +126,8 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 5. Use `when_*` methods for initial submit and retry.
 6. Use `then_*` methods for surfaced error, DB retry fact, and notification
    payload.
+7. Keep wallet seed, notification channel, DB pool, and payload serialization
+   details below the scenario layer in `collect_notification/support.rs`.
 
 `collect_receipt/mod.rs` uses a mixed-layer receipt contract:
 
