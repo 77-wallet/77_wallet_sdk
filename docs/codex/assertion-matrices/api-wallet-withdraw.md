@@ -192,17 +192,19 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
-`withdraw_notification.rs` is the first standard API wallet integration
-scenario template. New withdraw integration tests should follow this structure:
+`withdraw_notification.rs` follows the V2 Given-When-Then integration
+scenario template:
 
 1. Keep local immutable data in a `*Fixture`.
 2. Keep environment, DB pools, fake backend, and flow-specific actions in a
    local `*Scenario`.
-3. Arrange a unique `uid`, `trade_no`, temp DB facts, fake backend recorder,
-   and notification receiver when needed.
-4. Act through one business entrypoint or one worker step.
-5. Assert result, DB facts, backend calls, and scanner labels or notifications.
-6. Repeat the act or run a negative variant when the flow must be idempotent.
+3. Keep frontend notification receive and payload checks in
+   `WithdrawNotificationInbox`.
+4. Use `given_*` methods for wallet, withdraw order, notification-channel, and
+   backend failure setup.
+5. Use `when_*` methods for initial submit, retry, and TX ACK worker execution.
+6. Use `then_*` methods for surfaced error, DB facts, backend TX ACK calls,
+   scanner retry state, notification payload, and idempotency.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or
