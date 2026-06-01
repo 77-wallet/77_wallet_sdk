@@ -56,11 +56,43 @@ impl CollectNotificationScenario {
         Self { env, tx_pool }
     }
 
-    async fn seed_sub_account_wallet(&self, uid: &str) -> String {
-        seed_wallet(&self.env.db_dir, uid, "collect-notify-wallet", ApiWalletType::SubAccount).await
+    async fn given_sub_account_wallet(&self, order: &CollectOrderFixture) {
+        seed_wallet(
+            &self.env.db_dir,
+            &order.uid,
+            "collect-notify-wallet",
+            ApiWalletType::SubAccount,
+        )
+        .await;
     }
 
-    async fn submit_collect_order(&self, order: &CollectOrderFixture) -> Result<(), ServiceError> {
+    async fn given_frontend_notification_closed(&self) {
+        let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
+        drop(rx);
+
+        self.env
+            ._manager
+            .set_frontend_notify_sender(tx)
+            .await
+            .expect("install closed frontend sender");
+    }
+
+    async fn given_frontend_notification_collector(&self) -> CollectNotificationInbox {
+        let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
+
+        self.env
+            ._manager
+            .set_frontend_notify_sender(tx)
+            .await
+            .expect("install working frontend sender");
+
+        CollectNotificationInbox { rx }
+    }
+
+    async fn when_collect_order_submitted(
+        &self,
+        order: &CollectOrderFixture,
+    ) -> Result<(), ServiceError> {
         self.env
             ._manager
             .api_collect_order(
@@ -78,33 +110,43 @@ impl CollectNotificationScenario {
             .await
     }
 
-    async fn install_closed_frontend_notify_sender(&self) {
-        let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
-        drop(rx);
-
-        self.env
-            ._manager
-            .set_frontend_notify_sender(tx)
+    async fn when_collect_order_retried(&self, order: &CollectOrderFixture) {
+        self.when_collect_order_submitted(order)
             .await
-            .expect("install closed frontend sender");
+            .expect("retrying the same collect order should resend frontend notify");
     }
 
-    async fn install_frontend_notify_collector(&self) -> UnboundedReceiver<FrontendNotifyEvent> {
-        let (tx, rx) = unbounded_channel::<FrontendNotifyEvent>();
+    async fn then_collect_order_is_retryable(&self, order: &CollectOrderFixture) {
+        let persisted = self.load_collect(&order.trade_no).await;
 
-        self.env
-            ._manager
-            .set_frontend_notify_sender(tx)
-            .await
-            .expect("install working frontend sender");
-
-        rx
+        assert_eq!(persisted.status, ApiCollectStatus::Init);
     }
 
     async fn load_collect(&self, trade_no: &str) -> ApiCollectEntity {
         ApiCollectRepo::get_api_collect_by_trade_no(&self.tx_pool, trade_no)
             .await
             .expect("load collect")
+    }
+}
+
+struct CollectNotificationInbox {
+    rx: UnboundedReceiver<FrontendNotifyEvent>,
+}
+
+impl CollectNotificationInbox {
+    async fn then_received_collect_order(&mut self, order: &CollectOrderFixture) {
+        let notify = tokio::time::timeout(Duration::from_secs(1), self.rx.recv())
+            .await
+            .expect("timed out waiting for collect notify")
+            .expect("missing collect notify event");
+
+        let notify_json = serde_json::to_value(&notify).expect("serialize collect notify");
+
+        assert_eq!(notify_json["event"], "COLLECT");
+        assert_eq!(notify_json["data"]["uid"], order.uid);
+        assert_eq!(notify_json["data"]["fromAddr"], order.from_addr);
+        assert_eq!(notify_json["data"]["toAddr"], order.to_addr);
+        assert_eq!(notify_json["data"]["value"], COLLECT_VALUE);
     }
 }
 
@@ -141,65 +183,27 @@ async fn seed_wallet(
     address
 }
 
-async fn recv_collect_notify(
-    notifications: &mut UnboundedReceiver<FrontendNotifyEvent>,
-) -> FrontendNotifyEvent {
-    tokio::time::timeout(Duration::from_secs(1), notifications.recv())
-        .await
-        .expect("timed out waiting for collect notify")
-        .expect("missing collect notify event")
-}
-
-async fn assert_collect_order_retryable_after_notify_failure(
-    scenario: &CollectNotificationScenario,
-    order: &CollectOrderFixture,
-) {
-    let persisted = scenario.load_collect(&order.trade_no).await;
-
-    assert_eq!(persisted.status, ApiCollectStatus::Init);
-}
-
-fn assert_frontend_collect_notify_matches_order(
-    notify: &FrontendNotifyEvent,
-    order: &CollectOrderFixture,
-) {
-    let notify_json = serde_json::to_value(notify).expect("serialize collect notify");
-
-    assert_eq!(notify_json["event"], "COLLECT");
-    assert_eq!(notify_json["data"]["uid"], order.uid);
-    assert_eq!(notify_json["data"]["fromAddr"], order.from_addr);
-    assert_eq!(notify_json["data"]["toAddr"], order.to_addr);
-    assert_eq!(notify_json["data"]["value"], COLLECT_VALUE);
+fn then_frontend_notification_failed(result: Result<(), ServiceError>) {
+    assert!(result.is_err(), "frontend notify failure should bubble up");
 }
 
 #[serial]
 #[tokio::test]
 async fn collect_notification_retry_on_existing_trade_no() {
-    // Arrange: scenario
     let scenario = CollectNotificationScenario::new().await;
-
-    // Arrange: data and failing frontend notification channel
     let order = CollectOrderFixture::new("collect_notify_retry");
-    let _wallet_addr = scenario.seed_sub_account_wallet(&order.uid).await;
-    scenario.install_closed_frontend_notify_sender().await;
 
-    // Act: first submit fails after the collect row is persisted.
-    let first = scenario.submit_collect_order(&order).await;
+    scenario.given_sub_account_wallet(&order).await;
+    scenario.given_frontend_notification_closed().await;
 
-    // Assert: failed notification bubbles up and leaves retryable DB facts.
-    assert!(first.is_err(), "frontend notify failure should bubble up");
-    assert_collect_order_retryable_after_notify_failure(&scenario, &order).await;
+    let result = scenario.when_collect_order_submitted(&order).await;
 
-    // Arrange: restore a working notification channel.
-    let mut notifications = scenario.install_frontend_notify_collector().await;
+    then_frontend_notification_failed(result);
+    scenario.then_collect_order_is_retryable(&order).await;
 
-    // Act: retry the same order.
-    scenario
-        .submit_collect_order(&order)
-        .await
-        .expect("retrying the same collect order should resend frontend notify");
+    let mut notifications = scenario.given_frontend_notification_collector().await;
 
-    // Assert: retry emits the expected frontend notification.
-    let notify = recv_collect_notify(&mut notifications).await;
-    assert_frontend_collect_notify_matches_order(&notify, &order);
+    scenario.when_collect_order_retried(&order).await;
+
+    notifications.then_received_collect_order(&order).await;
 }

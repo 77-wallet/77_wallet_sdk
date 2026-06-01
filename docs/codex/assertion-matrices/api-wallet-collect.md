@@ -116,14 +116,16 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
-`collect_notification.rs` follows the API wallet integration scenario template:
+`collect_notification.rs` is the first V2 Given-When-Then gold sample:
 
 1. Keep unique collect input data in `CollectOrderFixture`.
 2. Keep environment, DB pool, notification setup, and collect actions in
    `CollectNotificationScenario`.
-3. Arrange a persisted-failure case with a closed frontend notification sender.
-4. Act through `api_collect_order`.
-5. Assert the surfaced error, DB retry fact, and retry notification payload.
+3. Keep notification receive and payload checks in `CollectNotificationInbox`.
+4. Use `given_*` methods for wallet and notification-channel setup.
+5. Use `when_*` methods for initial submit and retry.
+6. Use `then_*` methods for surfaced error, DB retry fact, and notification
+   payload.
 
 `collect_receipt.rs` follows the same template for side-effect flows:
 
