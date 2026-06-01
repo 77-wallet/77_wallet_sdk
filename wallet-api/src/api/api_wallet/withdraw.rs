@@ -79,64 +79,6 @@ impl WalletManager {
     }
 }
 
-#[cfg(all(test, feature = "integration-tests"))]
-mod test {
-    use crate::testkit::env::{get_manager, get_manager_with_config};
-    use anyhow::Result;
-    use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
-
-    #[tokio::test]
-    async fn test_reject_api_withdrawal_order() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
-        wallet_manager.init_api_swap().await?;
-
-        let trade_no = "W2020535510761119744";
-
-        let res = wallet_manager.reject_api_withdrawal_order(trade_no).await;
-        tracing::info!("res: {res:?}");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_page_api_withdraw_order() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
-        wallet_manager.init_api_swap().await?;
-
-        let uid = "5bdb1b748bb617d6683f57565b1493cfa5f9e45f3086daf265ca2e0cd325c15e";
-        let res = wallet_manager
-            .page_api_withdraw_order(
-                uid,
-                vec![
-                    ApiWithdrawStatus::AuditReject as u8,
-                    ApiWithdrawStatus::SendingTxFailed as u8,
-                ],
-                0,
-                10,
-            )
-            .await?;
-        for e in &res.data {
-            let res = serde_json::to_string(e).unwrap();
-            tracing::info!("-------- {:?}", res);
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_sign_api_withdrawal_order() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager_with_config("client4.toml").await?;
-        wallet_manager.init_api_swap().await?;
-
-        let trade_no = "W2059218395332771840";
-        let res = wallet_manager.sign_api_withdrawal_order(trade_no).await;
-        tracing::info!("sign_api_withdrawal_order result: {:?}", res);
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod unit_tests {
     use chrono::{Duration, Utc};
@@ -378,27 +320,18 @@ mod unit_tests {
     fn test_failure_reason_display() {
         let now = Utc::now();
 
-        // Test Init status - should return None for non-failure status
         let entity = make_entity(now, None, None);
         let vo = ApiWithdrawOrderVo::from(entity);
-        let json = serde_json::to_string_pretty(&vo).unwrap();
-        println!("Init status:\n{}", json);
         assert_eq!(vo.failure_reason_display, None);
 
-        // Test AuditReject status
         let mut entity = make_entity(now, None, None);
         entity.status = ApiWithdrawStatus::AuditReject;
         let vo = ApiWithdrawOrderVo::from(entity);
-        let json = serde_json::to_string_pretty(&vo).unwrap();
-        println!("AuditReject status:\n{}", json);
         assert_eq!(vo.failure_reason_display, Some(FailureReasonDisplay::AuditRejected));
 
-        // Test Success status
         let mut entity = make_entity(now, None, None);
         entity.status = ApiWithdrawStatus::Success;
         let vo = ApiWithdrawOrderVo::from(entity);
-        let json = serde_json::to_string_pretty(&vo).unwrap();
-        println!("Success status:\n{}", json);
         assert_eq!(vo.failure_reason_display, None);
     }
 }

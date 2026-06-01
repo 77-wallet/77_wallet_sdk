@@ -1,5 +1,6 @@
 mod account;
 mod address_book;
+mod api_wallet;
 mod assets;
 mod bill;
 mod coin;
