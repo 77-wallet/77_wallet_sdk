@@ -46,6 +46,12 @@
 - Unit / component 默认贴近被测代码；当一个模块超过 3 个测试或出现多个 flow 时，拆到同名目录下的 `*_tests.rs`。
 - Integration / smoke 统一放在 crate 的 `tests/` 下，
   按 `integration/<module>/`、`smoke/<module>/` 拆分。
+- 简单 flow 可以使用 `integration/<module>/<flow>.rs`；如果一个 flow
+  需要较多 fixture、scenario、SQL、backend recorder、payload 或 assertion
+  细节，必须拆成 `integration/<module>/<flow>/mod.rs` +
+  `integration/<module>/<flow>/support.rs`。
+- `<flow>/mod.rs` 是 read-first 测试入口，只放测试用例和少量导入；
+  `<flow>/support.rs` 只放本 flow 私有的 fixture、scenario 和低层 helper。
 - `tests/harness/` 只放真正跨模块复用的 test harness、fake、fixture、assertion；
   禁止 `withdraw` 依赖 `collect` 私有 helper。
 - `src/testkit/` 只放 crate 内部测试入口，例如 worker/scanner/domain
@@ -61,14 +67,20 @@
   tests/
     harness/                      # cross-module test environment and fakes
     integration/<business_module>/<flow>.rs
+    integration/<business_module>/<flow>/
+      mod.rs                      # read-first test cases
+      support.rs                  # flow-local fixture/scenario/helpers
     smoke/<business_module>/<flow>.rs
 ```
 
 命名契约：
 
 - `<business_module>` 使用业务归属，例如 `api_wallet`、`transaction`、`stake`。
-- `<flow>.rs` 使用具体流程或风险点，例如 `withdraw_notification.rs`、`collect_resource_gate.rs`。
+- `<flow>.rs` 或 `<flow>/mod.rs` 使用具体流程或风险点，例如
+  `withdraw_notification.rs`、`collect_resource_gate.rs`、`collect_receipt/mod.rs`。
 - 一个 integration 文件只覆盖同一类业务流程；如果同时出现 fee、notification、receipt，应拆成多个文件。
+- `support.rs` 是 flow-local 测试支撑文件，不是跨 flow 共享层；只有至少两个
+  flow 复用的环境能力才能上移到 `tests/harness`。
 - `harness` 是专业测试术语，表示测试夹具/执行环境总成；它只能承载通用环境、fake、fixture、assertion，不能变成新的业务模块。
 - `testkit` 表示 crate 内部测试工具包，只暴露测试需要的内部步骤入口；
   integration 测试环境仍然归 `tests/harness`。

@@ -24,13 +24,39 @@ Do not use a higher layer only because a helper already exists there.
 
 ## File Shape
 
-Every test file should follow this order:
+Simple unit/component files may keep helpers and tests together. When a file is
+small enough to read at once, use this order:
 
 1. Imports.
 2. Constants.
 3. Local fixtures and seed helpers.
 4. Local assertion helpers.
 5. Tests.
+
+For integration flows where support code would hide the test story, use a
+read-first directory shape:
+
+```text
+<crate>/tests/integration/<module>/<flow>/
+  mod.rs       # read-first test cases
+  support.rs   # flow-local fixture, scenario, SQL, backend, payload, assertions
+```
+
+`mod.rs` should contain only:
+
+1. `mod support;`
+2. Imports from `support`.
+3. Test cases.
+
+`support.rs` should contain the details a reviewer can skip on first read:
+
+1. Fixture structs.
+2. Scenario structs and the public `given_*` / `when_*` / `then_*` API.
+3. Scenario-private helpers such as `seed_*`, `persist_*`, `load_*`, `count_*`.
+4. Payload builders and assertion helpers.
+
+Keep `support.rs` local to that flow. Move code to `tests/harness` only after
+at least two flows need the same environment or fake capability.
 
 Do not put unrelated flows in the same file. Split by the business question the
 file answers, not by the old location it came from.
@@ -85,6 +111,7 @@ Use this for standard integration tests under:
 
 ```text
 <crate>/tests/integration/<module>/<flow>.rs
+<crate>/tests/integration/<module>/<flow>/mod.rs
 ```
 
 Template:
@@ -166,6 +193,9 @@ async fn flow_condition_expected_result() {
 
 Rules:
 
+- Use `<flow>.rs` for short flows. Use `<flow>/mod.rs` plus `support.rs` when
+  fixtures, SQL setup, backend recorder handling, payload conversion, or
+  assertions make the file hard to scan.
 - The test body must read as Given-When-Then.
 - Prefer business names over technical names in test bodies.
 - Use one primary act. If a second act is needed, it must prove retry,
@@ -176,6 +206,8 @@ Rules:
 - Do not use real backend, real chain RPC, or fixed `test_data`.
 - Do not expose `SqliteContext`, JSON serialization, channel plumbing, or
   backend recorder decryption in the test body.
+- In directory-shaped flows, `mod.rs` is the review entrypoint and `support.rs`
+  is the flow-local detail boundary.
 
 ## API Wallet Integration Scenario Template
 
@@ -202,6 +234,8 @@ Local roles:
   below the scenario layer.
 
 Copyable structure:
+
+Use this in `<flow>/support.rs` when the flow is large enough to split.
 
 ```rust
 struct FlowFixture {
@@ -288,6 +322,8 @@ async fn flow_condition_expected_result() {
 Rules:
 
 - Keep `Scenario` local until a helper is proven useful to another flow.
+- Prefer a short `mod.rs` that imports `FlowFixture` and `FlowScenario` from
+  `support.rs`, then lists the test cases.
 - `Scenario` may hold `WorkerTestEnv`, DB pools, and notification collectors;
   it must not hide the business assertion being proven.
 - `Fixture` should be cheap, unique, and immutable after construction.

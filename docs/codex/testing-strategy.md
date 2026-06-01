@@ -235,6 +235,9 @@ wallet-api/
         mod.rs
         withdraw_resource_gate.rs
         withdraw_confirm.rs
+        collect_receipt/
+          mod.rs
+          support.rs
         collect_worker.rs
         fee_worker.rs
       transaction/
@@ -261,7 +264,9 @@ wallet-api/
         withdraw_resource_gate.rs     # 提币资源门控/资源 ACK
         withdraw_notification.rs      # 提币通知、TX ACK、副作用幂等
         collect_resource_gate.rs      # 归集资源门控/资源 receipt
-        collect_receipt.rs            # 归集交易执行 receipt
+        collect_receipt/              # 归集交易执行 receipt
+          mod.rs                      # read-first 测试用例
+          support.rs                  # flow-local fixture/scenario/helper
         collect_fee_cycle.rs          # 归集 fee-cycle scanner
         collect_fee.rs                # 归集手续费/服务费流程
         collect_notification.rs       # 归集通知重试
@@ -273,6 +278,12 @@ wallet-api/
 
 - 文件名回答“这是什么 flow”，而不是回答“它从哪个旧文件迁来”。
 - 一个文件可以包含同一 flow 的成功、失败、幂等、恢复用例。
+- 简单 flow 使用 `<flow>.rs`；复杂 flow 使用 `<flow>/mod.rs` +
+  `<flow>/support.rs`，让 `mod.rs` 成为第一阅读入口。
+- `<flow>/mod.rs` 只放测试用例和少量导入；`support.rs` 放本 flow 私有的
+  fixture、scenario、SQL、backend recorder、payload 和 assertion 细节。
+- `support.rs` 不是共享层；只有跨两个以上 flow 复用的环境能力才上移到
+  `tests/harness`。
 - 不同副作用边界应拆开，例如 notification、backend ACK、receipt、fee。
 - 旧测试迁移时优先改文件归属和命名，业务行为保持不变。
 
@@ -296,6 +307,8 @@ wallet-database/
 过渡期允许保留当前 `tests/<module>/mod.rs` 结构，但新增文件应按以下规则命名：
 
 - `tests/integration/<module>/<flow>.rs`：标准集成测试。
+- `tests/integration/<module>/<flow>/mod.rs`：复杂 flow 的 read-first 测试入口。
+- `tests/integration/<module>/<flow>/support.rs`：复杂 flow 的本地测试支撑。
 - `tests/smoke/<module>/<flow>.rs`：真实环境 smoke/live。
 - `tests/harness/<capability>.rs`：跨模块 test harness 能力。
 - `src/.../<module>/<flow>_tests.rs`：贴近源码的 unit/component 测试。
