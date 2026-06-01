@@ -56,6 +56,58 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: native asset sync must match the existing empty-token native asset
   and keep the canonical `ETH` symbol.
 
+### Sync API Wallet Updates Asset From Chain
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/sync/mod.rs
+  sync_api_assets_by_wallet_updates_api_assets_from_chain
+  ```
+
+- Backend: none; the chain balance path uses a fake BNB transaction adapter.
+- DB facts: withdrawal wallet, initialized BNB account, native BNB coin, and
+  API asset are seeded with balance `0`.
+- Chain calls: fake adapter balance query is called once and returns `123`.
+- Invariant: API wallet asset sync must persist the formatted on-chain balance
+  for a withdrawal wallet.
+
+### Sync API Wallet Keeps Balance On Chain Failure
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/sync/mod.rs
+  sync_api_assets_by_wallet_keeps_balance_when_chain_query_fails
+  ```
+
+- Backend: none; the chain balance path uses a fake BNB transaction adapter that
+  fails the balance query.
+- DB facts: seeded asset balance remains `0`.
+- Chain calls: fake adapter balance query is called once.
+- Invariant: a chain balance failure must not clear or overwrite the existing
+  asset balance.
+
+### Sync API Wallet Skips Subaccount Wallet
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/sync/mod.rs
+  sync_api_assets_by_wallet_skips_subaccount_wallet
+  ```
+
+- Backend: none; a fake BNB transaction adapter is installed but should not be
+  queried.
+- DB facts: subaccount wallet, initialized BNB account, native BNB coin, and API
+  asset are seeded with balance `0`.
+- Chain calls: fake adapter balance query is not called.
+- Invariant: API wallet asset sync must skip subaccount wallets and leave their
+  balances untouched.
+
 ## Template Contract
 
 `acct_change/mod.rs` uses a read-first integration contract:
@@ -71,6 +123,20 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 6. Keep repository setup, payload JSON, and task queue polling below the
    scenario layer in `acct_change/support.rs`.
 
+`sync/mod.rs` uses a read-first integration contract:
+
+1. Keep API wallet asset sync cases in `sync/mod.rs`.
+2. Keep fake chain behavior, BNB withdrawal/subaccount fixture setup, sync
+   entrypoint calls, chain-call counts, and final DB assertions in
+   `SyncAssetsScenario`.
+3. Use `given_*` methods for seeded wallet assets and fake chain balance
+   behavior.
+4. Use `when_*` methods for `sync_api_assets_by_wallet` entrypoints.
+5. Use `then_*` methods for returned result, chain-call counts, and persisted
+   asset balance assertions.
+6. Keep adapter override and repository setup details below the scenario layer
+   in `sync/support.rs`.
+
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or
 scanner entrypoints.
@@ -79,6 +145,6 @@ scanner entrypoints.
 
 - Account-change failure path:
   invalid or inactive chain data should not mutate unrelated asset rows.
-- Asset sync wallet filtering:
-  subaccount and API wallet asset sync rules should be documented separately
-  when `sync.rs` is standardized.
+- Asset sync token filtering:
+  explicit symbol filters should be covered once the filter contract is
+  standardized.
