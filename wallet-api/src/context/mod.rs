@@ -108,6 +108,19 @@ pub struct Context {
     background_task_pool: Arc<BackgroundTaskPool>,
 }
 
+fn active_backend_urls(config: &crate::config::Config) -> (String, String) {
+    if cfg!(feature = "prod") {
+        (config.backend_api.prod_url.clone(), config.aggregate_api.prod_url.clone())
+    } else if cfg!(feature = "dev") {
+        (config.backend_api.dev_url.clone(), config.aggregate_api.dev_url.clone())
+    } else if cfg!(feature = "test") {
+        (config.backend_api.test_url.clone(), config.aggregate_api.test_url.clone())
+    } else {
+        let offline_url = "http://127.0.0.1:9".to_string();
+        (offline_url.clone(), offline_url)
+    }
+}
+
 impl Context {
     async fn new(
         sn: &str,
@@ -127,20 +140,7 @@ impl Context {
         tracing::info!(" ======================================  client id: {}", client_id);
 
         let chain_network = crate::config::Config::feature_chain_network();
-
-        #[cfg(feature = "dev")]
-        let api_url = config.backend_api.dev_url.clone();
-        #[cfg(feature = "test")]
-        let api_url = config.backend_api.test_url.clone();
-        #[cfg(feature = "prod")]
-        let api_url = config.backend_api.prod_url.clone();
-
-        #[cfg(feature = "dev")]
-        let aggregate_api = config.aggregate_api.dev_url.clone();
-        #[cfg(feature = "test")]
-        let aggregate_api = config.aggregate_api.test_url.clone();
-        #[cfg(feature = "prod")]
-        let aggregate_api = config.aggregate_api.prod_url.clone();
+        let (api_url, aggregate_api) = active_backend_urls(&config);
 
         tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
         tracing::info!(
@@ -155,7 +155,7 @@ impl Context {
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let backend_api = Arc::new(wallet_transport_backend::api::BackendApi::new(
-            Some(api_url.to_string()),
+            Some(api_url.clone()),
             Some(headers_opt),
             aes_cbc_cryptor,
         )?);
@@ -197,20 +197,7 @@ impl Context {
         tracing::info!(" ======================================  client id: {}", client_id);
 
         let chain_network = crate::config::Config::feature_chain_network();
-
-        #[cfg(feature = "dev")]
-        let api_url = config.backend_api.dev_url.clone();
-        #[cfg(feature = "test")]
-        let api_url = config.backend_api.test_url.clone();
-        #[cfg(feature = "prod")]
-        let api_url = config.backend_api.prod_url.clone();
-
-        #[cfg(feature = "dev")]
-        let aggregate_api = config.aggregate_api.dev_url.clone();
-        #[cfg(feature = "test")]
-        let aggregate_api = config.aggregate_api.test_url.clone();
-        #[cfg(feature = "prod")]
-        let aggregate_api = config.aggregate_api.prod_url.clone();
+        let (api_url, aggregate_api) = active_backend_urls(&config);
 
         tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
         tracing::info!(
@@ -225,7 +212,7 @@ impl Context {
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let backend_api = Arc::new(wallet_transport_backend::api::BackendApi::new(
-            Some(api_url.to_string()),
+            Some(api_url.clone()),
             Some(headers_opt),
             aes_cbc_cryptor,
         )?);
