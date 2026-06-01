@@ -127,14 +127,21 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 6. Use `then_*` methods for surfaced error, DB retry fact, and notification
    payload.
 
-`collect_receipt.rs` follows the same template for side-effect flows:
+`collect_receipt.rs` uses a mixed-layer receipt contract:
 
-1. Keep unique receipt input data in `CollectReceiptFixture`.
-2. Keep environment, DB pools, backend recorder, and receipt actions in
+1. Keep payload-only and local SQLite receipt tests as component-style
+   Arrange-Act-Assert tests.
+2. Keep unique integration receipt input data in `CollectReceiptFixture`.
+3. Keep environment, DB pools, backend recorder, and receipt actions in
    `CollectReceiptScenario`.
-3. Arrange local DB facts before the worker or scanner act step.
-4. Act through one receipt upload entrypoint.
-5. Assert DB facts, backend payload, and selected scanner trade.
+4. Use `given_*` methods for mock-backend verification, rebuilt execution
+   facts, and scanner-ready facts.
+5. Use `when_*` methods for worker, direct backend, and scanner receipt upload
+   entrypoints.
+6. Use `then_*` methods for durable DB upload facts, receipt payload facts,
+   backend execute-complete capture, and selected scanner trade.
+7. Keep low-level details such as SQL updates, payload serialization, and
+   backend body decryption below the scenario layer.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or

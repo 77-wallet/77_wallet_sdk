@@ -103,12 +103,88 @@ impl CollectReceiptScenario {
         Self { env, collect_pool, core_pool }
     }
 
-    async fn assert_uses_mock_backend_url(&self) {
+    async fn given_mock_backend_is_active(&self) {
         let backend_url = current_backend_url().await.expect("backend url set in app state");
         assert_eq!(backend_url, self.env.backend_url, "worker should use the mock backend URL");
     }
 
-    async fn seed_collect(&self, fixture: &CollectReceiptFixture, status: ApiCollectStatus) {
+    async fn given_rebuilt_collect_execution(&self, fixture: &CollectReceiptFixture) {
+        self.given_collect_order(fixture, ApiCollectStatus::Init).await;
+        self.persist_stale_build_facts(&fixture.trade_no).await;
+        self.invalidate_for_rebuild(&fixture.trade_no).await;
+        self.persist_rebuilt_execution_facts(fixture).await;
+    }
+
+    async fn given_scanner_ready_collect_execution(&self, fixture: &CollectReceiptFixture) {
+        self.given_collect_order(fixture, ApiCollectStatus::SendingTx).await;
+        self.persist_rebuilt_execution_facts(fixture).await;
+        self.persist_scanner_receipt_facts(fixture).await;
+    }
+
+    async fn when_worker_uploads_receipt(&self, fixture: &CollectReceiptFixture) {
+        upload_collect_tx_exec_receipt_via_worker(
+            self.collect_pool.clone(),
+            self.core_pool.clone(),
+            &fixture.trade_no,
+        )
+        .await
+        .expect("upload tx exec receipt should succeed");
+    }
+
+    async fn when_direct_backend_uploads_receipt(&self, fixture: &CollectReceiptFixture) {
+        let req = fixture.receipt_entity();
+
+        upload_collect_tx_exec_receipt_via_backend(&req, &req.trade_no)
+            .await
+            .expect("direct backend upload should succeed");
+    }
+
+    async fn when_scanner_dispatches_receipt(&self) -> Option<String> {
+        scan_and_dispatch_collect_tx_exec_receipt_once(
+            self.collect_pool.clone(),
+            self.core_pool.clone(),
+        )
+        .await
+        .expect("scanner-dispatcher flow should succeed")
+    }
+
+    async fn then_receipt_upload_is_persisted(&self, fixture: &CollectReceiptFixture) {
+        let rec = self.load_collect(&fixture.trade_no).await;
+        assert_collect_tx_exec_receipt_uploaded(&rec);
+    }
+
+    async fn then_receipt_payload_uses_execution_facts(&self, fixture: &CollectReceiptFixture) {
+        let rec = self.load_collect(&fixture.trade_no).await;
+        let payload_json = collect_receipt_payload_json(&rec, &fixture.trade_no);
+
+        assert_collect_receipt_payload(
+            &payload_json,
+            &fixture.trade_no,
+            &fixture.receipt_to_addr,
+            &fixture.tx_hash,
+        );
+    }
+
+    async fn then_backend_received_execute_complete(&self, fixture: &CollectReceiptFixture) {
+        let payload_json = self.pop_execute_complete_payload().await;
+
+        assert_collect_receipt_payload(
+            &payload_json,
+            &fixture.trade_no,
+            &fixture.receipt_to_addr,
+            &fixture.tx_hash,
+        );
+    }
+
+    fn then_scanner_selected_trade(
+        &self,
+        dispatched_trade_no: Option<String>,
+        fixture: &CollectReceiptFixture,
+    ) {
+        assert_eq!(dispatched_trade_no.as_deref(), Some(fixture.trade_no.as_str()));
+    }
+
+    async fn given_collect_order(&self, fixture: &CollectReceiptFixture, status: ApiCollectStatus) {
         insert_collect(
             &self.collect_pool,
             &fixture.trade_no,
@@ -144,25 +220,6 @@ impl CollectReceiptScenario {
             .await;
     }
 
-    async fn upload_receipt_via_worker(&self, trade_no: &str) {
-        upload_collect_tx_exec_receipt_via_worker(
-            self.collect_pool.clone(),
-            self.core_pool.clone(),
-            trade_no,
-        )
-        .await
-        .expect("upload tx exec receipt should succeed");
-    }
-
-    async fn upload_receipt_via_scanner(&self) -> Option<String> {
-        scan_and_dispatch_collect_tx_exec_receipt_once(
-            self.collect_pool.clone(),
-            self.core_pool.clone(),
-        )
-        .await
-        .expect("scanner-dispatcher flow should succeed")
-    }
-
     async fn load_collect(&self, trade_no: &str) -> ApiCollectEntity {
         ApiCollectRepo::get_api_collect_by_trade_no(&self.collect_pool, trade_no)
             .await
@@ -170,16 +227,21 @@ impl CollectReceiptScenario {
     }
 
     async fn pop_execute_complete_payload(&self) -> Value {
-        let captured = pop_request_with_retry(&self.env.recorder)
-            .await
-            .expect("captured backend request for direct upload");
-        assert!(
-            captured.path.contains("awallet/aw/trans/executeComplete"),
-            "unexpected backend path: {}",
-            captured.path
-        );
+        let mut seen_paths = Vec::new();
 
-        decrypt_captured_api_backend_body(&captured.body)
+        for _ in 0..20 {
+            let captured = pop_request_with_retry(&self.env.recorder)
+                .await
+                .expect("captured backend request for direct upload");
+
+            if captured.path.contains("awallet/aw/trans/executeComplete") {
+                return decrypt_captured_api_backend_body(&captured.body);
+            }
+
+            seen_paths.push(captured.path);
+        }
+
+        panic!("expected execute-complete backend request, saw paths: {seen_paths:?}");
     }
 }
 
@@ -419,88 +481,40 @@ async fn collect_rebuild_then_receipt_upload_uses_rebuilt_to_addr() {
 #[serial]
 #[tokio::test]
 async fn collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild() {
-    // Arrange: scenario
     let scenario = CollectReceiptScenario::new().await;
-    scenario.assert_uses_mock_backend_url().await;
-
-    // Arrange: rebuilt collect execution facts
     let fixture = CollectReceiptFixture::new("collect_worker_receipt");
-    scenario.seed_collect(&fixture, ApiCollectStatus::Init).await;
-    scenario.persist_stale_build_facts(&fixture.trade_no).await;
-    scenario.invalidate_for_rebuild(&fixture.trade_no).await;
-    scenario.persist_rebuilt_execution_facts(&fixture).await;
 
-    // Act
-    scenario.upload_receipt_via_worker(&fixture.trade_no).await;
+    scenario.given_mock_backend_is_active().await;
+    scenario.given_rebuilt_collect_execution(&fixture).await;
 
-    // Assert: DB fact and uploaded payload facts
-    let rec = scenario.load_collect(&fixture.trade_no).await;
-    assert_collect_tx_exec_receipt_uploaded(&rec);
+    scenario.when_worker_uploads_receipt(&fixture).await;
 
-    let payload_json = collect_receipt_payload_json(&rec, &fixture.trade_no);
-    assert_collect_receipt_payload(
-        &payload_json,
-        &fixture.trade_no,
-        &fixture.receipt_to_addr,
-        &fixture.tx_hash,
-    );
+    scenario.then_receipt_upload_is_persisted(&fixture).await;
+    scenario.then_receipt_payload_uses_execution_facts(&fixture).await;
 }
 
 #[serial]
 #[tokio::test]
 async fn collect_backend_api_direct_upload_hits_mock_server() {
-    // Arrange: scenario and direct backend payload input
     let scenario = CollectReceiptScenario::new().await;
     let fixture = CollectReceiptFixture::new("collect_direct_backend");
-    let req = fixture.receipt_entity();
 
-    // Act
-    upload_collect_tx_exec_receipt_via_backend(&req, &req.trade_no)
-        .await
-        .expect("direct backend upload should succeed");
+    scenario.when_direct_backend_uploads_receipt(&fixture).await;
 
-    // Assert: mock backend captured the execute-complete request.
-    let payload_json = scenario.pop_execute_complete_payload().await;
-    assert_collect_receipt_payload(
-        &payload_json,
-        &fixture.trade_no,
-        &fixture.receipt_to_addr,
-        &fixture.tx_hash,
-    );
+    scenario.then_backend_received_execute_complete(&fixture).await;
 }
 
 #[serial]
 #[tokio::test]
 async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
-    // Arrange: scenario
     let scenario = CollectReceiptScenario::new().await;
-
-    // Arrange: scanner-ready collect execution facts
     let fixture = CollectReceiptFixture::new("collect_scan_dispatch");
-    scenario.seed_collect(&fixture, ApiCollectStatus::SendingTx).await;
-    persist_rebuilt_execution_facts(
-        &scenario.collect_pool,
-        &fixture.trade_no,
-        &fixture.receipt_to_addr,
-        &fixture.tx_hash,
-    )
-    .await;
-    scenario.persist_scanner_receipt_facts(&fixture).await;
 
-    // Act
-    let dispatched_trade_no = scenario.upload_receipt_via_scanner().await;
+    scenario.given_scanner_ready_collect_execution(&fixture).await;
 
-    // Assert: dispatcher selected this trade and persisted upload fact.
-    assert_eq!(dispatched_trade_no.as_deref(), Some(fixture.trade_no.as_str()));
+    let dispatched_trade_no = scenario.when_scanner_dispatches_receipt().await;
 
-    let rec = scenario.load_collect(&fixture.trade_no).await;
-    assert_collect_tx_exec_receipt_uploaded(&rec);
-
-    let payload_json = collect_receipt_payload_json(&rec, &fixture.trade_no);
-    assert_collect_receipt_payload(
-        &payload_json,
-        &fixture.trade_no,
-        &fixture.receipt_to_addr,
-        &fixture.tx_hash,
-    );
+    scenario.then_scanner_selected_trade(dispatched_trade_no, &fixture);
+    scenario.then_receipt_upload_is_persisted(&fixture).await;
+    scenario.then_receipt_payload_uses_execution_facts(&fixture).await;
 }
