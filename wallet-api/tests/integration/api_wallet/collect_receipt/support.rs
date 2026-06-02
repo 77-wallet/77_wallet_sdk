@@ -9,4 +9,6 @@ pub(super) use local_db::LocalCollectDb;
 pub(super) use payload::{
     assert_collect_receipt_payload, base_collect_for_receipt, collect_receipt_payload_json,
 };
-pub(super) use scenario::CollectReceiptScenario;
+pub(super) use scenario::{
+    CollectReceiptGiven, CollectReceiptScenario, CollectReceiptThen, CollectReceiptWhen,
+};

@@ -3,8 +3,9 @@ mod support;
 use serial_test::serial;
 
 use support::{
-    CollectReceiptFixture, CollectReceiptScenario, LocalCollectDb, assert_collect_receipt_payload,
-    base_collect_for_receipt, collect_receipt_payload_json,
+    CollectReceiptFixture, CollectReceiptGiven, CollectReceiptScenario, CollectReceiptThen,
+    CollectReceiptWhen, LocalCollectDb, assert_collect_receipt_payload, base_collect_for_receipt,
+    collect_receipt_payload_json,
 };
 
 #[tokio::test]
@@ -44,14 +45,17 @@ async fn collect_rebuild_then_receipt_upload_uses_rebuilt_to_addr() {
 async fn collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild() {
     let scenario = CollectReceiptScenario::new().await;
     let fixture = CollectReceiptFixture::new("collect_worker_receipt");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_mock_backend_is_active().await;
-    scenario.given_rebuilt_collect_execution(&fixture).await;
+    given.mock_backend_is_active().await;
+    given.rebuilt_collect_execution(&fixture).await;
 
-    scenario.when_worker_uploads_receipt(&fixture).await;
+    when.worker_uploads_receipt(&fixture).await;
 
-    scenario.then_receipt_upload_is_persisted(&fixture).await;
-    scenario.then_receipt_payload_uses_execution_facts(&fixture).await;
+    then.receipt_upload_is_persisted(&fixture).await;
+    then.receipt_payload_uses_execution_facts(&fixture).await;
 }
 
 #[serial]
@@ -59,10 +63,12 @@ async fn collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild
 async fn collect_backend_api_direct_upload_hits_mock_server() {
     let scenario = CollectReceiptScenario::new().await;
     let fixture = CollectReceiptFixture::new("collect_direct_backend");
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.when_direct_backend_uploads_receipt(&fixture).await;
+    when.direct_backend_uploads_receipt(&fixture).await;
 
-    scenario.then_backend_received_execute_complete(&fixture).await;
+    then.backend_received_execute_complete(&fixture).await;
 }
 
 #[serial]
@@ -70,12 +76,15 @@ async fn collect_backend_api_direct_upload_hits_mock_server() {
 async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
     let scenario = CollectReceiptScenario::new().await;
     let fixture = CollectReceiptFixture::new("collect_scan_dispatch");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_scanner_ready_collect_execution(&fixture).await;
+    given.scanner_ready_collect_execution(&fixture).await;
 
-    let dispatched_trade_no = scenario.when_scanner_dispatches_receipt().await;
+    let dispatched_trade_no = when.scanner_dispatches_receipt().await;
 
-    scenario.then_scanner_selected_trade(dispatched_trade_no, &fixture);
-    scenario.then_receipt_upload_is_persisted(&fixture).await;
-    scenario.then_receipt_payload_uses_execution_facts(&fixture).await;
+    then.scanner_selected_trade(dispatched_trade_no, &fixture);
+    then.receipt_upload_is_persisted(&fixture).await;
+    then.receipt_payload_uses_execution_facts(&fixture).await;
 }

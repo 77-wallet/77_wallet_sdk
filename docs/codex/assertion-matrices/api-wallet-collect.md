@@ -432,35 +432,45 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
-`collect_notification/mod.rs` is the first V2 Given-When-Then gold sample:
+`collect_notification/mod.rs` uses the role-trait Given-When-Then shape:
 
 1. Keep unique collect input data in `CollectOrderFixture`.
-2. Keep environment, DB pool, notification setup, and collect actions in
-   `CollectNotificationScenario`.
-3. Keep notification receive and payload checks in `CollectNotificationInbox`.
-4. Use `given_*` methods for wallet and notification-channel setup.
-5. Use `when_*` methods for initial submit and retry.
-6. Use `then_*` methods for surfaced error, DB retry fact, and notification
-   payload.
-7. Keep wallet seed, notification channel, DB pool, and payload serialization
-   details below the scenario layer in `collect_notification/support.rs`.
+2. Keep environment and DB pool in `CollectNotificationScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep wallet and notification-channel setup in the flow-local
+   `CollectNotificationGiven` trait.
+5. Keep initial submit and retry entrypoints in the flow-local
+   `CollectNotificationWhen` trait.
+6. Keep surfaced error, DB retry fact, and notification payload assertions in
+   the flow-local `CollectNotificationThen` trait.
+7. Keep seed/load/assert internals behind harness role containers and below
+   the Given-When-Then test body.
+8. Keep wallet seed, notification channel, DB pool, and payload serialization
+   details below the scenario layer in `collect_notification/support`.
 
 `collect_receipt/mod.rs` uses a mixed-layer receipt contract:
 
 1. Keep payload-only and local SQLite receipt tests as component-style
    Arrange-Act-Assert tests.
 2. Keep unique integration receipt input data in `CollectReceiptFixture`.
-3. Keep environment, DB pools, backend recorder, and receipt actions in
-   `CollectReceiptScenario`.
-4. Use `given_*` methods for mock-backend verification, rebuilt execution
-   facts, and scanner-ready facts.
-5. Use `when_*` methods for worker, direct backend, and scanner receipt upload
-   entrypoints.
-6. Use `then_*` methods for durable DB upload facts, receipt payload facts,
-   backend execute-complete capture, and selected scanner trade.
-7. Keep low-level details such as SQL updates, payload serialization, and
+3. Keep environment and DB pools in `CollectReceiptScenario`.
+4. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+5. Keep mock-backend verification, rebuilt execution facts, and scanner-ready
+   facts in the flow-local `CollectReceiptGiven` trait.
+6. Keep worker, direct backend, and scanner receipt upload entrypoints in the
+   flow-local `CollectReceiptWhen` trait.
+7. Keep durable DB upload facts, receipt payload facts, backend
+   execute-complete capture, and selected scanner trade assertions in the
+   flow-local `CollectReceiptThen` trait.
+8. Keep seed/load/assert internals behind harness role containers and below
+   the Given-When-Then test body.
+9. Keep low-level details such as SQL updates, payload serialization, and
    backend body decryption below the scenario layer in
-   `collect_receipt/support.rs`.
+   `collect_receipt/support`.
 
 `collect_resource_gate/mod.rs` uses the role-trait Given-When-Then shape for
 resource gate flows:

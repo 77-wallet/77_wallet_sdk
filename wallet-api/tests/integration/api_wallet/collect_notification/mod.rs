@@ -3,7 +3,8 @@ mod support;
 use serial_test::serial;
 
 use support::{
-    CollectNotificationScenario, CollectOrderFixture, then_frontend_notification_failed,
+    CollectNotificationGiven, CollectNotificationScenario, CollectNotificationThen,
+    CollectNotificationWhen, CollectOrderFixture,
 };
 
 #[serial]
@@ -11,18 +12,21 @@ use support::{
 async fn collect_notification_retry_on_existing_trade_no() {
     let scenario = CollectNotificationScenario::new().await;
     let order = CollectOrderFixture::new("collect_notify_retry");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_sub_account_wallet(&order).await;
-    scenario.given_frontend_notification_closed().await;
+    given.sub_account_wallet(&order).await;
+    given.frontend_notification_closed().await;
 
-    let result = scenario.when_collect_order_submitted(&order).await;
+    let result = when.collect_order_submitted(&order).await;
 
-    then_frontend_notification_failed(result);
-    scenario.then_collect_order_is_retryable(&order).await;
+    then.frontend_notification_failed(result);
+    then.collect_order_is_retryable(&order).await;
 
-    let mut notifications = scenario.given_frontend_notification_collector().await;
+    let mut notifications = given.frontend_notification_collector().await;
 
-    scenario.when_collect_order_retried(&order).await;
+    when.collect_order_retried(&order).await;
 
-    notifications.then_received_collect_order(&order).await;
+    then.frontend_received_collect_order(&mut notifications, &order).await;
 }
