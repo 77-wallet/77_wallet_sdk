@@ -110,32 +110,42 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
-`acct_change/mod.rs` uses a read-first integration contract:
+`acct_change/mod.rs` uses the role-trait Given-When-Then shape:
 
 1. Keep account-change asset sync cases in `acct_change/mod.rs`.
-2. Keep manager initialization, active-chain setup, seeded asset facts, MQTT
-   payload construction, task-status polling, and final DB assertions in
-   `AcctChangeScenario`.
-3. Use `given_*` methods for API-wallet token assets, normal-wallet token
-   assets, and normal-wallet native assets.
-4. Use `when_*` methods for local MQTT account-change execution.
-5. Use `then_*` methods for task success and canonical asset symbol assertions.
-6. Keep repository setup, payload JSON, and task queue polling below the
-   scenario layer in `acct_change/support.rs`.
+2. Keep manager initialization in `AcctChangeScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep API-wallet token assets, normal-wallet token assets, and normal-wallet
+   native assets in the flow-local `AcctChangeGiven` trait.
+5. Keep local MQTT account-change execution in the flow-local
+   `AcctChangeWhen` trait.
+6. Keep task success and canonical asset symbol assertions in the flow-local
+   `AcctChangeThen` trait.
+7. Keep seed/assert internals behind harness role containers and below the
+   Given-When-Then test body.
+8. Keep active-chain setup, seeded asset facts, repository setup, payload JSON,
+   DB assertions, and task queue polling below the scenario layer in
+   `acct_change/support`.
 
-`sync/mod.rs` uses a read-first integration contract:
+`sync/mod.rs` uses the role-trait Given-When-Then shape:
 
 1. Keep API wallet asset sync cases in `sync/mod.rs`.
-2. Keep fake chain behavior, BNB withdrawal/subaccount fixture setup, sync
-   entrypoint calls, chain-call counts, and final DB assertions in
-   `SyncAssetsScenario`.
-3. Use `given_*` methods for seeded wallet assets and fake chain balance
-   behavior.
-4. Use `when_*` methods for `sync_api_assets_by_wallet` entrypoints.
-5. Use `then_*` methods for returned result, chain-call counts, and persisted
-   asset balance assertions.
-6. Keep adapter override and repository setup details below the scenario layer
-   in `sync/support.rs`.
+2. Keep fake chain adapter state in `SyncAssetsScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep seeded wallet assets and fake chain balance behavior in the flow-local
+   `SyncAssetsGiven` trait.
+5. Keep `sync_api_assets_by_wallet` entrypoints in the flow-local
+   `SyncAssetsWhen` trait.
+6. Keep returned result, chain-call counts, and persisted asset balance
+   assertions in the flow-local `SyncAssetsThen` trait.
+7. Keep seed/load/count/assert internals behind harness role containers and
+   below the Given-When-Then test body.
+8. Keep adapter override and repository setup details below the scenario layer
+   in `sync/support`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or

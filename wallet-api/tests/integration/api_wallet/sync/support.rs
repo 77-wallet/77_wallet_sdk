@@ -3,4 +3,5 @@ mod db;
 mod fixtures;
 mod scenario;
 
-pub(super) use scenario::SyncAssetsScenario;
+pub(super) use crate::harness::ScenarioRoles;
+pub(super) use scenario::{SyncAssetsGiven, SyncAssetsScenario, SyncAssetsThen, SyncAssetsWhen};
