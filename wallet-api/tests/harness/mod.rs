@@ -44,7 +44,11 @@ const TEST_SN: &str = "smoke-test-sn";
 const TEST_DEVICE_TYPE: &str = "ANDROID";
 
 #[allow(dead_code)]
+pub(crate) mod gwt;
+#[allow(dead_code)]
 pub(crate) mod worker;
+
+pub(crate) use gwt::{AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole};
 
 #[allow(unused_imports)]
 pub(crate) use worker::{

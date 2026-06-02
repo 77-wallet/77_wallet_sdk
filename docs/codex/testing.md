@@ -36,7 +36,9 @@
 - Integration：使用 Given-When-Then。测试正文应像业务剧本：
   `given` 准备业务事实或 fake 行为，`when` 执行一个业务入口或 worker
   step，`then` 断言 DB、backend、通知、scanner、幂等或重试结果。复杂
-  flow 推荐 flow-local trait role，例如 `scenario.given().blocked_order(...)`。
+  flow 推荐 `tests/harness` 的通用 role 容器加 flow-local trait，例如
+  `scenario.given().blocked_order(...)`。业务 trait 留在本 flow，公共 role
+  容器可以复用。
 - Smoke/Live：使用 Arrange-Act-Assert；保持手工验证步骤直白，必须
   `#[ignore]` 或独立 feature。
 - Integration test body 禁止直接暴露低层噪音，例如 `SqliteContext`、
@@ -55,8 +57,8 @@
   `integration/<module>/<flow>/support.rs`。
 - `<flow>/mod.rs` 是 read-first 测试入口，只放测试用例和少量导入；
   `<flow>/support.rs` 只放本 flow 私有的 fixture、scenario 和低层 helper。
-- `tests/harness/` 只放真正跨模块复用的 test harness、fake、fixture、assertion；
-  禁止 `withdraw` 依赖 `collect` 私有 helper。
+- `tests/harness/` 只放真正跨模块复用的 test harness、fake、fixture、assertion、
+  通用 role 容器；禁止 `withdraw` 依赖 `collect` 私有 helper。
 - `src/testkit/` 只放 crate 内部测试入口，例如 worker/scanner/domain
   step wrappers；它不是测试环境，也不是通用 helper 垃圾桶。
 - 新增测试优先用清晰文件名表达意图，例如 `confirm_tests.rs`、`resource_gate.rs`、`live_backend.rs`。

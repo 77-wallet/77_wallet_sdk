@@ -179,7 +179,10 @@ async fn flow_backend_failure_keeps_fact_unset_and_retryable() {
 小 flow 可以用一个 `support.rs`：
 
 ```rust
-use crate::harness::{ensure_worker_env, next_unique_id, WorkerTestEnv};
+use crate::harness::{
+    AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole,
+    ensure_worker_env, next_unique_id, WorkerTestEnv,
+};
 
 pub(super) struct FlowFixture {
     pub uid: String,
@@ -200,18 +203,6 @@ pub(super) struct FlowScenario {
     env: &'static WorkerTestEnv,
 }
 
-pub(super) struct GivenRole<'a> {
-    scenario: &'a FlowScenario,
-}
-
-pub(super) struct WhenRole<'a> {
-    scenario: &'a FlowScenario,
-}
-
-pub(super) struct ThenRole<'a> {
-    scenario: &'a FlowScenario,
-}
-
 impl FlowScenario {
     pub(super) async fn new() -> Self {
         let env = ensure_worker_env().await;
@@ -219,16 +210,28 @@ impl FlowScenario {
         Self { env }
     }
 
-    pub(super) fn given(&self) -> GivenRole<'_> {
-        GivenRole { scenario: self }
+    pub(super) fn given(&self) -> GivenRole<'_, Self> {
+        GivenRole::new(self)
     }
 
-    pub(super) fn when(&self) -> WhenRole<'_> {
-        WhenRole { scenario: self }
+    pub(super) fn when(&self) -> WhenRole<'_, Self> {
+        WhenRole::new(self)
     }
 
-    pub(super) fn then(&self) -> ThenRole<'_> {
-        ThenRole { scenario: self }
+    pub(super) fn then(&self) -> ThenRole<'_, Self> {
+        ThenRole::new(self)
+    }
+
+    fn seed(&self) -> SeedRole<'_, Self> {
+        SeedRole::new(self)
+    }
+
+    fn load(&self) -> LoadRole<'_, Self> {
+        LoadRole::new(self)
+    }
+
+    fn assert(&self) -> AssertRole<'_, Self> {
+        AssertRole::new(self)
     }
 }
 
@@ -242,17 +245,35 @@ pub(super) trait FlowGiven {
 }
 
 #[async_trait::async_trait(?Send)]
-impl FlowGiven for GivenRole<'_> {
+impl FlowGiven for GivenRole<'_, FlowScenario> {
     async fn target_order(&self, fixture: &FlowFixture) {
-        seed_target_order(self.scenario.env.db_dir(), fixture).await;
+        self.scenario().seed().target_order(fixture).await;
     }
 
     fn backend_accepts_target_call(&self, fixture: &FlowFixture) {
-        self.scenario.env.recorder.expect_target_call(&fixture.trade_no);
+        self.scenario()
+            .env
+            .recorder
+            .expect_target_call(&fixture.trade_no);
     }
 
     fn backend_rejects_target_call(&self, status: u16, body: &str) {
-        self.scenario.env.recorder.fail_next_api_backend_call(status, body);
+        self.scenario()
+            .env
+            .recorder
+            .fail_next_api_backend_call(status, body);
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+trait FlowSeed {
+    async fn target_order(&self, fixture: &FlowFixture);
+}
+
+#[async_trait::async_trait(?Send)]
+impl FlowSeed for SeedRole<'_, FlowScenario> {
+    async fn target_order(&self, fixture: &FlowFixture) {
+        seed_target_order(self.scenario().env.db_dir(), fixture).await;
     }
 }
 
@@ -265,7 +286,7 @@ pub(super) trait FlowWhen {
 }
 
 #[async_trait::async_trait(?Send)]
-impl FlowWhen for WhenRole<'_> {
+impl FlowWhen for WhenRole<'_, FlowScenario> {
     async fn target_step_runs(
         &self,
         fixture: &FlowFixture,
@@ -286,7 +307,7 @@ pub(super) trait FlowThen {
 }
 
 #[async_trait::async_trait(?Send)]
-impl FlowThen for ThenRole<'_> {
+impl FlowThen for ThenRole<'_, FlowScenario> {
     fn step_succeeds(&self, result: Result<(), ServiceError>) {
         result.expect("target step should succeed");
     }
@@ -296,14 +317,40 @@ impl FlowThen for ThenRole<'_> {
     }
 
     async fn db_facts_are_complete(&self, fixture: &FlowFixture) {
-        let saved =
-            load_target_order(self.scenario.env.db_dir(), &fixture.trade_no).await;
-        assert!(saved.success_fact_at.is_some());
+        let saved = self.scenario().load().target_order(&fixture.trade_no).await;
+        self.scenario().assert().success_fact_is_set(&saved);
     }
 
     async fn success_fact_is_not_persisted(&self, fixture: &FlowFixture) {
-        let saved =
-            load_target_order(self.scenario.env.db_dir(), &fixture.trade_no).await;
+        let saved = self.scenario().load().target_order(&fixture.trade_no).await;
+        self.scenario().assert().success_fact_is_unset(&saved);
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+trait FlowLoad {
+    async fn target_order(&self, trade_no: &str) -> TargetOrder;
+}
+
+#[async_trait::async_trait(?Send)]
+impl FlowLoad for LoadRole<'_, FlowScenario> {
+    async fn target_order(&self, trade_no: &str) -> TargetOrder {
+        load_target_order(self.scenario().env.db_dir(), trade_no).await
+    }
+}
+
+trait FlowAssert {
+    fn success_fact_is_set(&self, saved: &TargetOrder);
+
+    fn success_fact_is_unset(&self, saved: &TargetOrder);
+}
+
+impl FlowAssert for AssertRole<'_, FlowScenario> {
+    fn success_fact_is_set(&self, saved: &TargetOrder) {
+        assert!(saved.success_fact_at.is_some());
+    }
+
+    fn success_fact_is_unset(&self, saved: &TargetOrder) {
         assert!(saved.success_fact_at.is_none());
     }
 }
@@ -327,7 +374,10 @@ pub(super) use scenario::{FlowGiven, FlowScenario, FlowThen, FlowWhen};
 - A second `when` action is allowed only for retry, idempotency, recovery, or
   time.
 - `Scenario` owns environment, fake backend, DB pools, and notification capture.
-- Role traits own the Given / When / Then method groups for complex flows.
+- `GivenRole` / `WhenRole` / `ThenRole` are generic harness containers.
+- Flow-local traits own the Given / When / Then business method groups.
+- `SeedRole` / `LoadRole` / `AssertRole` may organize support internals.
+- `CountRole` is reserved for repeated side-effect counting when needed.
 - `Fixture` owns unique immutable input data.
 - Reset fake state in `Scenario::new`.
 - Assert both DB facts and external calls when the flow has both.

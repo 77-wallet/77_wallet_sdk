@@ -216,16 +216,18 @@ resource gate flows:
 2. Keep unique trade data in `WithdrawResourceGateFixture`.
 3. Keep environment and DB pools in `WithdrawResourceGateScenario`.
 4. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
-   fixed read-first test roles.
-5. Keep blocked withdraw and resource delegation facts in the
+   fixed read-first test roles using generic containers from `tests/harness`.
+5. Keep blocked withdraw and resource delegation facts in the flow-local
    `WithdrawResourceGateGiven` trait.
-6. Keep result ACK and receipt upload worker entrypoints in the
+6. Keep result ACK and receipt upload worker entrypoints in the flow-local
    `WithdrawResourceGateWhen` trait.
 7. Keep backend payload, gate release, no-release, and scanner build
-   eligibility assertions in the `WithdrawResourceGateThen` trait.
-8. Keep SQL setup below the scenario layer in
+   eligibility assertions in the flow-local `WithdrawResourceGateThen` trait.
+8. Keep seed/load/assert internals behind harness role containers and below
+   the Given-When-Then test body.
+9. Keep SQL setup below the scenario layer in
    `withdraw_resource_gate/support/db.rs`.
-9. Keep backend payload wait/decrypt/assert details in
+10. Keep backend payload wait/decrypt/assert details in
    `withdraw_resource_gate/support/assertions.rs`.
 
 `tests/harness` remains reserved for cross-flow environment and fake

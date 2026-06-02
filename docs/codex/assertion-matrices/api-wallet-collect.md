@@ -462,21 +462,25 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
    backend body decryption below the scenario layer in
    `collect_receipt/support.rs`.
 
-`collect_resource_gate/mod.rs` uses the same read-first shape for resource gate
-flows:
+`collect_resource_gate/mod.rs` uses the role-trait Given-When-Then shape for
+resource gate flows:
 
 1. Keep resource gate test cases in `collect_resource_gate/mod.rs`.
 2. Keep unique trade data in `CollectResourceGateFixture`.
 3. Keep local scanner-only DB setup in `LocalCollectResourceDb`.
-4. Keep environment, DB pools, resource delegation setup, worker entrypoints,
-   scanner/build checks, and DB assertions in `CollectResourceGateScenario`.
-5. Use `given_*` methods for blocked collect and resource delegation facts.
-6. Use `when_*` methods for resource result ACK, receipt upload, and scanner
-   rounds.
-7. Use `then_*` methods for scanner labels, gate release, no-release, platform
-   dependency, and build eligibility assertions.
-8. Keep SQL setup and scanner/build plumbing below the scenario layer in
-   `collect_resource_gate/support.rs`.
+4. Keep environment and DB pools in `CollectResourceGateScenario`.
+5. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first test roles using generic containers from `tests/harness`.
+6. Keep blocked collect and resource delegation facts in the flow-local
+   `CollectResourceGateGiven` trait.
+7. Keep resource result ACK and receipt upload worker entrypoints in the
+   flow-local `CollectResourceGateWhen` trait.
+8. Keep gate release, no-release, platform dependency, and build eligibility
+   assertions in the flow-local `CollectResourceGateThen` trait.
+9. Keep seed/load/assert internals behind harness role containers and below
+   the Given-When-Then test body.
+10. Keep SQL setup and scanner/build plumbing below the scenario layer in
+    `collect_resource_gate/support/db.rs`.
 
 `collect_local_reclaim/mod.rs` uses a local scanner ownership contract:
 
