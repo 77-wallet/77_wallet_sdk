@@ -86,13 +86,17 @@ Avoid:
 - `test_1`
 - `mock_test`
 
-Helper names are a small vocabulary:
+Helper names are a small vocabulary. Complex flows should expose role methods;
+small flows may use flat prefixed methods.
 
-| Prefix | Meaning | Where |
+| Shape | Meaning | Where |
 | --- | --- | --- |
-| `given_*` | 准备业务事实或 fake 行为 | Integration scenario |
-| `when_*` | 执行一个业务入口、worker step、scanner step | Integration scenario |
-| `then_*` | 断言业务结果、DB、backend、通知、副作用 | Integration scenario |
+| `scenario.given().x` | 准备业务事实或 fake 行为 | role trait |
+| `scenario.when().x` | 执行业务入口、worker step | role trait |
+| `scenario.then().x` | 断言 DB、backend、通知、副作用 | role trait |
+| `given_*` | 小 flow 的平铺 Given 方法 | scenario |
+| `when_*` | 小 flow 的平铺 When 方法 | scenario |
+| `then_*` | 小 flow 的平铺 Then 方法 | scenario |
 | `seed_*` | 插入 DB 事实 | support detail |
 | `load_*` | 读取当前状态 | support detail |
 | `count_*` | 统计副作用次数 | support detail |
@@ -111,23 +115,26 @@ mod support;
 
 use serial_test::serial;
 
-use support::{FlowFixture, FlowScenario};
+use support::{FlowFixture, FlowGiven, FlowScenario, FlowThen, FlowWhen};
 
 #[tokio::test]
 #[serial]
 async fn flow_happy_path_writes_facts_and_notifies_backend() {
     let scenario = FlowScenario::new().await;
     let fixture = FlowFixture::new("happy");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_target_order(&fixture).await;
-    scenario.given_backend_accepts_target_call(&fixture);
+    given.target_order(&fixture).await;
+    given.backend_accepts_target_call(&fixture);
 
-    let result = scenario.when_target_step_runs(&fixture).await;
+    let result = when.target_step_runs(&fixture).await;
 
-    scenario.then_step_succeeds(result);
-    scenario.then_db_facts_are_complete(&fixture).await;
-    scenario.then_backend_called_once(&fixture).await;
-    scenario.then_notification_was_emitted(&fixture);
+    then.step_succeeds(result);
+    then.db_facts_are_complete(&fixture).await;
+    then.backend_called_once(&fixture).await;
+    then.notification_was_emitted(&fixture);
 }
 
 #[tokio::test]
@@ -135,16 +142,19 @@ async fn flow_happy_path_writes_facts_and_notifies_backend() {
 async fn flow_backend_failure_keeps_fact_unset_and_retryable() {
     let scenario = FlowScenario::new().await;
     let fixture = FlowFixture::new("backend_fail");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_target_order(&fixture).await;
-    scenario.given_backend_rejects_target_call(503, "temporary failure");
+    given.target_order(&fixture).await;
+    given.backend_rejects_target_call(503, "temporary failure");
 
-    let result = scenario.when_target_step_runs(&fixture).await;
+    let result = when.target_step_runs(&fixture).await;
 
-    scenario.then_step_is_retryable(result);
-    scenario.then_backend_called_once(&fixture).await;
-    scenario.then_success_fact_is_not_persisted(&fixture).await;
-    scenario.then_retry_scanner_can_pick_it_again(&fixture).await;
+    then.step_is_retryable(result);
+    then.backend_called_once(&fixture).await;
+    then.success_fact_is_not_persisted(&fixture).await;
+    then.retry_scanner_can_pick_it_again(&fixture).await;
 }
 ```
 
@@ -190,6 +200,18 @@ pub(super) struct FlowScenario {
     env: &'static WorkerTestEnv,
 }
 
+pub(super) struct GivenRole<'a> {
+    scenario: &'a FlowScenario,
+}
+
+pub(super) struct WhenRole<'a> {
+    scenario: &'a FlowScenario,
+}
+
+pub(super) struct ThenRole<'a> {
+    scenario: &'a FlowScenario,
+}
+
 impl FlowScenario {
     pub(super) async fn new() -> Self {
         let env = ensure_worker_env().await;
@@ -197,59 +219,91 @@ impl FlowScenario {
         Self { env }
     }
 
-    pub(super) async fn given_target_order(&self, fixture: &FlowFixture) {
-        seed_target_order(self.env.db_dir(), fixture).await;
+    pub(super) fn given(&self) -> GivenRole<'_> {
+        GivenRole { scenario: self }
     }
 
-    pub(super) fn given_backend_accepts_target_call(
+    pub(super) fn when(&self) -> WhenRole<'_> {
+        WhenRole { scenario: self }
+    }
+
+    pub(super) fn then(&self) -> ThenRole<'_> {
+        ThenRole { scenario: self }
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+pub(super) trait FlowGiven {
+    async fn target_order(&self, fixture: &FlowFixture);
+
+    fn backend_accepts_target_call(&self, fixture: &FlowFixture);
+
+    fn backend_rejects_target_call(&self, status: u16, body: &str);
+}
+
+#[async_trait::async_trait(?Send)]
+impl FlowGiven for GivenRole<'_> {
+    async fn target_order(&self, fixture: &FlowFixture) {
+        seed_target_order(self.scenario.env.db_dir(), fixture).await;
+    }
+
+    fn backend_accepts_target_call(&self, fixture: &FlowFixture) {
+        self.scenario.env.recorder.expect_target_call(&fixture.trade_no);
+    }
+
+    fn backend_rejects_target_call(&self, status: u16, body: &str) {
+        self.scenario.env.recorder.fail_next_api_backend_call(status, body);
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+pub(super) trait FlowWhen {
+    async fn target_step_runs(
         &self,
         fixture: &FlowFixture,
-    ) {
-        self.env.recorder.expect_target_call(&fixture.trade_no);
-    }
+    ) -> Result<(), ServiceError>;
+}
 
-    pub(super) fn given_backend_rejects_target_call(
-        &self,
-        status: u16,
-        body: &str,
-    ) {
-        self.env.recorder.fail_next_api_backend_call(status, body);
-    }
-
-    pub(super) async fn when_target_step_runs(
+#[async_trait::async_trait(?Send)]
+impl FlowWhen for WhenRole<'_> {
+    async fn target_step_runs(
         &self,
         fixture: &FlowFixture,
     ) -> Result<(), ServiceError> {
         run_target_worker_step(&fixture.trade_no).await
     }
+}
 
-    pub(super) fn then_step_succeeds(
-        &self,
-        result: Result<(), ServiceError>,
-    ) {
+#[async_trait::async_trait(?Send)]
+pub(super) trait FlowThen {
+    fn step_succeeds(&self, result: Result<(), ServiceError>);
+
+    fn step_is_retryable(&self, result: Result<(), ServiceError>);
+
+    async fn db_facts_are_complete(&self, fixture: &FlowFixture);
+
+    async fn success_fact_is_not_persisted(&self, fixture: &FlowFixture);
+}
+
+#[async_trait::async_trait(?Send)]
+impl FlowThen for ThenRole<'_> {
+    fn step_succeeds(&self, result: Result<(), ServiceError>) {
         result.expect("target step should succeed");
     }
 
-    pub(super) fn then_step_is_retryable(
-        &self,
-        result: Result<(), ServiceError>,
-    ) {
+    fn step_is_retryable(&self, result: Result<(), ServiceError>) {
         result.expect("retryable failure should not crash worker");
     }
 
-    pub(super) async fn then_db_facts_are_complete(
-        &self,
-        fixture: &FlowFixture,
-    ) {
-        let saved = load_target_order(self.env.db_dir(), &fixture.trade_no).await;
+    async fn db_facts_are_complete(&self, fixture: &FlowFixture) {
+        let saved =
+            load_target_order(self.scenario.env.db_dir(), &fixture.trade_no).await;
         assert!(saved.success_fact_at.is_some());
     }
 
-    pub(super) async fn then_success_fact_is_not_persisted(
-        &self,
-        fixture: &FlowFixture,
-    ) {
-        let saved = load_target_order(self.env.db_dir(), &fixture.trade_no).await;
+    async fn success_fact_is_not_persisted(&self, fixture: &FlowFixture) {
+        let saved =
+            load_target_order(self.scenario.env.db_dir(), &fixture.trade_no).await;
         assert!(saved.success_fact_at.is_none());
     }
 }
@@ -264,18 +318,20 @@ mod fixtures;
 mod scenario;
 
 pub(super) use fixtures::FlowFixture;
-pub(super) use scenario::FlowScenario;
+pub(super) use scenario::{FlowGiven, FlowScenario, FlowThen, FlowWhen};
 ```
 
 ### Integration Rules
 
-- One test should have one primary `when_*`.
-- A second `when_*` is allowed only for retry, idempotency, recovery, or time.
+- One test should have one primary `when` action.
+- A second `when` action is allowed only for retry, idempotency, recovery, or
+  time.
 - `Scenario` owns environment, fake backend, DB pools, and notification capture.
+- Role traits own the Given / When / Then method groups for complex flows.
 - `Fixture` owns unique immutable input data.
 - Reset fake state in `Scenario::new`.
 - Assert both DB facts and external calls when the flow has both.
-- Keep business assertions visible through `then_*` names.
+- Keep business assertions visible through `then` method names.
 - Move only proven cross-flow capability into `tests/harness`.
 
 ## Component Template
@@ -461,5 +517,5 @@ Also avoid:
 - `support.rs` shared across unrelated flows.
 - `withdraw` importing helpers from `collect`.
 - fixed IDs without uniqueness.
-- hidden assertions inside `given_*`.
+- hidden assertions inside `given` methods.
 - business behavior hidden in `tests/harness`.

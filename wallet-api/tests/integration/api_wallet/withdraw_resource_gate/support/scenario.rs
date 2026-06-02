@@ -29,6 +29,18 @@ pub(crate) struct WithdrawResourceGateScenario {
     core_pool: ApiWalletDbPool,
 }
 
+pub(crate) struct GivenRole<'a> {
+    scenario: &'a WithdrawResourceGateScenario,
+}
+
+pub(crate) struct WhenRole<'a> {
+    scenario: &'a WithdrawResourceGateScenario,
+}
+
+pub(crate) struct ThenRole<'a> {
+    scenario: &'a WithdrawResourceGateScenario,
+}
+
 impl WithdrawResourceGateScenario {
     pub(crate) async fn new() -> Self {
         let env = ensure_worker_env().await;
@@ -40,169 +52,16 @@ impl WithdrawResourceGateScenario {
         Self { env, tx_pool, core_pool }
     }
 
-    pub(crate) async fn given_resource_delegation_ready_for_ack(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        seed_resource_delegation_ready_for_ack(
-            &self.tx_pool,
-            &fixture.trade_no,
-            &fixture.resource_trade_no,
-        )
-        .await;
+    pub(crate) fn given(&self) -> GivenRole<'_> {
+        GivenRole { scenario: self }
     }
 
-    pub(crate) async fn given_blocked_withdraw(&self, fixture: &WithdrawResourceGateFixture) {
-        seed_withdraw(&self.tx_pool, &fixture.trade_no).await;
-        mark_withdraw_blocked(&self.tx_pool, &fixture.trade_no, &fixture.resource_trade_no).await;
+    pub(crate) fn when(&self) -> WhenRole<'_> {
+        WhenRole { scenario: self }
     }
 
-    pub(crate) async fn given_successful_withdraw_resource_delegation(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        seed_successful_resource_delegation(
-            &self.tx_pool,
-            Some((&fixture.trade_no, ApiTradeType::Withdraw)),
-            &fixture.resource_trade_no,
-            "tx_hash_withdraw_release",
-        )
-        .await;
-    }
-
-    pub(crate) async fn given_failed_withdraw_resource_delegation(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        seed_failed_resource_delegation(
-            &self.tx_pool,
-            &fixture.trade_no,
-            ApiTradeType::Withdraw,
-            &fixture.resource_trade_no,
-        )
-        .await;
-    }
-
-    pub(crate) async fn given_resource_delegation_without_origin_trade(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        seed_successful_resource_delegation(
-            &self.tx_pool,
-            None,
-            &fixture.resource_trade_no,
-            "tx_hash_withdraw_no_origin",
-        )
-        .await;
-    }
-
-    pub(crate) async fn given_collect_origin_resource_delegation(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        seed_successful_resource_delegation(
-            &self.tx_pool,
-            Some((&fixture.trade_no, ApiTradeType::Collect)),
-            &fixture.resource_trade_no,
-            "tx_hash_withdraw_wrong_origin",
-        )
-        .await;
-    }
-
-    pub(crate) async fn when_resource_result_ack_is_sent(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        send_withdraw_resource_result_ack_via_worker(
-            self.tx_pool.clone(),
-            self.core_pool.clone(),
-            &fixture.resource_trade_no,
-        )
-        .await
-        .expect("send withdraw resource result ack");
-    }
-
-    pub(crate) async fn when_resource_receipt_upload_is_sent(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        upload_withdraw_resource_tx_exec_receipt_via_worker(
-            self.tx_pool.clone(),
-            self.core_pool.clone(),
-            &fixture.resource_trade_no,
-        )
-        .await
-        .expect("upload withdraw resource tx exec receipt");
-    }
-
-    pub(crate) async fn then_resource_result_ack_uses_withdraw_resource_type(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        assert_event_ack_payload_exists(
-            &self.env.recorder,
-            &fixture.resource_trade_no,
-            "TX_RES",
-            "WD_RSC_DL",
-        )
-        .await;
-    }
-
-    pub(crate) async fn then_origin_withdraw_gate_is_released_by_successful_delegation(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        self.then_origin_withdraw_gate_is_released(
-            fixture,
-            ApiResourceGateResult::ResourceDelegationSuccess,
-        )
-        .await;
-    }
-
-    pub(crate) async fn then_origin_withdraw_gate_is_released_by_failed_bypass(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        self.then_origin_withdraw_gate_is_released(
-            fixture,
-            ApiResourceGateResult::ResourceDelegationFailedBypass,
-        )
-        .await;
-    }
-
-    async fn then_origin_withdraw_gate_is_released(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-        expected_result: ApiResourceGateResult,
-    ) {
-        let withdraw = self.load_withdraw(&fixture.trade_no).await;
-        assert!(withdraw.resource_gate_released_at.is_some());
-        assert_eq!(withdraw.resource_gate_result, Some(expected_result));
-    }
-
-    pub(crate) async fn then_origin_withdraw_gate_is_not_released(
-        &self,
-        fixture: &WithdrawResourceGateFixture,
-    ) {
-        let withdraw = self.load_withdraw(&fixture.trade_no).await;
-        assert!(withdraw.resource_gate_released_at.is_none());
-        assert!(withdraw.resource_gate_result.is_none());
-    }
-
-    pub(crate) async fn then_withdraw_can_build(&self, fixture: &WithdrawResourceGateFixture) {
-        let labels = self.scan_withdraw_intent_labels(&fixture.trade_no).await;
-        assert!(
-            labels.iter().any(|label| label == "BuildTx"),
-            "released withdraw should re-enter BuildTx"
-        );
-    }
-
-    pub(crate) async fn then_withdraw_cannot_build(&self, fixture: &WithdrawResourceGateFixture) {
-        let labels = self.scan_withdraw_intent_labels(&fixture.trade_no).await;
-        assert!(
-            labels.iter().all(|label| label != "BuildTx"),
-            "blocked withdraw should not be eligible for BuildTx before failed delegation bypass"
-        );
+    pub(crate) fn then(&self) -> ThenRole<'_> {
+        ThenRole { scenario: self }
     }
 
     async fn load_withdraw(&self, trade_no: &str) -> ApiWithdrawEntity {
@@ -219,5 +78,211 @@ impl WithdrawResourceGateScenario {
         scan_withdraw_intent_labels_for_trade_once(self.tx_pool.clone(), trade_no)
             .await
             .expect("scan withdraw labels")
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+pub(crate) trait WithdrawResourceGateGiven {
+    async fn resource_delegation_ready_for_ack(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn blocked_withdraw(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn successful_withdraw_resource_delegation(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn failed_withdraw_resource_delegation(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn resource_delegation_without_origin_trade(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn collect_origin_resource_delegation(&self, fixture: &WithdrawResourceGateFixture);
+}
+
+#[async_trait::async_trait(?Send)]
+impl WithdrawResourceGateGiven for GivenRole<'_> {
+    async fn resource_delegation_ready_for_ack(&self, fixture: &WithdrawResourceGateFixture) {
+        seed_resource_delegation_ready_for_ack(
+            &self.scenario.tx_pool,
+            &fixture.trade_no,
+            &fixture.resource_trade_no,
+        )
+        .await;
+    }
+
+    async fn blocked_withdraw(&self, fixture: &WithdrawResourceGateFixture) {
+        seed_withdraw(&self.scenario.tx_pool, &fixture.trade_no).await;
+        mark_withdraw_blocked(
+            &self.scenario.tx_pool,
+            &fixture.trade_no,
+            &fixture.resource_trade_no,
+        )
+        .await;
+    }
+
+    async fn successful_withdraw_resource_delegation(&self, fixture: &WithdrawResourceGateFixture) {
+        seed_successful_resource_delegation(
+            &self.scenario.tx_pool,
+            Some((&fixture.trade_no, ApiTradeType::Withdraw)),
+            &fixture.resource_trade_no,
+            "tx_hash_withdraw_release",
+        )
+        .await;
+    }
+
+    async fn failed_withdraw_resource_delegation(&self, fixture: &WithdrawResourceGateFixture) {
+        seed_failed_resource_delegation(
+            &self.scenario.tx_pool,
+            &fixture.trade_no,
+            ApiTradeType::Withdraw,
+            &fixture.resource_trade_no,
+        )
+        .await;
+    }
+
+    async fn resource_delegation_without_origin_trade(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    ) {
+        seed_successful_resource_delegation(
+            &self.scenario.tx_pool,
+            None,
+            &fixture.resource_trade_no,
+            "tx_hash_withdraw_no_origin",
+        )
+        .await;
+    }
+
+    async fn collect_origin_resource_delegation(&self, fixture: &WithdrawResourceGateFixture) {
+        seed_successful_resource_delegation(
+            &self.scenario.tx_pool,
+            Some((&fixture.trade_no, ApiTradeType::Collect)),
+            &fixture.resource_trade_no,
+            "tx_hash_withdraw_wrong_origin",
+        )
+        .await;
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+pub(crate) trait WithdrawResourceGateWhen {
+    async fn resource_result_ack_is_sent(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn resource_receipt_upload_is_sent(&self, fixture: &WithdrawResourceGateFixture);
+}
+
+#[async_trait::async_trait(?Send)]
+impl WithdrawResourceGateWhen for WhenRole<'_> {
+    async fn resource_result_ack_is_sent(&self, fixture: &WithdrawResourceGateFixture) {
+        send_withdraw_resource_result_ack_via_worker(
+            self.scenario.tx_pool.clone(),
+            self.scenario.core_pool.clone(),
+            &fixture.resource_trade_no,
+        )
+        .await
+        .expect("send withdraw resource result ack");
+    }
+
+    async fn resource_receipt_upload_is_sent(&self, fixture: &WithdrawResourceGateFixture) {
+        upload_withdraw_resource_tx_exec_receipt_via_worker(
+            self.scenario.tx_pool.clone(),
+            self.scenario.core_pool.clone(),
+            &fixture.resource_trade_no,
+        )
+        .await
+        .expect("upload withdraw resource tx exec receipt");
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+pub(crate) trait WithdrawResourceGateThen {
+    async fn resource_result_ack_uses_withdraw_resource_type(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    );
+
+    async fn origin_withdraw_gate_is_released_by_successful_delegation(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    );
+
+    async fn origin_withdraw_gate_is_released_by_failed_bypass(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    );
+
+    async fn origin_withdraw_gate_is_not_released(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn withdraw_can_build(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn withdraw_cannot_build(&self, fixture: &WithdrawResourceGateFixture);
+}
+
+#[async_trait::async_trait(?Send)]
+impl WithdrawResourceGateThen for ThenRole<'_> {
+    async fn resource_result_ack_uses_withdraw_resource_type(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    ) {
+        assert_event_ack_payload_exists(
+            &self.scenario.env.recorder,
+            &fixture.resource_trade_no,
+            "TX_RES",
+            "WD_RSC_DL",
+        )
+        .await;
+    }
+
+    async fn origin_withdraw_gate_is_released_by_successful_delegation(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    ) {
+        self.origin_withdraw_gate_is_released(
+            fixture,
+            ApiResourceGateResult::ResourceDelegationSuccess,
+        )
+        .await;
+    }
+
+    async fn origin_withdraw_gate_is_released_by_failed_bypass(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    ) {
+        self.origin_withdraw_gate_is_released(
+            fixture,
+            ApiResourceGateResult::ResourceDelegationFailedBypass,
+        )
+        .await;
+    }
+
+    async fn origin_withdraw_gate_is_not_released(&self, fixture: &WithdrawResourceGateFixture) {
+        let withdraw = self.scenario.load_withdraw(&fixture.trade_no).await;
+        assert!(withdraw.resource_gate_released_at.is_none());
+        assert!(withdraw.resource_gate_result.is_none());
+    }
+
+    async fn withdraw_can_build(&self, fixture: &WithdrawResourceGateFixture) {
+        let labels = self.scenario.scan_withdraw_intent_labels(&fixture.trade_no).await;
+        assert!(
+            labels.iter().any(|label| label == "BuildTx"),
+            "released withdraw should re-enter BuildTx"
+        );
+    }
+
+    async fn withdraw_cannot_build(&self, fixture: &WithdrawResourceGateFixture) {
+        let labels = self.scenario.scan_withdraw_intent_labels(&fixture.trade_no).await;
+        assert!(
+            labels.iter().all(|label| label != "BuildTx"),
+            "blocked withdraw should not be eligible for BuildTx before failed delegation bypass"
+        );
+    }
+}
+
+impl ThenRole<'_> {
+    async fn origin_withdraw_gate_is_released(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+        expected_result: ApiResourceGateResult,
+    ) {
+        let withdraw = self.scenario.load_withdraw(&fixture.trade_no).await;
+        assert!(withdraw.resource_gate_released_at.is_some());
+        assert_eq!(withdraw.resource_gate_result, Some(expected_result));
     }
 }

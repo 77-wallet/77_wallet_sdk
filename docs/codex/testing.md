@@ -23,7 +23,9 @@
 - Unit：只测一个函数、规则或步骤；禁止真实网络、固定 `test_data`、`WalletManager::new()`、全局 `CONTEXT`。
 - Component：允许临时 SQLite + migration + 真实 repo/dao；禁止真实 backend/链 RPC；必须断言真实落库结果。
 - Integration：使用 fake/mock backend、fake/mock chain、本地临时数据和统一 fixture；测试正文必须用
-  `given_*` / `when_*` / `then_*` 表达业务场景，并断言返回值、DB、外部调用和副作用。
+  Given-When-Then 表达业务场景。简单 flow 可用 `given_*` / `when_*` /
+  `then_*`；复杂 flow 优先用 `scenario.given()` / `scenario.when()` /
+  `scenario.then()` role API，并断言返回值、DB、外部调用和副作用。
 - Smoke/Live：允许真实 backend/真实链路，但必须显式标记并手动运行，默认测试和 CI 主链不运行。
 
 ## Style Rules
@@ -32,8 +34,9 @@
 - Component：使用 Arrange-Act-Assert；可用少量 `given_*` helper 减少 DB
   准备噪音，但测试正文仍要能看到被测模块和核心断言。
 - Integration：使用 Given-When-Then。测试正文应像业务剧本：
-  `given_*` 准备业务事实或 fake 行为，`when_*` 执行一个业务入口或 worker
-  step，`then_*` 断言 DB、backend、通知、scanner、幂等或重试结果。
+  `given` 准备业务事实或 fake 行为，`when` 执行一个业务入口或 worker
+  step，`then` 断言 DB、backend、通知、scanner、幂等或重试结果。复杂
+  flow 推荐 flow-local trait role，例如 `scenario.given().blocked_order(...)`。
 - Smoke/Live：使用 Arrange-Act-Assert；保持手工验证步骤直白，必须
   `#[ignore]` 或独立 feature。
 - Integration test body 禁止直接暴露低层噪音，例如 `SqliteContext`、

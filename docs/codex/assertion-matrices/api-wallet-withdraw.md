@@ -209,21 +209,23 @@ scenario template:
    counting, and payload decryption details below the scenario layer in
    `withdraw_notification/support.rs`.
 
-`withdraw_resource_gate/mod.rs` uses the same read-first shape for resource
-gate flows:
+`withdraw_resource_gate/mod.rs` is the role-trait Given-When-Then template for
+resource gate flows:
 
 1. Keep the resource gate test cases in `withdraw_resource_gate/mod.rs`.
 2. Keep unique trade data in `WithdrawResourceGateFixture`.
-3. Keep environment, DB pools, resource delegation setup, worker entrypoints,
-   backend ACK matching, scanner labels, and DB assertions in
-   `WithdrawResourceGateScenario`.
-4. Use `given_*` methods for blocked withdraw and resource delegation facts.
-5. Use `when_*` methods for result ACK and receipt upload worker entrypoints.
-6. Use `then_*` methods for backend payload, gate release, no-release, and
-   scanner build eligibility assertions.
-7. Keep SQL setup below the scenario layer in
+3. Keep environment and DB pools in `WithdrawResourceGateScenario`.
+4. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first test roles.
+5. Keep blocked withdraw and resource delegation facts in the
+   `WithdrawResourceGateGiven` trait.
+6. Keep result ACK and receipt upload worker entrypoints in the
+   `WithdrawResourceGateWhen` trait.
+7. Keep backend payload, gate release, no-release, and scanner build
+   eligibility assertions in the `WithdrawResourceGateThen` trait.
+8. Keep SQL setup below the scenario layer in
    `withdraw_resource_gate/support/db.rs`.
-8. Keep backend payload wait/decrypt/assert details in
+9. Keep backend payload wait/decrypt/assert details in
    `withdraw_resource_gate/support/assertions.rs`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
