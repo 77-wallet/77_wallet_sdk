@@ -2,27 +2,32 @@ mod support;
 
 use serial_test::serial;
 
-use support::TransferNonceScenario;
+use support::{
+    ScenarioRoles, TransferNonceGiven, TransferNonceScenario, TransferNonceThen, TransferNonceWhen,
+};
 
 #[tokio::test]
 #[serial]
 async fn api_wallet_transfer_nonce_lock_keeps_same_address_requests_serial() -> anyhow::Result<()> {
-    let mut scenario = TransferNonceScenario::new().await;
+    let scenario = TransferNonceScenario::new().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_bnb_transfer_fixture().await?;
-    scenario.given_first_transfer_blocks();
-    scenario.given_fake_chain_adapter();
-    scenario.given_wallet_password_cached().await;
+    given.bnb_transfer_fixture().await?;
+    given.first_transfer_blocks();
+    given.fake_chain_adapter();
+    given.wallet_password_cached().await;
 
-    let first = scenario.when_transfer_starts();
-    scenario.then_first_transfer_has_entered().await;
+    let first = when.transfer_starts();
+    then.first_transfer_has_entered().await;
 
-    let second = scenario.when_transfer_starts();
-    scenario.then_only_first_nonce_is_recorded_while_second_waits().await;
+    let second = when.transfer_starts();
+    then.only_first_nonce_is_recorded_while_second_waits().await;
 
-    scenario.when_first_transfer_is_released();
+    when.first_transfer_is_released();
 
-    scenario.then_serial_transfer_results_are(first, second).await?;
+    then.serial_transfer_results_are(first, second).await?;
 
     Ok(())
 }
@@ -30,16 +35,19 @@ async fn api_wallet_transfer_nonce_lock_keeps_same_address_requests_serial() -> 
 #[tokio::test]
 #[serial]
 async fn api_wallet_transfer_nonce_failure_keeps_reserved_nonce() -> anyhow::Result<()> {
-    let mut scenario = TransferNonceScenario::new().await;
+    let scenario = TransferNonceScenario::new().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_bnb_transfer_fixture().await?;
-    scenario.given_transfer_fails();
-    scenario.given_fake_chain_adapter();
-    scenario.given_wallet_password_cached().await;
+    given.bnb_transfer_fixture().await?;
+    given.transfer_fails();
+    given.fake_chain_adapter();
+    given.wallet_password_cached().await;
 
-    let err = scenario.when_transfer_fails().await;
+    let err = when.transfer_fails().await;
 
-    scenario.then_failure_keeps_reserved_nonce(err).await?;
+    then.failure_keeps_reserved_nonce(err).await?;
 
     Ok(())
 }

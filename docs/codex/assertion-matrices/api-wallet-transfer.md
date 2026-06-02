@@ -44,20 +44,24 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
-`transfer_nonce/mod.rs` uses a read-first integration contract:
+`transfer_nonce/mod.rs` uses the role-trait Given-When-Then shape:
 
 1. Keep transfer nonce cases in `transfer_nonce/mod.rs`.
-2. Keep fake chain behavior, BNB wallet/account/coin setup, transfer request
-   construction, concurrent transfer orchestration, nonce DB lookup, and
-   assertions in `TransferNonceScenario`.
-3. Use `given_*` methods for BNB fixture setup, fake chain adapter behavior,
-   and cached wallet password.
-4. Use `when_*` methods for transfer entrypoints and explicit release of the
-   blocked first transfer.
-5. Use `then_*` methods for recorded nonce order, result hashes, error text,
-   and persisted nonce floor assertions.
-6. Keep adapter override and repository setup details below the scenario layer
-   in `transfer_nonce/support.rs`.
+2. Keep fake chain adapter state, fixture address, and adapter guard in
+   `TransferNonceScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep BNB fixture setup, fake chain adapter behavior, and cached wallet
+   password in the flow-local `TransferNonceGiven` trait.
+5. Keep transfer entrypoints and explicit release of the blocked first transfer
+   in the flow-local `TransferNonceWhen` trait.
+6. Keep recorded nonce order, result hashes, error text, and persisted nonce
+   floor assertions in the flow-local `TransferNonceThen` trait.
+7. Keep seed/load/assert internals behind harness role containers and below the
+   Given-When-Then test body.
+8. Keep adapter override, repository setup, and transfer request construction
+   details below the scenario layer in `transfer_nonce/support`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or
