@@ -48,7 +48,9 @@ pub(crate) mod gwt;
 #[allow(dead_code)]
 pub(crate) mod worker;
 
-pub(crate) use gwt::{AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole};
+pub(crate) use gwt::{
+    AssertRole, CountRole, GivenRole, LoadRole, ScenarioRoles, SeedRole, ThenRole, WhenRole,
+};
 
 #[allow(unused_imports)]
 pub(crate) use worker::{

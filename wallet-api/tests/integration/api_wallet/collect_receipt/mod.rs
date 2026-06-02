@@ -4,8 +4,8 @@ use serial_test::serial;
 
 use support::{
     CollectReceiptFixture, CollectReceiptGiven, CollectReceiptScenario, CollectReceiptThen,
-    CollectReceiptWhen, LocalCollectDb, assert_collect_receipt_payload, base_collect_for_receipt,
-    collect_receipt_payload_json,
+    CollectReceiptWhen, LocalCollectDb, ScenarioRoles, assert_collect_receipt_payload,
+    base_collect_for_receipt, collect_receipt_payload_json,
 };
 
 #[tokio::test]

@@ -4,7 +4,7 @@ use serial_test::serial;
 
 use support::{
     CollectResourceGateFixture, CollectResourceGateGiven, CollectResourceGateScenario,
-    CollectResourceGateThen, CollectResourceGateWhen, LocalCollectResourceDb,
+    CollectResourceGateThen, CollectResourceGateWhen, LocalCollectResourceDb, ScenarioRoles,
 };
 
 #[tokio::test]

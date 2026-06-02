@@ -43,18 +43,6 @@ impl CollectReceiptScenario {
         Self { env, collect_pool, core_pool }
     }
 
-    pub(crate) fn given(&self) -> GivenRole<'_, Self> {
-        GivenRole::new(self)
-    }
-
-    pub(crate) fn when(&self) -> WhenRole<'_, Self> {
-        WhenRole::new(self)
-    }
-
-    pub(crate) fn then(&self) -> ThenRole<'_, Self> {
-        ThenRole::new(self)
-    }
-
     fn seed(&self) -> SeedRole<'_, Self> {
         SeedRole::new(self)
     }

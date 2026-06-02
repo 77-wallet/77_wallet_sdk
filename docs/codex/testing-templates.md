@@ -115,7 +115,7 @@ mod support;
 
 use serial_test::serial;
 
-use support::{FlowFixture, FlowGiven, FlowScenario, FlowThen, FlowWhen};
+use support::{FlowFixture, FlowGiven, FlowScenario, FlowThen, FlowWhen, ScenarioRoles};
 
 #[tokio::test]
 #[serial]
@@ -180,7 +180,7 @@ async fn flow_backend_failure_keeps_fact_unset_and_retryable() {
 
 ```rust
 use crate::harness::{
-    AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole,
+    AssertRole, CountRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole,
     ensure_worker_env, next_unique_id, WorkerTestEnv,
 };
 
@@ -210,24 +210,16 @@ impl FlowScenario {
         Self { env }
     }
 
-    pub(super) fn given(&self) -> GivenRole<'_, Self> {
-        GivenRole::new(self)
-    }
-
-    pub(super) fn when(&self) -> WhenRole<'_, Self> {
-        WhenRole::new(self)
-    }
-
-    pub(super) fn then(&self) -> ThenRole<'_, Self> {
-        ThenRole::new(self)
-    }
-
     fn seed(&self) -> SeedRole<'_, Self> {
         SeedRole::new(self)
     }
 
     fn load(&self) -> LoadRole<'_, Self> {
         LoadRole::new(self)
+    }
+
+    fn count(&self) -> CountRole<'_, Self> {
+        CountRole::new(self)
     }
 
     fn assert(&self) -> AssertRole<'_, Self> {
@@ -364,6 +356,7 @@ mod db;
 mod fixtures;
 mod scenario;
 
+pub(super) use crate::harness::ScenarioRoles;
 pub(super) use fixtures::FlowFixture;
 pub(super) use scenario::{FlowGiven, FlowScenario, FlowThen, FlowWhen};
 ```

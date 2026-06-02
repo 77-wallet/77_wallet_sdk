@@ -3,6 +3,7 @@ mod fixtures;
 mod local_db;
 mod scenario;
 
+pub(super) use crate::harness::ScenarioRoles;
 pub(super) use fixtures::CollectResourceGateFixture;
 pub(super) use local_db::LocalCollectResourceDb;
 pub(super) use scenario::{

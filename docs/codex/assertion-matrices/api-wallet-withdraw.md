@@ -192,22 +192,25 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
-`withdraw_notification/mod.rs` follows the V2 Given-When-Then integration
-scenario template:
+`withdraw_notification/mod.rs` uses the role-trait Given-When-Then shape:
 
 1. Keep local immutable data in a `*Fixture`.
-2. Keep environment, DB pools, fake backend, and flow-specific actions in a
-   local `*Scenario`.
-3. Keep frontend notification receive and payload checks in
-   `WithdrawNotificationInbox`.
-4. Use `given_*` methods for wallet, withdraw order, notification-channel, and
-   backend failure setup.
-5. Use `when_*` methods for initial submit, retry, and TX ACK worker execution.
-6. Use `then_*` methods for surfaced error, DB facts, backend TX ACK calls,
-   scanner retry state, notification payload, and idempotency.
-7. Keep wallet seed, notification channel, DB pool, scanner labels, backend ACK
+2. Keep environment and DB pools in `WithdrawNotificationScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep wallet, withdraw order, notification-channel, and backend failure setup
+   in the flow-local `WithdrawNotificationGiven` trait.
+5. Keep initial submit, retry, and TX ACK worker execution in the flow-local
+   `WithdrawNotificationWhen` trait.
+6. Keep surfaced error, DB facts, backend TX ACK calls, scanner retry state,
+   notification payload, and idempotency assertions in the flow-local
+   `WithdrawNotificationThen` trait.
+7. Keep seed/load/count/assert internals behind harness role containers and
+   below the Given-When-Then test body.
+8. Keep wallet seed, notification channel, DB pool, scanner labels, backend ACK
    counting, and payload decryption details below the scenario layer in
-   `withdraw_notification/support.rs`.
+   `withdraw_notification/support`.
 
 `withdraw_resource_gate/mod.rs` is the role-trait Given-When-Then template for
 resource gate flows:

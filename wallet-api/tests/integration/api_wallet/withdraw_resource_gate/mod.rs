@@ -3,8 +3,8 @@ mod support;
 use serial_test::serial;
 
 use support::{
-    WithdrawResourceGateFixture, WithdrawResourceGateGiven, WithdrawResourceGateScenario,
-    WithdrawResourceGateThen, WithdrawResourceGateWhen,
+    ScenarioRoles, WithdrawResourceGateFixture, WithdrawResourceGateGiven,
+    WithdrawResourceGateScenario, WithdrawResourceGateThen, WithdrawResourceGateWhen,
 };
 
 #[serial]

@@ -4,6 +4,7 @@ mod local_db;
 mod payload;
 mod scenario;
 
+pub(super) use crate::harness::ScenarioRoles;
 pub(super) use fixtures::CollectReceiptFixture;
 pub(super) use local_db::LocalCollectDb;
 pub(super) use payload::{

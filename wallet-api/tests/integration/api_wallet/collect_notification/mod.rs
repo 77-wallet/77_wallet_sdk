@@ -4,7 +4,7 @@ use serial_test::serial;
 
 use support::{
     CollectNotificationGiven, CollectNotificationScenario, CollectNotificationThen,
-    CollectNotificationWhen, CollectOrderFixture,
+    CollectNotificationWhen, CollectOrderFixture, ScenarioRoles,
 };
 
 #[serial]

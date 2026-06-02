@@ -40,6 +40,31 @@ impl<'a, S: ?Sized> ThenRole<'a, S> {
     }
 }
 
+pub(crate) trait ScenarioRoles {
+    fn given(&self) -> GivenRole<'_, Self>
+    where
+        Self: Sized,
+    {
+        GivenRole::new(self)
+    }
+
+    fn when(&self) -> WhenRole<'_, Self>
+    where
+        Self: Sized,
+    {
+        WhenRole::new(self)
+    }
+
+    fn then(&self) -> ThenRole<'_, Self>
+    where
+        Self: Sized,
+    {
+        ThenRole::new(self)
+    }
+}
+
+impl<S> ScenarioRoles for S {}
+
 pub(crate) struct SeedRole<'a, S: ?Sized> {
     scenario: &'a S,
 }
