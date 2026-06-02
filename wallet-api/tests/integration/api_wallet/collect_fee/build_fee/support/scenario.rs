@@ -4,7 +4,10 @@ use wallet_database::{
     repositories::api_wallet::collect::ApiCollectRepo,
 };
 
-use crate::harness::{WorkerTestEnv, ensure_worker_env, next_unique_id};
+use crate::harness::{
+    AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, WorkerTestEnv,
+    ensure_worker_env, next_unique_id,
+};
 
 use super::super::super::support::{
     build_shadow_collect_worker, install_collect_test_adapter, seed_collect_order,
@@ -22,20 +25,64 @@ impl CollectBuildFeeScenario {
         Self { env, collect_pool }
     }
 
-    pub(crate) fn given_low_balance_sol_adapter(&self) -> impl Drop {
+    fn seed(&self) -> SeedRole<'_, Self> {
+        SeedRole::new(self)
+    }
+
+    fn load(&self) -> LoadRole<'_, Self> {
+        LoadRole::new(self)
+    }
+
+    fn assert(&self) -> AssertRole<'_, Self> {
+        AssertRole::new(self)
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+pub(crate) trait CollectBuildFeeGiven {
+    fn low_balance_sol_adapter(&self) -> impl Drop;
+
+    async fn sol_collect_order(&self, trade_prefix: &str, to_addr: &str) -> ApiCollectEntity;
+
+    async fn completed_fee_cycle_facts(&self, collect: &ApiCollectEntity);
+
+    async fn collect_reloaded(&self, collect: &ApiCollectEntity) -> ApiCollectEntity;
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectBuildFeeGiven for GivenRole<'_, CollectBuildFeeScenario> {
+    fn low_balance_sol_adapter(&self) -> impl Drop {
         install_collect_test_adapter(false, 0)
     }
 
-    pub(crate) async fn given_sol_collect_order(
-        &self,
-        trade_prefix: &str,
-        to_addr: &str,
-    ) -> ApiCollectEntity {
-        let trade_no = format!("{trade_prefix}_{}", next_unique_id());
-        seed_collect_order(&self.collect_pool, &trade_no, to_addr).await
+    async fn sol_collect_order(&self, trade_prefix: &str, to_addr: &str) -> ApiCollectEntity {
+        self.scenario().seed().sol_collect_order(trade_prefix, to_addr).await
     }
 
-    pub(crate) async fn given_completed_fee_cycle_facts(&self, collect: &ApiCollectEntity) {
+    async fn completed_fee_cycle_facts(&self, collect: &ApiCollectEntity) {
+        self.scenario().seed().completed_fee_cycle_facts(collect).await;
+    }
+
+    async fn collect_reloaded(&self, collect: &ApiCollectEntity) -> ApiCollectEntity {
+        self.scenario().load().collect(&collect.trade_no).await
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+trait CollectBuildFeeSeed {
+    async fn sol_collect_order(&self, trade_prefix: &str, to_addr: &str) -> ApiCollectEntity;
+
+    async fn completed_fee_cycle_facts(&self, collect: &ApiCollectEntity);
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectBuildFeeSeed for SeedRole<'_, CollectBuildFeeScenario> {
+    async fn sol_collect_order(&self, trade_prefix: &str, to_addr: &str) -> ApiCollectEntity {
+        let trade_no = format!("{trade_prefix}_{}", next_unique_id());
+        seed_collect_order(&self.scenario().collect_pool, &trade_no, to_addr).await
+    }
+
+    async fn completed_fee_cycle_facts(&self, collect: &ApiCollectEntity) {
         sqlx::query(
             r#"
             UPDATE api_collect
@@ -48,68 +95,115 @@ impl CollectBuildFeeScenario {
             "#,
         )
         .bind(&collect.trade_no)
-        .execute(self.collect_pool.as_ref())
+        .execute(self.scenario().collect_pool.as_ref())
         .await
         .expect("seed fee cycle facts");
     }
+}
 
-    pub(crate) async fn given_collect_reloaded(
-        &self,
-        collect: &ApiCollectEntity,
-    ) -> ApiCollectEntity {
-        self.load_collect(&collect.trade_no).await
-    }
+#[async_trait::async_trait(?Send)]
+pub(crate) trait CollectBuildFeeWhen {
+    async fn fee_check_runs(&self, collect: &ApiCollectEntity) -> bool;
 
-    pub(crate) async fn when_fee_check_runs(&self, collect: &ApiCollectEntity) -> bool {
-        let worker = build_shadow_collect_worker(self.env).await;
+    async fn build_attempt_is_invalidated(&self, collect: &ApiCollectEntity) -> u64;
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectBuildFeeWhen for WhenRole<'_, CollectBuildFeeScenario> {
+    async fn fee_check_runs(&self, collect: &ApiCollectEntity) -> bool {
+        let worker = build_shadow_collect_worker(self.scenario().env).await;
         shadow_collect_check_fee(&worker, collect)
             .await
             .expect("fee check should return a boolean result")
     }
 
-    pub(crate) async fn when_build_attempt_is_invalidated(
-        &self,
-        collect: &ApiCollectEntity,
-    ) -> u64 {
-        let worker = build_shadow_collect_worker(self.env).await;
+    async fn build_attempt_is_invalidated(&self, collect: &ApiCollectEntity) -> u64 {
+        let worker = build_shadow_collect_worker(self.scenario().env).await;
         worker
             .invalidate_build_attempt_after_fee_check_failure(collect)
             .await
             .expect("fee check failure should invalidate build attempt")
     }
+}
 
-    pub(crate) fn then_fee_check_failed(&self, pass: bool, message: &str) {
+#[async_trait::async_trait(?Send)]
+pub(crate) trait CollectBuildFeeThen {
+    fn fee_check_failed(&self, pass: bool, message: &str);
+
+    fn one_row_was_affected(&self, affected: u64);
+
+    async fn fee_cycle_is_reopened(&self, collect: &ApiCollectEntity);
+
+    async fn completed_fee_cycle_facts_are_preserved(&self, collect: &ApiCollectEntity);
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectBuildFeeThen for ThenRole<'_, CollectBuildFeeScenario> {
+    fn fee_check_failed(&self, pass: bool, message: &str) {
+        self.scenario().assert().fee_check_failed(pass, message);
+    }
+
+    fn one_row_was_affected(&self, affected: u64) {
+        self.scenario().assert().one_row_was_affected(affected);
+    }
+
+    async fn fee_cycle_is_reopened(&self, collect: &ApiCollectEntity) {
+        let persisted = self.scenario().load().collect(&collect.trade_no).await;
+        self.scenario().assert().fee_cycle_is_reopened(&persisted);
+    }
+
+    async fn completed_fee_cycle_facts_are_preserved(&self, collect: &ApiCollectEntity) {
+        let persisted = self.scenario().load().collect(&collect.trade_no).await;
+        self.scenario().assert().completed_fee_cycle_facts_are_preserved(&persisted);
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+trait CollectBuildFeeLoad {
+    async fn collect(&self, trade_no: &str) -> ApiCollectEntity;
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectBuildFeeLoad for LoadRole<'_, CollectBuildFeeScenario> {
+    async fn collect(&self, trade_no: &str) -> ApiCollectEntity {
+        ApiCollectRepo::get_api_collect_by_trade_no(&self.scenario().collect_pool, trade_no)
+            .await
+            .expect("load collect")
+    }
+}
+
+trait CollectBuildFeeAssert {
+    fn fee_check_failed(&self, pass: bool, message: &str);
+
+    fn one_row_was_affected(&self, affected: u64);
+
+    fn fee_cycle_is_reopened(&self, persisted: &ApiCollectEntity);
+
+    fn completed_fee_cycle_facts_are_preserved(&self, persisted: &ApiCollectEntity);
+}
+
+impl CollectBuildFeeAssert for AssertRole<'_, CollectBuildFeeScenario> {
+    fn fee_check_failed(&self, pass: bool, message: &str) {
         assert!(!pass, "{message}");
     }
 
-    pub(crate) fn then_one_row_was_affected(&self, affected: u64) {
+    fn one_row_was_affected(&self, affected: u64) {
         assert_eq!(affected, 1);
     }
 
-    pub(crate) async fn then_fee_cycle_is_reopened(&self, collect: &ApiCollectEntity) {
-        let persisted = self.load_collect(&collect.trade_no).await;
+    fn fee_cycle_is_reopened(&self, persisted: &ApiCollectEntity) {
         assert_eq!(persisted.need_service_fee, Some(true));
         assert!(persisted.service_fee_uploaded_at.is_none());
         assert!(persisted.raw_tx.is_none());
         assert!(persisted.tx_hash.is_none());
     }
 
-    pub(crate) async fn then_completed_fee_cycle_facts_are_preserved(
-        &self,
-        collect: &ApiCollectEntity,
-    ) {
-        let persisted = self.load_collect(&collect.trade_no).await;
+    fn completed_fee_cycle_facts_are_preserved(&self, persisted: &ApiCollectEntity) {
         assert_eq!(persisted.need_service_fee, Some(false));
         assert!(persisted.service_fee_uploaded_at.is_some());
         assert!(persisted.tx_fee_res_ack_sent_at.is_some());
         assert!(persisted.raw_tx.is_none());
         assert!(persisted.tx_hash.is_none());
-    }
-
-    async fn load_collect(&self, trade_no: &str) -> ApiCollectEntity {
-        ApiCollectRepo::get_api_collect_by_trade_no(&self.collect_pool, trade_no)
-            .await
-            .expect("load collect")
     }
 }
 

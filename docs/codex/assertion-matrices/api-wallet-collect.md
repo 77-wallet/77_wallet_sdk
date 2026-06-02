@@ -472,6 +472,57 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
    backend body decryption below the scenario layer in
    `collect_receipt/support`.
 
+`collect_fee/service_fee_upload/mod.rs` uses the role-trait Given-When-Then
+shape:
+
+1. Keep service-fee upload cases read-first in `service_fee_upload/mod.rs`.
+2. Keep worker environment and recorder reset in
+   `CollectServiceFeeUploadScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep chain fee adapter installation and waiting service-fee rows in the
+   flow-local `CollectServiceFeeUploadGiven` trait.
+5. Keep upload worker execution in the flow-local
+   `CollectServiceFeeUploadWhen` trait.
+6. Keep payload route, trade number, and amount assertions in the flow-local
+   `CollectServiceFeeUploadThen` trait.
+7. Keep adapter details, worker helper calls, recorder payload loading, and
+   floating-point tolerance assertions below the Given-When-Then test body.
+
+`collect_fee/build_fee/mod.rs` uses the role-trait Given-When-Then shape:
+
+1. Keep build-fee reopen cases read-first in `build_fee/mod.rs`.
+2. Keep worker environment and collect DB pool in `CollectBuildFeeScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep fake low-balance adapter setup, collect row seeding, completed
+   fee-cycle facts, and collect reloads in the flow-local
+   `CollectBuildFeeGiven` trait.
+5. Keep fee-check and build-attempt invalidation entrypoints in the flow-local
+   `CollectBuildFeeWhen` trait.
+6. Keep failed-check, affected-row, reopened-cycle, and preserved-cycle
+   assertions in the flow-local `CollectBuildFeeThen` trait.
+7. Keep SQL setup, worker construction, DB loads, and seed/load/assert internals
+   below the Given-When-Then test body.
+
+`collect_fee/fee_check/mod.rs` uses the role-trait Given-When-Then shape:
+
+1. Keep fee-check cases read-first in `fee_check/mod.rs`.
+2. Keep worker environment and collect DB pool in `CollectFeeCheckScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep fake Solana/Ethereum adapter setup and collect row seeding in the
+   flow-local `CollectFeeCheckGiven` trait.
+5. Keep Solana/Ethereum fee-check entrypoints and build-attempt invalidation in
+   the flow-local `CollectFeeCheckWhen` trait.
+6. Keep fee-check result, error message, collect status, affected row, and
+   reopened-cycle assertions in the flow-local `CollectFeeCheckThen` trait.
+7. Keep worker construction, DB loads, and seed/load/assert internals below the
+   Given-When-Then test body.
+
 `collect_resource_gate/mod.rs` uses the role-trait Given-When-Then shape for
 resource gate flows:
 

@@ -1,7 +1,7 @@
 use alloy::primitives::U256;
 use serde_json::Value;
 
-use crate::harness::{WorkerTestEnv, ensure_worker_env};
+use crate::harness::{GivenRole, ThenRole, WhenRole, WorkerTestEnv, ensure_worker_env};
 
 use super::super::super::support::{
     ServiceFeeUploadScenario, given_eth_service_fee_upload_waiting,
@@ -20,36 +20,61 @@ impl CollectServiceFeeUploadScenario {
         env.recorder.reset();
         Self { env }
     }
+}
 
-    pub(crate) fn given_sol_fee_shortage_adapter(&self, recipient_missing: bool) -> impl Drop {
+#[async_trait::async_trait(?Send)]
+pub(crate) trait CollectServiceFeeUploadGiven {
+    fn sol_fee_shortage_adapter(&self, recipient_missing: bool) -> impl Drop;
+
+    fn eth_fee_adapter(&self, balance_wei: u128, fee_amount: f64) -> impl Drop;
+
+    async fn sol_service_fee_upload_waiting(&self, trade_prefix: &str) -> ServiceFeeUploadScenario;
+
+    async fn eth_service_fee_upload_waiting(&self) -> ServiceFeeUploadScenario;
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectServiceFeeUploadGiven for GivenRole<'_, CollectServiceFeeUploadScenario> {
+    fn sol_fee_shortage_adapter(&self, recipient_missing: bool) -> impl Drop {
         install_collect_test_adapter_fee_shortage(recipient_missing, 0)
     }
 
-    pub(crate) fn given_eth_fee_adapter(&self, balance_wei: u128, fee_amount: f64) -> impl Drop {
+    fn eth_fee_adapter(&self, balance_wei: u128, fee_amount: f64) -> impl Drop {
         install_collect_eth_test_adapter(U256::from(balance_wei), fee_amount)
     }
 
-    pub(crate) async fn given_sol_service_fee_upload_waiting(
-        &self,
-        trade_prefix: &str,
-    ) -> ServiceFeeUploadScenario {
-        given_sol_service_fee_upload_waiting(self.env, trade_prefix).await
+    async fn sol_service_fee_upload_waiting(&self, trade_prefix: &str) -> ServiceFeeUploadScenario {
+        given_sol_service_fee_upload_waiting(self.scenario().env, trade_prefix).await
     }
 
-    pub(crate) async fn given_eth_service_fee_upload_waiting(&self) -> ServiceFeeUploadScenario {
-        given_eth_service_fee_upload_waiting(self.env).await
+    async fn eth_service_fee_upload_waiting(&self) -> ServiceFeeUploadScenario {
+        given_eth_service_fee_upload_waiting(self.scenario().env).await
     }
+}
 
-    pub(crate) async fn when_service_fee_is_uploaded(
-        &self,
-        upload: &ServiceFeeUploadScenario,
-        expect_msg: &str,
-    ) {
+#[async_trait::async_trait(?Send)]
+pub(crate) trait CollectServiceFeeUploadWhen {
+    async fn service_fee_is_uploaded(&self, upload: &ServiceFeeUploadScenario, expect_msg: &str);
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectServiceFeeUploadWhen for WhenRole<'_, CollectServiceFeeUploadScenario> {
+    async fn service_fee_is_uploaded(&self, upload: &ServiceFeeUploadScenario, expect_msg: &str) {
         when_upload_collect_service_fee(upload, expect_msg).await;
     }
+}
 
-    pub(crate) fn then_payload_routes_reverse_transfer(&self, upload: &ServiceFeeUploadScenario) {
-        let payload = self.payload(upload);
+pub(crate) trait CollectServiceFeeUploadThen {
+    fn payload_routes_reverse_transfer(&self, upload: &ServiceFeeUploadScenario);
+
+    fn payload_trade_no_matches(&self, upload: &ServiceFeeUploadScenario);
+
+    fn payload_amount_is(&self, upload: &ServiceFeeUploadScenario, expected: f64, reason: &str);
+}
+
+impl CollectServiceFeeUploadThen for ThenRole<'_, CollectServiceFeeUploadScenario> {
+    fn payload_routes_reverse_transfer(&self, upload: &ServiceFeeUploadScenario) {
+        let payload = payload(self, upload);
         assert_eq!(payload["tradeNo"].as_str(), Some(upload.trade_no.as_str()));
         assert_eq!(payload["from"].as_str(), Some(upload.to_addr.as_str()));
         assert_eq!(payload["to"].as_str(), Some(upload.from_addr.as_str()));
@@ -57,26 +82,24 @@ impl CollectServiceFeeUploadScenario {
         assert_eq!(payload["contractAddress"].as_str(), Some(upload.contract_address));
     }
 
-    pub(crate) fn then_payload_trade_no_matches(&self, upload: &ServiceFeeUploadScenario) {
-        let payload = self.payload(upload);
+    fn payload_trade_no_matches(&self, upload: &ServiceFeeUploadScenario) {
+        let payload = payload(self, upload);
         assert_eq!(payload["tradeNo"].as_str(), Some(upload.trade_no.as_str()));
     }
 
-    pub(crate) fn then_payload_amount_is(
-        &self,
-        upload: &ServiceFeeUploadScenario,
-        expected: f64,
-        reason: &str,
-    ) {
-        let payload = self.payload(upload);
+    fn payload_amount_is(&self, upload: &ServiceFeeUploadScenario, expected: f64, reason: &str) {
+        let payload = payload(self, upload);
         let amount = payload["amount"].as_f64().unwrap_or_default();
         assert!(
             (amount - expected).abs() < 1e-12,
             "service fee upload must use {reason}, got {amount}"
         );
     }
+}
 
-    fn payload(&self, upload: &ServiceFeeUploadScenario) -> Value {
-        then_service_fee_upload_payload(self.env, &upload.trade_no)
-    }
+fn payload(
+    then: &ThenRole<'_, CollectServiceFeeUploadScenario>,
+    upload: &ServiceFeeUploadScenario,
+) -> Value {
+    then_service_fee_upload_payload(then.scenario().env, &upload.trade_no)
 }

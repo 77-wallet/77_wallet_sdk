@@ -2,93 +2,109 @@ mod support;
 
 use serial_test::serial;
 
-use support::BindRelationScenario;
+use support::{
+    BindRelationGiven, BindRelationScenario, BindRelationThen, BindRelationWhen, ScenarioRoles,
+};
 
 #[tokio::test]
 #[serial(import_bind)]
 async fn scan_bind_ok_calls_backend_and_persists_bind_sn_and_relation() {
     let scenario = BindRelationScenario::new().await;
-    let pair = scenario.given_wallet_pair().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+    let pair = given.wallet_pair().await;
 
-    scenario.when_scan_bind_succeeds(&pair, "scan-app-id", "scan-merchant-id").await;
+    when.scan_bind_succeeds(&pair, "scan-app-id", "scan-merchant-id").await;
 
-    scenario.then_pair_has_bind_fields(&pair, "scan-app-id", "scan-merchant-id").await;
-    scenario.then_scan_bind_backend_called_once(&pair, "scan-app-id");
+    then.pair_has_bind_fields(&pair, "scan-app-id", "scan-merchant-id").await;
+    then.scan_bind_backend_called_once(&pair, "scan-app-id");
 }
 
 #[tokio::test]
 #[serial(import_bind)]
 async fn import_bind_ok_calls_appid_import_and_persists_bind_sn_and_relation() {
     let scenario = BindRelationScenario::new().await;
-    let pair = scenario.given_wallet_pair().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+    let pair = given.wallet_pair().await;
 
-    scenario.when_import_bind_succeeds(&pair, "import-bind-merchant", "import-bind-app").await;
+    when.import_bind_succeeds(&pair, "import-bind-merchant", "import-bind-app").await;
 
-    scenario.then_pair_has_bind_fields(&pair, "import-bind-app", "import-bind-merchant").await;
-    scenario.then_appid_import_backend_called_once(&pair);
+    then.pair_has_bind_fields(&pair, "import-bind-app", "import-bind-merchant").await;
+    then.appid_import_backend_called_once(&pair);
 }
 
 #[tokio::test]
 #[serial(import_bind)]
 async fn import_bind_backend_fail_does_not_persist_relation() {
     let scenario = BindRelationScenario::new().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_import_bind_backend_fails("import bind backend fail");
-    let pair = scenario.given_wallet_pair().await;
-    let before = scenario.given_pair_bind_snapshot(&pair).await;
+    given.import_bind_backend_fails("import bind backend fail");
+    let pair = given.wallet_pair().await;
+    let before = given.pair_bind_snapshot(&pair).await;
 
-    let err =
-        scenario.when_import_bind_fails(&pair, "import-fail-merchant", "import-fail-app").await;
+    let err = when.import_bind_fails(&pair, "import-fail-merchant", "import-fail-app").await;
 
-    scenario.then_error_contains(err, "import bind backend fail");
-    scenario.then_pair_bind_snapshot_is_unchanged(&pair, before).await;
-    scenario.then_appid_import_backend_attempted_once();
+    then.error_contains(err, "import bind backend fail");
+    then.pair_bind_snapshot_is_unchanged(&pair, before).await;
+    then.appid_import_backend_attempted_once();
 }
 
 #[tokio::test]
 #[serial(import_bind)]
 async fn scan_bind_backend_fail_does_not_persist_bind() {
     let scenario = BindRelationScenario::new().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_scan_bind_backend_fails("scan bind backend fail");
-    let pair = scenario.given_wallet_pair().await;
-    let before = scenario.given_pair_bind_snapshot(&pair).await;
+    given.scan_bind_backend_fails("scan bind backend fail");
+    let pair = given.wallet_pair().await;
+    let before = given.pair_bind_snapshot(&pair).await;
 
-    let err = scenario.when_scan_bind_fails(&pair, "scan-fail-app", "scan-fail-merchant").await;
+    let err = when.scan_bind_fails(&pair, "scan-fail-app", "scan-fail-merchant").await;
 
-    scenario.then_error_contains(err, "scan bind backend fail");
-    scenario.then_pair_bind_snapshot_is_unchanged(&pair, before).await;
-    scenario.then_scan_bind_backend_attempted_once();
+    then.error_contains(err, "scan bind backend fail");
+    then.pair_bind_snapshot_is_unchanged(&pair, before).await;
+    then.scan_bind_backend_attempted_once();
 }
 
 #[tokio::test]
 #[serial(import_bind)]
 async fn import_bind_missing_wallet_returns_not_found_and_no_backend_call() {
     let scenario = BindRelationScenario::new().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    let recharge_uid = scenario.given_only_recharge_wallet("import-bind-only-recharge").await;
-    let before = scenario.given_wallet_bind_snapshot(&recharge_uid).await;
+    let recharge_uid = given.only_recharge_wallet("import-bind-only-recharge").await;
+    let before = given.wallet_bind_snapshot(&recharge_uid).await;
 
-    let err = scenario.when_import_bind_missing_withdrawal_fails(&recharge_uid).await;
+    let err = when.import_bind_missing_withdrawal_fails(&recharge_uid).await;
 
-    scenario
-        .then_missing_wallet_rejection_keeps_recharge_unchanged(err, &recharge_uid, before)
-        .await;
-    scenario.then_appid_import_backend_was_not_called();
+    then.missing_wallet_rejection_keeps_recharge_unchanged(err, &recharge_uid, before).await;
+    then.appid_import_backend_was_not_called();
 }
 
 #[tokio::test]
 #[serial(import_bind)]
 async fn scan_bind_remote_first_then_persist() {
     let scenario = BindRelationScenario::new().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_scan_bind_backend_fails("remote bind failed first");
-    let pair = scenario.given_wallet_pair().await;
-    let before = scenario.given_pair_bind_snapshot(&pair).await;
+    given.scan_bind_backend_fails("remote bind failed first");
+    let pair = given.wallet_pair().await;
+    let before = given.pair_bind_snapshot(&pair).await;
 
-    let err =
-        scenario.when_scan_bind_fails(&pair, "orchestration-app", "orchestration-merchant").await;
+    let err = when.scan_bind_fails(&pair, "orchestration-app", "orchestration-merchant").await;
 
-    scenario.then_error_contains(err, "remote bind failed first");
-    scenario.then_pair_bind_snapshot_is_unchanged(&pair, before).await;
+    then.error_contains(err, "remote bind failed first");
+    then.pair_bind_snapshot_is_unchanged(&pair, before).await;
 }

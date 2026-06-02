@@ -150,6 +150,57 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 7. Keep harness environment reset, manager calls, backend queue setup, waits,
    and DB loads below the test body in `password/support/scenario.rs`.
 
+`import_bind/import_subaccount/mod.rs` uses the role-trait Given-When-Then
+shape:
+
+1. Keep subaccount import cases read-first in `import_subaccount/mod.rs`.
+2. Keep fake backend environment in `SubaccountImportScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep backend UID status and bind-info setup in the flow-local
+   `SubaccountImportGiven` trait.
+5. Keep import success and failure entrypoints in the flow-local
+   `SubaccountImportWhen` trait.
+6. Keep wallet DB facts, persisted import stage, error facts, and backend-call
+   assertions in the flow-local `SubaccountImportThen` trait.
+7. Keep manager calls, DB loads, and load/assert internals below the
+   Given-When-Then test body.
+
+`import_bind/import_withdrawal/mod.rs` uses the role-trait Given-When-Then
+shape:
+
+1. Keep withdrawal import cases read-first in `import_withdrawal/mod.rs`.
+2. Keep fake backend environment in `WithdrawalImportScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep backend UID status, bind-info, app-id usage setup, import delay, and
+   recharge wallet seeding in the flow-local `WithdrawalImportGiven` trait.
+5. Keep import success/failure entrypoints, concurrent asset reads, and delay
+   cleanup in the flow-local `WithdrawalImportWhen` trait.
+6. Keep wallet binding facts, completion facts, reimport stability, concurrent
+   read result, rejection facts, and backend-call assertions in the flow-local
+   `WithdrawalImportThen` trait.
+7. Keep manager calls, DB loads, fake backend queues, and concurrency helpers
+   below the Given-When-Then test body.
+
+`import_bind/bind_relation/mod.rs` uses the role-trait Given-When-Then shape:
+
+1. Keep bind relation cases read-first in `bind_relation/mod.rs`.
+2. Keep fake backend environment in `BindRelationScenario`.
+3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
+   fixed read-first integration roles using generic containers from
+   `tests/harness`.
+4. Keep backend failure setup, wallet pair seeding, single-wallet seeding, and
+   bind snapshots in the flow-local `BindRelationGiven` trait.
+5. Keep scan bind, import bind, and missing-wallet entrypoints in the
+   flow-local `BindRelationWhen` trait.
+6. Keep persisted bind fields, unchanged snapshots, error facts, and
+   backend-call assertions in the flow-local `BindRelationThen` trait.
+7. Keep manager calls, DB loads, snapshot helpers, and backend recorder checks
+   below the Given-When-Then test body.
+
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or
 scanner entrypoints.
