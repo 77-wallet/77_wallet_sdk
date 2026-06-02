@@ -1,3 +1,7 @@
 mod scenario;
 
-pub(super) use scenario::PasswordRotationScenario;
+pub(super) use scenario::{
+    PasswordRotationGiven, PasswordRotationScenario, PasswordRotationThen, PasswordRotationWhen,
+};
+
+pub(super) use crate::harness::ScenarioRoles;

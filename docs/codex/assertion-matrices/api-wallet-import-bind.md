@@ -136,6 +136,20 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
    until a subflow needs deeper scenario extraction.
 4. Preserve existing test names so targeted filters remain stable.
 
+`import_bind/password/mod.rs` uses a password-refresh integration contract:
+
+1. Keep password-refresh test cases read-first in `password/mod.rs`.
+2. Use `PasswordRotationScenario` with shared `ScenarioRoles`.
+3. Keep password-flow business methods in flow-local
+   `PasswordRotationGiven`, `PasswordRotationWhen`, and
+   `PasswordRotationThen` traits.
+4. Use `scenario.given()` for fake backend UID status.
+5. Use `scenario.when()` for wallet import, password rotation, timer tick,
+   chain-data sync, and password restoration.
+6. Use `scenario.then()` for persisted wallet type assertions.
+7. Keep harness environment reset, manager calls, backend queue setup, waits,
+   and DB loads below the test body in `password/support/scenario.rs`.
+
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or
 scanner entrypoints.
