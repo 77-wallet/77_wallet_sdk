@@ -221,8 +221,10 @@ gate flows:
 5. Use `when_*` methods for result ACK and receipt upload worker entrypoints.
 6. Use `then_*` methods for backend payload, gate release, no-release, and
    scanner build eligibility assertions.
-7. Keep SQL setup and backend payload decryption details below the scenario
-   layer in `withdraw_resource_gate/support.rs`.
+7. Keep SQL setup below the scenario layer in
+   `withdraw_resource_gate/support/db.rs`.
+8. Keep backend payload wait/decrypt/assert details in
+   `withdraw_resource_gate/support/assertions.rs`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or

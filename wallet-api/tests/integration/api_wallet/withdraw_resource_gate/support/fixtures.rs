@@ -6,12 +6,12 @@ pub(crate) struct WithdrawResourceGateFixture {
 }
 
 impl WithdrawResourceGateFixture {
-    pub(crate) fn ack_payload_case(prefix: &str) -> Self {
+    pub(crate) fn result_ack_payload_case(prefix: &str) -> Self {
         let id = next_unique_id();
-        Self { trade_no: "W_ORIGIN_ACK".to_string(), resource_trade_no: format!("{prefix}_{id}") }
+        Self { trade_no: format!("W_ORIGIN_ACK_{id}"), resource_trade_no: format!("{prefix}_{id}") }
     }
 
-    pub(crate) fn origin_case(prefix: &str) -> Self {
+    pub(crate) fn origin_gate_case(prefix: &str) -> Self {
         let trade_no = format!("{prefix}_{}", next_unique_id());
         Self { resource_trade_no: format!("DL_W_{trade_no}"), trade_no }
     }

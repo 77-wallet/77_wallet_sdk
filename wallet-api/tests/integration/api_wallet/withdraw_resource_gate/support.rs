@@ -1,3 +1,4 @@
+mod assertions;
 mod db;
 mod fixtures;
 mod scenario;

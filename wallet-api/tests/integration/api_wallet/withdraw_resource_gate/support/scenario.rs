@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use wallet_api::testkit::withdraw::{
     scan_withdraw_intent_labels_for_trade_once,
     send_resource_result_ack_via_worker as send_withdraw_resource_result_ack_via_worker,
@@ -14,16 +12,13 @@ use wallet_database::{
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 
-use crate::harness::{
-    decrypt_captured_api_backend_body, ensure_worker_env, open_api_wallet_pool,
-    worker::WorkerTestEnv,
-};
+use crate::harness::{ensure_worker_env, open_api_wallet_pool, worker::WorkerTestEnv};
 
 use super::{
+    assertions::assert_event_ack_payload_exists,
     db::{
-        insert_failed_resource_delegation, insert_resource_delegation_ready_for_ack,
-        insert_successful_resource_delegation, insert_withdraw, mark_withdraw_blocked,
-        open_transaction_pool,
+        mark_withdraw_blocked, open_transaction_pool, seed_failed_resource_delegation,
+        seed_resource_delegation_ready_for_ack, seed_successful_resource_delegation, seed_withdraw,
     },
     fixtures::WithdrawResourceGateFixture,
 };
@@ -49,11 +44,16 @@ impl WithdrawResourceGateScenario {
         &self,
         fixture: &WithdrawResourceGateFixture,
     ) {
-        insert_resource_delegation_ready_for_ack(&self.tx_pool, &fixture.resource_trade_no).await;
+        seed_resource_delegation_ready_for_ack(
+            &self.tx_pool,
+            &fixture.trade_no,
+            &fixture.resource_trade_no,
+        )
+        .await;
     }
 
     pub(crate) async fn given_blocked_withdraw(&self, fixture: &WithdrawResourceGateFixture) {
-        insert_withdraw(&self.tx_pool, &fixture.trade_no).await;
+        seed_withdraw(&self.tx_pool, &fixture.trade_no).await;
         mark_withdraw_blocked(&self.tx_pool, &fixture.trade_no, &fixture.resource_trade_no).await;
     }
 
@@ -61,7 +61,7 @@ impl WithdrawResourceGateScenario {
         &self,
         fixture: &WithdrawResourceGateFixture,
     ) {
-        insert_successful_resource_delegation(
+        seed_successful_resource_delegation(
             &self.tx_pool,
             Some((&fixture.trade_no, ApiTradeType::Withdraw)),
             &fixture.resource_trade_no,
@@ -74,7 +74,7 @@ impl WithdrawResourceGateScenario {
         &self,
         fixture: &WithdrawResourceGateFixture,
     ) {
-        insert_failed_resource_delegation(
+        seed_failed_resource_delegation(
             &self.tx_pool,
             &fixture.trade_no,
             ApiTradeType::Withdraw,
@@ -87,7 +87,7 @@ impl WithdrawResourceGateScenario {
         &self,
         fixture: &WithdrawResourceGateFixture,
     ) {
-        insert_successful_resource_delegation(
+        seed_successful_resource_delegation(
             &self.tx_pool,
             None,
             &fixture.resource_trade_no,
@@ -100,7 +100,7 @@ impl WithdrawResourceGateScenario {
         &self,
         fixture: &WithdrawResourceGateFixture,
     ) {
-        insert_successful_resource_delegation(
+        seed_successful_resource_delegation(
             &self.tx_pool,
             Some((&fixture.trade_no, ApiTradeType::Collect)),
             &fixture.resource_trade_no,
@@ -139,29 +139,38 @@ impl WithdrawResourceGateScenario {
         &self,
         fixture: &WithdrawResourceGateFixture,
     ) {
-        let matched = self
-            .wait_for_resource_ack_payload(&fixture.resource_trade_no, "TX_RES", "WD_RSC_DL")
-            .await;
-
-        let captured_requests = self.env.recorder.snapshot();
-        let decoded_event_acks: Vec<_> = captured_requests
-            .iter()
-            .filter(|req| {
-                req.path.contains(
-                    wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK,
-                )
-            })
-            .map(|req| decrypt_captured_api_backend_body(&req.body))
-            .collect();
-
-        assert!(
-            matched,
-            "withdraw resource result ack must use WD_RSC_DL; decoded event ack payloads: {:?}; captured requests: {:?}",
-            decoded_event_acks, captured_requests
-        );
+        assert_event_ack_payload_exists(
+            &self.env.recorder,
+            &fixture.resource_trade_no,
+            "TX_RES",
+            "WD_RSC_DL",
+        )
+        .await;
     }
 
-    pub(crate) async fn then_origin_withdraw_gate_is_released(
+    pub(crate) async fn then_origin_withdraw_gate_is_released_by_successful_delegation(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    ) {
+        self.then_origin_withdraw_gate_is_released(
+            fixture,
+            ApiResourceGateResult::ResourceDelegationSuccess,
+        )
+        .await;
+    }
+
+    pub(crate) async fn then_origin_withdraw_gate_is_released_by_failed_bypass(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    ) {
+        self.then_origin_withdraw_gate_is_released(
+            fixture,
+            ApiResourceGateResult::ResourceDelegationFailedBypass,
+        )
+        .await;
+    }
+
+    async fn then_origin_withdraw_gate_is_released(
         &self,
         fixture: &WithdrawResourceGateFixture,
         expected_result: ApiResourceGateResult,
@@ -210,30 +219,5 @@ impl WithdrawResourceGateScenario {
         scan_withdraw_intent_labels_for_trade_once(self.tx_pool.clone(), trade_no)
             .await
             .expect("scan withdraw labels")
-    }
-
-    async fn wait_for_resource_ack_payload(
-        &self,
-        resource_trade_no: &str,
-        ack_type: &str,
-        event_type: &str,
-    ) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            let found = self.env.recorder.snapshot().iter().any(|req| {
-                req.path.contains(
-                    wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK,
-                ) && {
-                    let payload = decrypt_captured_api_backend_body(&req.body);
-                    payload["tradeNo"].as_str() == Some(resource_trade_no)
-                        && payload["ackType"].as_str() == Some(ack_type)
-                        && payload["type"].as_str() == Some(event_type)
-                }
-            });
-            if found || Instant::now() >= deadline {
-                return found;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
     }
 }

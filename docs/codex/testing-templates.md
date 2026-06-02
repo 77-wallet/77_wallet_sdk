@@ -1,250 +1,183 @@
 # Testing Templates
 
-This document is the copyable test template playbook. Use it after deciding the
-test layer from `docs/codex/testing.md`.
+本文件是可复制的测试模板手册。先用 `docs/codex/testing.md` 判断测试层级，
+再从本文复制对应模板。
 
-Goals:
+## One-Screen Contract
 
-- Make new tests look the same across modules.
-- Keep integration tests readable as `given -> when -> then` business
-  scenarios.
-- Keep unit and component tests independent from integration harnesses.
-- Keep smoke/live tests opt-in and clearly separated.
+新增或重写测试时，先满足这几条：
+
+- Unit / Component / Smoke 使用 Arrange-Act-Assert。
+- Integration 使用 Given-When-Then。
+- 默认测试必须离线，不碰真实 backend、真实链 RPC、固定 `test_data`。
+- 真实环境验证只能放到 `tests/smoke/`，并且必须 `#[ignore]`。
+- Integration 正文不能暴露 SQLite、JSON、channel、backend 解密等底层噪音。
+- 每个关键 flow 至少有成功路径和一个失败不变性断言。
+- 涉及 flow 覆盖变化时，同步 `docs/codex/assertion-matrices/`。
 
 ## Layer Decision
 
-Choose the smallest layer that can prove the behavior.
+选择能证明行为的最低层级。
 
-- Unit: one pure rule, parser, mapper, status decision, or error mapping.
-- Component: one module plus local SQLite/repository/domain collaboration.
-- Integration: one business flow with fake backend, temp DB, and side effects.
-- Smoke/live: real backend, real chain RPC, fixed addresses, or local secrets.
+| Layer | 用来证明 | 允许 | 禁止 |
+| --- | --- | --- | --- |
+| Unit | 一个函数、规则、状态判断 | 小 fixture、纯断言 | 网络、DB、manager、全局 context |
+| Component | 一个模块和本地依赖协作 | 临时 SQLite、真实 DAO/repo | 真实 backend、真实链 RPC |
+| Integration | 业务 flow 编排 | fake backend/chain、临时数据 | 真实远端、固定 `test_data` |
+| Smoke | 真实环境联通性或手工验证 | 真实 backend、真实链 RPC、固定地址 | 默认执行、打印敏感信息 |
 
-Do not use a higher layer only because a helper already exists there.
+不要因为某个 helper 已经存在就升层。能用 Unit 证明的，不写 Integration。
 
-## File Shape
+## Read Order
 
-Simple unit/component files may keep helpers and tests together. When a file is
-small enough to read at once, use this order:
+读复杂 integration flow 时按这个顺序：
 
-1. Imports.
-2. Constants.
-3. Local fixtures and seed helpers.
-4. Local assertion helpers.
-5. Tests.
+1. 看目录名：确认业务模块和 flow。
+2. 看 `mod.rs`：只读测试名和 Given-When-Then 正文。
+3. 看 assertion matrix：确认覆盖了哪些风险。
+4. 再看 `support/scenario.rs`：理解每个业务步骤背后的动作。
+5. 最后才看 `support/db.rs`、`fixtures.rs`、payload、backend recorder。
 
-For integration flows where support code would hide the test story, use a
-read-first directory shape:
+如果必须先读 helper 才知道测试在测什么，模板就失败了。
+
+## Directory Contract
 
 ```text
-<crate>/tests/integration/<module>/<flow>/
-  mod.rs       # read-first test cases
-  support.rs   # flow-local fixture, scenario, SQL, backend, payload, assertions
+<crate>/
+  src/...                         # unit / component tests near code
+  src/testkit/                    # crate-private test entrypoints only
+  tests/
+    harness/                      # cross-flow environment and fakes
+    integration/<module>/<flow>.rs
+    integration/<module>/<flow>/
+      mod.rs                      # read-first test cases
+      support.rs                  # small facade, if support stays small
+      support/
+        mod.rs                    # facade, if support needs families
+        scenario.rs               # given / when / then public surface
+        fixtures.rs               # immutable test inputs
+        db.rs                     # SQL / repository setup
+        assertions.rs             # low-level assertions
+    smoke/<module>/<flow>.rs
 ```
 
-`mod.rs` should contain only:
+Use a single `<flow>.rs` only when the whole file stays easy to scan.
+Once fixture, SQL, fake backend, payload, or assertions become noisy, split to
+`<flow>/mod.rs` plus `support`.
 
-1. `mod support;`
-2. Imports from `support`.
-3. Test cases.
+## Naming Contract
 
-`support.rs` should contain the details a reviewer can skip on first read:
-
-1. Fixture structs.
-2. Scenario structs and the public `given_*` / `when_*` / `then_*` API.
-3. Scenario-private helpers such as `seed_*`, `persist_*`, `load_*`, `count_*`.
-4. Payload builders and assertion helpers.
-
-Keep `support.rs` local to that flow. Move code to `tests/harness` only after
-at least two flows need the same environment or fake capability.
-
-Do not put unrelated flows in the same file. Split by the business question the
-file answers, not by the old location it came from.
-
-## Naming
-
-Use behavior names:
+Test names use behavior, not implementation:
 
 ```text
 <flow>_<condition>_<expected_result>
 ```
 
-Examples:
+Good:
 
-- `withdraw_tx_ack_sends_once_and_persists_fact`
-- `withdraw_tx_ack_backend_failure_keeps_fact_unset_and_retryable`
-- `withdraw_confirm_failure_writes_chain_failed_fact`
+- `withdraw_tx_ack_backend_failure_keeps_fact_unset`
 - `collect_receipt_duplicate_upload_is_idempotent`
+- `import_bind_backend_reject_does_not_persist_relation`
 
-Avoid generic names:
+Avoid:
 
-- `test_transfer`
 - `test_success`
+- `test_transfer`
 - `test_1`
-- `smoke_test`
+- `mock_test`
 
-## Style Choice
+Helper names are a small vocabulary:
 
-Use the smallest style that stays readable:
+| Prefix | Meaning | Where |
+| --- | --- | --- |
+| `given_*` | 准备业务事实或 fake 行为 | Integration scenario |
+| `when_*` | 执行一个业务入口、worker step、scanner step | Integration scenario |
+| `then_*` | 断言业务结果、DB、backend、通知、副作用 | Integration scenario |
+| `seed_*` | 插入 DB 事实 | support detail |
+| `load_*` | 读取当前状态 | support detail |
+| `count_*` | 统计副作用次数 | support detail |
+| `assert_*` | 底层字段断言 | support detail |
 
-- Unit: Arrange-Act-Assert. Keep the tested rule visible.
-- Component: Arrange-Act-Assert. Small `given_*` helpers are allowed for noisy
-  DB setup, but the test still focuses on one module.
-- Integration: Given-When-Then. The test body should read like a business
-  scenario and hide SQLite, JSON, channel, and backend recorder plumbing.
-- Smoke/live: Arrange-Act-Assert. Keep manual live checks direct and explicit.
-
-Given-When-Then is a naming convention for integration helpers:
-
-- `given_*`: prepare business facts or fake behavior.
-- `when_*`: execute one manager entrypoint, worker step, scanner step, or retry.
-- `then_*`: assert DB facts, backend calls, notifications, scanner labels,
-  idempotency, retryability, or ordering.
-
-Lower-level helpers such as `seed_*`, `persist_*`, `load_*`, `count_*`, and
-`assert_*` may exist below the scenario layer. Integration test bodies should
-call the business-level `given_*`, `when_*`, and `then_*` methods instead.
+`given/when/then` 是测试正文语言。`seed/load/count/assert` 是底层工具。
 
 ## Integration Template
 
-Use this for standard integration tests under:
+Integration 的目标是让 `mod.rs` 像业务剧本，而不是像搭环境脚本。
 
-```text
-<crate>/tests/integration/<module>/<flow>.rs
-<crate>/tests/integration/<module>/<flow>/mod.rs
-```
-
-Template:
+### `mod.rs`
 
 ```rust
+mod support;
+
 use serial_test::serial;
 
-use crate::harness::{ensure_worker_env, next_unique_id};
+use support::{FlowFixture, FlowScenario};
 
-struct FlowFixture {
-    trade_no: String,
-}
-
-impl FlowFixture {
-    fn new(prefix: &str) -> Self {
-        let id = next_unique_id();
-        Self { trade_no: format!("T_{prefix}_{id}") }
-    }
-}
-
-struct FlowScenario {
-    env: &'static WorkerTestEnv,
-}
-
-impl FlowScenario {
-    async fn new() -> Self {
-        let env = ensure_worker_env().await;
-        env.recorder.reset();
-        Self { env }
-    }
-
-    async fn given_target_order(&self, fixture: &FlowFixture) {
-        seed_target_row(&self.env.db_dir, &fixture.trade_no).await;
-    }
-
-    async fn given_backend_next_call_fails(&self) {
-        self.env
-            .recorder
-            .fail_next_api_backend_call(503, "temporary failure");
-    }
-
-    async fn when_target_step_runs(
-        &self,
-        fixture: &FlowFixture,
-    ) -> Result<(), ServiceError> {
-        run_target_step(&fixture.trade_no).await
-    }
-
-    async fn then_backend_was_called_once(&self, fixture: &FlowFixture) {
-        assert_backend_call(&self.env.recorder, &fixture.trade_no);
-    }
-
-    async fn then_flow_is_retryable(&self, fixture: &FlowFixture) {
-        let saved = load_target_row(&self.env.db_dir, &fixture.trade_no).await;
-        assert!(saved.retry_fact.is_none());
-    }
-}
-
-fn then_step_finished_without_crashing(result: Result<(), ServiceError>) {
-    result.expect("target step should finish without crashing");
-}
-
-#[serial]
 #[tokio::test]
-async fn flow_condition_expected_result() {
+#[serial]
+async fn flow_happy_path_writes_facts_and_notifies_backend() {
     let scenario = FlowScenario::new().await;
-    let fixture = FlowFixture::new("flow_case");
+    let fixture = FlowFixture::new("happy");
 
     scenario.given_target_order(&fixture).await;
-    scenario.given_backend_next_call_fails().await;
+    scenario.given_backend_accepts_target_call(&fixture);
 
     let result = scenario.when_target_step_runs(&fixture).await;
 
-    then_step_finished_without_crashing(result);
-    scenario.then_backend_was_called_once(&fixture).await;
-    scenario.then_flow_is_retryable(&fixture).await;
+    scenario.then_step_succeeds(result);
+    scenario.then_db_facts_are_complete(&fixture).await;
+    scenario.then_backend_called_once(&fixture).await;
+    scenario.then_notification_was_emitted(&fixture);
+}
+
+#[tokio::test]
+#[serial]
+async fn flow_backend_failure_keeps_fact_unset_and_retryable() {
+    let scenario = FlowScenario::new().await;
+    let fixture = FlowFixture::new("backend_fail");
+
+    scenario.given_target_order(&fixture).await;
+    scenario.given_backend_rejects_target_call(503, "temporary failure");
+
+    let result = scenario.when_target_step_runs(&fixture).await;
+
+    scenario.then_step_is_retryable(result);
+    scenario.then_backend_called_once(&fixture).await;
+    scenario.then_success_fact_is_not_persisted(&fixture).await;
+    scenario.then_retry_scanner_can_pick_it_again(&fixture).await;
 }
 ```
 
-Rules:
+`mod.rs` 只允许出现：
 
-- Use `<flow>.rs` for short flows. Use `<flow>/mod.rs` plus `support.rs` when
-  fixtures, SQL setup, backend recorder handling, payload conversion, or
-  assertions make the file hard to scan.
-- The test body must read as Given-When-Then.
-- Prefer business names over technical names in test bodies.
-- Use one primary act. If a second act is needed, it must prove retry,
-  idempotency, or ordering.
-- Assert both DB facts and backend calls when the flow has both.
-- Use unique `trade_no`, `uid`, and addresses.
-- Reset fake state at the start of each test.
-- Do not use real backend, real chain RPC, or fixed `test_data`.
-- Do not expose `SqliteContext`, JSON serialization, channel plumbing, or
-  backend recorder decryption in the test body.
-- In directory-shaped flows, `mod.rs` is the review entrypoint and `support.rs`
-  is the flow-local detail boundary.
+- `mod support;`
+- 少量 `use`
+- 测试用例
+- 非常轻的结果断言 helper
 
-## API Wallet Integration Scenario Template
+不允许出现：
 
-Use this shape for API wallet worker, notification, ACK, receipt, and retry
-flows. The first standard example is:
+- SQL
+- `SqliteContext`
+- `serde_json::to_value`
+- backend recorder 解密
+- channel 创建
+- 大段 payload 构造
 
-```text
-wallet-api/tests/integration/api_wallet/withdraw_notification.rs
-```
+### `support.rs`
 
-Local roles:
-
-- `*Scenario`: owns one test environment view, DB pools, fake backend recorder,
-  and flow-specific actions.
-- `*Fixture`: creates unique immutable input data, such as `uid`, `trade_no`,
-  addresses, and fixed test amounts.
-- `given_*`: prepares business facts, DB rows, fake behavior, or notification
-  collectors.
-- `when_*`: executes one business entrypoint, worker step, scanner step, or
-  retry.
-- `then_*`: checks result, DB facts, backend calls, notifications, scanner
-  labels, retryability, idempotency, or ordering.
-- `seed_*`, `persist_*`, `load_*`, and `assert_*`: lower-level private helpers
-  below the scenario layer.
-
-Copyable structure:
-
-Use this in `<flow>/support.rs` when the flow is large enough to split.
+小 flow 可以用一个 `support.rs`：
 
 ```rust
-struct FlowFixture {
-    uid: String,
-    trade_no: String,
+use crate::harness::{ensure_worker_env, next_unique_id, WorkerTestEnv};
+
+pub(super) struct FlowFixture {
+    pub uid: String,
+    pub trade_no: String,
 }
 
 impl FlowFixture {
-    fn new(prefix: &str) -> Self {
+    pub(super) fn new(prefix: &str) -> Self {
         let id = next_unique_id();
         Self {
             uid: format!("uid_{prefix}_{id}"),
@@ -253,100 +186,102 @@ impl FlowFixture {
     }
 }
 
-struct FlowScenario {
+pub(super) struct FlowScenario {
     env: &'static WorkerTestEnv,
-    tx_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
 }
 
 impl FlowScenario {
-    async fn new() -> Self {
+    pub(super) async fn new() -> Self {
         let env = ensure_worker_env().await;
         env.recorder.reset();
-
-        let tx_pool = open_transaction_pool(&env.db_dir).await;
-        let core_pool = open_api_wallet_pool(&env.db_dir).await;
-
-        Self { env, tx_pool, core_pool }
+        Self { env }
     }
 
-    async fn given_flow_row(&self, fixture: &FlowFixture) {
-        // Insert only the facts required by this flow.
+    pub(super) async fn given_target_order(&self, fixture: &FlowFixture) {
+        seed_target_order(self.env.db_dir(), fixture).await;
     }
 
-    fn given_backend_next_call_fails(&self, status: u16, body: &str) {
+    pub(super) fn given_backend_accepts_target_call(
+        &self,
+        fixture: &FlowFixture,
+    ) {
+        self.env.recorder.expect_target_call(&fixture.trade_no);
+    }
+
+    pub(super) fn given_backend_rejects_target_call(
+        &self,
+        status: u16,
+        body: &str,
+    ) {
         self.env.recorder.fail_next_api_backend_call(status, body);
     }
 
-    async fn when_target_step_runs(
+    pub(super) async fn when_target_step_runs(
         &self,
-        trade_no: &str,
+        fixture: &FlowFixture,
     ) -> Result<(), ServiceError> {
-        // Call one manager entrypoint or one testkit worker step.
+        run_target_worker_step(&fixture.trade_no).await
     }
 
-    async fn then_flow_is_retryable(&self, fixture: &FlowFixture) {
-        // Assert DB facts, backend calls, or scanner state.
+    pub(super) fn then_step_succeeds(
+        &self,
+        result: Result<(), ServiceError>,
+    ) {
+        result.expect("target step should succeed");
     }
 
-    async fn then_backend_attempted_once(&self, trade_no: &str) {
-        // Assert captured backend call count and payload.
+    pub(super) fn then_step_is_retryable(
+        &self,
+        result: Result<(), ServiceError>,
+    ) {
+        result.expect("retryable failure should not crash worker");
     }
-}
 
-fn then_step_finished_without_crashing(result: Result<(), ServiceError>) {
-    result.expect("target step should finish without crashing");
-}
+    pub(super) async fn then_db_facts_are_complete(
+        &self,
+        fixture: &FlowFixture,
+    ) {
+        let saved = load_target_order(self.env.db_dir(), &fixture.trade_no).await;
+        assert!(saved.success_fact_at.is_some());
+    }
 
-#[serial]
-#[tokio::test]
-async fn flow_condition_expected_result() {
-    let scenario = FlowScenario::new().await;
-    let fixture = FlowFixture::new("flow_case");
-
-    scenario.given_flow_row(&fixture).await;
-    scenario.given_backend_next_call_fails(503, "temporary failure");
-
-    let result = scenario
-        .when_target_step_runs(&fixture.trade_no)
-        .await;
-
-    then_step_finished_without_crashing(result);
-    scenario
-        .then_backend_attempted_once(&fixture.trade_no)
-        .await;
-    scenario.then_flow_is_retryable(&fixture).await;
+    pub(super) async fn then_success_fact_is_not_persisted(
+        &self,
+        fixture: &FlowFixture,
+    ) {
+        let saved = load_target_order(self.env.db_dir(), &fixture.trade_no).await;
+        assert!(saved.success_fact_at.is_none());
+    }
 }
 ```
 
-Rules:
+If `support.rs` grows past one easy screen, turn it into a facade:
 
-- Keep `Scenario` local until a helper is proven useful to another flow.
-- Prefer a short `mod.rs` that imports `FlowFixture` and `FlowScenario` from
-  `support.rs`, then lists the test cases.
-- `Scenario` may hold `WorkerTestEnv`, DB pools, and notification collectors;
-  it must not hide the business assertion being proven.
-- `Fixture` should be cheap, unique, and immutable after construction.
-- Use `tests/harness` only for cross-flow environment and fake capabilities.
-- Use `src/testkit` only for crate-private worker or scanner entrypoints.
-- Keep the test body as the readable spec; helpers should remove plumbing, not
-  the core business expectation.
-- Test bodies should call `given_*`, `when_*`, and `then_*`; lower-level
-  `seed_*`, `persist_*`, `load_*`, and `assert_*` helpers stay below the
-  scenario layer.
+```rust
+mod assertions;
+mod db;
+mod fixtures;
+mod scenario;
+
+pub(super) use fixtures::FlowFixture;
+pub(super) use scenario::FlowScenario;
+```
+
+### Integration Rules
+
+- One test should have one primary `when_*`.
+- A second `when_*` is allowed only for retry, idempotency, recovery, or time.
+- `Scenario` owns environment, fake backend, DB pools, and notification capture.
+- `Fixture` owns unique immutable input data.
+- Reset fake state in `Scenario::new`.
+- Assert both DB facts and external calls when the flow has both.
+- Keep business assertions visible through `then_*` names.
+- Move only proven cross-flow capability into `tests/harness`.
 
 ## Component Template
 
-Use this for source-side module tests that need SQLite or repositories but not
-backend, chain RPC, manager, or global context.
-
-Location:
-
-```text
-<crate>/src/.../<module>.rs
-```
-
-Template:
+Use Component when the behavior needs SQLite/repository/domain collaboration
+but not backend, chain RPC, manager, or global context.
 
 ```rust
 #[cfg(test)]
@@ -366,58 +301,57 @@ mod tests {
         }
 
         async fn seed_target(&self, trade_no: &str) {
-            seed_row(&self.pool, trade_no).await;
+            seed_target_row(&self.pool, trade_no).await;
         }
     }
 
     #[tokio::test]
-    async fn flow_condition_writes_expected_fact() {
+    async fn confirm_success_writes_expected_fact() {
         let db = TestDb::new().await;
         let trade_no = "T_COMPONENT_CASE";
         db.seed_target(trade_no).await;
 
-        let outcome = TargetDomain::target_step(&db.pool, trade_no)
+        let outcome = TargetDomain::confirm(&db.pool, trade_no)
             .await
-            .expect("target step");
+            .expect("confirm step");
 
-        assert!(outcome.should_continue);
-        let saved = load_target(&db.pool, trade_no).await;
-        assert!(saved.expected_fact.is_some());
-        assert!(saved.forbidden_fact.is_none());
+        assert!(outcome.should_notify);
+        let saved = load_target_row(&db.pool, trade_no).await;
+        assert!(saved.confirmed_at.is_some());
+        assert!(saved.failed_at.is_none());
     }
 }
 ```
 
-Rules:
+Component rules:
 
 - Use temp SQLite only.
 - Do not call `WalletManager::new`.
-- Do not read or write fixed `test_data`.
 - Do not depend on `tests/harness`.
-- Assert real persisted DB fields, not only returned values.
+- Do not read or write fixed `test_data`.
+- Assert persisted DB fields, not only return values.
 
 ## Unit Template
 
-Use this for pure rules and single-step decisions.
-
-Template:
+Use Unit for pure rules, mapping, validation, parser behavior, or one
+single-step decision.
 
 ```rust
 #[test]
-fn rule_condition_returns_expected_decision() {
-    let input = Fixture::new()
-        .with_required_fact()
-        .without_blocking_fact()
+fn diagnose_withdraw_waits_for_audit_when_tx_ack_sent() {
+    let withdraw = WithdrawFixture::new()
+        .tx_ack_sent()
+        .without_audit_result()
         .build();
 
-    let decision = decide_next_step(&input);
+    let diagnosis = diagnose_withdraw(&withdraw);
 
-    assert_eq!(decision.stage, ExpectedStage::Ready);
-    assert_eq!(decision.next_fact, Some("expected_fact"));
+    assert_eq!(diagnosis.stage, AdvancementPoint::CanBuild);
+    assert_eq!(diagnosis.next_fact, Some("audit_passed_at"));
 }
 ```
 
-Rules:
+Unit rules:
 
 - No SQLite.
 - No network.
@@ -427,115 +361,105 @@ Rules:
 
 ## Smoke Template
 
-Use this only for real backend, real chain RPC, fixed addresses, local config,
-or manual operator checks.
-
-Location:
-
-```text
-<crate>/tests/smoke/<module>/<flow>.rs
-```
-
-Template:
+Use Smoke only for real backend, real chain RPC, fixed addresses, local config,
+or operator checks.
 
 ```rust
 #[tokio::test]
 #[ignore = "requires live backend, chain RPC, and local smoke config"]
-async fn live_flow_reaches_remote_system() {
-    let config = load_local_smoke_config()
-        .expect("create tests/smoke/<module>/<flow>.local.toml");
+async fn live_flow_reaches_remote_system() -> anyhow::Result<()> {
+    wallet_utils::init_test_log();
+    let (manager, _params) = get_manager_with_config("client4.toml").await?;
+    manager.init_api_swap().await?;
 
-    let manager = create_live_manager(&config).await;
     let result = manager.live_entrypoint().await;
 
-    assert!(result.is_ok());
+    tracing::info!("live flow result: {result:?}");
+    Ok(())
 }
 ```
 
-Rules:
+Smoke rules:
 
-- Every smoke/live test must have `#[ignore = "..."]`.
+- Every smoke test must have `#[ignore = "..."]`.
+- The ignore reason must say what real dependency is required.
 - Do not print private keys, mnemonics, tokens, or production config.
-- Keep local config files ignored by git.
-- Smoke tests do not replace unit, component, or integration coverage.
+- Local smoke config must be ignored by git.
+- Smoke does not replace Unit, Component, or Integration coverage.
 
 ## Helper Ownership
 
-Prefer local helpers first.
+Use the narrowest owner.
 
-Use `src/testkit/` when integration tests need a stable test-only entrypoint
-into crate-private worker, scanner, or domain steps. Do not put environment
-setup there.
+| Owner | Put here | Do not put here |
+| --- | --- | --- |
+| Same test file | one-flow seed/assert helpers | shared environment |
+| `<flow>/support` | scenario、fixture、SQL、assertions | other flow logic |
+| `tests/harness` | fake backend、temp env、collector | business decisions |
+| `src/testkit` | crate-private step entrypoint | environment setup |
 
-Keep helpers inside the same test file when they serve one flow:
+`harness` is professional test terminology for the shared test rig. It should
+feel boring: environment, fake, recorder, collector, fixture primitives.
 
-- `seed_withdraw`
-- `assert_withdraw_fact`
-- `count_withdraw_tx_ack_requests`
+`testkit` is code-side access for tests. It exposes internal steps; it does not
+own the test environment.
 
-Move helpers into `tests/harness/` only when at least two modules or flows use
-the same capability:
+## Coverage Checklist
 
-- fake backend recorder
-- temp DB environment
-- decrypt captured backend body
-- notification collector
+For each important Integration flow, add coverage in this order:
 
-Harness helpers must not contain business decisions. They prepare data, fake
-dependencies, run a step, or assert observations.
+1. Happy path writes final DB facts and sends expected external calls.
+2. Input failure returns/records error and does not send side effects.
+3. Backend failure keeps success facts unset and leaves the flow retryable.
+4. Chain failure records the correct failed fact and avoids success side effects.
+5. Duplicate message or retry is idempotent.
+6. Recovery resumes from persisted facts.
+7. Concurrent execution sends the critical side effect once.
 
-`testkit` helpers must not create the integration test environment. They expose
-internal steps so integration tests can call them intentionally.
+Do not add all seven in one batch by default. Start with happy path plus the
+most likely failure invariant.
 
-Recommended helper prefixes:
+## Assertion Matrix
 
-- `given_*`: prepare business facts or fake behavior for integration tests.
-- `when_*`: execute one target action in integration tests.
-- `then_*`: assert one business outcome in integration tests.
-- `seed_*`: insert data.
-- `prepare_*`: configure data plus fake behavior.
-- `run_*`: execute one target step.
-- `count_*`: count observed side effects.
-- `assert_*`: assert DB facts or side effects.
-- `load_*`: load current DB state.
-
-Avoid vague helper names:
-
-- `do_test`
-- `mock_data`
-- `common`
-- `helper`
-
-## Assertion Matrix Sync
-
-Whenever a flow test changes, update the matching file under:
+When a flow changes, update or add a file under:
 
 ```text
 docs/codex/assertion-matrices/
 ```
 
-Each matrix entry should state:
+Each entry should include:
 
-- flow and test entrypoint
-- layer
-- expected backend calls
-- expected DB facts
-- failure invariant
-- remaining coverage gaps
+- Flow
+- Test entrypoint
+- Layer
+- Expected DB facts
+- Expected backend calls
+- Failure invariant
+- Remaining coverage gaps
 
-If there is no matrix for the flow yet, add a small one for only that flow.
+Keep the matrix close to the tests. It is the map; tests are the proof.
 
-## Migration Order
+## Anti-Patterns
 
-After old tests are classified into `integration` or `smoke`, standardize one
-flow at a time:
+Do not add tests that only do this:
 
-1. Pick one file, such as `withdraw_notification.rs`.
-2. Rename tests to behavior names.
-3. Shape integration tests into Given-When-Then business scripts.
-4. Pull repeated seed/assert code into scenario-local helpers.
-5. Move only proven cross-flow helpers into `tests/harness/`.
-6. Update the assertion matrix.
-7. Run the smallest target command.
+```rust
+let res = manager.some_call().await;
+tracing::info!("res: {res:?}");
+Ok(())
+```
 
-Do not standardize multiple modules in the same batch.
+Classify them:
+
+- If they need real backend or fixed local state, move to Smoke.
+- If they can be asserted offline, turn them into Unit, Component, or
+  Integration tests.
+
+Also avoid:
+
+- `common` dumping ground modules.
+- `support.rs` shared across unrelated flows.
+- `withdraw` importing helpers from `collect`.
+- fixed IDs without uniqueness.
+- hidden assertions inside `given_*`.
+- business behavior hidden in `tests/harness`.

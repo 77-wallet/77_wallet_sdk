@@ -17,7 +17,7 @@ pub(crate) async fn open_transaction_pool(env: &WorkerTestEnv) -> ApiTransaction
     tx_pool_ctx.into_transaction_db_pool().expect("transaction pool")
 }
 
-pub(crate) async fn insert_withdraw(pool: &ApiTransactionDbPool, trade_no: &str) {
+pub(crate) async fn seed_withdraw(pool: &ApiTransactionDbPool, trade_no: &str) {
     ApiWithdrawRepo::upsert_api_withdraw(
         pool,
         "uid",
@@ -72,8 +72,9 @@ pub(crate) async fn mark_withdraw_blocked(
     .expect("seed blocked withdraw");
 }
 
-pub(crate) async fn insert_resource_delegation_ready_for_ack(
+pub(crate) async fn seed_resource_delegation_ready_for_ack(
     pool: &ApiTransactionDbPool,
+    origin_trade_no: &str,
     resource_trade_no: &str,
 ) {
     sqlx::query(
@@ -85,7 +86,7 @@ pub(crate) async fn insert_resource_delegation_ready_for_ack(
             result_status, result_received_at, result_payload,
             created_at, updated_at
         ) VALUES (
-            'uid', 1, 1, 'W_ORIGIN_ACK', 1,
+            'uid', 1, 1, ?, 1,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
             1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":true}',
@@ -94,13 +95,14 @@ pub(crate) async fn insert_resource_delegation_ready_for_ack(
         )
         "#,
     )
+    .bind(origin_trade_no)
     .bind(resource_trade_no)
     .execute(pool.as_ref())
     .await
     .expect("seed withdraw delegation row for result ack");
 }
 
-pub(crate) async fn insert_successful_resource_delegation(
+pub(crate) async fn seed_successful_resource_delegation(
     pool: &ApiTransactionDbPool,
     origin: Option<(&str, ApiTradeType)>,
     resource_trade_no: &str,
@@ -138,7 +140,7 @@ pub(crate) async fn insert_successful_resource_delegation(
     .expect("seed successful resource delegation row");
 }
 
-pub(crate) async fn insert_failed_resource_delegation(
+pub(crate) async fn seed_failed_resource_delegation(
     pool: &ApiTransactionDbPool,
     origin_trade_no: &str,
     origin_trade_type: ApiTradeType,
