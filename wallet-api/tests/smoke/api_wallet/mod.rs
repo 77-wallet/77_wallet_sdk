@@ -1,5 +1,9 @@
+mod account;
+mod asset;
 mod chain;
 mod coin;
+mod resource;
 mod strategy;
 mod transaction;
+mod wallet;
 mod withdraw;
