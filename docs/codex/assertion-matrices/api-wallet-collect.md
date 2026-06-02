@@ -523,17 +523,21 @@ resource gate flows:
 1. Keep recovery test cases read-first in `collect_recovery/mod.rs`.
 2. Keep unique trade and hash data in `CollectRecoveryFixture`.
 3. Keep local SQLite-only recovery checks in `LocalCollectRecoveryDb`.
-4. Keep shadow-worker recovery setup, fake chain probes, worker entrypoint, and
-   DB assertions in `ShadowCollectRecoveryScenario`.
-5. Use `given_*` methods for persisted stale facts, recoverable collect rows,
+4. Keep shadow-worker integration checks in `ShadowCollectRecoveryScenario`
+   with `ScenarioRoles` and flow-local `CollectRecoveryGiven`,
+   `CollectRecoveryWhen`, and `CollectRecoveryThen` traits.
+5. Use `scenario.given()` for persisted stale facts, recoverable collect rows,
    and fake chain evidence.
-6. Use `when_*` methods for invalidation, rebuild persistence, scanner rounds,
-   and recover command execution.
-7. Use `then_*` methods for cleared facts, scanner labels, chain query counts,
-   hash backfill, and receipt-upload readiness.
-8. Keep raw SQL setup, TRON probe adapter, raw transaction JSON, scanner helper,
-   and worker construction below the scenario layer in
-   `collect_recovery/support.rs`.
+6. Use `scenario.when()` for recover command execution in shadow-worker
+   scenarios.
+7. Use `scenario.then()` for chain query counts, hash backfill, confirmation
+   state, and receipt-upload readiness.
+8. Keep local component operations (`given_*`, `when_*`, `then_*`) on
+   `LocalCollectRecoveryDb` until those cases are split into their own
+   component file.
+9. Keep raw SQL setup, TRON probe adapter, raw transaction JSON, scanner helper,
+   worker construction, and `seed`/`load`/`count`/`assert` internals below the
+   scenario layer in `collect_recovery/support.rs`.
 
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or

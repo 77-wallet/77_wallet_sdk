@@ -2,7 +2,10 @@ mod support;
 
 use serial_test::serial;
 
-use support::{CollectRecoveryFixture, LocalCollectRecoveryDb, ShadowCollectRecoveryScenario};
+use support::{
+    CollectRecoveryFixture, CollectRecoveryGiven, CollectRecoveryThen, CollectRecoveryWhen,
+    LocalCollectRecoveryDb, ScenarioRoles, ShadowCollectRecoveryScenario,
+};
 
 #[tokio::test]
 async fn collect_blockhash_rebuild_clears_stale_build_facts_and_persists_new_to_addr() {
@@ -23,30 +26,36 @@ async fn collect_blockhash_rebuild_clears_stale_build_facts_and_persists_new_to_
 #[tokio::test]
 #[serial]
 async fn collect_recover_queries_chain_before_any_expired_raw_rebuild_invalidation() {
-    let mut scenario = ShadowCollectRecoveryScenario::new().await;
+    let scenario = ShadowCollectRecoveryScenario::new().await;
     let fixture = CollectRecoveryFixture::expired_tron_raw_probe();
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_chain_probe_confirms_tx(&fixture);
-    scenario.given_expired_raw_tx_collect(&fixture).await;
+    given.chain_probe_confirms_tx(&fixture);
+    given.expired_raw_tx_collect(&fixture).await;
 
-    scenario.when_recover_runs(&fixture).await;
+    when.recover_runs(&fixture).await;
 
-    scenario.then_chain_was_queried_once();
-    scenario.then_expired_raw_tx_is_confirmed_without_rebuild(&fixture).await;
+    then.chain_was_queried_once();
+    then.expired_raw_tx_is_confirmed_without_rebuild(&fixture).await;
 }
 
 #[tokio::test]
 #[serial]
 async fn collect_recover_backfills_missing_tx_hash_before_receipt_upload() {
-    let mut scenario = ShadowCollectRecoveryScenario::new().await;
+    let scenario = ShadowCollectRecoveryScenario::new().await;
     let fixture = CollectRecoveryFixture::tron_backfill();
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
 
-    scenario.given_recoverable_collect_with_tx_hash(&fixture).await;
-    scenario.given_chain_query_clears_hash_then_confirms(&fixture);
+    given.recoverable_collect_with_tx_hash(&fixture).await;
+    given.chain_query_clears_hash_then_confirms(&fixture);
 
-    scenario.when_recover_runs(&fixture).await;
+    when.recover_runs(&fixture).await;
 
-    scenario.then_tx_hash_is_backfilled_and_receipt_upload_needed(&fixture).await;
+    then.tx_hash_is_backfilled_and_receipt_upload_needed(&fixture).await;
 }
 
 #[tokio::test]

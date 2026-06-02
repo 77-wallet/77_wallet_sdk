@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    cell::RefCell,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use chrono::Utc;
@@ -11,6 +14,8 @@ use wallet_database::{
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
+
+use crate::harness::{AssertRole, CountRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole};
 
 use super::{
     adapters::{
@@ -24,8 +29,8 @@ pub(crate) struct ShadowCollectRecoveryScenario {
     _dir: TempDir,
     collect_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
-    query_count: Option<Arc<AtomicUsize>>,
-    _adapter_guard: Option<TronRecoverProbeGuard>,
+    query_count: RefCell<Option<Arc<AtomicUsize>>>,
+    adapter_guard: RefCell<Option<TronRecoverProbeGuard>>,
 }
 
 impl ShadowCollectRecoveryScenario {
@@ -43,10 +48,76 @@ impl ShadowCollectRecoveryScenario {
         let core_pool = ApiWalletDbPool::new(wallet_ctx.get_pool().expect("api wallet pool"));
         ensure_sol_main_coin(&core_pool).await;
 
-        Self { _dir: dir, collect_pool, core_pool, query_count: None, _adapter_guard: None }
+        Self {
+            _dir: dir,
+            collect_pool,
+            core_pool,
+            query_count: RefCell::new(None),
+            adapter_guard: RefCell::new(None),
+        }
     }
 
-    pub(crate) fn given_chain_probe_confirms_tx(&mut self, fixture: &CollectRecoveryFixture) {
+    fn seed(&self) -> SeedRole<'_, Self> {
+        SeedRole::new(self)
+    }
+
+    fn load(&self) -> LoadRole<'_, Self> {
+        LoadRole::new(self)
+    }
+
+    fn count(&self) -> CountRole<'_, Self> {
+        CountRole::new(self)
+    }
+
+    fn assert(&self) -> AssertRole<'_, Self> {
+        AssertRole::new(self)
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+pub(crate) trait CollectRecoveryGiven {
+    fn chain_probe_confirms_tx(&self, fixture: &CollectRecoveryFixture);
+
+    fn chain_query_clears_hash_then_confirms(&self, fixture: &CollectRecoveryFixture);
+
+    async fn expired_raw_tx_collect(&self, fixture: &CollectRecoveryFixture);
+
+    async fn recoverable_collect_with_tx_hash(&self, fixture: &CollectRecoveryFixture);
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectRecoveryGiven for GivenRole<'_, ShadowCollectRecoveryScenario> {
+    fn chain_probe_confirms_tx(&self, fixture: &CollectRecoveryFixture) {
+        self.scenario().seed().chain_probe_confirms_tx(fixture);
+    }
+
+    fn chain_query_clears_hash_then_confirms(&self, fixture: &CollectRecoveryFixture) {
+        self.scenario().seed().chain_query_clears_hash_then_confirms(fixture);
+    }
+
+    async fn expired_raw_tx_collect(&self, fixture: &CollectRecoveryFixture) {
+        self.scenario().seed().expired_raw_tx_collect(fixture).await;
+    }
+
+    async fn recoverable_collect_with_tx_hash(&self, fixture: &CollectRecoveryFixture) {
+        self.scenario().seed().recoverable_collect_with_tx_hash(fixture).await;
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+trait CollectRecoverySeed {
+    fn chain_probe_confirms_tx(&self, fixture: &CollectRecoveryFixture);
+
+    fn chain_query_clears_hash_then_confirms(&self, fixture: &CollectRecoveryFixture);
+
+    async fn expired_raw_tx_collect(&self, fixture: &CollectRecoveryFixture);
+
+    async fn recoverable_collect_with_tx_hash(&self, fixture: &CollectRecoveryFixture);
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectRecoverySeed for SeedRole<'_, ShadowCollectRecoveryScenario> {
+    fn chain_probe_confirms_tx(&self, fixture: &CollectRecoveryFixture) {
         let query_count = Arc::new(AtomicUsize::new(0));
         let adapter_guard = install_collect_tron_recover_probe_adapter(
             query_count.clone(),
@@ -57,16 +128,13 @@ impl ShadowCollectRecoveryScenario {
             1_700_000_000_000,
             99,
         );
-        self.query_count = Some(query_count);
-        self._adapter_guard = Some(adapter_guard);
+        self.scenario().query_count.replace(Some(query_count));
+        self.scenario().adapter_guard.replace(Some(adapter_guard));
     }
 
-    pub(crate) fn given_chain_query_clears_hash_then_confirms(
-        &mut self,
-        fixture: &CollectRecoveryFixture,
-    ) {
+    fn chain_query_clears_hash_then_confirms(&self, fixture: &CollectRecoveryFixture) {
         let clear_trade_no = fixture.trade_no.clone();
-        let clear_pool = self.collect_pool.clone();
+        let clear_pool = self.scenario().collect_pool.clone();
         let query_hook: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             let pool = clear_pool.clone();
             let trade_no = clear_trade_no.clone();
@@ -99,12 +167,12 @@ impl ShadowCollectRecoveryScenario {
             1_700_000_000_000,
             99,
         );
-        self.query_count = Some(query_count);
-        self._adapter_guard = Some(adapter_guard);
+        self.scenario().query_count.replace(Some(query_count));
+        self.scenario().adapter_guard.replace(Some(adapter_guard));
     }
 
-    pub(crate) async fn given_expired_raw_tx_collect(&self, fixture: &CollectRecoveryFixture) {
-        seed_tron_collect(&self.collect_pool, fixture).await;
+    async fn expired_raw_tx_collect(&self, fixture: &CollectRecoveryFixture) {
+        seed_tron_collect(&self.scenario().collect_pool, fixture).await;
 
         let expired_raw_tx = expired_tron_raw_tx_json(Utc::now().timestamp_millis() - 60_000);
         sqlx::query(
@@ -126,16 +194,13 @@ impl ShadowCollectRecoveryScenario {
         .bind(&expired_raw_tx)
         .bind(&fixture.tx_hash)
         .bind(ApiCollectStatus::SendingTx)
-        .execute(self.collect_pool.as_ref())
+        .execute(self.scenario().collect_pool.as_ref())
         .await
         .expect("seed expired raw tx facts");
     }
 
-    pub(crate) async fn given_recoverable_collect_with_tx_hash(
-        &self,
-        fixture: &CollectRecoveryFixture,
-    ) {
-        seed_tron_collect(&self.collect_pool, fixture).await;
+    async fn recoverable_collect_with_tx_hash(&self, fixture: &CollectRecoveryFixture) {
+        seed_tron_collect(&self.scenario().collect_pool, fixture).await;
 
         sqlx::query(
             r#"
@@ -154,32 +219,124 @@ impl ShadowCollectRecoveryScenario {
         )
         .bind(&fixture.tx_hash)
         .bind(&fixture.trade_no)
-        .execute(self.collect_pool.as_ref())
+        .execute(self.scenario().collect_pool.as_ref())
         .await
         .expect("seed recoverable collect row");
     }
+}
 
-    pub(crate) async fn when_recover_runs(&self, fixture: &CollectRecoveryFixture) {
+#[async_trait::async_trait(?Send)]
+pub(crate) trait CollectRecoveryWhen {
+    async fn recover_runs(&self, fixture: &CollectRecoveryFixture);
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectRecoveryWhen for WhenRole<'_, ShadowCollectRecoveryScenario> {
+    async fn recover_runs(&self, fixture: &CollectRecoveryFixture) {
         let worker = build_shadow_collect_worker_from_pools(
-            self.collect_pool.clone(),
-            self.core_pool.clone(),
+            self.scenario().collect_pool.clone(),
+            self.scenario().core_pool.clone(),
         );
         worker
             .handle(ShadowCollectCommand::Recover(fixture.trade_no.clone()))
             .await
             .expect("recover command should succeed");
     }
+}
 
-    pub(crate) fn then_chain_was_queried_once(&self) {
-        let query_count = self.query_count.as_ref().expect("probe query count installed");
-        assert_eq!(query_count.load(Ordering::Relaxed), 1, "recover must query chain first");
+#[async_trait::async_trait(?Send)]
+pub(crate) trait CollectRecoveryThen {
+    fn chain_was_queried_once(&self);
+
+    async fn expired_raw_tx_is_confirmed_without_rebuild(&self, fixture: &CollectRecoveryFixture);
+
+    async fn tx_hash_is_backfilled_and_receipt_upload_needed(
+        &self,
+        fixture: &CollectRecoveryFixture,
+    );
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectRecoveryThen for ThenRole<'_, ShadowCollectRecoveryScenario> {
+    fn chain_was_queried_once(&self) {
+        let query_count = self.scenario().count().chain_queries();
+        self.scenario().assert().chain_was_queried_once(query_count);
     }
 
-    pub(crate) async fn then_expired_raw_tx_is_confirmed_without_rebuild(
+    async fn expired_raw_tx_is_confirmed_without_rebuild(&self, fixture: &CollectRecoveryFixture) {
+        let after = self.scenario().load().collect(&fixture.trade_no).await;
+        self.scenario().assert().expired_raw_tx_is_confirmed_without_rebuild(&after);
+    }
+
+    async fn tx_hash_is_backfilled_and_receipt_upload_needed(
         &self,
         fixture: &CollectRecoveryFixture,
     ) {
-        let after = self.load_collect(&fixture.trade_no).await;
+        let after = self.scenario().load().collect(&fixture.trade_no).await;
+        let needs_receipt_upload =
+            self.scenario().load().has_receipt_upload_candidate(&fixture.trade_no).await;
+        self.scenario().assert().tx_hash_is_backfilled_and_receipt_upload_needed(
+            &after,
+            fixture,
+            needs_receipt_upload,
+        );
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+trait CollectRecoveryLoad {
+    async fn collect(&self, trade_no: &str) -> ApiCollectEntity;
+
+    async fn has_receipt_upload_candidate(&self, trade_no: &str) -> bool;
+}
+
+#[async_trait::async_trait(?Send)]
+impl CollectRecoveryLoad for LoadRole<'_, ShadowCollectRecoveryScenario> {
+    async fn collect(&self, trade_no: &str) -> ApiCollectEntity {
+        ApiCollectRepo::get_api_collect_by_trade_no(&self.scenario().collect_pool, trade_no)
+            .await
+            .expect("reload collect after recover")
+    }
+
+    async fn has_receipt_upload_candidate(&self, trade_no: &str) -> bool {
+        ApiCollectRepo::scan_need_tx_exec_receipt_upload(&self.scenario().collect_pool, 10_000)
+            .await
+            .expect("scan need tx exec receipt upload")
+            .iter()
+            .any(|record| record.trade_no == trade_no)
+    }
+}
+
+trait CollectRecoveryCount {
+    fn chain_queries(&self) -> usize;
+}
+
+impl CollectRecoveryCount for CountRole<'_, ShadowCollectRecoveryScenario> {
+    fn chain_queries(&self) -> usize {
+        let query_count = self.scenario().query_count.borrow();
+        query_count.as_ref().expect("probe query count installed").load(Ordering::Relaxed)
+    }
+}
+
+trait CollectRecoveryAssert {
+    fn chain_was_queried_once(&self, query_count: usize);
+
+    fn expired_raw_tx_is_confirmed_without_rebuild(&self, after: &ApiCollectEntity);
+
+    fn tx_hash_is_backfilled_and_receipt_upload_needed(
+        &self,
+        after: &ApiCollectEntity,
+        fixture: &CollectRecoveryFixture,
+        needs_receipt_upload: bool,
+    );
+}
+
+impl CollectRecoveryAssert for AssertRole<'_, ShadowCollectRecoveryScenario> {
+    fn chain_was_queried_once(&self, query_count: usize) {
+        assert_eq!(query_count, 1, "recover must query chain first");
+    }
+
+    fn expired_raw_tx_is_confirmed_without_rebuild(&self, after: &ApiCollectEntity) {
         assert!(after.transaction_time.is_some(), "recover must persist chain confirmation");
         assert!(after.last_broadcast_at.is_some(), "broadcast evidence must be preserved");
         assert!(
@@ -188,26 +345,17 @@ impl ShadowCollectRecoveryScenario {
         );
     }
 
-    pub(crate) async fn then_tx_hash_is_backfilled_and_receipt_upload_needed(
+    fn tx_hash_is_backfilled_and_receipt_upload_needed(
         &self,
+        after: &ApiCollectEntity,
         fixture: &CollectRecoveryFixture,
+        needs_receipt_upload: bool,
     ) {
-        let after = self.load_collect(&fixture.trade_no).await;
         assert_eq!(after.tx_hash.as_deref(), Some(fixture.tx_hash.as_str()));
         assert!(after.transaction_time.is_some());
-
-        let records = ApiCollectRepo::scan_need_tx_exec_receipt_upload(&self.collect_pool, 10_000)
-            .await
-            .expect("scan need tx exec receipt upload");
         assert!(
-            records.iter().any(|r| r.trade_no == fixture.trade_no),
+            needs_receipt_upload,
             "recovered collect with backfilled hash must enter receipt upload scan"
         );
-    }
-
-    async fn load_collect(&self, trade_no: &str) -> ApiCollectEntity {
-        ApiCollectRepo::get_api_collect_by_trade_no(&self.collect_pool, trade_no)
-            .await
-            .expect("reload collect after recover")
     }
 }
