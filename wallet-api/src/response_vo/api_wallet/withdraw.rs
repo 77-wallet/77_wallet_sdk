@@ -5,6 +5,14 @@ use wallet_database::entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStat
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawOrderVo {
     pub trade_no: String,
+    /// 账户名称，保留历史字段名 name，供审核列表展示使用。
+    pub name: String,
+    /// 商户平台交易单号，来自 MQTT outOrderId，前端订单号展示优先使用它。
+    pub out_order_id: Option<String>,
+    /// 商户客户 ID，来自 MQTT clientId，用于会员 ID 展示。
+    pub client_id: Option<String>,
+    /// 商户交易申请时间，来自 MQTT createTime。
+    pub create_time: Option<String>,
     pub chain_code: String,
     pub symbol: String,
     pub value: String,
@@ -45,13 +53,22 @@ pub struct ApiWithdrawOrderVo {
 impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
     fn from(entity: ApiWithdrawEntity) -> Self {
         let sign_time = entity.audit_passed_at.or(entity.audit_rejected_at);
-        let failure_reason_display =
-            failure_reason_display(entity.status, entity.err_code, entity.failure_stage);
+        let failure_reason_display = failure_reason_display(
+            entity.status,
+            entity.err_code,
+            entity.failure_stage,
+            entity.audit_rejected_at.is_some(),
+            entity.chain_failed_at.is_some(),
+        );
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
         Self {
             trade_no: entity.trade_no,
+            name: entity.name,
+            out_order_id: entity.out_order_id,
+            client_id: entity.client_id,
+            create_time: entity.create_time,
             chain_code: entity.chain_code,
             symbol: entity.symbol,
             value: entity.value,
@@ -83,6 +100,14 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawOrderDetailVo {
     pub trade_no: String,
+    /// 账户名称，保留历史字段名 name，供审核详情展示使用。
+    pub name: String,
+    /// 商户平台交易单号，来自 MQTT outOrderId，前端订单号展示优先使用它。
+    pub out_order_id: Option<String>,
+    /// 商户客户 ID，来自 MQTT clientId，用于会员 ID 展示。
+    pub client_id: Option<String>,
+    /// 商户交易申请时间，来自 MQTT createTime。
+    pub create_time: Option<String>,
     pub chain_code: String,
     pub symbol: String,
     pub value: String,
@@ -126,13 +151,22 @@ pub struct ApiWithdrawOrderDetailVo {
 impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
     fn from(entity: ApiWithdrawEntity) -> Self {
         let sign_time = entity.audit_passed_at.or(entity.audit_rejected_at);
-        let failure_reason_display =
-            failure_reason_display(entity.status, entity.err_code, entity.failure_stage);
+        let failure_reason_display = failure_reason_display(
+            entity.status,
+            entity.err_code,
+            entity.failure_stage,
+            entity.audit_rejected_at.is_some(),
+            entity.chain_failed_at.is_some(),
+        );
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
         Self {
             trade_no: entity.trade_no,
+            name: entity.name,
+            out_order_id: entity.out_order_id,
+            client_id: entity.client_id,
+            create_time: entity.create_time,
             chain_code: entity.chain_code,
             symbol: entity.symbol,
             value: entity.value,
@@ -194,14 +228,29 @@ fn failure_reason_display(
     status: ApiWithdrawStatus,
     err_code: Option<ErrCode>,
     failure_stage: Option<wallet_database::entities::api_withdraw::WithdrawFailureStage>,
+    has_audit_rejected: bool,
+    has_chain_failed: bool,
 ) -> Option<FailureReasonDisplay> {
-    if matches!(
+    if matches!(status, ApiWithdrawStatus::Success | ApiWithdrawStatus::ConfirmSuccessReport) {
+        return None;
+    }
+
+    if matches!(status, ApiWithdrawStatus::AuditReject) || has_audit_rejected {
+        return Some(FailureReasonDisplay::AuditRejected);
+    }
+
+    let has_failure_fact = failure_stage.is_some() || err_code.is_some() || has_chain_failed;
+    let is_active_failure_status =
+        matches!(status, ApiWithdrawStatus::SendingTxFailed | ApiWithdrawStatus::Failure);
+    let is_reported_failure_status = matches!(
         status,
-        ApiWithdrawStatus::AuditReject
-            | ApiWithdrawStatus::SendingTxFailed
-            | ApiWithdrawStatus::Failure
-    ) {
-        Some(FailureReasonDisplay::from_status_and_error(status, err_code, failure_stage))
+        ApiWithdrawStatus::SendingTxFailedReport | ApiWithdrawStatus::ConfirmFailureReport
+    );
+
+    if is_active_failure_status || (is_reported_failure_status && has_failure_fact) {
+        Some(FailureReasonDisplay::from_failure_facts(err_code, failure_stage, has_chain_failed))
+    } else if has_chain_failed {
+        Some(FailureReasonDisplay::from_failure_facts(err_code, failure_stage, has_chain_failed))
     } else {
         None
     }
