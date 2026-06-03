@@ -4,7 +4,7 @@ use crate::{api::ReturnType, manager::WalletManager, service::wallet::WalletServ
 
 impl WalletManager {
     fn phrase_wallet_service(&self) -> ReturnType<WalletService> {
-        Ok(WalletService::new())
+        Ok(WalletService::new(self.ctx))
     }
 
     /// Generates a mnemonic phrase based on the specified language and word count.

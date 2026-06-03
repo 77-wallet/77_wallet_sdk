@@ -5,7 +5,7 @@ use crate::{
 
 impl WalletManager {
     fn wallet_service(&self) -> ReturnType<WalletService> {
-        Ok(WalletService::new())
+        Ok(WalletService::new(self.ctx))
     }
 
     pub async fn encrypt_password(&self, password: &str) -> ReturnType<String> {

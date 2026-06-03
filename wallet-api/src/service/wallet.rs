@@ -18,6 +18,7 @@ use wallet_types::constant::chain_code;
 
 use crate::{
     application::wallet::WalletApplication,
+    context::Context,
     domain::{
         self,
         account::AccountDomain,
@@ -50,12 +51,17 @@ struct Export {
 }
 
 pub struct WalletService {
+    ctx: &'static Context,
     assets_domain: AssetsDomain,
 }
 
 impl WalletService {
-    pub fn new() -> Self {
-        Self { assets_domain: AssetsDomain::new() }
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx, assets_domain: AssetsDomain::new() }
+    }
+
+    fn api_wallet_domain(&self) -> ApiWalletDomain {
+        ApiWalletDomain::new(self.ctx)
     }
 
     pub(crate) async fn encrypt_password(
@@ -346,7 +352,7 @@ impl WalletService {
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
 
         // 检查是否是api钱包
-        if ApiWalletDomain::check_keys_uid(&uid).await?.is_api_wallet() {
+        if self.api_wallet_domain().check_keys_uid(&uid).await?.is_api_wallet() {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
             )));

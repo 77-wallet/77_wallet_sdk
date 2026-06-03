@@ -524,8 +524,8 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn check_keys_uid(uid: &str) -> Result<KeysUidCheckRes, ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
+    pub(crate) async fn check_keys_uid(&self, uid: &str) -> Result<KeysUidCheckRes, ServiceError> {
+        let backend = self.ctx.get_api_wallet_backend();
         let uid_check = backend.keys_uid_check(&uid).await?;
 
         Ok(uid_check)

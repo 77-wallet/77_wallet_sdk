@@ -162,7 +162,7 @@ impl ApiWalletService {
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
 
         // 检查是否是普通钱包
-        let status = ApiWalletDomain::check_keys_uid(&uid).await?;
+        let status = self.wallet_domain().check_keys_uid(&uid).await?;
         if status.is_normal_wallet() {
             return Err(ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem.into(),
@@ -402,7 +402,7 @@ impl ApiWalletService {
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
 
         // 检查钱包类型和后端是否一致，不一致就报错
-        let status = ApiWalletDomain::check_keys_uid(&uid).await?;
+        let status = self.wallet_domain().check_keys_uid(&uid).await?;
         let domain = self.wallet_domain();
 
         if status.is_not_found() {
