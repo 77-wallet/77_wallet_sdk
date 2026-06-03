@@ -16,6 +16,14 @@ pub enum FailureReasonDisplay {
     ChainFailed = 4,
     /// 余额/手续费不足
     ResourceFailed = 5,
+    /// 地址格式错误
+    AddressInvalid = 6,
+    /// 节点异常
+    NodeFailed = 7,
+    /// 网络异常
+    NetworkFailed = 8,
+    /// SDK 内部错误
+    SdkInternalFailed = 9,
 }
 
 impl FailureReasonDisplay {
@@ -50,13 +58,21 @@ impl FailureReasonDisplay {
                 if has_chain_failed {
                     Self::ChainFailed
                 } else {
-                    match err_code {
-                        Some(ErrCode::BalanceInsufficient) => Self::ResourceFailed,
-                        Some(ErrCode::FeeInsufficient) => Self::ResourceFailed,
-                        _ => Self::UnknownFailed,
-                    }
+                    Self::from_err_code(err_code)
                 }
             }
+        }
+    }
+
+    fn from_err_code(err_code: Option<ErrCode>) -> Self {
+        match err_code {
+            Some(ErrCode::BalanceInsufficient | ErrCode::FeeInsufficient) => Self::ResourceFailed,
+            Some(ErrCode::AddressFormatIncorrect) => Self::AddressInvalid,
+            Some(ErrCode::NodeError) => Self::NodeFailed,
+            Some(ErrCode::NetworkException) => Self::NetworkFailed,
+            Some(ErrCode::TransactionOnChainException) => Self::ChainFailed,
+            Some(ErrCode::SDKInternalError) => Self::SdkInternalFailed,
+            Some(ErrCode::UnknownError) | None => Self::UnknownFailed,
         }
     }
 }
@@ -134,6 +150,41 @@ mod tests {
             FailureReasonDisplay::from_failure_facts(Some(ErrCode::FeeInsufficient), None, false);
         assert_eq!(reason, FailureReasonDisplay::ResourceFailed);
         assert_eq!(serde_json::to_string(&reason).unwrap(), "5");
+    }
+
+    #[test]
+    fn test_failure_reason_type_address_invalid() {
+        let reason = FailureReasonDisplay::from_failure_facts(
+            Some(ErrCode::AddressFormatIncorrect),
+            None,
+            false,
+        );
+        assert_eq!(reason, FailureReasonDisplay::AddressInvalid);
+        assert_eq!(serde_json::to_string(&reason).unwrap(), "6");
+    }
+
+    #[test]
+    fn test_failure_reason_type_node_failed() {
+        let reason =
+            FailureReasonDisplay::from_failure_facts(Some(ErrCode::NodeError), None, false);
+        assert_eq!(reason, FailureReasonDisplay::NodeFailed);
+        assert_eq!(serde_json::to_string(&reason).unwrap(), "7");
+    }
+
+    #[test]
+    fn test_failure_reason_type_network_failed() {
+        let reason =
+            FailureReasonDisplay::from_failure_facts(Some(ErrCode::NetworkException), None, false);
+        assert_eq!(reason, FailureReasonDisplay::NetworkFailed);
+        assert_eq!(serde_json::to_string(&reason).unwrap(), "8");
+    }
+
+    #[test]
+    fn test_failure_reason_type_sdk_internal_failed() {
+        let reason =
+            FailureReasonDisplay::from_failure_facts(Some(ErrCode::SDKInternalError), None, false);
+        assert_eq!(reason, FailureReasonDisplay::SdkInternalFailed);
+        assert_eq!(serde_json::to_string(&reason).unwrap(), "9");
     }
 
     #[test]
