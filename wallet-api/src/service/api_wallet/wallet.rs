@@ -108,7 +108,7 @@ impl ApiWalletService {
     }
 
     pub async fn get_api_wallet_list(&self) -> ReturnType<ApiWalletList> {
-        ApiWalletDomain::get_api_wallet_list().await
+        self.wallet_domain().get_api_wallet_list().await
     }
 
     pub async fn create_wallet(
@@ -148,7 +148,7 @@ impl ApiWalletService {
             wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
         let address = &address.to_string();
 
-        if ApiWalletDomain::check_normal_wallet_exist(address).await? {
+        if self.wallet_domain().check_normal_wallet_exist(address).await? {
             return Err(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem.into(),
             )
@@ -387,7 +387,7 @@ impl ApiWalletService {
         );
 
         // 1.校验uid，是否本地已有普通钱包
-        if ApiWalletDomain::check_normal_wallet_exist(address).await? {
+        if self.wallet_domain().check_normal_wallet_exist(address).await? {
             return Err(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::AlreadyImported.into(),
             )
@@ -1023,7 +1023,7 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        ApiWalletDomain::change_withdrawal_wallet(recharge_uid, withdrawal_uid).await
+        self.wallet_domain().change_withdrawal_wallet(recharge_uid, withdrawal_uid).await
     }
 
     pub async fn query_uid_bind_info(
@@ -1038,7 +1038,7 @@ impl ApiWalletService {
         wallet_address: &str,
     ) -> Result<bool, crate::error::service::ServiceError> {
         let sn = self.ctx.get_sn();
-        ApiWalletDomain::is_wallet_authorized_on_device(wallet_address, sn).await
+        self.wallet_domain().is_wallet_authorized_on_device(wallet_address, sn).await
     }
 
     //     pub async fn physical_delete(self, address: &str) -> Result<(), crate::ServiceError> {

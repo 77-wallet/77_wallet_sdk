@@ -232,8 +232,11 @@ impl ApiWalletDomain {
     }
 
     /// 检查这个地址是否曾经被创建为普通钱包
-    pub(crate) async fn check_normal_wallet_exist(address: &str) -> Result<bool, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+    pub(crate) async fn check_normal_wallet_exist(
+        &self,
+        address: &str,
+    ) -> Result<bool, ServiceError> {
+        let pool = self.ctx.core_pool()?;
 
         Ok(WalletRepo::detail(pool.clone(), address).await?.is_some())
     }
@@ -532,11 +535,12 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn change_withdrawal_wallet(
+        &self,
         recharge_uid: &str,
         withdrawal_uid: &str,
         // app_id: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -554,7 +558,7 @@ impl ApiWalletDomain {
             )
             .into());
         };
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         backend.appid_withdrawal_wallet_change(withdrawal_uid, &app_id).await?;
         if let Some(binding_address) = recharge_wallet.binding_address {
             ApiWalletDomain::unbind_uid_by_address(&binding_address).await?;
@@ -584,10 +588,11 @@ impl ApiWalletDomain {
     }
 
     pub async fn is_wallet_authorized_on_device(
+        &self,
         wallet_address: &str,
         sn: &str,
     ) -> Result<bool, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -734,9 +739,10 @@ impl ApiWalletDomain {
         list
     }
 
-    pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
-    {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+    pub async fn get_api_wallet_list(
+        &self,
+    ) -> Result<ApiWalletList, crate::error::service::ServiceError> {
+        let pool = self.ctx.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         let currency = ConfigDomain::get_currency().await?;
         let mut balance_list = HashMap::new();
