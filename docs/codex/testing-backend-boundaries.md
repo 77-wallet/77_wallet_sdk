@@ -9,6 +9,8 @@
 - 哪些调用仍然可能绕过 fake backend。
 - 后续新增或迁移测试时，应如何扩展 fake backend。
 
+当前 fake 覆盖清单见 `docs/codex/testing-backend-fake-inventory.md`。
+
 ## Core Rule
 
 标准集成测试必须离线可运行。

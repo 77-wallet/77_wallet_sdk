@@ -15,7 +15,9 @@ use wallet_transport_backend::{
             AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
         },
     },
-    response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
+    response_vo::api_wallet::wallet::{
+        AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
+    },
 };
 
 use super::next_unique_id;
@@ -157,6 +159,13 @@ impl ApiWalletBackend for NoopApiWalletBackend {
         Err(wallet_api::error::service::ServiceError::System(
             wallet_api::error::system::SystemError::Internal("noop".to_string()),
         ))
+    }
+
+    async fn query_wallet_activation_info(
+        &self,
+        _uid: &str,
+    ) -> Result<QueryWalletActivationInfoResp, wallet_api::error::service::ServiceError> {
+        Ok(QueryWalletActivationInfoResp(Vec::new()))
     }
 
     async fn appid_uid_usage(

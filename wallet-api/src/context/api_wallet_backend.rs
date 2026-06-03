@@ -9,7 +9,9 @@ use wallet_transport_backend::{
             AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
         },
     },
-    response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
+    response_vo::api_wallet::wallet::{
+        AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
+    },
 };
 
 #[async_trait]
@@ -24,6 +26,10 @@ pub trait ApiWalletBackend: Send + Sync {
     ) -> Result<(), ServiceError>;
     async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, ServiceError>;
     async fn query_uid_bind_info(&self, uid: &str) -> Result<QueryUidBindInfoRes, ServiceError>;
+    async fn query_wallet_activation_info(
+        &self,
+        uid: &str,
+    ) -> Result<QueryWalletActivationInfoResp, ServiceError>;
     async fn appid_uid_usage(
         &self,
         req: AppIdUidUsageReq,
@@ -72,6 +78,13 @@ impl ApiWalletBackend for RealApiWalletBackend {
 
     async fn query_uid_bind_info(&self, uid: &str) -> Result<QueryUidBindInfoRes, ServiceError> {
         self.inner.query_uid_bind_info(uid).await.map_err(|e| e.into())
+    }
+
+    async fn query_wallet_activation_info(
+        &self,
+        uid: &str,
+    ) -> Result<QueryWalletActivationInfoResp, ServiceError> {
+        self.inner.query_wallet_activation_info(uid).await.map_err(|e| e.into())
     }
 
     async fn appid_uid_usage(

@@ -222,7 +222,8 @@ mod tests {
             },
         },
         response_vo::api_wallet::wallet::{
-            AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, UidStatus,
+            AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
+            UidStatus,
         },
     };
 
@@ -286,6 +287,13 @@ mod tests {
                 bind_status: false,
                 sn: uid.to_string(),
             })
+        }
+
+        async fn query_wallet_activation_info(
+            &self,
+            _: &str,
+        ) -> Result<QueryWalletActivationInfoResp, ServiceError> {
+            Ok(QueryWalletActivationInfoResp(Vec::new()))
         }
 
         async fn appid_uid_usage(

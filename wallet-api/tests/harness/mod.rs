@@ -35,7 +35,8 @@ use wallet_transport_backend::{
         },
     },
     response_vo::api_wallet::wallet::{
-        AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, UidStatus,
+        ActiveStatus, AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes,
+        QueryWalletActivationInfoResp, QueryWalletActivationInfoRespItem, UidStatus,
     },
 };
 
@@ -136,6 +137,7 @@ pub enum ApiWalletBackendCall {
     AppIdImportRechargeWallet(AppIdImportRechargeWalletCall),
     KeysUidCheck { uid: String },
     QueryUidBindInfo { uid: String },
+    QueryWalletActivationInfo { uid: String },
     AppIdUidUsage(AppIdUidUsageCall),
     InitApiWallet(AppIdImportCall),
     OldKeysInit(KeysInitCall),
@@ -182,6 +184,7 @@ struct AppIdUidUsageReqView {
 struct FakeState {
     keys_uid_status_queue: VecDeque<UidStatus>,
     query_uid_bind_info_queue: VecDeque<QueryUidBindInfoRes>,
+    query_wallet_activation_info_queue: VecDeque<Vec<(String, ActiveStatus)>>,
     appid_uid_usage_used_queue: VecDeque<bool>,
     wallet_bind_appid_error: Option<String>,
     init_api_wallet_error: Option<String>,
@@ -190,6 +193,7 @@ struct FakeState {
     appid_import_delay: Option<Duration>,
     appid_import_recharge_wallet_error: Option<String>,
     query_uid_bind_info_error: Option<String>,
+    query_wallet_activation_info_error: Option<String>,
     calls: Vec<ApiWalletBackendCall>,
 }
 
@@ -232,6 +236,13 @@ impl FakeApiWalletBackend {
         state.appid_uid_usage_used_queue.push_back(used);
     }
 
+    pub fn enqueue_wallet_activation_info(&self, items: Vec<(&str, ActiveStatus)>) {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.query_wallet_activation_info_queue.push_back(
+            items.into_iter().map(|(chain, active)| (chain.to_string(), active)).collect(),
+        );
+    }
+
     pub fn set_wallet_bind_appid_error(&self, msg: Option<&str>) {
         let mut state = self.state.lock().expect("fake backend lock poisoned");
         state.wallet_bind_appid_error = msg.map(ToString::to_string);
@@ -250,6 +261,11 @@ impl FakeApiWalletBackend {
     pub fn set_query_uid_bind_info_error(&self, msg: Option<&str>) {
         let mut state = self.state.lock().expect("fake backend lock poisoned");
         state.query_uid_bind_info_error = msg.map(ToString::to_string);
+    }
+
+    pub fn set_query_wallet_activation_info_error(&self, msg: Option<&str>) {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.query_wallet_activation_info_error = msg.map(ToString::to_string);
     }
 
     pub fn with_calls<R>(&self, f: impl FnOnce(&[ApiWalletBackendCall]) -> R) -> R {
@@ -393,6 +409,26 @@ impl ApiWalletBackend for FakeApiWalletBackend {
             .pop_front()
             .unwrap_or_else(|| panic!("query_uid_bind_info response not configured for uid={uid}"));
         Ok(res)
+    }
+
+    async fn query_wallet_activation_info(
+        &self,
+        uid: &str,
+    ) -> Result<QueryWalletActivationInfoResp, wallet_api::error::service::ServiceError> {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::QueryWalletActivationInfo { uid: uid.to_string() });
+        if let Some(msg) = state.query_wallet_activation_info_error.clone() {
+            return Err(Self::service_error(&msg));
+        }
+        let items = state.query_wallet_activation_info_queue.pop_front().unwrap_or_else(|| {
+            panic!("query_wallet_activation_info response not configured for uid={uid}")
+        });
+        Ok(QueryWalletActivationInfoResp(
+            items
+                .into_iter()
+                .map(|(chain, active)| QueryWalletActivationInfoRespItem { chain, active })
+                .collect(),
+        ))
     }
 
     async fn appid_uid_usage(

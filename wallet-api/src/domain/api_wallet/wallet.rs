@@ -652,14 +652,14 @@ impl ApiWalletDomain {
     pub async fn query_wallet_activation_info(
         wallet_address: &str,
     ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
-        Ok(backend_api.query_wallet_activation_info(&api_wallet.uid).await?)
+        Ok(backend.query_wallet_activation_info(&api_wallet.uid).await?)
     }
 
     fn build_api_wallet_list(
@@ -781,7 +781,9 @@ mod tests {
                 AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
             },
         },
-        response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
+        response_vo::api_wallet::wallet::{
+            AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
+        },
     };
 
     use crate::{ApiWalletBackend, context::get_context, dirs::Dirs};
@@ -942,6 +944,13 @@ mod tests {
                 bind_status: false,
                 sn: uid.to_string(),
             })
+        }
+
+        async fn query_wallet_activation_info(
+            &self,
+            _: &str,
+        ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
+            Ok(QueryWalletActivationInfoResp(Vec::new()))
         }
 
         async fn appid_uid_usage(
