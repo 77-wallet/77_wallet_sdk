@@ -290,10 +290,22 @@ mod unit_tests {
         entity.estimated_transaction_fee = Some("0.42".to_string());
         entity.estimated_resource_consume = Some(r#"{"bandwidth":1,"energy":2}"#.to_string());
         entity.fee_estimated_at = Some(now + Duration::minutes(3));
+        entity.out_order_id = Some("merchant-order-1".to_string());
+        entity.client_id = Some("client-1".to_string());
+        entity.create_time = Some("2026-05-19 10:11:12".to_string());
+        entity.chain_code = "tron".to_string();
+        entity.token_addr =
+            AssetTokenKey::Contract("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string());
 
         let json = serde_json::to_value(ApiWithdrawOrderVo::from(entity)).unwrap();
 
         assert_eq!(json.get("tradeNo").and_then(|v| v.as_str()), Some("T2024000000000000001"));
+        assert_eq!(json.get("name").and_then(|v| v.as_str()), Some("test"));
+        assert_eq!(json.get("outOrderId").and_then(|v| v.as_str()), Some("merchant-order-1"));
+        assert_eq!(json.get("clientId").and_then(|v| v.as_str()), Some("client-1"));
+        assert_eq!(json.get("createTime").and_then(|v| v.as_str()), Some("2026-05-19 10:11:12"));
+        assert_eq!(json.get("chainCode").and_then(|v| v.as_str()), Some("tron"));
+        assert!(json.get("network").is_none());
         assert_eq!(json.get("transactionFee").and_then(|v| v.as_str()), Some("1.23"));
         assert_eq!(json.get("blockHeight").and_then(|v| v.as_str()), Some("12345"));
         assert_eq!(json.get("bandwidthConsume").and_then(|v| v.as_u64()), Some(10));
@@ -327,9 +339,18 @@ mod unit_tests {
         entity.estimated_transaction_fee = Some("0.84".to_string());
         entity.estimated_resource_consume = Some(r#"{"bandwidth":3,"energy":4}"#.to_string());
         entity.fee_estimated_at = Some(now + Duration::minutes(8));
+        entity.out_order_id = Some("merchant-order-2".to_string());
+        entity.client_id = Some("client-2".to_string());
+        entity.create_time = Some("2026-05-19 13:14:15".to_string());
 
         let json = serde_json::to_value(ApiWithdrawOrderDetailVo::from(entity)).unwrap();
 
+        assert_eq!(json.get("name").and_then(|v| v.as_str()), Some("test"));
+        assert_eq!(json.get("outOrderId").and_then(|v| v.as_str()), Some("merchant-order-2"));
+        assert_eq!(json.get("clientId").and_then(|v| v.as_str()), Some("client-2"));
+        assert_eq!(json.get("createTime").and_then(|v| v.as_str()), Some("2026-05-19 13:14:15"));
+        assert_eq!(json.get("chainCode").and_then(|v| v.as_str()), Some("TRX"));
+        assert!(json.get("network").is_none());
         assert_eq!(json.get("validate").and_then(|v| v.as_str()), Some("validate-payload"));
         assert_eq!(json.get("auditReason").and_then(|v| v.as_str()), Some("risk rejected"));
         assert_eq!(json.get("errMsg").and_then(|v| v.as_str()), Some("backend failed"));

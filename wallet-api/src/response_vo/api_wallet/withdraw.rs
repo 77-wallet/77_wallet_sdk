@@ -5,6 +5,14 @@ use wallet_database::entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStat
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawOrderVo {
     pub trade_no: String,
+    /// 账户名称，保留历史字段名 name，供审核列表展示使用。
+    pub name: String,
+    /// 商户平台交易单号，来自 MQTT outOrderId，前端订单号展示优先使用它。
+    pub out_order_id: Option<String>,
+    /// 商户客户 ID，来自 MQTT clientId，用于会员 ID 展示。
+    pub client_id: Option<String>,
+    /// 商户交易申请时间，来自 MQTT createTime。
+    pub create_time: Option<String>,
     pub chain_code: String,
     pub symbol: String,
     pub value: String,
@@ -52,6 +60,10 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
             resource_consume_display(entity.estimated_resource_consume.as_deref());
         Self {
             trade_no: entity.trade_no,
+            name: entity.name,
+            out_order_id: entity.out_order_id,
+            client_id: entity.client_id,
+            create_time: entity.create_time,
             chain_code: entity.chain_code,
             symbol: entity.symbol,
             value: entity.value,
@@ -83,6 +95,14 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawOrderDetailVo {
     pub trade_no: String,
+    /// 账户名称，保留历史字段名 name，供审核详情展示使用。
+    pub name: String,
+    /// 商户平台交易单号，来自 MQTT outOrderId，前端订单号展示优先使用它。
+    pub out_order_id: Option<String>,
+    /// 商户客户 ID，来自 MQTT clientId，用于会员 ID 展示。
+    pub client_id: Option<String>,
+    /// 商户交易申请时间，来自 MQTT createTime。
+    pub create_time: Option<String>,
     pub chain_code: String,
     pub symbol: String,
     pub value: String,
@@ -133,6 +153,10 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
             resource_consume_display(entity.estimated_resource_consume.as_deref());
         Self {
             trade_no: entity.trade_no,
+            name: entity.name,
+            out_order_id: entity.out_order_id,
+            client_id: entity.client_id,
+            create_time: entity.create_time,
             chain_code: entity.chain_code,
             symbol: entity.symbol,
             value: entity.value,
