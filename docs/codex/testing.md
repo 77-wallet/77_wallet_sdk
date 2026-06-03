@@ -5,6 +5,7 @@
 本文件是测试规则摘要，供 Codex 在执行任务时优先读取。
 详细说明见 `docs/codex/testing-strategy.md`。
 可复制测试模板见 `docs/codex/testing-templates.md`。
+Backend fake 边界见 `docs/codex/testing-backend-boundaries.md`。
 
 ## Required Rules
 
