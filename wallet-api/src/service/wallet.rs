@@ -68,8 +68,8 @@ impl WalletService {
         self,
         password: &str,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let core_pool = crate::get_context()?.core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let core_pool = self.ctx.core_pool()?;
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
@@ -96,11 +96,11 @@ impl WalletService {
         self,
         wallet_address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let wallet = WalletRepo::update_wallet_update_at(core_pool.clone(), wallet_address).await?;
 
         if let Some(wallet) = wallet {
-            let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+            let sn = self.ctx.get_sn();
             DeviceRepo::update_uid(core_pool.clone(), sn, Some(&wallet.uid)).await?;
 
             let Some(device) = DeviceRepo::get_device_info(core_pool, sn).await? else {
@@ -134,10 +134,10 @@ impl WalletService {
         wallet_name: &str,
         wallet_address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let wallet_list =
             WalletRepo::edit_wallet_name(core_pool.clone(), wallet_address, wallet_name).await?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
@@ -174,10 +174,10 @@ impl WalletService {
         crate::response_vo::standard_wallet::wallet::ImportDerivationPathRes,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         WalletApplication::validate_password(wallet_password).await?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;
 
@@ -275,8 +275,8 @@ impl WalletService {
         crate::response_vo::standard_wallet::wallet::ExportDerivationPathRes,
         crate::error::service::ServiceError,
     > {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let core_pool = self.ctx.core_pool()?;
+        let dirs = self.ctx.get_global_dirs();
         let account_list = AccountRepo::get_account_list_by_wallet_address_and_account_id(
             core_pool,
             Some(wallet_address),
@@ -320,9 +320,9 @@ impl WalletService {
         WalletApplication::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = self.ctx.core_pool()?;
         tracing::info!("Create wallet request received");
-        let sn = crate::context::get_context()?.get_sn();
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
@@ -331,7 +331,7 @@ impl WalletService {
             ));
         };
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
 
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
@@ -440,8 +440,8 @@ impl WalletService {
         tracing::debug!("Child keystore initialization took: {:?}", child_keystore_start.elapsed());
 
         Tasks::new().push(CommonTask::QueryCoinPrice(req)).send().await?;
-        let core_pool = crate::get_context()?.core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let core_pool = self.ctx.core_pool()?;
+        let sn = self.ctx.get_sn();
         DeviceRepo::update_uid(core_pool, sn, Some(&uid)).await?;
 
         let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
@@ -512,7 +512,7 @@ impl WalletService {
         crate::response_vo::standard_wallet::wallet::GetPhraseRes,
         crate::error::service::ServiceError,
     > {
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
 
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -598,7 +598,7 @@ impl WalletService {
         Vec<crate::response_vo::standard_wallet::wallet::WalletInfo>,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes = if let Some(chain_code) = chain_code {
             vec![chain_code]
@@ -675,8 +675,8 @@ impl WalletService {
         self,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let core_pool = crate::get_context()?.core_pool()?;
+        let sn = self.ctx.get_sn();
+        let core_pool = self.ctx.core_pool()?;
 
         let mut tx = core_pool
             .as_ref()
@@ -735,8 +735,8 @@ impl WalletService {
         self,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let core_pool = crate::get_context()?.core_pool()?;
+        let sn = self.ctx.get_sn();
+        let core_pool = self.ctx.core_pool()?;
         tracing::info!("delete wallet ------------ -3");
 
         let mut tx = core_pool
@@ -759,12 +759,12 @@ impl WalletService {
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
 
         tracing::info!("delete wallet ------------ -2");
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
         let wallet_dir = dirs.get_wallet_dir(Some(address));
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
         tracing::info!("delete wallet ------------ -1");
 
-        let api_pool = crate::context::get_context()?.api_wallet_pool()?;
+        let api_pool = self.ctx.api_wallet_pool()?;
         let rest_standard_uids = WalletRepo::uid_list(core_pool.clone())
             .await?
             .into_iter()
@@ -811,7 +811,7 @@ impl WalletService {
             tracing::info!("delete wallet ------------ 6");
 
             // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let backend = self.ctx.get_global_backend_api();
             backend.device_delete(&req).await?;
 
             Tasks::new()
@@ -840,8 +840,8 @@ impl WalletService {
     }
 
     pub async fn logic_reset(self) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::get_context()?.core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let core_pool = self.ctx.core_pool()?;
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
@@ -859,7 +859,7 @@ impl WalletService {
         AccountRepo::reset_all_account_with_executor(&mut tx).await?;
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
 
@@ -877,9 +877,9 @@ impl WalletService {
     }
 
     pub async fn physical_reset(self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.api_wallet_pool()?;
-        let core_pool = crate::get_context()?.core_pool()?;
-        let sn = crate::context::get_context()?.get_sn();
+        let pool = self.ctx.api_wallet_pool()?;
+        let core_pool = self.ctx.core_pool()?;
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
@@ -913,7 +913,7 @@ impl WalletService {
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
         // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         backend.device_delete(&req).await?;
         // let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
         MultisigDomain::physical_delete_all_account(core_pool.clone()).await?;
@@ -936,7 +936,7 @@ impl WalletService {
             .send()
             .await?;
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;

@@ -363,9 +363,9 @@ impl ApiWalletService {
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let core_pool = self.ctx.core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -737,7 +737,7 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let sn = self.ctx.get_sn();
 
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
@@ -795,7 +795,7 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
@@ -860,7 +860,7 @@ impl ApiWalletService {
         address: &str,
         name: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
         Ok(())
     }
@@ -891,7 +891,7 @@ impl ApiWalletService {
         crate::response_vo::standard_wallet::wallet::GetPhraseRes,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -907,7 +907,7 @@ impl ApiWalletService {
         self,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let core_pool = self.ctx.core_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
 
@@ -936,9 +936,9 @@ impl ApiWalletService {
             accounts.extend(withdraw_accounts);
         }
 
-        let sn = crate::get_context()?.get_sn();
+        let sn = self.ctx.get_sn();
 
-        let dirs = crate::get_context()?.get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
 
         let latest_wallet = ApiWalletRepo::wallet_latest(&pool).await?;
 
@@ -985,7 +985,7 @@ impl ApiWalletService {
                 DeviceDomain::gen_device_unbind_all_api_address_task_data(accounts.as_slice(), sn)
                     .await?;
             // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let backend = self.ctx.get_global_backend_api();
             backend.device_delete(&req).await?;
 
             Tasks::new()
