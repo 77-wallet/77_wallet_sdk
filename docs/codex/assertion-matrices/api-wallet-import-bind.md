@@ -175,10 +175,10 @@ shape:
 3. Expose `scenario.given()`, `scenario.when()`, and `scenario.then()` as the
    fixed read-first integration roles using generic containers from
    `tests/harness`.
-4. Keep backend UID status, bind-info, app-id usage setup, import delay, and
-   recharge wallet seeding in the flow-local `WithdrawalImportGiven` trait.
-5. Keep import success/failure entrypoints, concurrent asset reads, and delay
-   cleanup guard in the flow-local `WithdrawalImportGiven` trait.
+4. Keep backend UID status, bind-info, app-id usage setup, slow-backend guard,
+   and recharge wallet seeding in the flow-local `WithdrawalImportGiven` trait.
+5. Keep import success/failure entrypoints and concurrent asset reads in the
+   flow-local `WithdrawalImportWhen` trait.
 6. Keep wallet binding facts, completion facts, reimport stability, concurrent
    read result, rejection facts, and backend-call assertions in the flow-local
    `WithdrawalImportThen` trait.

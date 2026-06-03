@@ -62,7 +62,7 @@ pub(crate) trait WithdrawalImportGiven {
 
     fn backend_rejects_uid_usage(&self);
 
-    fn backend_appid_import_delay(&self) -> BackendAppIdImportDelayGuard;
+    fn backend_network_is_slow(&self) -> BackendNetworkDelayGuard;
 
     async fn recharge_wallet(&self, uid_prefix: &str, import_stage: u8) -> RechargeWalletFixture;
 }
@@ -93,9 +93,9 @@ impl WithdrawalImportGiven for GivenRole<'_, WithdrawalImportScenario> {
         self.scenario().env.fake_backend.enqueue_appid_uid_usage_used(false);
     }
 
-    fn backend_appid_import_delay(&self) -> BackendAppIdImportDelayGuard {
+    fn backend_network_is_slow(&self) -> BackendNetworkDelayGuard {
         self.scenario().env.fake_backend.set_appid_import_delay(Some(Duration::from_millis(80)));
-        BackendAppIdImportDelayGuard { fake_backend: Arc::clone(&self.scenario().env.fake_backend) }
+        BackendNetworkDelayGuard { fake_backend: Arc::clone(&self.scenario().env.fake_backend) }
     }
 
     async fn recharge_wallet(&self, uid_prefix: &str, import_stage: u8) -> RechargeWalletFixture {
@@ -145,11 +145,11 @@ impl WithdrawalImportWhen for WhenRole<'_, WithdrawalImportScenario> {
     }
 }
 
-pub(crate) struct BackendAppIdImportDelayGuard {
+pub(crate) struct BackendNetworkDelayGuard {
     fake_backend: Arc<harness::FakeApiWalletBackend>,
 }
 
-impl Drop for BackendAppIdImportDelayGuard {
+impl Drop for BackendNetworkDelayGuard {
     fn drop(&mut self) {
         self.fake_backend.set_appid_import_delay(None);
     }
