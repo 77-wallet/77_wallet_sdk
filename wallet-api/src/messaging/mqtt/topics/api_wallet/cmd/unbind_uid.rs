@@ -17,7 +17,7 @@ impl AwmCmdUidUnbindMsg {
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let Self { uid } = self;
-        ApiWalletDomain::unbind_uid(uid).await?;
+        ApiWalletDomain::new(crate::context::get_context()?).unbind_uid(uid).await?;
         let data = NotifyEvent::AwmCmdUidUnbind(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;
 

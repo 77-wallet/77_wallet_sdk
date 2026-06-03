@@ -471,7 +471,9 @@ impl AccountService {
             }
         }
         tracing::info!("set_all_password done");
-        ApiWalletDomain::reset_api_wallet_seed(old_password, new_password).await?;
+        ApiWalletDomain::new(crate::context::CONTEXT.get().unwrap())
+            .reset_api_wallet_seed(old_password, new_password)
+            .await?;
         tracing::info!("reset_api_wallet_seed done");
         ApiWalletDomain::initialize_wallet_unlock_session(new_password).await?;
         tracing::info!("wallet unlock session reinitialized after password change");

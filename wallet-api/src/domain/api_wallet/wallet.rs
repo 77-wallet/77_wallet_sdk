@@ -66,6 +66,7 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn upsert_api_wallet(
+        &self,
         uid: &str,
         wallet_name: &str,
         wallet_address: &str,
@@ -75,7 +76,7 @@ impl ApiWalletDomain {
         api_wallet_type: ApiWalletType,
         binding_address: Option<&str>,
     ) -> Result<(), ServiceError> {
-        let pool = CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         // let phrase = wallet_utils::serde_func::serde_to_vec(&phrase)?;
 
         // let rng = rand::thread_rng();
@@ -88,7 +89,7 @@ impl ApiWalletDomain {
 
         let (phrase_enc, seed_enc) = Self::encrypt_phrase_and_seed(password, phrase, seed).await?;
 
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = self.ctx.get_sn();
         ApiWalletRepo::upsert(
             &pool,
             &uid,
@@ -120,7 +121,7 @@ impl ApiWalletDomain {
                         tracing::info!("address: {address}, wallet_address: {wallet_address}");
                         if address != wallet_address {
                             ApiWalletRepo::unbind_uid(&pool, &address).await?;
-                            Self::bind_uid_with_app_id(
+                            self.bind_uid_with_app_id(
                                 &wallet_address,
                                 recharge_wallet.merchant_id.as_deref().unwrap_or_default(),
                                 recharge_wallet.app_id.as_deref(),
@@ -176,10 +177,11 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn reset_api_wallet_seed(
+        &self,
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
 
         for wallet in wallets {
@@ -193,8 +195,8 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn get_seed(wallet_address: &str) -> Result<Vec<u8>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+    pub(crate) async fn get_seed(&self, wallet_address: &str) -> Result<Vec<u8>, ServiceError> {
+        let pool = self.ctx.api_wallet_pool()?;
         let api_wallet =
             ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or_else(|| {
                 crate::error::business::BusinessError::ApiWallet(
@@ -243,28 +245,26 @@ impl ApiWalletDomain {
 
     /// 落盘数据：uid绑定数据
     pub(crate) async fn db_save_bind_data(
+        &self,
         recharge_address: &str,
         withdrawal_address: &str,
         org_id: &str,
         app_id: &str,
     ) -> Result<(), ServiceError> {
-        ApiWalletDomain::bind_uid_with_app_id(recharge_address, org_id, Some(app_id)).await?;
-        ApiWalletDomain::bind_uid_with_app_id(withdrawal_address, org_id, Some(app_id)).await?;
-        ApiWalletDomain::bind_withdraw_and_subaccount_relation(
-            recharge_address,
-            withdrawal_address,
-        )
-        .await?;
+        self.bind_uid_with_app_id(recharge_address, org_id, Some(app_id)).await?;
+        self.bind_uid_with_app_id(withdrawal_address, org_id, Some(app_id)).await?;
+        self.bind_withdraw_and_subaccount_relation(recharge_address, withdrawal_address).await?;
 
         Ok(())
     }
 
     pub(crate) async fn bind_uid_with_app_id(
+        &self,
         address: &str,
         merchain_id: &str,
         org_app_id: Option<&str>,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         ApiWalletRepo::update_merchant_id(&pool, &address, merchain_id).await?;
         ApiWalletRepo::update_app_id(&pool, &address, org_app_id).await?;
 
@@ -272,11 +272,12 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn db_save_sn_data(
+        &self,
         recharge_address: &str,
         withdrawal_address: Option<&str>,
         sn: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         ApiWalletRepo::update_sn(&pool, &recharge_address, sn).await?;
         if let Some(withdrawal_address) = withdrawal_address {
             ApiWalletRepo::update_sn(&pool, &withdrawal_address, sn).await?;
@@ -285,10 +286,11 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn bind_withdraw_and_subaccount_relation(
+        &self,
         subaccount_uid: &str,
         withdraw_uid: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         ApiWalletRepo::bind_withdraw_and_subaccount_relation(&pool, &subaccount_uid, &withdraw_uid)
             .await?;
@@ -298,8 +300,11 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::error::service::ServiceError> {
-        let pool = CONTEXT.get().unwrap().api_wallet_pool()?;
+    pub(crate) async fn unbind_uid(
+        &self,
+        uid: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = self.ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -311,9 +316,10 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn unbind_uid_by_address(
+        &self,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -561,10 +567,10 @@ impl ApiWalletDomain {
         let backend = self.ctx.get_global_backend_api();
         backend.appid_withdrawal_wallet_change(withdrawal_uid, &app_id).await?;
         if let Some(binding_address) = recharge_wallet.binding_address {
-            ApiWalletDomain::unbind_uid_by_address(&binding_address).await?;
+            self.unbind_uid_by_address(&binding_address).await?;
         }
 
-        ApiWalletDomain::db_save_bind_data(
+        self.db_save_bind_data(
             &recharge_wallet.address,
             &withdrawal_wallet.address,
             recharge_wallet.merchant_id.as_deref().unwrap_or_default(),
@@ -1135,7 +1141,8 @@ oss:
 
         assert_ne!(before, after);
 
-        let seed = ApiWalletDomain::get_seed(&env.wallet_address)
+        let seed = ApiWalletDomain::new(get_context().expect("context"))
+            .get_seed(&env.wallet_address)
             .await
             .expect("decrypt seed after rotation");
         assert_eq!(seed, b"seed-cache-seed");
@@ -1189,7 +1196,10 @@ oss:
             .await
             .expect("cache password");
 
-        let seed = ApiWalletDomain::get_seed(&env.wallet_address).await.expect("decrypt seed");
+        let seed = ApiWalletDomain::new(get_context().expect("context"))
+            .get_seed(&env.wallet_address)
+            .await
+            .expect("decrypt seed");
         assert_eq!(seed, b"seed-cache-seed");
         ApiWalletDomain::clear_wallet_unlock_session().await.expect("clear password");
     }

@@ -911,7 +911,7 @@ impl ApiAccountDomain {
         account_id: u32,
     ) -> Result<Vec<u8>, crate::error::service::ServiceError> {
         // 解密种子
-        let seed = ApiWalletDomain::get_seed(wallet_address).await?;
+        let seed = ApiWalletDomain::new(CONTEXT.get().unwrap()).get_seed(wallet_address).await?;
 
         // 转换链码
         let code: ChainCode = chain_code.try_into()?;
@@ -1516,7 +1516,8 @@ impl ApiAccountDomain {
             ),
         )?;
         // 获取种子
-        let seed = ApiWalletDomain::get_seed(&api_wallet.address).await?;
+        let seed =
+            ApiWalletDomain::new(CONTEXT.get().unwrap()).get_seed(&api_wallet.address).await?;
 
         // 遍历每个链，为每个链创建一个延迟任务
         let mut deferred_tasks = Vec::new();

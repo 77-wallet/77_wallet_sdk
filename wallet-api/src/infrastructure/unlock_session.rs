@@ -469,42 +469,45 @@ oss:
         let phrase = "phrase-package-roundtrip";
         let seed = b"unlock-flow-seed";
 
-        ApiWalletDomain::upsert_api_wallet(
-            "uid-wallet-1",
-            "wallet-1",
-            wallet1_address,
-            password1,
-            phrase,
-            seed,
-            ApiWalletType::Withdrawal,
-            None,
-        )
-        .await
-        .expect("upsert wallet 1");
-        ApiWalletDomain::upsert_api_wallet(
-            "uid-wallet-2",
-            "wallet-2",
-            wallet2_address,
-            password2,
-            phrase,
-            seed,
-            ApiWalletType::Withdrawal,
-            None,
-        )
-        .await
-        .expect("upsert wallet 2");
-        ApiWalletDomain::upsert_api_wallet(
-            "uid-wallet-3",
-            "wallet-3",
-            wallet3_address,
-            password1,
-            phrase,
-            seed,
-            ApiWalletType::Withdrawal,
-            None,
-        )
-        .await
-        .expect("upsert wallet 3");
+        ApiWalletDomain::new(context)
+            .upsert_api_wallet(
+                "uid-wallet-1",
+                "wallet-1",
+                wallet1_address,
+                password1,
+                phrase,
+                seed,
+                ApiWalletType::Withdrawal,
+                None,
+            )
+            .await
+            .expect("upsert wallet 1");
+        ApiWalletDomain::new(context)
+            .upsert_api_wallet(
+                "uid-wallet-2",
+                "wallet-2",
+                wallet2_address,
+                password2,
+                phrase,
+                seed,
+                ApiWalletType::Withdrawal,
+                None,
+            )
+            .await
+            .expect("upsert wallet 2");
+        ApiWalletDomain::new(context)
+            .upsert_api_wallet(
+                "uid-wallet-3",
+                "wallet-3",
+                wallet3_address,
+                password1,
+                phrase,
+                seed,
+                ApiWalletType::Withdrawal,
+                None,
+            )
+            .await
+            .expect("upsert wallet 3");
 
         let wallet1 =
             ApiWalletRepo::find_by_address(&context.api_wallet_pool().unwrap(), wallet1_address)
@@ -567,18 +570,19 @@ oss:
         let phrase = "phrase-package-roundtrip";
         let seed = b"unlock-flow-seed";
 
-        ApiWalletDomain::upsert_api_wallet(
-            "uid-wallet-new",
-            "wallet-new",
-            wallet_address,
-            password,
-            phrase,
-            seed,
-            ApiWalletType::Withdrawal,
-            None,
-        )
-        .await
-        .expect("upsert wallet");
+        ApiWalletDomain::new(context)
+            .upsert_api_wallet(
+                "uid-wallet-new",
+                "wallet-new",
+                wallet_address,
+                password,
+                phrase,
+                seed,
+                ApiWalletType::Withdrawal,
+                None,
+            )
+            .await
+            .expect("upsert wallet");
 
         upsert_wallet_unlock_material(wallet_address, password)
             .await

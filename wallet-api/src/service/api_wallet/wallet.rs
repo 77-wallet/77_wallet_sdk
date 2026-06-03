@@ -208,17 +208,18 @@ impl ApiWalletService {
             }
         };
 
-        ApiWalletDomain::upsert_api_wallet(
-            &uid,
-            wallet_name,
-            address,
-            wallet_password,
-            &phrase,
-            &seed,
-            api_wallet_type,
-            binding_address,
-        )
-        .await?;
+        self.wallet_domain()
+            .upsert_api_wallet(
+                &uid,
+                wallet_name,
+                address,
+                wallet_password,
+                &phrase,
+                &seed,
+                api_wallet_type,
+                binding_address,
+            )
+            .await?;
         crate::infrastructure::unlock_session::upsert_wallet_unlock_material(
             address,
             wallet_password,
@@ -239,7 +240,7 @@ impl ApiWalletService {
         match api_wallet_type {
             ApiWalletType::SubAccount => {
                 // let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
-                // ApiWalletDomain::bind_uid_with_app_id(
+                // self.wallet_domain().bind_uid_with_app_id(
                 //     address,
                 //     &info.org_id,
                 //     Some(info.app_id.as_str()),
@@ -271,12 +272,9 @@ impl ApiWalletService {
             ApiWalletType::SubAccount => {
                 let info = domain.query_uid_bind_info(&uid).await?;
                 if info.bind_status {
-                    ApiWalletDomain::bind_uid_with_app_id(
-                        address,
-                        &info.org_id,
-                        Some(info.app_id.as_str()),
-                    )
-                    .await?;
+                    self.wallet_domain()
+                        .bind_uid_with_app_id(address, &info.org_id, Some(info.app_id.as_str()))
+                        .await?;
                 }
             }
             ApiWalletType::Withdrawal => {
@@ -289,27 +287,26 @@ impl ApiWalletService {
 
                         if info.bind_status {
                             domain.appid_import(sn, Some(&recharge_wallet.uid), Some(&uid)).await?;
-                            ApiWalletDomain::bind_uid_with_app_id(
-                                address,
-                                &info.org_id,
-                                Some(info.app_id.as_str()),
-                            )
-                            .await?;
+                            self.wallet_domain()
+                                .bind_uid_with_app_id(
+                                    address,
+                                    &info.org_id,
+                                    Some(info.app_id.as_str()),
+                                )
+                                .await?;
                         }
 
-                        ApiWalletDomain::db_save_bind_data(
-                            &recharge_wallet.address,
-                            &address,
-                            &info.org_id,
-                            &info.app_id,
-                        )
-                        .await?;
-                        ApiWalletDomain::db_save_sn_data(
-                            &recharge_wallet.address,
-                            Some(address),
-                            sn,
-                        )
-                        .await?;
+                        self.wallet_domain()
+                            .db_save_bind_data(
+                                &recharge_wallet.address,
+                                &address,
+                                &info.org_id,
+                                &info.app_id,
+                            )
+                            .await?;
+                        self.wallet_domain()
+                            .db_save_sn_data(&recharge_wallet.address, Some(address), sn)
+                            .await?;
 
                         if info.bind_status {
                             let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
@@ -531,17 +528,18 @@ impl ApiWalletService {
 
         self.wallet_domain().keys_init(&uid, &device, wallet_name, invite_code).await?;
 
-        ApiWalletDomain::upsert_api_wallet(
-            &uid,
-            wallet_name,
-            address,
-            wallet_password,
-            &phrase,
-            &seed,
-            api_wallet_type,
-            binding_address,
-        )
-        .await?;
+        self.wallet_domain()
+            .upsert_api_wallet(
+                &uid,
+                wallet_name,
+                address,
+                wallet_password,
+                &phrase,
+                &seed,
+                api_wallet_type,
+                binding_address,
+            )
+            .await?;
         crate::infrastructure::unlock_session::upsert_wallet_unlock_material(
             address,
             wallet_password,
@@ -573,12 +571,9 @@ impl ApiWalletService {
         match api_wallet_type {
             ApiWalletType::SubAccount => {
                 if let Some(info) = subaccount_bind_info {
-                    ApiWalletDomain::bind_uid_with_app_id(
-                        address,
-                        &info.org_id,
-                        Some(info.app_id.as_str()),
-                    )
-                    .await?;
+                    self.wallet_domain()
+                        .bind_uid_with_app_id(address, &info.org_id, Some(info.app_id.as_str()))
+                        .await?;
                     ApiWalletRepo::update_import_stage(
                         &pool,
                         &uid,
@@ -611,12 +606,13 @@ impl ApiWalletService {
 
                         if recharge_wallet.import_stage < ApiWalletImportStage::Completed.as_u8() {
                             if info.bind_status {
-                                ApiWalletDomain::bind_uid_with_app_id(
-                                    &recharge_wallet.address,
-                                    &info.org_id,
-                                    Some(info.app_id.as_str()),
-                                )
-                                .await?;
+                                self.wallet_domain()
+                                    .bind_uid_with_app_id(
+                                        &recharge_wallet.address,
+                                        &info.org_id,
+                                        Some(info.app_id.as_str()),
+                                    )
+                                    .await?;
                                 ApiWalletRepo::update_import_stage(
                                     &pool,
                                     &recharge_wallet.uid,
@@ -653,22 +649,25 @@ impl ApiWalletService {
                         }
 
                         if info.bind_status {
-                            ApiWalletDomain::bind_uid_with_app_id(
-                                address,
-                                &info.org_id,
-                                Some(info.app_id.as_str()),
-                            )
-                            .await?;
+                            self.wallet_domain()
+                                .bind_uid_with_app_id(
+                                    address,
+                                    &info.org_id,
+                                    Some(info.app_id.as_str()),
+                                )
+                                .await?;
                         }
 
-                        ApiWalletDomain::db_save_bind_data(
-                            recharge_address,
-                            address,
-                            &info.org_id,
-                            &info.app_id,
-                        )
-                        .await?;
-                        ApiWalletDomain::db_save_sn_data(recharge_address, Some(address), sn)
+                        self.wallet_domain()
+                            .db_save_bind_data(
+                                recharge_address,
+                                address,
+                                &info.org_id,
+                                &info.app_id,
+                            )
+                            .await?;
+                        self.wallet_domain()
+                            .db_save_sn_data(recharge_address, Some(address), sn)
                             .await?;
 
                         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
@@ -752,19 +751,12 @@ impl ApiWalletService {
         )?;
 
         self.wallet_domain().scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
-        ApiWalletDomain::db_save_bind_data(
-            &recharge_wallet.address,
-            &withdrawal_wallet.address,
-            org_id,
-            app_id,
-        )
-        .await?;
-        ApiWalletDomain::db_save_sn_data(
-            &recharge_wallet.address,
-            Some(&withdrawal_wallet.address),
-            &sn,
-        )
-        .await?;
+        self.wallet_domain()
+            .db_save_bind_data(&recharge_wallet.address, &withdrawal_wallet.address, org_id, app_id)
+            .await?;
+        self.wallet_domain()
+            .db_save_sn_data(&recharge_wallet.address, Some(&withdrawal_wallet.address), &sn)
+            .await?;
 
         tracing::info!(sn=%sn, "sn ------------ ==============================");
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
@@ -809,20 +801,13 @@ impl ApiWalletService {
         )?;
         self.wallet_domain().appid_import(sn, Some(recharge_uid), Some(withdrawal_uid)).await?;
 
-        ApiWalletDomain::db_save_bind_data(
-            &recharge_wallet.address,
-            &withdrawal_wallet.address,
-            org_id,
-            app_id,
-        )
-        .await?;
+        self.wallet_domain()
+            .db_save_bind_data(&recharge_wallet.address, &withdrawal_wallet.address, org_id, app_id)
+            .await?;
 
-        ApiWalletDomain::db_save_sn_data(
-            &recharge_wallet.address,
-            Some(&withdrawal_wallet.address),
-            sn,
-        )
-        .await?;
+        self.wallet_domain()
+            .db_save_sn_data(&recharge_wallet.address, Some(&withdrawal_wallet.address), sn)
+            .await?;
 
         // let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
 
@@ -844,8 +829,8 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        ApiWalletDomain::unbind_uid(recharge_uid).await?;
-        ApiWalletDomain::unbind_uid(withdrawal_uid).await?;
+        self.wallet_domain().unbind_uid(recharge_uid).await?;
+        self.wallet_domain().unbind_uid(withdrawal_uid).await?;
 
         todo!();
         // let backend = crate::Context::get_global_backend_api()?;
