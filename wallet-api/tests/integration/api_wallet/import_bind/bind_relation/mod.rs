@@ -106,5 +106,6 @@ async fn scan_bind_remote_first_then_persist() {
     let err = when.scan_bind_fails(&pair, "orchestration-app", "orchestration-merchant").await;
 
     then.error_contains(err, "remote bind failed first");
+    then.scan_bind_backend_called_once(&pair, "orchestration-app");
     then.pair_bind_snapshot_is_unchanged(&pair, before).await;
 }

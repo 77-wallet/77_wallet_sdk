@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use tokio::task::JoinHandle;
 use wallet_api::error::service::ServiceError;
@@ -62,7 +62,7 @@ pub(crate) trait WithdrawalImportGiven {
 
     fn backend_rejects_uid_usage(&self);
 
-    fn backend_appid_import_delay(&self);
+    fn backend_appid_import_delay(&self) -> BackendAppIdImportDelayGuard;
 
     async fn recharge_wallet(&self, uid_prefix: &str, import_stage: u8) -> RechargeWalletFixture;
 }
@@ -93,8 +93,9 @@ impl WithdrawalImportGiven for GivenRole<'_, WithdrawalImportScenario> {
         self.scenario().env.fake_backend.enqueue_appid_uid_usage_used(false);
     }
 
-    fn backend_appid_import_delay(&self) {
+    fn backend_appid_import_delay(&self) -> BackendAppIdImportDelayGuard {
         self.scenario().env.fake_backend.set_appid_import_delay(Some(Duration::from_millis(80)));
+        BackendAppIdImportDelayGuard { fake_backend: Arc::clone(&self.scenario().env.fake_backend) }
     }
 
     async fn recharge_wallet(&self, uid_prefix: &str, import_stage: u8) -> RechargeWalletFixture {
@@ -112,8 +113,6 @@ pub(crate) trait WithdrawalImportWhen {
     ) -> ServiceError;
 
     fn asset_reads_start(&self, address: &str) -> JoinHandle<usize>;
-
-    fn backend_appid_import_delay_is_cleared(&self);
 }
 
 #[async_trait::async_trait(?Send)]
@@ -144,9 +143,15 @@ impl WithdrawalImportWhen for WhenRole<'_, WithdrawalImportScenario> {
             ok_count
         })
     }
+}
 
-    fn backend_appid_import_delay_is_cleared(&self) {
-        self.scenario().env.fake_backend.set_appid_import_delay(None);
+pub(crate) struct BackendAppIdImportDelayGuard {
+    fake_backend: Arc<harness::FakeApiWalletBackend>,
+}
+
+impl Drop for BackendAppIdImportDelayGuard {
+    fn drop(&mut self) {
+        self.fake_backend.set_appid_import_delay(None);
     }
 }
 

@@ -178,7 +178,7 @@ shape:
 4. Keep backend UID status, bind-info, app-id usage setup, import delay, and
    recharge wallet seeding in the flow-local `WithdrawalImportGiven` trait.
 5. Keep import success/failure entrypoints, concurrent asset reads, and delay
-   cleanup in the flow-local `WithdrawalImportWhen` trait.
+   cleanup guard in the flow-local `WithdrawalImportGiven` trait.
 6. Keep wallet binding facts, completion facts, reimport stability, concurrent
    read result, rejection facts, and backend-call assertions in the flow-local
    `WithdrawalImportThen` trait.
@@ -197,7 +197,7 @@ shape:
 5. Keep scan bind, import bind, and missing-wallet entrypoints in the
    flow-local `BindRelationWhen` trait.
 6. Keep persisted bind fields, unchanged snapshots, error facts, and
-   backend-call assertions in the flow-local `BindRelationThen` trait.
+   exact backend-call assertions in the flow-local `BindRelationThen` trait.
 7. Keep manager calls, DB loads, snapshot helpers, and backend recorder checks
    below the Given-When-Then test body.
 

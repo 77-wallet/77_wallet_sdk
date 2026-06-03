@@ -77,7 +77,7 @@ async fn import_withdrawal_wallet_with_concurrent_asset_reads_succeeds() {
     let then = scenario.then();
 
     given.backend_accepts_withdrawal_import(false);
-    given.backend_appid_import_delay();
+    let _delay = given.backend_appid_import_delay();
     let recharge = given.recharge_wallet("uid-recharge-concurrent", 3).await;
     let import = WithdrawalImportFixture::new(
         "salt-waw-concurrent",
@@ -90,7 +90,6 @@ async fn import_withdrawal_wallet_with_concurrent_asset_reads_succeeds() {
 
     then.asset_reads_saw_successes(reads).await;
     then.wallets_are_bound_with_backend_fields(&withdrawal_uid, &recharge).await;
-    when.backend_appid_import_delay_is_cleared();
 }
 
 #[tokio::test]
