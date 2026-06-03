@@ -574,9 +574,10 @@ impl ApiWalletDomain {
 
     /// 查询绑定信息
     pub(crate) async fn query_uid_bind_info(
+        &self,
         uid: &str,
     ) -> Result<QueryUidBindInfoRes, ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
+        let backend = self.ctx.get_api_wallet_backend();
         Ok(backend.query_uid_bind_info(uid).await?)
     }
 
@@ -601,23 +602,25 @@ impl ApiWalletDomain {
 
     /// 查询钱包在uid下的使用状态
     pub(crate) async fn appid_uid_usage(
+        &self,
         org_app_id: &str,
         uid: &str,
         wallet_type: UidStatus,
     ) -> Result<bool, ServiceError> {
         let req = AppIdUidUsageReq::new(org_app_id, uid, wallet_type);
-        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
+        let backend = self.ctx.get_api_wallet_backend();
         Ok(backend.appid_uid_usage(req).await?.used)
     }
 
     /// 扫码绑定
     pub(crate) async fn scan_bind(
+        &self,
         recharge_uid: &str,
         withdrawal_uid: &str,
         org_app_id: &str,
         sn: &str,
     ) -> Result<(), ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
+        let backend = self.ctx.get_api_wallet_backend();
         Ok(backend
             .wallet_bind_appid(BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id, sn))
             .await?)
@@ -625,11 +628,12 @@ impl ApiWalletDomain {
 
     /// 导入钱包
     pub(crate) async fn appid_import(
+        &self,
         sn: &str,
         recharge_uid: Option<&str>,
         withdrawal_uid: Option<&str>,
     ) -> Result<(), ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
+        let backend = self.ctx.get_api_wallet_backend();
         let mut req = AppIdImportReq::new(sn);
 
         if let Some(recharge_uid) = recharge_uid {
@@ -644,10 +648,11 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn appid_import_recharge_wallet(
+        &self,
         sn: &str,
         recharge_uid: &str,
     ) -> Result<(), ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
+        let backend = self.ctx.get_api_wallet_backend();
         backend
             .appid_import_recharge_wallet(AppIdImportRechargeWalletReq::new(sn, recharge_uid))
             .await?;

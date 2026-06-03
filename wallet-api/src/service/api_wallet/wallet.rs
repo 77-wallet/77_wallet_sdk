@@ -56,6 +56,10 @@ impl ApiWalletService {
         Self { ctx }
     }
 
+    fn wallet_domain(&self) -> ApiWalletDomain {
+        ApiWalletDomain::new(self.ctx)
+    }
+
     pub async fn init_api_swap(&self) -> ReturnType<()> {
         if self.ctx.is_init_api_swap().await {
             tracing::warn!("init_api_swap already initialized, skip re-init");
@@ -261,10 +265,11 @@ impl ApiWalletService {
             &language_req,
         )?;
         ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
+        let domain = self.wallet_domain();
 
         match api_wallet_type {
             ApiWalletType::SubAccount => {
-                let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
+                let info = domain.query_uid_bind_info(&uid).await?;
                 if info.bind_status {
                     ApiWalletDomain::bind_uid_with_app_id(
                         address,
@@ -280,16 +285,10 @@ impl ApiWalletService {
                         ApiWalletRepo::find_by_address(&pool, binding_address).await?;
 
                     if let Some(recharge_wallet) = recharge_wallet {
-                        let info =
-                            ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
+                        let info = domain.query_uid_bind_info(&recharge_wallet.uid).await?;
 
                         if info.bind_status {
-                            ApiWalletDomain::appid_import(
-                                sn,
-                                Some(&recharge_wallet.uid),
-                                Some(&uid),
-                            )
-                            .await?;
+                            domain.appid_import(sn, Some(&recharge_wallet.uid), Some(&uid)).await?;
                             ApiWalletDomain::bind_uid_with_app_id(
                                 address,
                                 &info.org_id,
@@ -404,6 +403,7 @@ impl ApiWalletService {
 
         // 检查钱包类型和后端是否一致，不一致就报错
         let status = ApiWalletDomain::check_keys_uid(&uid).await?;
+        let domain = self.wallet_domain();
 
         if status.is_not_found() {
             return Err(crate::error::service::ServiceError::Business(
@@ -432,15 +432,11 @@ impl ApiWalletService {
                         ApiWalletRepo::find_by_address(&pool, binding_address).await?;
 
                     if let Some(recharge_wallet) = recharge_wallet {
-                        let info =
-                            ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
+                        let info = domain.query_uid_bind_info(&recharge_wallet.uid).await?;
                         if !info.app_id.is_empty()
-                            && !ApiWalletDomain::appid_uid_usage(
-                                &info.app_id,
-                                &uid,
-                                UidStatus::ApiWaw,
-                            )
-                            .await?
+                            && !domain
+                                .appid_uid_usage(&info.app_id, &uid, UidStatus::ApiWaw)
+                                .await?
                         {
                             // 该出款钱包未在该appId下使用过
                             return Err(
@@ -492,9 +488,9 @@ impl ApiWalletService {
 
         match api_wallet_type {
             ApiWalletType::SubAccount => {
-                let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
+                let info = domain.query_uid_bind_info(&uid).await?;
                 if info.bind_status {
-                    ApiWalletDomain::appid_import_recharge_wallet(sn, &uid).await?;
+                    domain.appid_import_recharge_wallet(sn, &uid).await?;
                 }
                 subaccount_bind_info = Some(info);
             }
@@ -504,16 +500,12 @@ impl ApiWalletService {
                         ApiWalletRepo::find_by_address(&pool, binding_address).await?;
 
                     if let Some(recharge_wallet) = recharge_wallet {
-                        let info =
-                            ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
+                        let info = domain.query_uid_bind_info(&recharge_wallet.uid).await?;
 
                         if !info.app_id.is_empty()
-                            && !ApiWalletDomain::appid_uid_usage(
-                                &info.app_id,
-                                &uid,
-                                UidStatus::ApiWaw,
-                            )
-                            .await?
+                            && !domain
+                                .appid_uid_usage(&info.app_id, &uid, UidStatus::ApiWaw)
+                                .await?
                         {
                             return Err(
                                 BusinessError::ApiWallet(
@@ -527,12 +519,7 @@ impl ApiWalletService {
                         }
 
                         if info.bind_status {
-                            ApiWalletDomain::appid_import(
-                                sn,
-                                Some(&recharge_wallet.uid),
-                                Some(&uid),
-                            )
-                            .await?;
+                            domain.appid_import(sn, Some(&recharge_wallet.uid), Some(&uid)).await?;
                         }
 
                         withdrawal_recharge_address = Some(recharge_wallet.address.clone());
@@ -764,7 +751,7 @@ impl ApiWalletService {
             ),
         )?;
 
-        ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
+        self.wallet_domain().scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
         ApiWalletDomain::db_save_bind_data(
             &recharge_wallet.address,
             &withdrawal_wallet.address,
@@ -820,7 +807,7 @@ impl ApiWalletService {
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
-        ApiWalletDomain::appid_import(sn, Some(recharge_uid), Some(withdrawal_uid)).await?;
+        self.wallet_domain().appid_import(sn, Some(recharge_uid), Some(withdrawal_uid)).await?;
 
         ApiWalletDomain::db_save_bind_data(
             &recharge_wallet.address,
@@ -893,7 +880,7 @@ impl ApiWalletService {
         self,
         wallet_address: &str,
     ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
-        ApiWalletDomain::new(self.ctx).query_wallet_activation_info(wallet_address).await
+        self.wallet_domain().query_wallet_activation_info(wallet_address).await
     }
 
     pub async fn get_phrase(
@@ -1043,7 +1030,7 @@ impl ApiWalletService {
         &self,
         uid: &str,
     ) -> Result<QueryUidBindInfoRes, crate::error::service::ServiceError> {
-        ApiWalletDomain::query_uid_bind_info(uid).await
+        self.wallet_domain().query_uid_bind_info(uid).await
     }
 
     pub async fn is_wallet_authorized_on_device(
