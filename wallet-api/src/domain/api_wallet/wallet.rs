@@ -473,11 +473,12 @@ impl ApiWalletDomain {
 
     /// 设置uid为api钱包
     pub(crate) async fn set_api_wallet(
+        &self,
         sn: &str,
         recharge_uid: Option<&str>,
         withdrawal_uid: Option<&str>,
     ) -> Result<(), ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
+        let backend = self.ctx.get_api_wallet_backend();
         let mut req = AppIdImportReq::new(sn);
         if let Some(recharge_uid) = recharge_uid {
             req.set_recharge_uid(recharge_uid);
@@ -490,12 +491,13 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn keys_init(
+        &self,
         uid: &str,
         device: &DeviceEntity,
         wallet_name: &str,
         invite_code: Option<String>,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let status = ConfigDomain::get_keys_reset_status().await?;
         if let Some(status) = status
             && let Some(false) = status.status
@@ -507,7 +509,7 @@ impl ApiWalletDomain {
         }
 
         let client_id = DeviceDomain::client_id_by_device(&device)?;
-        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
+        let backend = self.ctx.get_api_wallet_backend();
         let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
             &uid,
             &device.sn,

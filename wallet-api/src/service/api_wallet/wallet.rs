@@ -185,7 +185,7 @@ impl ApiWalletService {
             ApiWalletType::SubAccount => (Some(uid.as_str()), None),
             ApiWalletType::Withdrawal => (None, Some(uid.as_str())),
         };
-        ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
+        self.wallet_domain().set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
 
         let old = match api_wallet_type {
             ApiWalletType::SubAccount => None,
@@ -264,7 +264,7 @@ impl ApiWalletService {
             wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
             &language_req,
         )?;
-        ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
+        self.wallet_domain().keys_init(&uid, &device, wallet_name, invite_code).await?;
         let domain = self.wallet_domain();
 
         match api_wallet_type {
@@ -460,7 +460,7 @@ impl ApiWalletService {
             ApiWalletType::Withdrawal => (None, Some(uid.as_str())),
         };
 
-        ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
+        self.wallet_domain().set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
 
         tracing::info!(
             "[import_wallet] API wallet settings completed, wallet type: {:?}, recharge_uid: {:?}, withdrawal_uid: {:?}",
@@ -529,7 +529,7 @@ impl ApiWalletService {
             }
         }
 
-        ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
+        self.wallet_domain().keys_init(&uid, &device, wallet_name, invite_code).await?;
 
         ApiWalletDomain::upsert_api_wallet(
             &uid,
