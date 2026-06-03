@@ -1,5 +1,5 @@
 use crate::{
-    context::{CONTEXT, WalletUnlockMaterial, WalletUnlockSession},
+    context::{CONTEXT, Context, WalletUnlockMaterial, WalletUnlockSession},
     domain::{
         api_wallet::unlock::{SeedEnvelopeCodec, WalletUnlockSessionCodec},
         app::{DeviceDomain, config::ConfigDomain},
@@ -37,7 +37,9 @@ use wallet_transport_backend::{
 };
 use wallet_tree::KdfAlgorithm;
 
-pub struct ApiWalletDomain {}
+pub struct ApiWalletDomain {
+    ctx: &'static Context,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiWalletImportStage {
@@ -59,6 +61,10 @@ pub(crate) use super::unlock::{
 };
 
 impl ApiWalletDomain {
+    pub(crate) fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
+    }
+
     pub(crate) async fn upsert_api_wallet(
         uid: &str,
         wallet_name: &str,
@@ -650,10 +656,11 @@ impl ApiWalletDomain {
 
     /// 查询激活信息
     pub async fn query_wallet_activation_info(
+        &self,
         wallet_address: &str,
     ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let backend = self.ctx.get_api_wallet_backend();
+        let pool = self.ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),

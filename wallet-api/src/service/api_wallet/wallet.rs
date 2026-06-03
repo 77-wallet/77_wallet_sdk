@@ -893,7 +893,7 @@ impl ApiWalletService {
         self,
         wallet_address: &str,
     ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
-        ApiWalletDomain::query_wallet_activation_info(wallet_address).await
+        ApiWalletDomain::new(self.ctx).query_wallet_activation_info(wallet_address).await
     }
 
     pub async fn get_phrase(
