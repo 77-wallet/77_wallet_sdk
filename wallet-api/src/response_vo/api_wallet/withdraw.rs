@@ -53,8 +53,13 @@ pub struct ApiWithdrawOrderVo {
 impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
     fn from(entity: ApiWithdrawEntity) -> Self {
         let sign_time = entity.audit_passed_at.or(entity.audit_rejected_at);
-        let failure_reason_display =
-            failure_reason_display(entity.status, entity.err_code, entity.failure_stage);
+        let failure_reason_display = failure_reason_display(
+            entity.status,
+            entity.err_code,
+            entity.failure_stage,
+            entity.audit_rejected_at.is_some(),
+            entity.chain_failed_at.is_some(),
+        );
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
@@ -146,8 +151,13 @@ pub struct ApiWithdrawOrderDetailVo {
 impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
     fn from(entity: ApiWithdrawEntity) -> Self {
         let sign_time = entity.audit_passed_at.or(entity.audit_rejected_at);
-        let failure_reason_display =
-            failure_reason_display(entity.status, entity.err_code, entity.failure_stage);
+        let failure_reason_display = failure_reason_display(
+            entity.status,
+            entity.err_code,
+            entity.failure_stage,
+            entity.audit_rejected_at.is_some(),
+            entity.chain_failed_at.is_some(),
+        );
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
@@ -218,14 +228,29 @@ fn failure_reason_display(
     status: ApiWithdrawStatus,
     err_code: Option<ErrCode>,
     failure_stage: Option<wallet_database::entities::api_withdraw::WithdrawFailureStage>,
+    has_audit_rejected: bool,
+    has_chain_failed: bool,
 ) -> Option<FailureReasonDisplay> {
-    if matches!(
+    if matches!(status, ApiWithdrawStatus::Success | ApiWithdrawStatus::ConfirmSuccessReport) {
+        return None;
+    }
+
+    if matches!(status, ApiWithdrawStatus::AuditReject) || has_audit_rejected {
+        return Some(FailureReasonDisplay::AuditRejected);
+    }
+
+    let has_failure_fact = failure_stage.is_some() || err_code.is_some() || has_chain_failed;
+    let is_active_failure_status =
+        matches!(status, ApiWithdrawStatus::SendingTxFailed | ApiWithdrawStatus::Failure);
+    let is_reported_failure_status = matches!(
         status,
-        ApiWithdrawStatus::AuditReject
-            | ApiWithdrawStatus::SendingTxFailed
-            | ApiWithdrawStatus::Failure
-    ) {
-        Some(FailureReasonDisplay::from_status_and_error(status, err_code, failure_stage))
+        ApiWithdrawStatus::SendingTxFailedReport | ApiWithdrawStatus::ConfirmFailureReport
+    );
+
+    if is_active_failure_status || (is_reported_failure_status && has_failure_fact) {
+        Some(FailureReasonDisplay::from_failure_facts(err_code, failure_stage, has_chain_failed))
+    } else if has_chain_failed {
+        Some(FailureReasonDisplay::from_failure_facts(err_code, failure_stage, has_chain_failed))
     } else {
         None
     }

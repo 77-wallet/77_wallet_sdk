@@ -142,7 +142,7 @@ mod unit_tests {
     use chrono::{Duration, Utc};
     use wallet_database::entities::{
         api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, WithdrawFailureStage},
         asset_token_key::AssetTokenKey,
     };
 
@@ -413,6 +413,29 @@ mod unit_tests {
         let json = serde_json::to_string_pretty(&vo).unwrap();
         println!("AuditReject status:\n{}", json);
         assert_eq!(vo.failure_reason_display, Some(FailureReasonDisplay::AuditRejected));
+
+        // Test failure report terminal-ish status still exposes display classification
+        let mut entity = make_entity(now, None, None);
+        entity.status = ApiWithdrawStatus::SendingTxFailedReport;
+        entity.failure_stage = Some(WithdrawFailureStage::Broadcast);
+        let vo = ApiWithdrawOrderVo::from(entity);
+        assert_eq!(vo.failure_reason_display, Some(FailureReasonDisplay::BroadcastFailed));
+
+        let mut entity = make_entity(now, None, None);
+        entity.status = ApiWithdrawStatus::ConfirmFailureReport;
+        entity.err_code = Some(wallet_database::entities::api_withdraw::ErrCode::FeeInsufficient);
+        let vo = ApiWithdrawOrderVo::from(entity);
+        assert_eq!(vo.failure_reason_display, Some(FailureReasonDisplay::ResourceFailed));
+
+        let mut entity = make_entity(now, None, None);
+        entity.status = ApiWithdrawStatus::SendingTxFailedReport;
+        let vo = ApiWithdrawOrderVo::from(entity);
+        assert_eq!(vo.failure_reason_display, None);
+
+        let mut entity = make_entity(now, None, None);
+        entity.chain_failed_at = Some(now);
+        let vo = ApiWithdrawOrderVo::from(entity);
+        assert_eq!(vo.failure_reason_display, Some(FailureReasonDisplay::ChainFailed));
 
         // Test Success status
         let mut entity = make_entity(now, None, None);

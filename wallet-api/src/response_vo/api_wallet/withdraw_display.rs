@@ -27,25 +27,36 @@ impl FailureReasonDisplay {
     ) -> Self {
         match status {
             ApiWithdrawStatus::AuditReject => Self::AuditRejected,
-            ApiWithdrawStatus::SendingTxFailed => match failure_stage {
-                Some(WithdrawFailureStage::Build) => Self::SignFailed,
-                Some(WithdrawFailureStage::Broadcast) => Self::BroadcastFailed,
-                Some(WithdrawFailureStage::Chain) => Self::ChainFailed,
-                // TxResultAck 阶段失败会自动重试，不算真正失败
-                Some(WithdrawFailureStage::TxResultAck) => Self::UnknownFailed,
-                _ => Self::UnknownFailed,
-            },
-            ApiWithdrawStatus::Failure => match failure_stage {
-                Some(WithdrawFailureStage::Chain) => Self::ChainFailed,
-                // TxResultAck 阶段失败会自动重试，不算真正失败
-                Some(WithdrawFailureStage::TxResultAck) => Self::UnknownFailed,
-                _ => match err_code {
-                    Some(ErrCode::BalanceInsufficient) => Self::ResourceFailed,
-                    Some(ErrCode::FeeInsufficient) => Self::ResourceFailed,
-                    _ => Self::UnknownFailed,
-                },
-            },
+            ApiWithdrawStatus::SendingTxFailed | ApiWithdrawStatus::Failure => {
+                Self::from_failure_facts(err_code, failure_stage, false)
+            }
             _ => Self::UnknownFailed,
+        }
+    }
+
+    /// 从失败事实推断展示分类。上报态 status 不作为事实来源，只能配合这些事实使用。
+    pub fn from_failure_facts(
+        err_code: Option<ErrCode>,
+        failure_stage: Option<WithdrawFailureStage>,
+        has_chain_failed: bool,
+    ) -> Self {
+        match failure_stage {
+            Some(WithdrawFailureStage::Build) => Self::SignFailed,
+            Some(WithdrawFailureStage::Broadcast) => Self::BroadcastFailed,
+            Some(WithdrawFailureStage::Chain) => Self::ChainFailed,
+            // TxResultAck 阶段失败会自动重试，不算真正失败
+            Some(WithdrawFailureStage::TxResultAck) => Self::UnknownFailed,
+            Some(WithdrawFailureStage::Unknown) | None => {
+                if has_chain_failed {
+                    Self::ChainFailed
+                } else {
+                    match err_code {
+                        Some(ErrCode::BalanceInsufficient) => Self::ResourceFailed,
+                        Some(ErrCode::FeeInsufficient) => Self::ResourceFailed,
+                        _ => Self::UnknownFailed,
+                    }
+                }
+            }
         }
     }
 }
@@ -85,6 +96,17 @@ mod tests {
     }
 
     #[test]
+    fn test_failure_reason_type_reported_broadcast_failed() {
+        let reason = FailureReasonDisplay::from_failure_facts(
+            None,
+            Some(WithdrawFailureStage::Broadcast),
+            false,
+        );
+        assert_eq!(reason, FailureReasonDisplay::BroadcastFailed);
+        assert_eq!(serde_json::to_string(&reason).unwrap(), "3");
+    }
+
+    #[test]
     fn test_failure_reason_type_chain_failed() {
         let reason = FailureReasonDisplay::from_status_and_error(
             ApiWithdrawStatus::SendingTxFailed,
@@ -104,6 +126,21 @@ mod tests {
         );
         assert_eq!(reason, FailureReasonDisplay::ResourceFailed);
         assert_eq!(serde_json::to_string(&reason).unwrap(), "5");
+    }
+
+    #[test]
+    fn test_failure_reason_type_reported_resource_failed() {
+        let reason =
+            FailureReasonDisplay::from_failure_facts(Some(ErrCode::FeeInsufficient), None, false);
+        assert_eq!(reason, FailureReasonDisplay::ResourceFailed);
+        assert_eq!(serde_json::to_string(&reason).unwrap(), "5");
+    }
+
+    #[test]
+    fn test_failure_reason_type_chain_failed_from_fact() {
+        let reason = FailureReasonDisplay::from_failure_facts(None, None, true);
+        assert_eq!(reason, FailureReasonDisplay::ChainFailed);
+        assert_eq!(serde_json::to_string(&reason).unwrap(), "4");
     }
 
     #[test]
