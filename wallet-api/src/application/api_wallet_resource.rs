@@ -3,17 +3,11 @@ use crate::{
     context::Context,
     domain::api_wallet::resource::ApiResourceDomain,
     error::service::ServiceError,
-    request::api_wallet::resource::{
-        ApiResourceStakeReq, ApiResourceUnstakeReq, ApiWithdrawWalletClaimVotesRewardsReq,
-        ApiWithdrawWalletVoterInfoReq, ApiWithdrawWalletVotesNodeListReq,
-        ApiWithdrawWalletVotesReq,
-    },
-    response_vo::{
-        api_wallet::resource::ApiResourceOperationResp,
-        standard_wallet::stake::{VoteListResp, VoterInfoResp},
-    },
+    request::stake::{FreezeBalanceReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq},
+    response_vo::standard_wallet::stake::{FreezeResp, VoteListResp, VoterInfoResp},
     service::stake::StackService,
 };
+use wallet_chain_interact::tron::operations::stake::ResourceType;
 use wallet_database::{
     entities::{
         api_resource_operation::{ApiResourceOperationType, NewApiResourceOperation},
@@ -33,24 +27,27 @@ impl ApiResourceApplication {
 
     pub(crate) async fn stake_withdraw_wallet_resource(
         &self,
-        req: ApiResourceStakeReq,
-    ) -> Result<ApiResourceOperationResp, ServiceError> {
-        WalletApplication::validate_password(&req.password).await?;
+        req: FreezeBalanceReq,
+        password: String,
+    ) -> Result<FreezeResp, ServiceError> {
+        WalletApplication::validate_password(&password).await?;
 
-        let outcome = ApiResourceDomain::stake_withdraw_wallet_resource(
-            self.ctx,
-            &req.withdraw_wallet_uid,
-            req.resource,
-            &req.frozen_balance,
-        )
-        .await?;
+        let outcome = ApiResourceDomain::stake_withdraw_wallet_resource(self.ctx, &req).await?;
 
         let resource_trade_no = Self::client_resource_trade_no();
         self.record_client_resource_operation(
-            &req.withdraw_wallet_uid,
+            outcome.uid.as_deref().ok_or_else(|| {
+                ServiceError::System(crate::error::system::SystemError::Internal(
+                    "api wallet stake uid missing".to_string(),
+                ))
+            })?,
             &resource_trade_no,
-            outcome.owner_address,
-            req.resource,
+            outcome.owner_address.clone(),
+            outcome.resource_type.ok_or_else(|| {
+                ServiceError::System(crate::error::system::SystemError::Internal(
+                    "api wallet stake resource type missing".to_string(),
+                ))
+            })?,
             req.frozen_balance,
             ApiResourceOperationType::Stake,
             &outcome.tx_hash,
@@ -59,29 +56,36 @@ impl ApiResourceApplication {
         )
         .await?;
 
-        Ok(ApiResourceOperationResp::success(resource_trade_no, outcome.tx_hash))
+        outcome.resp.ok_or_else(|| {
+            ServiceError::System(crate::error::system::SystemError::Internal(
+                "api wallet stake response missing".to_string(),
+            ))
+        })
     }
 
     pub(crate) async fn unstake_withdraw_wallet_resource(
         &self,
-        req: ApiResourceUnstakeReq,
-    ) -> Result<ApiResourceOperationResp, ServiceError> {
-        WalletApplication::validate_password(&req.password).await?;
+        req: UnFreezeBalanceReq,
+        password: String,
+    ) -> Result<FreezeResp, ServiceError> {
+        WalletApplication::validate_password(&password).await?;
 
-        let outcome = ApiResourceDomain::unstake_withdraw_wallet_resource(
-            self.ctx,
-            &req.withdraw_wallet_uid,
-            req.resource,
-            &req.unfreeze_balance,
-        )
-        .await?;
+        let outcome = ApiResourceDomain::unstake_withdraw_wallet_resource(self.ctx, &req).await?;
 
         let resource_trade_no = Self::client_resource_trade_no();
         self.record_client_resource_operation(
-            &req.withdraw_wallet_uid,
+            outcome.uid.as_deref().ok_or_else(|| {
+                ServiceError::System(crate::error::system::SystemError::Internal(
+                    "api wallet unstake uid missing".to_string(),
+                ))
+            })?,
             &resource_trade_no,
-            outcome.owner_address,
-            req.resource,
+            outcome.owner_address.clone(),
+            outcome.resource_type.ok_or_else(|| {
+                ServiceError::System(crate::error::system::SystemError::Internal(
+                    "api wallet unstake resource type missing".to_string(),
+                ))
+            })?,
             req.unfreeze_balance,
             ApiResourceOperationType::Unstake,
             &outcome.tx_hash,
@@ -90,48 +94,47 @@ impl ApiResourceApplication {
         )
         .await?;
 
-        Ok(ApiResourceOperationResp::success(resource_trade_no, outcome.tx_hash))
+        outcome.resp.ok_or_else(|| {
+            ServiceError::System(crate::error::system::SystemError::Internal(
+                "api wallet unstake response missing".to_string(),
+            ))
+        })
     }
 
     pub(crate) async fn withdraw_wallet_votes(
         &self,
-        req: ApiWithdrawWalletVotesReq,
+        req: VoteWitnessReq,
+        password: &str,
     ) -> Result<String, ServiceError> {
-        WalletApplication::validate_password(&req.password).await?;
-        let owner_address =
-            ApiResourceDomain::withdraw_wallet_address(self.ctx, &req.withdraw_wallet_uid).await?;
-        let vote_req = ApiResourceDomain::votes_req_for_withdraw_wallet(owner_address, req.votes);
-        StackService::new().await?.votes(vote_req, &req.password).await
+        WalletApplication::validate_password(password).await?;
+        ApiResourceDomain::withdraw_wallet_votes(self.ctx, req).await
     }
 
     pub(crate) async fn withdraw_wallet_voter_info(
         &self,
-        req: ApiWithdrawWalletVoterInfoReq,
+        owner_address: &str,
     ) -> Result<VoterInfoResp, ServiceError> {
-        let owner_address =
-            ApiResourceDomain::withdraw_wallet_address(self.ctx, &req.withdraw_wallet_uid).await?;
+        ApiResourceDomain::withdraw_wallet_account_context(self.ctx, owner_address).await?;
         StackService::new().await?.voter_info(&owner_address).await
     }
 
     pub(crate) async fn withdraw_wallet_votes_node_list(
         &self,
-        req: ApiWithdrawWalletVotesNodeListReq,
+        owner_address: Option<&str>,
     ) -> Result<VoteListResp, ServiceError> {
-        let owner_address =
-            ApiResourceDomain::withdraw_wallet_address(self.ctx, &req.withdraw_wallet_uid).await?;
-        StackService::new().await?.vote_list(Some(&owner_address)).await
+        if let Some(owner_address) = owner_address {
+            ApiResourceDomain::withdraw_wallet_account_context(self.ctx, owner_address).await?;
+        }
+        StackService::new().await?.vote_list(owner_address).await
     }
 
     pub(crate) async fn withdraw_wallet_claim_votes_rewards(
         &self,
-        req: ApiWithdrawWalletClaimVotesRewardsReq,
+        req: WithdrawBalanceReq,
+        password: &str,
     ) -> Result<String, ServiceError> {
-        WalletApplication::validate_password(&req.password).await?;
-        let owner_address =
-            ApiResourceDomain::withdraw_wallet_address(self.ctx, &req.withdraw_wallet_uid).await?;
-        let claim_req =
-            ApiResourceDomain::claim_votes_rewards_req_for_withdraw_wallet(owner_address);
-        StackService::new().await?.votes_claim_rewards(claim_req, &req.password).await
+        WalletApplication::validate_password(password).await?;
+        ApiResourceDomain::withdraw_wallet_claim_votes_rewards(self.ctx, req).await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -140,8 +143,8 @@ impl ApiResourceApplication {
         uid: &str,
         resource_trade_no: &str,
         owner_address: String,
-        resource: crate::request::api_wallet::resource::ApiResourceType,
-        amount: String,
+        resource: ResourceType,
+        amount: i64,
         operation_type: ApiResourceOperationType,
         tx_hash: &str,
         raw_tx: &str,
@@ -153,7 +156,7 @@ impl ApiResourceApplication {
             resource_trade_no,
             owner_address,
             Self::db_resource_type(resource),
-            amount,
+            amount.to_string(),
             operation_type,
         );
         ApiResourceOperationRepo::record_client_broadcast_success(
@@ -167,16 +170,10 @@ impl ApiResourceApplication {
         .map_err(|e| ServiceError::Database(e.into()))
     }
 
-    fn db_resource_type(
-        resource: crate::request::api_wallet::resource::ApiResourceType,
-    ) -> DbApiResourceType {
+    fn db_resource_type(resource: ResourceType) -> DbApiResourceType {
         match resource {
-            crate::request::api_wallet::resource::ApiResourceType::Energy => {
-                DbApiResourceType::Energy
-            }
-            crate::request::api_wallet::resource::ApiResourceType::Bandwidth => {
-                DbApiResourceType::Bandwidth
-            }
+            ResourceType::BANDWIDTH => DbApiResourceType::Bandwidth,
+            ResourceType::ENERGY => DbApiResourceType::Energy,
         }
     }
 
