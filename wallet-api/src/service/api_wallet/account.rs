@@ -106,17 +106,18 @@ impl ApiAccountService {
         serial_no: &str,
         batch_id: &str,
     ) -> Result<(), ServiceError> {
-        ApiWalletDomain::expand_address(
-            "1",
-            &address_allock_type,
-            index,
-            &uid,
-            &chain_code,
-            number,
-            serial_no,
-            &batch_id,
-        )
-        .await?;
+        ApiWalletDomain::new(self.ctx)
+            .expand_address(
+                "1",
+                &address_allock_type,
+                index,
+                &uid,
+                &chain_code,
+                number,
+                serial_no,
+                &batch_id,
+            )
+            .await?;
 
         Ok(())
     }

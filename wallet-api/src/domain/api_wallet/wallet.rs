@@ -331,6 +331,7 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn expand_address(
+        &self,
         msg_id: &str,
         address_allock_type: &AddressAllockType,
         index: Option<i32>,
@@ -342,8 +343,8 @@ impl ApiWalletDomain {
     ) -> Result<(), ServiceError> {
         let _guard = EXPAND_INDEX_LOCK.lock().await;
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let backend = CONTEXT.get().unwrap().get_global_backend_api();
+        let pool = self.ctx.api_wallet_pool()?;
+        let backend = self.ctx.get_global_backend_api();
 
         let Some(api_wallet) = ApiWalletRepo::find_by_uid(&pool, &uid).await? else {
             let req = ExpandAddressCompleteReq::new(
@@ -775,9 +776,10 @@ impl ApiWalletDomain {
         Ok(Self::build_api_wallet_list(&wallets, &balance_list, true))
     }
 
-    pub async fn get_api_wallet_list_light()
-    -> Result<ApiWalletList, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+    pub async fn get_api_wallet_list_light(
+        &self,
+    ) -> Result<ApiWalletList, crate::error::service::ServiceError> {
+        let pool = self.ctx.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         Ok(Self::build_api_wallet_list(&wallets, &HashMap::new(), false))
     }
