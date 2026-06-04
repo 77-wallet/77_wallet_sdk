@@ -51,7 +51,7 @@ impl WalletManager {
 
         let context = init_context(sn, device_type, dir, sender, config).await?;
         GLOBAL_KEY.set_sn(sn);
-        unlock_session::start_wallet_unlock_session_rotation_task().await?;
+        unlock_session::start_wallet_unlock_session_rotation_task(context).await?;
 
         // 执行TaskQueue迁移
         tracing::info!("Running TaskQueue migration");
@@ -107,7 +107,7 @@ impl WalletManager {
         )
         .await?;
         GLOBAL_KEY.set_sn(sn);
-        unlock_session::start_wallet_unlock_session_rotation_task().await?;
+        unlock_session::start_wallet_unlock_session_rotation_task(context).await?;
 
         let handles = Arc::new(Handles::new(context.get_client_id()).await?);
         context.set_global_handles(Arc::downgrade(&handles)).await;
@@ -221,7 +221,7 @@ mod tests {
         let config = crate::config::Config::new(&crate::testkit::env::get_config()?)?;
         let _manager =
             crate::manager::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = _manager.ctx.get_global_dirs();
 
         wallet_tree::wallet_hierarchy::v1::LegacyWalletTree::traverse_directory_structure(
             &dirs.wallet_dir,

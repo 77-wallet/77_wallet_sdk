@@ -13,6 +13,7 @@ use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 use wallet_utils::address::AccountIndexMap;
 
 use crate::{
+    context::Context,
     domain::{
         self, account::AccountDomain, api_wallet::wallet::ApiWalletDomain,
         app::config::ConfigDomain, chain::ChainDomain, permission::PermissionDomain,
@@ -30,13 +31,14 @@ use crate::{
 };
 
 pub struct AccountService {
+    ctx: &'static Context,
     pub wallet_domain: WalletDomain,
     // keystore: wallet_crypto::Keystore
 }
 
 impl AccountService {
-    pub fn new() -> Self {
-        Self { wallet_domain: WalletDomain::new() }
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx, wallet_domain: WalletDomain::new() }
     }
 
     pub(crate) async fn switch_account(
@@ -99,8 +101,8 @@ impl AccountService {
         name: &str,
         is_default_name: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let dirs = crate::context::get_context()?.get_global_dirs();
+        let core_pool = self.ctx.core_pool()?;
+        let dirs = self.ctx.get_global_dirs();
 
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
@@ -235,7 +237,7 @@ impl AccountService {
         wallet_address: &str,
         index: u32,
     ) -> Result<Vec<QueryAccountDerivationPath>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let list = AccountRepo::get_account_list_by_wallet_address_and_account_id(
             core_pool,
             Some(wallet_address),
@@ -264,12 +266,12 @@ impl AccountService {
         password: &str,
         all: bool,
     ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         WalletDomain::validate_password(password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
 
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -354,7 +356,7 @@ impl AccountService {
         self,
         address: &str,
     ) -> Result<Option<AccountEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let res = AccountRepo::account(pool.clone(), address).await?;
         Ok(res)
     }
@@ -365,7 +367,7 @@ impl AccountService {
         wallet_address: &str,
         name: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         AccountRepo::edit_account_name(core_pool.clone(), account_id, wallet_address, name).await?;
         let Some(wallet) =
             WalletRepo::wallet_detail_by_address(core_pool.clone(), wallet_address).await?
@@ -395,8 +397,8 @@ impl AccountService {
         account_id: u32,
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let pool = self.ctx.core_pool()?;
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -425,7 +427,7 @@ impl AccountService {
             )
             .await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         // delete permission
         for account in deleted.iter() {
             if account.chain_code == chain_code::TRON {
@@ -434,7 +436,7 @@ impl AccountService {
         }
 
         Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
@@ -452,10 +454,9 @@ impl AccountService {
         new_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(old_password).await?;
-        let ctx = crate::context::get_context()?;
-        let api_wallet_domain = ApiWalletDomain::new(ctx);
+        let api_wallet_domain = ApiWalletDomain::new(self.ctx);
         api_wallet_domain.clear_wallet_unlock_session().await?;
-        let pool = ctx.core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let indices = AccountRepo::get_all_account_indices(pool.clone()).await?;
         let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
 
@@ -479,7 +480,7 @@ impl AccountService {
         tracing::info!("wallet unlock session reinitialized after password change");
 
         // 生成并存储 password_proof
-        let sn = ctx.get_sn();
+        let sn = self.ctx.get_sn();
         let proof =
             crate::domain::wallet::WalletDomain::generate_password_proof(new_password).await?;
         DeviceRepo::update_password_proof(pool.clone(), sn, Some(&proof)).await?;
@@ -495,8 +496,8 @@ impl AccountService {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let dirs = self.ctx.get_global_dirs();
+        let core_pool = self.ctx.core_pool()?;
         // let req = wallet_database::entities::account::QueryReq {
         //     wallet_address: None,
         //     address: Some(address.to_string()),
@@ -550,7 +551,7 @@ impl AccountService {
         crate::error::service::ServiceError,
     > {
         WalletDomain::validate_password(password).await?;
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let account_list =
             AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
                 pool.clone(),
@@ -604,7 +605,7 @@ impl AccountService {
         wallet_address: Option<&str>,
         account_id: Option<u32>,
     ) -> Result<Vec<AccountEntity>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         Ok(AccountRepo::get_account_list_by_wallet_address_and_account_id(
             core_pool,
             wallet_address,
@@ -614,11 +615,12 @@ impl AccountService {
     }
 
     pub async fn current_chain_address(
+        &self,
         address: String,
         account_id: u32,
         chain_code: &str,
     ) -> Result<Vec<QueryAccountDerivationPath>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
 
         let res =
             AccountRepo::current_chain_address(address, account_id, chain_code, core_pool).await?;
@@ -636,7 +638,7 @@ impl AccountService {
         wallet_address: &str,
         account_id: i32,
     ) -> Result<Vec<CurrentAccountInfo>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
             core_pool,
             Some(wallet_address),
@@ -644,7 +646,7 @@ impl AccountService {
         )
         .await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         let mut result = vec![];
         for account in accounts.into_iter() {

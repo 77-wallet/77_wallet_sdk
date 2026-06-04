@@ -19,8 +19,9 @@ struct UnlockSessionRuntime {
 
 static RUNTIME: OnceCell<UnlockSessionRuntime> = OnceCell::new();
 
-fn ensure_runtime() -> Result<&'static UnlockSessionRuntime, ServiceError> {
-    let context = get_context()?;
+fn ensure_runtime(
+    context: &'static Context,
+) -> Result<&'static UnlockSessionRuntime, ServiceError> {
     if let Some(runtime) = RUNTIME.get() {
         if std::ptr::eq(runtime.context, context) {
             return Ok(runtime);
@@ -79,8 +80,10 @@ pub(crate) async fn rotate_wallet_unlock_session_if_due() -> Result<bool, Servic
     Ok(true)
 }
 
-pub(crate) async fn start_wallet_unlock_session_rotation_task() -> Result<(), ServiceError> {
-    let runtime = ensure_runtime()?;
+pub(crate) async fn start_wallet_unlock_session_rotation_task(
+    context: &'static Context,
+) -> Result<(), ServiceError> {
+    let runtime = ensure_runtime(context)?;
     if runtime
         .rotation_started
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -218,9 +221,10 @@ mod tests {
     };
     use wallet_transport_backend::{
         request::{
-            KeysInitReq,
+            DeviceDeleteReq, KeysInitReq,
             api_wallet::{
                 address::ExpandAddressCompleteReq,
+                swap::{ApiInitSwapReq, ApiInitSwapResponse},
                 wallet::{
                     AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
                 },
@@ -322,6 +326,14 @@ mod tests {
         ) -> Result<(), ServiceError> {
             Ok(())
         }
+
+        async fn init_swap(&self, _: &ApiInitSwapReq) -> Result<ApiInitSwapResponse, ServiceError> {
+            Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+        }
+
+        async fn device_delete(&self, _: &DeviceDeleteReq) -> Result<Option<()>, ServiceError> {
+            Ok(Some(()))
+        }
     }
 
     static TEST_ENV: once_cell::sync::Lazy<tokio::sync::OnceCell<UnlockSessionTestEnv>> =
@@ -382,7 +394,7 @@ oss:
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
-        start_wallet_unlock_session_rotation_task().await.expect("init runtime");
+        start_wallet_unlock_session_rotation_task(context).await.expect("init runtime");
 
         let wallet_address = "0xcontext-unlock-session";
         let unlock_material = WalletUnlockMaterial::new(vec![0x11; 32]);
@@ -440,7 +452,7 @@ oss:
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
-        start_wallet_unlock_session_rotation_task().await.expect("init runtime");
+        start_wallet_unlock_session_rotation_task(context).await.expect("init runtime");
 
         let wallet_address = "0xcontext-unlock-session-expired";
         let unlock_material = WalletUnlockMaterial::new(vec![0x22; 32]);
@@ -479,7 +491,7 @@ oss:
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
-        start_wallet_unlock_session_rotation_task().await.expect("init runtime");
+        start_wallet_unlock_session_rotation_task(context).await.expect("init runtime");
 
         let wallet1_address = "0xcontext-unlock-wallet-1";
         let wallet2_address = "0xcontext-unlock-wallet-2";
@@ -583,7 +595,7 @@ oss:
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
-        start_wallet_unlock_session_rotation_task().await.expect("init runtime");
+        start_wallet_unlock_session_rotation_task(context).await.expect("init runtime");
 
         let wallet_address = "0xcontext-unlock-wallet-new";
         let password = "unlock-password-new";

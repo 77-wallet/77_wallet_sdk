@@ -29,9 +29,10 @@ use wallet_database::{
 };
 use wallet_transport_backend::{
     request::{
-        KeysInitReq,
+        DeviceDeleteReq, KeysInitReq,
         api_wallet::{
             address::ExpandAddressCompleteReq,
+            swap::{ApiInitSwapReq, ApiInitSwapResponse},
             wallet::{
                 AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
             },
@@ -140,6 +141,20 @@ pub struct AppIdWithdrawalWalletChangeCall {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitSwapCall {
+    pub sn: String,
+    pub client_pub_key: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceDeleteCall {
+    pub sn: String,
+    pub uid_list: Vec<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeysInitCall {
     pub uid: String,
     pub sn: String,
@@ -161,6 +176,8 @@ pub enum ApiWalletBackendCall {
     AppIdUidUsage(AppIdUidUsageCall),
     ExpandAddressComplete(ExpandAddressCompleteCall),
     AppIdWithdrawalWalletChange(AppIdWithdrawalWalletChangeCall),
+    InitSwap(InitSwapCall),
+    DeviceDelete(DeviceDeleteCall),
     InitApiWallet(AppIdImportCall),
     OldKeysInit(KeysInitCall),
 }
@@ -210,6 +227,14 @@ struct ExpandAddressCompleteReqView {
     serial_no: String,
     status: bool,
     remark: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiInitSwapReqView {
+    sn: String,
+    client_pub_key: String,
 }
 
 #[allow(dead_code)]
@@ -517,6 +542,33 @@ impl ApiWalletBackend for FakeApiWalletBackend {
             },
         ));
         Ok(())
+    }
+
+    async fn init_swap(
+        &self,
+        req: &ApiInitSwapReq,
+    ) -> Result<ApiInitSwapResponse, wallet_api::error::service::ServiceError> {
+        let view: ApiInitSwapReqView =
+            serde_json::from_value(serde_json::to_value(req).expect("serialize init swap req"))
+                .expect("deserialize init swap req");
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::InitSwap(InitSwapCall {
+            sn: view.sn,
+            client_pub_key: view.client_pub_key,
+        }));
+        Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+    }
+
+    async fn device_delete(
+        &self,
+        req: &DeviceDeleteReq,
+    ) -> Result<Option<()>, wallet_api::error::service::ServiceError> {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::DeviceDelete(DeviceDeleteCall {
+            sn: req.sn.clone(),
+            uid_list: req.uid_list.clone(),
+        }));
+        Ok(Some(()))
     }
 }
 

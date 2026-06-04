@@ -66,7 +66,7 @@ impl ApiWalletService {
             return Ok(());
         }
 
-        let backend = self.ctx.get_global_backend_api();
+        let backend = self.ctx.get_api_wallet_backend();
         let req = ApiInitSwapReq {
             sn: self.ctx.get_sn().to_string(),
             client_pub_key: GLOBAL_KEY.secret_pub_key(),
@@ -966,7 +966,7 @@ impl ApiWalletService {
                 DeviceDomain::gen_device_unbind_all_api_address_task_data(accounts.as_slice(), sn)
                     .await?;
             // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
-            let backend = self.ctx.get_global_backend_api();
+            let backend = self.ctx.get_api_wallet_backend();
             backend.device_delete(&req).await?;
 
             Tasks::new()

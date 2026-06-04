@@ -13,7 +13,7 @@ use wallet_database::entities::account::AccountEntity;
 
 impl WalletManager {
     fn account_service(&self) -> ReturnType<AccountService> {
-        Ok(AccountService::new())
+        Ok(AccountService::new(self.ctx))
     }
 
     pub async fn switch_account(&self, wallet_address: &str, account_id: u32) -> ReturnType<()> {
@@ -82,7 +82,7 @@ impl WalletManager {
         account_id: u32,
         chain_code: String,
     ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
-        AccountService::current_chain_address(address, account_id, &chain_code).await
+        self.account_service()?.current_chain_address(address, account_id, &chain_code).await
     }
 
     pub async fn current_account(

@@ -4,9 +4,10 @@ use std::sync::Arc;
 use wallet_transport_backend::{
     api::BackendApi,
     request::{
-        KeysInitReq,
+        DeviceDeleteReq, KeysInitReq,
         api_wallet::{
             address::ExpandAddressCompleteReq,
+            swap::{ApiInitSwapReq, ApiInitSwapResponse},
             wallet::{
                 AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
             },
@@ -46,6 +47,8 @@ pub trait ApiWalletBackend: Send + Sync {
         withdrawal_uid: &str,
         org_app_id: &str,
     ) -> Result<(), ServiceError>;
+    async fn init_swap(&self, req: &ApiInitSwapReq) -> Result<ApiInitSwapResponse, ServiceError>;
+    async fn device_delete(&self, req: &DeviceDeleteReq) -> Result<Option<()>, ServiceError>;
 }
 
 pub struct RealApiWalletBackend {
@@ -122,5 +125,13 @@ impl ApiWalletBackend for RealApiWalletBackend {
             .appid_withdrawal_wallet_change(withdrawal_uid, org_app_id)
             .await
             .map_err(|e| e.into())
+    }
+
+    async fn init_swap(&self, req: &ApiInitSwapReq) -> Result<ApiInitSwapResponse, ServiceError> {
+        self.inner.init_swap(req).await.map_err(|e| e.into())
+    }
+
+    async fn device_delete(&self, req: &DeviceDeleteReq) -> Result<Option<()>, ServiceError> {
+        self.inner.device_delete(req).await.map_err(|e| e.into())
     }
 }

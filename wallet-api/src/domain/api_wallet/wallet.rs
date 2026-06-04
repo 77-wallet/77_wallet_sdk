@@ -798,9 +798,10 @@ mod tests {
     };
     use wallet_transport_backend::{
         request::{
-            KeysInitReq,
+            DeviceDeleteReq, KeysInitReq,
             api_wallet::{
                 address::ExpandAddressCompleteReq,
+                swap::{ApiInitSwapReq, ApiInitSwapResponse},
                 wallet::{
                     AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
                 },
@@ -999,6 +1000,20 @@ mod tests {
         ) -> Result<(), crate::error::service::ServiceError> {
             Ok(())
         }
+
+        async fn init_swap(
+            &self,
+            _: &ApiInitSwapReq,
+        ) -> Result<ApiInitSwapResponse, crate::error::service::ServiceError> {
+            Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+        }
+
+        async fn device_delete(
+            &self,
+            _: &DeviceDeleteReq,
+        ) -> Result<Option<()>, crate::error::service::ServiceError> {
+            Ok(Some(()))
+        }
     }
 
     async fn seed_cache_test_env() -> &'static SeedCacheTestEnv {
@@ -1035,7 +1050,7 @@ oss:
                 let tempdir = TempDir::new().expect("create tempdir");
                 let dirs = Dirs::new(tempdir.path().to_str().expect("utf8 root dir"))
                     .expect("create dirs");
-                crate::context::init_context_with_api_wallet_backend(
+                let context = crate::context::init_context_with_api_wallet_backend(
                     TEST_SN,
                     TEST_DEVICE_TYPE,
                     dirs,
@@ -1045,9 +1060,11 @@ oss:
                 )
                 .await
                 .expect("init test context");
-                crate::infrastructure::unlock_session::start_wallet_unlock_session_rotation_task()
-                    .await
-                    .expect("init unlock session runtime");
+                crate::infrastructure::unlock_session::start_wallet_unlock_session_rotation_task(
+                    context,
+                )
+                .await
+                .expect("init unlock session runtime");
 
                 let core_pool = get_context().expect("context").core_pool().expect("core pool");
                 DeviceRepo::upsert(

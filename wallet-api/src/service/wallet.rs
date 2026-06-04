@@ -811,7 +811,7 @@ impl WalletService {
             tracing::info!("delete wallet ------------ 6");
 
             // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
-            let backend = self.ctx.get_global_backend_api();
+            let backend = self.ctx.get_api_wallet_backend();
             backend.device_delete(&req).await?;
 
             Tasks::new()
@@ -913,7 +913,7 @@ impl WalletService {
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
         // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
-        let backend = self.ctx.get_global_backend_api();
+        let backend = self.ctx.get_api_wallet_backend();
         backend.device_delete(&req).await?;
         // let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
         MultisigDomain::physical_delete_all_account(core_pool.clone()).await?;

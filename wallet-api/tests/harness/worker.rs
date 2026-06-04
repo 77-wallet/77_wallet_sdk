@@ -10,9 +10,10 @@ use wallet_api::{ApiWalletBackend, dirs::Dirs, manager::WalletManager};
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     request::{
-        KeysInitReq,
+        DeviceDeleteReq, KeysInitReq,
         api_wallet::{
             address::ExpandAddressCompleteReq,
+            swap::{ApiInitSwapReq, ApiInitSwapResponse},
             wallet::{
                 AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
             },
@@ -193,6 +194,20 @@ impl ApiWalletBackend for NoopApiWalletBackend {
         _org_app_id: &str,
     ) -> Result<(), wallet_api::error::service::ServiceError> {
         Ok(())
+    }
+
+    async fn init_swap(
+        &self,
+        _req: &ApiInitSwapReq,
+    ) -> Result<ApiInitSwapResponse, wallet_api::error::service::ServiceError> {
+        Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+    }
+
+    async fn device_delete(
+        &self,
+        _req: &DeviceDeleteReq,
+    ) -> Result<Option<()>, wallet_api::error::service::ServiceError> {
+        Ok(Some(()))
     }
 }
 
