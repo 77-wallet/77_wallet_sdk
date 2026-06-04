@@ -134,7 +134,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, "Tx ACK marked as attempted successfully");
 
         // 发送交易 ACK 逻辑
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         let trans_event_req =
             TransEventAckReq::new(&fee.trade_no, TransType::ColFee, TransAckType::Tx);
 
@@ -233,7 +233,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, "Tx res ACK marked as attempted successfully");
 
         // 发送交易结果 ACK 逻辑
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         let trans_event_req =
             TransEventAckReq::new(&fee.trade_no, TransType::ColFee, TransAckType::TxRes);
 
@@ -324,7 +324,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, "Tx exec receipt marked as attempted successfully");
 
         // 获取backend_api
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
 
         // 上传交易执行回执
         match backend.upload_tx_exec_receipt(&upload_payload).await {

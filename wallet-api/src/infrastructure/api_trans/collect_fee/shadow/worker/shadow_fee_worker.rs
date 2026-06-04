@@ -967,7 +967,7 @@ impl ShadowFeeWorker {
 
     async fn check_digest(&self, req: &ApiFeeEntity) -> Result<bool, ServiceError> {
         info!(trade_no=%req.trade_no, "[手续费归集] 验证交易摘要");
-        let sn = crate::context::get_context().unwrap().get_sn();
+        let sn = crate::get_context()?().get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;

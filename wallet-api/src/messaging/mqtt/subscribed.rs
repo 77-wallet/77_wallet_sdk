@@ -57,7 +57,7 @@ impl Topics {
         let unique_topics: Vec<String> =
             topics.into_iter().filter(|topic| !subscribed_topics.contains(topic)).collect();
 
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        let handles = crate::get_context()?.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let mqtt_processor = handles.get_normal_wallet_mqtt();
             if let Some(mqtt_handle) = mqtt_processor.lock().await.as_ref() {
@@ -110,7 +110,7 @@ impl Topics {
             return Ok(());
         }
 
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        let handles = crate::get_context()?.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let mqtt_processor = handles.get_normal_wallet_mqtt();
             if let Some(mqtt_handle) = mqtt_processor.lock().await.as_ref() {
@@ -143,7 +143,7 @@ impl Topics {
     }
 
     pub async fn resubscribe(&self) -> Result<(), crate::error::service::ServiceError> {
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        let handles = crate::get_context()?.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let mqtt_processor = handles.get_normal_wallet_mqtt();
             if let Some(mqtt_handle) = mqtt_processor.lock().await.as_ref() {

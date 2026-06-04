@@ -154,7 +154,7 @@ impl PermissionService {
         &self,
         params: PermissionAcceptReq,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         Ok(backend.permission_accept(params).await?)
     }
 }
@@ -186,7 +186,7 @@ impl PermissionService {
             actives,
         };
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
 
         self.mark_address_book_name(&pool, &mut result.owner.keys).await?;
 
@@ -202,7 +202,7 @@ impl PermissionService {
         &self,
         grantor_addr: String,
     ) -> Result<Vec<ManagerPermissionResp>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
 
         let permissions =
             PermissionRepo::all_permission_with_user(&core_pool, &grantor_addr).await?;
@@ -392,7 +392,7 @@ impl PermissionService {
         expiration: i64,
         password: String,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         let bill_kind = BillKind::UpdatePermission;
 
         let account = MultisigDomain::account_by_address(&req.grantor_addr, true, &pool).await?;

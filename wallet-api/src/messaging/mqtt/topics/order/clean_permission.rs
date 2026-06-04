@@ -15,7 +15,7 @@ impl CleanPermission {
     }
 
     pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let event_name = self.name();

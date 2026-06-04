@@ -35,7 +35,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     // node_service.init_node_info().await?;
 
     // let asset_calc_actor_manager =
-    //     CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+    //     crate::get_context()?.get_global_asset_calc_actor_manager().await?;
     // asset_calc_actor_manager.init_account_cache().await?;
     crate::domain::coin::CoinDomain::init_coins(&core_pool).await?;
     crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
@@ -58,7 +58,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     // let mqtt_init_req =
     //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
-    let sn = CONTEXT.get().unwrap().get_sn();
+    let sn = crate::get_context()?.get_sn();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
     let device = DeviceRepo::get_device_info(core_pool, sn).await?;

@@ -119,7 +119,7 @@ async fn get_exchange_rates(
 }
 
 pub async fn init_account_cache() -> Result<(), crate::error::service::ServiceError> {
-    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let pool = crate::get_context()?.get_global_sqlite_pool()?;
     let wallet_map = ApiAccountRepo::account_to_wallet(&pool).await?;
     let account_list = ApiAccountRepo::list(&pool).await?;
 
@@ -153,7 +153,7 @@ pub async fn update_token_price(
     token_address: &Option<String>,
     price_real: f64,
 ) -> Result<(), crate::error::service::ServiceError> {
-    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let pool = crate::get_context()?.get_global_sqlite_pool()?;
     let mut token_currencies = TOKEN_CURRENCIES.write().await;
     let id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
     let currency = ConfigDomain::get_currency().await?;
@@ -214,7 +214,7 @@ pub fn on_asset_update(wallet_address: &str, address: &str, chain_code: &str, to
 }
 
 pub async fn init_assets() -> Result<(), crate::error::service::ServiceError> {
-    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let pool = crate::get_context()?.get_global_sqlite_pool()?;
     let list = ApiAssetsRepo::list(&pool, vec![], None).await?;
     let wallet_list = ApiAccountRepo::account_wallet_mapping(&pool, None).await?;
     list.into_iter().for_each(|asset| {
@@ -236,7 +236,7 @@ pub async fn init_assets() -> Result<(), crate::error::service::ServiceError> {
 pub fn start_batch_recalculator(
     interval_ms: u64,
 ) -> Result<(), crate::error::service::ServiceError> {
-    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let pool = crate::get_context()?.get_global_sqlite_pool()?;
     tokio::spawn(async move {
         let interval = Duration::from_millis(interval_ms);
         loop {

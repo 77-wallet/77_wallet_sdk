@@ -115,7 +115,7 @@ impl NodeDomain {
     //         &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
     //     )?;
     //
-    //     let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+    //     let backend_api = crate::get_context()?.get_global_backend_api();
     //
     //     let backend_chains = backend_api
     //         .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
@@ -127,7 +127,7 @@ impl NodeDomain {
     // }
 
     pub(crate) async fn init_sync_nodes() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes: Vec<_> =
             local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
@@ -148,7 +148,7 @@ impl NodeDomain {
         let profile = crate::config::Config::active_feature_profile();
         let node_lists = Self::default_node_lists_for_feature(profile)?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         tracing::info!(
             "initializing default nodes profile={}, visible_networks={:?}",
             profile,

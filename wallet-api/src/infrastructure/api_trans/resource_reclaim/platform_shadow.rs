@@ -448,7 +448,7 @@ impl PlatformResourceReclaimWorker {
             )));
         }
 
-        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -520,7 +520,7 @@ impl PlatformResourceReclaimWorker {
             return Ok(());
         }
 
-        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         if let Err(e) = backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -810,7 +810,7 @@ impl PlatformResourceReclaimWorker {
         }
 
         let payload = Self::build_platform_undelegation_tx_exec_receipt_payload(&delegation)?;
-        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         backend_api.upload_tx_exec_receipt(&payload).await?;
 
         let affected =

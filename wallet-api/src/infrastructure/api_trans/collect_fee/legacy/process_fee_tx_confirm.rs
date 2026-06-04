@@ -173,7 +173,7 @@ impl ProcessFeeTxConfirmReport {
             return;
         }
         tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 调用后端API发送交易确认报告");
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
 
         // 检查 TxRes ACK 是否已发送
         let (_, tx_res_ack_sent_at) =

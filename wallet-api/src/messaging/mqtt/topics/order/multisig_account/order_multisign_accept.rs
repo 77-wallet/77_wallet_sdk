@@ -86,7 +86,7 @@ impl From<&NewMultisigAccountEntity> for OrderMultiSignAccept {
 impl OrderMultiSignAccept {
     async fn check_if_cancelled(id: &str) -> Result<bool, crate::error::service::ServiceError> {
         tracing::info!("Checking if multisig account {} is cancelled...", id);
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         let is_cancel = backend_api.check_multisig_account_is_cancel(id).await?;
         tracing::info!("Multisig account {} cancellation status: {}", id, is_cancel.status);
         Ok(is_cancel.status)
@@ -103,8 +103,8 @@ impl OrderMultiSignAccept {
             "Starting to process OrderMultiSignAccept"
         );
 
-        let db_pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let db_pool = crate::get_context()?.get_global_sqlite_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
 
         let account = AccountRepo::account(core_pool.clone(), &self.address).await?;
 
@@ -156,7 +156,7 @@ impl OrderMultiSignAccept {
     async fn update_member_info(
         params: &mut NewMultisigAccountEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
         let mut status = MultisigAccountStatus::Confirmed;
         for m in params.member_list.iter_mut() {
             if m.confirmed != 1 {

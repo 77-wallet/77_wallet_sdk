@@ -25,7 +25,7 @@ impl BillService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let adds = if let Some(addr) = addr {
             vec![addr]
@@ -87,7 +87,7 @@ impl BillService {
         account_id: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         // get all
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
         let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
             core_pool,
             Some(wallet_address.as_str()),

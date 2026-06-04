@@ -701,7 +701,7 @@ impl ShadowWithdrawWorker {
             TransType::Wd,
         );
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         let resp = backend_api.apply_resource_delegation(&req).await?;
         let is_success = resp.is_success();
         let outcome = Self::platform_apply_outcome(is_success, resp.dl_trade_no);
@@ -1590,7 +1590,7 @@ impl ShadowWithdrawWorker {
 
     async fn check_digest(&self, req: &ApiWithdrawEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "[提币] 验证交易摘要");
-        let sn = crate::context::get_context().unwrap().get_sn();
+        let sn = crate::get_context()?().get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;

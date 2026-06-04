@@ -65,8 +65,8 @@ impl ApiChainAdapterFactory {
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, ServiceError> {
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
 
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
+        let api_pool = crate::get_context()?.api_wallet_pool()?;
         let chain_code_str = chain_code.to_string();
         let ensurer = ChainNodeEnsurer::new(core_pool, api_pool);
         let chain_with_node = ensurer.ensure_and_get_api_chain_with_node(&chain_code_str).await?;
@@ -77,7 +77,7 @@ impl ApiChainAdapterFactory {
     /// 预初始化所有链和节点的适配器
     pub async fn pre_init_all_adapters(&self) -> Result<(), ServiceError> {
         // 获取所有节点
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         let all_nodes = NodeRepo::list(&pool, None).await?;
 
         tracing::info!(node_count = all_nodes.len(), "开始预初始化所有链和节点的适配器");
@@ -109,7 +109,7 @@ impl ApiChainAdapterFactory {
             tracing::debug!(chain_code=%chain_code, rpc_url=%node.rpc_url, "预初始化transaction_adapter");
 
             let header_opt = if rpc_need_header(&node.rpc_url)? {
-                Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
+                Some(crate::get_context()?.get_rpc_header().await?)
             } else {
                 None
             };
@@ -174,7 +174,7 @@ impl ApiChainAdapterFactory {
         // 缓存未命中或适配器已过期，创建新的适配器
         tracing::debug!(rpc_url=%node.rpc_url, chain_code=%chain_code, "创建新的transaction_adapter");
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
+            Some(crate::get_context()?.get_rpc_header().await?)
         } else {
             None
         };

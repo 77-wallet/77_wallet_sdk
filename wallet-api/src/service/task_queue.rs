@@ -23,9 +23,9 @@ impl TaskQueueService {
     pub async fn get_task_queue_status(
         self,
     ) -> Result<TaskQueueStatus, crate::error::service::ServiceError> {
-        let task_pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let api_wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let task_pool = crate::get_context()?.task_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
+        let api_wallet_pool = crate::get_context()?.api_wallet_pool()?;
         let all = TaskQueueRepo::all_tasks_queue(&task_pool).await?;
         let done = TaskQueueRepo::done_task_queue(&task_pool).await?;
         let running = TaskQueueRepo::running_task_queue(&task_pool).await?;

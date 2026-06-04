@@ -393,7 +393,7 @@ impl ResourceOperationWorker {
             return Ok(());
         }
 
-        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -922,7 +922,7 @@ impl ResourceOperationWorker {
             ));
         }
 
-        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         backend_api.upload_tx_exec_receipt(&payload).await?;
 
         let affected =
@@ -962,7 +962,7 @@ impl ResourceOperationWorker {
             return Ok(());
         }
 
-        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,

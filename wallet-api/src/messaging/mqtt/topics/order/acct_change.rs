@@ -146,7 +146,7 @@ impl AcctChange {
         msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
 
         // bill create
         let tx = NewBillEntity::<serde_json::Value>::try_from(self)?;
@@ -221,7 +221,7 @@ impl AcctChange {
             tracing::warn!("acct_change status is false, skip sync assets");
             return Ok(());
         }
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        let handles = crate::get_context()?.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
             let addr_list = vec![acct_change.from_addr.clone(), acct_change.to_addr.clone()];

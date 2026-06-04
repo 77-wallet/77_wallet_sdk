@@ -554,7 +554,7 @@ impl ProcessWithdrawTx {
 
     async fn check_digest(req: &ApiWithdrawEntity) -> bool {
         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 开始验证交易摘要");
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = crate::get_context()?.get_sn();
         let mut d = Decimal::from_str(req.value.as_str()).unwrap();
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;

@@ -86,7 +86,7 @@ impl OrderMultiSignAcceptCompleteMsg {
         multi_account_id: &str,
         status: i8,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         for address in address_list.iter() {
             MultisigMemberRepo::sync_confirmed_and_pubkey_status(

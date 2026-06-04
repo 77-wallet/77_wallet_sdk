@@ -138,7 +138,7 @@ impl Tx for TonTx {
         }
         tracing::info!("transfer ------------------- 12:");
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
@@ -214,7 +214,7 @@ impl Tx for TonTx {
         )
         .await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?

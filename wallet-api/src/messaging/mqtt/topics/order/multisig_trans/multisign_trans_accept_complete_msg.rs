@@ -64,7 +64,7 @@ impl MultiSignTransAcceptCompleteMsg {
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         tracing::info!(
             event_name = %event_name,

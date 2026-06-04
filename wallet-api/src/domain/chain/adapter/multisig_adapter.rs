@@ -267,7 +267,7 @@ impl MultisigAdapter {
         let currency_lock = crate::app_state::APP_STATE.read().await;
         let currency = currency_lock.currency();
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
 
         let token_currency = domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
             currency,
@@ -777,7 +777,7 @@ impl MultisigAdapter {
 
         match self {
             Self::Ethereum(chain) => {
-                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+                let pool = crate::get_context()?.get_global_sqlite_pool()?;
                 let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
                 let multisig_account = domain::multisig::MultisigDomain::account_by_address(
                     &queue.from_addr,
@@ -812,7 +812,7 @@ impl MultisigAdapter {
                 Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
             }
             Self::BitCoin(chain) => {
-                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+                let pool = crate::get_context()?.get_global_sqlite_pool()?;
                 let multisig_account =
                     domain::multisig::MultisigDomain::account_by_id(&queue.account_id, pool)
                         .await?;

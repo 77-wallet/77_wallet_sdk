@@ -43,7 +43,7 @@ pub async fn scan_and_dispatch(
     trace!(is_startup = is_startup, "开始扫描地址查询状态");
 
     // 获取全局上下文和数据库连接池
-    let context = crate::context::CONTEXT.get().unwrap();
+    let context = crate::get_context()?;
     let pool = context.api_wallet_pool()?;
 
     let query_states = AddressQueryStateRepo::list_recoverable_tasks(&pool, true).await?;

@@ -1254,7 +1254,7 @@ impl ShadowCollectWorker {
             source = "shadow_worker_v2",
             "Platform resource delegation apply request"
         );
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         let resp = backend_api.apply_resource_delegation(&req).await?;
 
         if resp.is_success() {
@@ -2981,7 +2981,7 @@ impl ShadowCollectWorker {
     async fn check_digest(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         info!(trade_no = %req.trade_no, source = "shadow_worker_v2", "Checking transaction digest");
 
-        let sn = crate::context::get_context().unwrap().get_sn();
+        let sn = crate::get_context()?().get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         // ⚠️ 这里必须用后端给的空字符串的to_addr，不能用查询策略解析的地址

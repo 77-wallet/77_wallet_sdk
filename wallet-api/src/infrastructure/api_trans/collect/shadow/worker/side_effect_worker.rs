@@ -418,7 +418,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "Order ACK marked as attempted successfully");
 
         // 获取backend_api
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
 
         // 发送Order ACK
         match backend_api
@@ -530,7 +530,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "Result ACK marked as attempted successfully");
 
         // 获取backend_api
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
 
         // 发送TxRes ACK
         match backend_api
@@ -583,7 +583,7 @@ impl SideEffectWorker {
         }
 
         // 获取backend_api
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
 
         // 发送手续费结果确认 ACK
         match backend_api
@@ -665,7 +665,7 @@ impl SideEffectWorker {
         } else {
             (platform_resource_task_trans_type(&resource_task), platform_resource_result_ack_type())
         };
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(&resource_trade_no, trans_type, ack_type))
             .await
@@ -869,7 +869,7 @@ impl SideEffectWorker {
 
         let trans_type = platform_resource_task_trans_type(&resource_task);
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -922,7 +922,7 @@ impl SideEffectWorker {
             ));
         }
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         backend_api.upload_tx_exec_receipt(&payload).await?;
 
         let affected = ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(
@@ -1176,7 +1176,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "Service fee marked as attempted successfully");
 
         // 获取backend_api
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
 
         // 构建服务费上传请求
         let upload_req = ServiceFeeUploadReq::new(
@@ -1246,7 +1246,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "TxExecReceipt marked as attempted successfully");
 
         // 获取backend_api
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
 
         // 构建交易执行回执上传请求
         let upload_payload = Self::build_tx_exec_receipt_payload(&req, &trade_no).await?;

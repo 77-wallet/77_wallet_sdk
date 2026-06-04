@@ -39,7 +39,7 @@ impl ApiCollectDomain {
             start_time
         );
 
-        let ctx = crate::context::CONTEXT.get().unwrap();
+        let ctx = crate::get_context()?;
         let api_wallet_pool = ctx.api_wallet_pool()?;
         let api_transaction_pool = ctx.api_transaction_pool()?;
 
@@ -110,7 +110,7 @@ impl ApiCollectDomain {
 
         // 3. 立即触发一次 Shadow 推进（快速通道）
         if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+            crate::get_context()?.get_global_handles().await.upgrade()
         {
             if let Some(shadow_system) =
                 handles.get_global_processed_collect_tx_handle().get_shadow_system()
@@ -134,7 +134,7 @@ impl ApiCollectDomain {
         let start_time = Instant::now();
         tracing::info!(trade_no=%trade_no, "开始恢复归集交易");
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let pool = crate::get_context()?.api_transaction_pool()?;
 
         // 1. 解除事实阻断（核心）
         tracing::info!(trade_no=%trade_no, "清除服务费需求标记");
@@ -144,7 +144,7 @@ impl ApiCollectDomain {
 
         // 2. 快速触发 Shadow
         if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+            crate::get_context()?.get_global_handles().await.upgrade()
         {
             if let Some(shadow_system) =
                 handles.get_global_processed_collect_tx_handle().get_shadow_system()
@@ -170,12 +170,12 @@ impl ApiCollectDomain {
         status: bool,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let pool = crate::get_context()?.api_transaction_pool()?;
         Self::confirm_tx_in_pool(&pool, trade_no, status, fail_type).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
         if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+            crate::get_context()?.get_global_handles().await.upgrade()
         {
             if let Some(shadow_system) =
                 handles.get_global_processed_collect_tx_handle().get_shadow_system()

@@ -81,7 +81,7 @@ impl Handles {
         let private_key_manager =
             Arc::new(crate::infrastructure::private_key_manager::PrivateKeyManager::start());
         tracing::info!("Initialize private key manager completed");
-        let context = crate::context::CONTEXT.get().unwrap();
+        let context = crate::get_context()?;
         let dirs = context.get_global_dirs();
         let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
         let upload_log_handle =
@@ -210,7 +210,7 @@ impl Handles {
     pub(crate) async fn init_normal_wallet_mqtt(
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::context::CONTEXT.get().unwrap();
+        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
             return Err(crate::error::business::BusinessError::Device(
@@ -240,7 +240,7 @@ impl Handles {
     pub(crate) async fn init_api_wallet_mqtt(
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::context::CONTEXT.get().unwrap();
+        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
             return Err(crate::error::business::BusinessError::Device(

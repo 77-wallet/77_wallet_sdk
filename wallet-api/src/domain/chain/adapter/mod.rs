@@ -44,8 +44,8 @@ impl ChainAdapterFactory {
     ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
 
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
+        let api_pool = crate::get_context()?.api_wallet_pool()?;
         let ensurer = ChainNodeEnsurer::new(core_pool, api_pool);
 
         let chain_with_node =
@@ -62,7 +62,7 @@ impl ChainAdapterFactory {
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
+            Some(crate::get_context()?.get_rpc_header().await?)
         } else {
             None
         };
@@ -79,7 +79,7 @@ impl ChainAdapterFactory {
             crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network);
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
+            Some(crate::get_context()?.get_rpc_header().await?)
         } else {
             None
         };
@@ -91,7 +91,7 @@ impl ChainAdapterFactory {
         let node = ChainAdapterFactory::get_chain_node(chain_code::TRON).await?;
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
+            Some(crate::get_context()?.get_rpc_header().await?)
         } else {
             None
         };
@@ -112,7 +112,7 @@ impl ChainAdapterFactory {
         let network = crate::domain::chain::ChainDomain::network_kind_from_node_network(network);
 
         let header_opt = if rpc_need_header(rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
+            Some(crate::get_context()?.get_rpc_header().await?)
         } else {
             None
         };

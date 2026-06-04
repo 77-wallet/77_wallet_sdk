@@ -2,7 +2,7 @@ pub(crate) struct MqttDomain {}
 
 impl MqttDomain {
     pub(crate) async fn init_mqtt() -> Result<(), crate::error::service::ServiceError> {
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        let handles = crate::get_context()?.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             handles.init_normal_wallet_mqtt().await?;
         }
@@ -10,7 +10,7 @@ impl MqttDomain {
     }
 
     pub(crate) async fn init_api_mqtt() -> Result<(), crate::error::service::ServiceError> {
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        let handles = crate::get_context()?.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             handles.init_api_wallet_mqtt().await?;
         }
@@ -20,7 +20,7 @@ impl MqttDomain {
     pub(crate) async fn process_unconfirm_msg(
         client_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
 
         let req = wallet_transport_backend::request::QueryUnconfirmMsgReq {
             client_id: client_id.to_string(),

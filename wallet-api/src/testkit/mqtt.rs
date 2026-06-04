@@ -17,17 +17,17 @@ pub async fn exec_wallet_order_payload(payload: &serde_json::Value) -> Result<()
 }
 
 pub fn api_wallet_pool() -> Result<ApiWalletDbPool, crate::error::service::ServiceError> {
-    crate::context::CONTEXT.get().unwrap().api_wallet_pool()
+    crate::get_context()?.api_wallet_pool()
 }
 
 pub fn api_transaction_pool() -> Result<ApiTransactionDbPool, crate::error::service::ServiceError> {
-    crate::context::CONTEXT.get().unwrap().api_transaction_pool()
+    crate::get_context()?.api_transaction_pool()
 }
 
 pub fn task_pool() -> Result<TaskDbPool, crate::error::service::ServiceError> {
-    crate::context::CONTEXT.get().unwrap().task_pool()
+    crate::get_context()?.task_pool()
 }
 
 pub fn core_pool() -> Result<DbPool, crate::error::service::ServiceError> {
-    crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
+    crate::get_context()?.get_global_sqlite_pool()
 }

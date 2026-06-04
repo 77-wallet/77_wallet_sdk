@@ -24,7 +24,7 @@ impl ApiAccountDomain {
             return Ok(ApiWalletAddressSearchResp { items: vec![] });
         }
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         let entities = ApiAccountRepo::search_address_by_uid(&pool, uid, keyword).await?;
 

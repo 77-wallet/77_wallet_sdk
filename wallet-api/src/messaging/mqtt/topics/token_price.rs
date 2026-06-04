@@ -26,7 +26,7 @@ impl TokenPriceChange {
 
         tracing::info!("TokenPriceChange: {:?}", self);
         // let asset_calc_actor_manager =
-        //     crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+        //     crate::get_context()?.get_global_asset_calc_actor_manager().await?;
         // asset_calc_actor_manager
         //     .update_price(
         //         symbol,

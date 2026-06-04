@@ -96,7 +96,7 @@ impl AddressBookService {
             AddressBookRepo::find_by_address(&self.pool, &address, &chain_code).await?;
 
         // check is first transfer
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         let bill = BillRepo::first_transfer(&address, &chain_code, &pool).await?;
 
         Ok(AddressBookResp { address_book, first_transfer: bill.is_none() })

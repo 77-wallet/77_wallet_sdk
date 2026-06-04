@@ -168,7 +168,7 @@ impl ApiAssetsDomain {
 
         load_total_assets_with_cache(&cache_key, fresh_ttl, || async move {
             if let Some(wallet_address) = wallet_address {
-                let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+                let pool = crate::get_context()?.api_wallet_pool()?;
                 let count_start = std::time::Instant::now();
                 let address_count = ApiAccountRepo::count_by_wallet_address(
                     &pool,

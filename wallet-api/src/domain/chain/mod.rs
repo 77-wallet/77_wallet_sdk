@@ -166,7 +166,7 @@ impl ChainDomain {
         chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<bool, crate::error::service::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
 
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
@@ -263,7 +263,7 @@ impl ChainDomain {
     pub(crate) async fn toggle_chains(
         chain_codes: &[String],
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         ChainRepo::toggle_chains_status(&pool, chain_codes).await?;
         Ok(())
     }
@@ -271,8 +271,8 @@ impl ChainDomain {
     pub(crate) async fn get_node(
         chain_code: &str,
     ) -> Result<NodeInfo, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
+        let api_pool = crate::get_context()?.api_wallet_pool()?;
         let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool);
         let node_id = ensurer.ensure_and_get_standard_chain_node(chain_code).await?;
 
@@ -393,7 +393,7 @@ impl ChainDomain {
     }
 
     pub async fn init_load_default_chain() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
 
         let list = crate::default_data::chain::get_default_chains_list()?;
 
@@ -426,7 +426,7 @@ impl ChainDomain {
             return Ok(());
         }
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
         let backend_chain_map: HashMap<_, _> = backend_chains
             .list

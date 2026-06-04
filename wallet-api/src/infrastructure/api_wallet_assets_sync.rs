@@ -86,7 +86,7 @@ pub(crate) async fn query_and_upsert_assets(
     }
 
     // Best-effort: notify inner event to trigger further sync/calculation pipeline.
-    let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+    let handles = crate::get_context()?.get_global_handles().await;
     if let Some(handles) = handles.upgrade() {
         let inner_event_handle = handles.get_global_inner_event_handle();
         let addr_list: Vec<String> = unique_addresses.into_iter().collect();

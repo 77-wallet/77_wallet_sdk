@@ -61,7 +61,7 @@ impl UnconfirmedMsgProcessor {
     }
 
     async fn handle_once(&self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = crate::get_context()?.task_pool()?;
 
         // 判断数据库中是否存在大量的未处理消息,如果有则跳过
         if TaskQueueRepo::failed_task_queue(&pool).await?.len() < 500 {
@@ -89,7 +89,7 @@ impl UnconfirmedMsgProcessor {
     }
 
     async fn api_wallet_msg_resend(&self) {
-        let ctx = CONTEXT.get().unwrap();
+        let ctx = crate::get_context()?;
         let backend = ctx.get_global_backend_api();
         let res = backend
             .msg_ack_expired_resend(MsgAckExpiredResendReq {
@@ -107,7 +107,7 @@ impl UnconfirmedMsgProcessor {
     /// Runs once at startup, then repeats either when notified
     /// or every 30 seconds on a timer.
     pub async fn start(&mut self) -> Result<(), ServiceError> {
-        let ctx = CONTEXT.get().unwrap();
+        let ctx = crate::get_context()?;
         let notify = self.notify.clone();
         let mut interval_30sec = tokio::time::interval(std::time::Duration::from_secs(30));
         let mut interval_10min = tokio::time::interval(std::time::Duration::from_secs(60 * 3));

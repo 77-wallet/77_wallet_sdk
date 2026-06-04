@@ -124,7 +124,7 @@ pub async fn upload_collect_tx_exec_receipt_via_backend(
     trade_no: &str,
 ) -> Result<(), ServiceError> {
     let payload = build_collect_tx_exec_receipt_payload(req, trade_no);
-    let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+    let backend_api = crate::get_context()?.get_global_backend_api();
     backend_api.upload_tx_exec_receipt(&payload).await?;
     Ok(())
 }

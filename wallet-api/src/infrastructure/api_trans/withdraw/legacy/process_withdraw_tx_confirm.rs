@@ -218,7 +218,7 @@ impl ProcessWithdrawTxConfirmReport {
             return;
         }
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         tracing::info!(trade_no=%req.trade_no, "[提现确认] 准备调用后端API发送 Result ACK");
 
         match backend_api

@@ -22,7 +22,7 @@ impl BillDomain {
     where
         T: serde::Serialize,
     {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         Ok(BillRepo::create(params, &pool).await?)
     }
 
@@ -110,7 +110,7 @@ impl BillDomain {
         new_entity.signer = item.signer;
         new_entity.extra = item.extra;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         if new_entity.chain_code == chain_code::TON {
             AcctChange::handle_ton_bill(new_entity, &pool).await?;
         } else {
@@ -126,7 +126,7 @@ impl BillDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         let resp = backend.record_lists(chain_code, address, start_time).await?;
 
         for item in resp.list {
@@ -155,7 +155,7 @@ impl BillDomain {
         chain_code: &str,
         address: &str,
     ) -> Result<Option<String>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
 
         let bill = BillRepo::last_bill(&pool, chain_code, address)
             .await

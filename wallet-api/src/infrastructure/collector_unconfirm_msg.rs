@@ -67,7 +67,7 @@ impl UnconfirmedMsgCollector {
 
                             last_recv_time = None;
 
-                            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+                            let handles = crate::get_context()?.get_global_handles().await;
                             if let Some(handles) = handles.upgrade() {
                                 let notify = handles.get_global_notify();
                                 notify.notify_one();

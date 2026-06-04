@@ -1162,7 +1162,7 @@ impl AssetCalcActor {
 
     // 处理初始化账户缓存
     async fn handle_init_account_cache(&mut self) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         let wallet_map =
             wallet_database::repositories::api_wallet::account::ApiAccountRepo::account_to_wallet(
                 pool.clone(),

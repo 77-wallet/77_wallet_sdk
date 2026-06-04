@@ -43,7 +43,7 @@ async fn scan_and_dispatch(
 ) -> Result<(), ServiceError> {
     // 每轮认领上限用于平滑恢复流量，避免恢复线程自身制造请求尖峰。
     let defaults = runtime_defaults::recovery();
-    let context = crate::context::CONTEXT.get().unwrap();
+    let context = crate::get_context()?;
     let api_pool = context.api_wallet_pool()?;
 
     let mut claimed = 0usize;
@@ -76,7 +76,7 @@ async fn scan_and_dispatch(
 async fn process_one(
     task: wallet_database::entities::asset_query_state::AssetQueryStateEntity,
 ) -> Result<(), ServiceError> {
-    let context = crate::context::CONTEXT.get().unwrap();
+    let context = crate::get_context()?;
     let api_pool = context.api_wallet_pool()?;
     let backend = context.get_global_backend_api();
 

@@ -73,7 +73,7 @@ impl MultisigQueueDomain {
     }
 
     pub async fn recover_all_uid_queue_data() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         let uid_list = WalletRepo::uid_list(CoreDbPool::new(pool.clone()))
             .await?
             .into_iter()
@@ -100,7 +100,7 @@ impl MultisigQueueDomain {
     pub(crate) async fn get_raw_time(
         uid_list: &[String],
     ) -> Result<Option<String>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let account_ids = MultisigMemberRepo::list_by_uids(&core_pool, uid_list)
             .await?
@@ -131,8 +131,8 @@ impl MultisigQueueDomain {
         uid: &str,
         raw_time: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let backend = crate::get_context()?.get_global_backend_api();
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
 
         let req = wallet_transport_backend::request::FindAddressRawDataReq::new_trans(
             Some(uid.to_string()),
@@ -218,7 +218,7 @@ impl MultisigQueueDomain {
     pub async fn sync_queue_status(
         queue_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let queue = MultisigQueueRepo::find_by_id(&core_pool, queue_id).await?;
@@ -258,7 +258,7 @@ impl MultisigQueueDomain {
             .await?
             .to_string()?;
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         Ok(backend_api.update_raw_data(queue_id, raw_data).await?)
     }
 

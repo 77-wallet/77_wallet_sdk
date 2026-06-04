@@ -294,7 +294,7 @@ impl EthTx {
 #[async_trait::async_trait]
 impl Oracle for EthTx {
     async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         let gas_oracle = backend.gas_oracle(&self.chain.chain_code.to_string()).await;
         tracing::info!("gas_oracle: {:?}", gas_oracle);
         match gas_oracle {
@@ -942,7 +942,7 @@ impl Tx for EthTx {
 //             TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
 //                 .await?;
 //
-//         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+//         let pool = crate::get_context()?.get_global_sqlite_pool()?;
 //         let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
 //         let multisig_account =
 //             MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;

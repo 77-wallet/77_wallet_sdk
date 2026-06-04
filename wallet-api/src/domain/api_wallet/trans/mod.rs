@@ -479,7 +479,7 @@ impl ApiTransDomain {
         if let Some(request_id) = params.base.request_resource_id {
             tracing::info!("transfer (委托完成): 开始, request_id: {}", request_id);
             let delegate_time = Instant::now();
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let backend = crate::get_context()?.get_global_backend_api();
             let _ = backend.delegate_complete(&request_id).await;
             tracing::info!("transfer (委托完成): 结束, 耗时: {:?}", delegate_time.elapsed());
         }

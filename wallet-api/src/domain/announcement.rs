@@ -12,8 +12,8 @@ impl AnnouncementDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let list = AnnouncementRepo::list(pool).await?;
 
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let core_pool = crate::get_context()?.core_pool()?;
+        let sn = crate::get_context()?.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -23,7 +23,7 @@ impl AnnouncementDomain {
 
         let client_id = super::app::DeviceDomain::client_id_by_device(&device)?;
         let req = wallet_transport_backend::request::AnnouncementListReq::new(client_id, 0, 50);
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         let res = backend.announcement_list(req).await?;
 
         let res_ids: std::collections::HashSet<_> =

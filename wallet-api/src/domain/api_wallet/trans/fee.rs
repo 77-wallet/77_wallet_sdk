@@ -39,7 +39,7 @@ impl ApiFeeDomain {
         );
 
         // 获取数据库连接
-        let ctx = crate::context::CONTEXT.get().unwrap();
+        let ctx = crate::get_context()?;
         let core_pool = ctx.api_wallet_pool()?;
         let api_transaction_pool = ctx.api_transaction_pool()?;
 
@@ -96,7 +96,7 @@ impl ApiFeeDomain {
 
         // 立即触发一次 Shadow 推进（快速通道）
         if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+            crate::get_context()?.get_global_handles().await.upgrade()
         {
             if let Some(shadow_system) =
                 handles.get_global_processed_fee_tx_handle().get_shadow_system()
@@ -114,12 +114,12 @@ impl ApiFeeDomain {
     }
 
     pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let pool = crate::get_context()?.api_transaction_pool()?;
         Self::confirm_tx_in_pool(&pool, trade_no, status).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
         if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+            crate::get_context()?.get_global_handles().await.upgrade()
         {
             if let Some(shadow_system) =
                 handles.get_global_processed_fee_tx_handle().get_shadow_system()

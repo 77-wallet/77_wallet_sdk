@@ -207,7 +207,7 @@ impl ProcessCollectTxReport {
             (TransStatus::Success, "".to_string())
         };
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::get_context()?.get_global_backend_api();
         tracing::info!(
             trade_no=%req.trade_no,
             worker_type=%worker_type,

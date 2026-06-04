@@ -300,8 +300,8 @@ impl ApiAccountService {
         account_id: u32,
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -368,7 +368,7 @@ impl ApiAccountService {
         password: &str,
         all: bool,
     ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         WalletDomain::validate_password_with_context(self.ctx, password).await?;
 
@@ -460,7 +460,7 @@ impl ApiAccountService {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<QueryApiAccountDerivationPath>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let results = ApiAccountRepo::list_by_wallet_address_account_id(
             &pool,
             Some(wallet_address),

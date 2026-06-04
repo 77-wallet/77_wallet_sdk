@@ -183,7 +183,7 @@ impl SideEffectWorker {
         };
 
         // 发送交易 ACK 逻辑
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         use wallet_transport_backend::request::api_wallet::transaction::{
             TransAckType, TransEventAckReq, TransType,
         };
@@ -290,7 +290,7 @@ impl SideEffectWorker {
         }
 
         // 发送交易结果 ACK 逻辑
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         use wallet_transport_backend::request::api_wallet::transaction::{
             TransAckType, TransEventAckReq, TransType,
         };
@@ -356,7 +356,7 @@ impl SideEffectWorker {
         } else {
             (platform_resource_task_trans_type(&resource_task), platform_resource_result_ack_type())
         };
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         if let Err(e) = backend
             .trans_event_ack(&TransEventAckReq::new(&resource_trade_no, trans_type, ack_type))
             .await
@@ -395,7 +395,7 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         backend
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -436,7 +436,7 @@ impl SideEffectWorker {
             ));
         }
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         backend.upload_tx_exec_receipt(&payload).await?;
         let affected = ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(
             &self.pool,
@@ -601,7 +601,7 @@ impl SideEffectWorker {
         }
 
         // 上传交易执行回执
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
         match backend.upload_tx_exec_receipt(&upload_payload).await {
             Ok(_) => {
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Tx exec receipt uploaded successfully");
