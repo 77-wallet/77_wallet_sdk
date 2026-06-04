@@ -107,7 +107,7 @@ impl TaskTrait for InitializationTask {
                 }
             }
             InitializationTask::SetBlockBrowserUrl => {
-                let mut app_service = crate::service::app::AppService::new();
+                let mut app_service = crate::service::app::AppService::new(crate::get_context()?);
                 app_service.set_block_browser_url().await?;
             }
             InitializationTask::SetFiat => {

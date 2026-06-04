@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::app::config::ConfigDomain,
     infrastructure::task_queue::backend::{BackendApiTask, BackendApiTaskData},
 };
@@ -15,18 +16,20 @@ pub const APP_ID: &str = "ada7d9308190fe45";
 
 use crate::{infrastructure::task_queue::task::Tasks, request::devices::InitDeviceReq};
 
-pub struct DeviceService;
+pub struct DeviceService {
+    ctx: &'static Context,
+}
 
 impl DeviceService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn get_device_info(
         self,
         sn: &str,
     ) -> Result<Option<DeviceEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
         Ok(DeviceRepo::get_device_info(pool, sn).await?)
     }
 
@@ -36,10 +39,10 @@ impl DeviceService {
     ) -> Result<Option<()>, crate::error::service::ServiceError> {
         // let package_id = req.package_id.clone();
         let upsert_req = (&req).into();
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
         DeviceRepo::upsert(pool.clone(), upsert_req).await?;
 
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
@@ -84,7 +87,7 @@ impl DeviceService {
         self,
         req: CreateDeviceEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
         DeviceRepo::upsert(pool, req).await?;
 
         Ok(())

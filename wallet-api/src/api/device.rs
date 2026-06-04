@@ -5,6 +5,6 @@ use crate::{
 
 impl WalletManager {
     pub async fn init_device(&self, req: InitDeviceReq) -> ReturnType<Option<()>> {
-        DeviceService::new().init_device(req).await
+        DeviceService::new(self.ctx).init_device(req).await
     }
 }

@@ -283,12 +283,13 @@ pub async fn exec_incoming_connack(
     client: &rumqttc::v5::AsyncClient,
     conn_ack: rumqttc::v5::mqttbytes::v5::ConnAck,
 ) -> Result<(), anyhow::Error> {
-    let pool = crate::get_context()?.core_pool()?;
-    let device_service = DeviceService::new();
-    let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+    let context = crate::get_context()?;
+    let pool = context.core_pool()?;
+    let device_service = DeviceService::new(context);
+    let sn = context.get_sn();
 
     if conn_ack.code == rumqttc::v5::mqttbytes::v5::ConnectReturnCode::Success {
-        AppService::new().mqtt_resubscribe().await?;
+        AppService::new(context).mqtt_resubscribe().await?;
     }
 
     if let Some(wallet) = WalletRepo::wallet_latest(pool.clone()).await?
