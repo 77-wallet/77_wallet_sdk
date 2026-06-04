@@ -57,9 +57,10 @@ impl ExpandService {
     ) -> Result<(), ServiceError> {
         const INIT_CHUNK: usize = 40;
 
-        let sn = crate::context::get_context()?.get_sn();
+        let ctx = crate::context::get_context()?;
+        let sn = ctx.get_sn();
 
-        let pool = crate::context::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -71,7 +72,7 @@ impl ExpandService {
                 .await?;
 
         // 获取当前 epoch，所有任务共用同一个 epoch
-        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let current_epoch = ConfigDomain::get_keys_reset_epoch(&ctx).await?;
 
         // 循环处理每个 chunk
         for chunk in to_init.chunks(INIT_CHUNK) {

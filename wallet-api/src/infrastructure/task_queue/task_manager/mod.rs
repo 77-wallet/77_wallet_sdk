@@ -249,7 +249,7 @@ impl TaskManager {
         };
 
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
 
         let req = ClientTaskLogUploadReq::new(
             &device.sn,

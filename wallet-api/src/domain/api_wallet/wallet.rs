@@ -502,7 +502,7 @@ impl ApiWalletDomain {
         invite_code: Option<String>,
     ) -> Result<(), ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
-        let status = ConfigDomain::get_keys_reset_status().await?;
+        let status = ConfigDomain::get_keys_reset_status(self.ctx).await?;
         if let Some(status) = status
             && let Some(false) = status.status
         {
@@ -745,7 +745,7 @@ impl ApiWalletDomain {
     ) -> Result<ApiWalletList, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(self.ctx).await?;
         let mut balance_list = HashMap::new();
 
         for wallet in &wallets {

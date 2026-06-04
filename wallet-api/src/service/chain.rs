@@ -78,7 +78,7 @@ impl ChainService {
     pub async fn sync_chains(self) -> Result<bool, crate::error::service::ServiceError> {
         let backend = self.ctx.get_global_backend_api();
 
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(self.ctx).await?;
 
         let req = wallet_transport_backend::request::ChainListReq::new(app_version.app_version);
         let chain_list = backend.chain_list(req).await?;
@@ -138,9 +138,9 @@ impl ChainService {
             )
             .await?;
 
-            let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+            let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
             let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-            let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+            let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
             KeystoreApi::initialize_child_keystores(
                 wallet_tree,
                 subkeys,

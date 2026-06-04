@@ -131,7 +131,7 @@ impl ApiChainService {
 
         // 构建结果
         let mut res = Vec::with_capacity(reqs.len());
-        let currency = crate::domain::app::config::ConfigDomain::get_currency().await?;
+        let currency = crate::domain::app::config::ConfigDomain::get_currency(self.ctx).await?;
 
         for (chain_code, token_address) in reqs {
             let key = (chain_code.clone(), token_address.clone());

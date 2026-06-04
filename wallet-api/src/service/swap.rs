@@ -766,7 +766,7 @@ impl SwapServer {
 
     pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::error::service::ServiceError> {
         let backend_api = self.ctx.get_global_backend_api();
-        let version = ConfigDomain::get_app_version().await?.app_version;
+        let version = ConfigDomain::get_app_version(self.ctx).await?.app_version;
         let result = backend_api.support_chain_list_v2(version).await?;
 
         Ok(result.support_chain)

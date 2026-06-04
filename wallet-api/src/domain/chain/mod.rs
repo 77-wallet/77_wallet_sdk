@@ -174,7 +174,8 @@ impl ChainDomain {
 
         let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
         let account_list = AccountRepo::list(pool.clone()).await?;
-        let app_version = super::app::config::ConfigDomain::get_app_version().await?.app_version;
+        let ctx = crate::context::get_context()?;
+        let app_version = super::app::config::ConfigDomain::get_app_version(&ctx).await?.app_version;
 
         if wallet_list.is_empty() {
             return Ok(false);
@@ -477,7 +478,8 @@ impl ChainDomain {
     pub async fn init_chain_info() -> Result<(), crate::error::service::ServiceError> {
         Self::init_load_default_chain().await?;
 
-        let app_version = ConfigDomain::get_app_version().await?;
+        let ctx = crate::context::get_context()?;
+        let app_version = ConfigDomain::get_app_version(&ctx).await?;
         let chain_list_req = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::CHAIN_LIST,
             &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),

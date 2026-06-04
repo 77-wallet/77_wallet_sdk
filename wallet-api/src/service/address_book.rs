@@ -12,12 +12,16 @@ use wallet_database::{
 
 pub struct AddressBookService {
     pub pool: CoreDbPool,
-    ctx: &'static Context,
 }
 
 impl AddressBookService {
-    pub fn new(pool: CoreDbPool, ctx: &'static Context) -> Self {
-        Self { pool, ctx }
+    pub fn new(pool: CoreDbPool) -> Self {
+        Self { pool }
+    }
+
+    pub fn new_with_ctx(ctx: &'static Context) -> Result<Self, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
+        Ok(Self { pool })
     }
 }
 
@@ -108,13 +112,14 @@ impl AddressBookService {
         &self,
         address: String,
         chain_code: String,
+        ctx: &'static Context,
     ) -> Result<i64, crate::error::service::ServiceError> {
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code.as_ref())?;
 
         // query address is black
         let adapter =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
-                &self.ctx,
+                &ctx,
                 &chain_code,
             )
             .await?;
@@ -152,12 +157,5 @@ impl AddressBookService {
             }
         }
         Ok(0)
-    }
-
-    pub fn new_with_ctx(
-        ctx: &'static Context,
-    ) -> Result<Self, crate::error::service::ServiceError> {
-        let pool = ctx.core_pool()?;
-        Ok(Self { pool, ctx })
     }
 }

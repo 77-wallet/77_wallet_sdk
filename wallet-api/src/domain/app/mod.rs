@@ -113,10 +113,10 @@ impl DeviceDomain {
         Ok(device_unbind_address_task)
     }
 
-    pub(crate) async fn check_wallet_password_is_null()
+    pub(crate) async fn check_wallet_password_is_null(ctx: &'static crate::context::Context)
     -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.core_pool()?;
-        let sn = crate::get_context()?.get_sn();
+        let pool = ctx.core_pool()?;
+        let sn = ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -142,9 +142,17 @@ impl DeviceDomain {
             (keystore_kdf_algorithm, wallet_tree_strategy)
         };
 
-        ConfigDomain::set_config(KEYSTORE_KDF_ALGORITHM, &keystore_kdf_algorithm.to_json_str()?)
+        ConfigDomain::set_config(
+            ctx,
+            KEYSTORE_KDF_ALGORITHM,
+            &keystore_kdf_algorithm.to_json_str()?,
+        )
             .await?;
-        ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
+        ConfigDomain::set_config(
+            ctx,
+            WALLET_TREE_STRATEGY,
+            &wallet_tree_strategy.to_json_str()?,
+        )
             .await?;
         Ok(())
     }

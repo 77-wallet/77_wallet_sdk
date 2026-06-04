@@ -294,7 +294,9 @@ impl ApiTransService {
 
         // 过滤最小金额
         let min_value = match (symbol, filter_min_value) {
-            (Some(symbol), Some(true)) => ConfigDomain::get_config_min_value(symbol).await?,
+            (Some(symbol), Some(true)) => {
+                ConfigDomain::get_config_min_value(self.ctx, symbol).await?
+            }
             _ => None,
         };
         let mut tx_kinds = vec![];

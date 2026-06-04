@@ -118,7 +118,7 @@ impl WalletManager {
     pub async fn init(&self, req: crate::request::devices::InitDeviceReq) -> ReturnType<()> {
         DeviceService::new(self.ctx).init_device(req).await?;
         // TODO ： 某个版本进行取消,
-        domain::app::DeviceDomain::check_wallet_password_is_null().await?;
+        domain::app::DeviceDomain::check_wallet_password_is_null(self.ctx).await?;
 
         // self.init_api_swap().await?;
         tokio::spawn(async move {

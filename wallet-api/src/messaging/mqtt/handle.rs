@@ -71,7 +71,7 @@ pub async fn exec_incoming_publish(
         }
         Topic::ChainChange => {
             let payload: ChainChange = serde_json::from_slice(&publish.payload)?;
-            payload.exec().await?;
+            payload.exec(ctx).await?;
         }
         Topic::Order
         | Topic::Common

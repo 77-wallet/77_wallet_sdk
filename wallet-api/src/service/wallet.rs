@@ -250,9 +250,9 @@ impl WalletService {
             accounts.push(account.address);
         }
 
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
         KeystoreApi::initialize_child_keystores(
             wallet_tree,
             subkeys,
@@ -367,11 +367,11 @@ impl WalletService {
         wallet_utils::file_func::recreate_dir_all(&storage_path)?;
 
         let wallet_tree_start = std::time::Instant::now();
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
         tracing::debug!("Wallet tree strategy retrieval took: {:?}", wallet_tree_start.elapsed());
 
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
         let initialize_root_keystore_start = std::time::Instant::now();
         wallet_tree::api::KeystoreApi::initialize_root_keystore(
             wallet_tree,
@@ -424,9 +424,9 @@ impl WalletService {
         );
 
         let child_keystore_start = std::time::Instant::now();
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
 
         // 波场的地址
         let tron_address =
@@ -892,9 +892,9 @@ impl WalletService {
 
         // 1. 首先递增Epoch，切换世代，这是reset的核心事实
         // 确保reset开始后，所有后续操作都使用新世代的Epoch
-        ConfigDomain::bump_keys_reset_epoch().await?;
+        ConfigDomain::bump_keys_reset_epoch(self.ctx).await?;
         // 获取新的epoch值用于日志
-        let new_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let new_epoch = ConfigDomain::get_keys_reset_epoch(self.ctx).await?;
         tracing::info!(epoch = new_epoch, "physical_reset: Epoch bumped, generation switched");
 
         let mut tx = core_pool

@@ -63,7 +63,7 @@ impl WalletManager {
     pub async fn address_status(&self, address: String, chain_code: String) -> ReturnType<i64> {
         let service = AddressBookService::new_with_ctx(self.ctx)?;
 
-        service.address_status(address, chain_code).await
+        service.address_status(address, chain_code, self.ctx).await
     }
 }
 

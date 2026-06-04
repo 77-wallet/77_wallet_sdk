@@ -253,7 +253,7 @@ impl EndpointHandler for SpecialHandler {
                 DeviceRepo::device_init(core_pool.clone(), sn).await?;
             }
             endpoint::KEYS_V2_INIT => {
-                let status = ConfigDomain::get_keys_reset_status().await?;
+                let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
@@ -281,7 +281,7 @@ impl EndpointHandler for SpecialHandler {
                 WalletRepo::wallet_init(core_pool, &req.uid).await?;
             }
             endpoint::old_wallet::OLD_KEYS_V2_INIT => {
-                let status = ConfigDomain::get_keys_reset_status().await?;
+                let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
@@ -319,7 +319,7 @@ impl EndpointHandler for SpecialHandler {
                 tracing::info!("地址初始化请求处理完成");
             }
             endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT => {
-                let status = ConfigDomain::get_keys_reset_status().await?;
+                let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
@@ -386,9 +386,9 @@ impl EndpointHandler for SpecialHandler {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
 
                 res?;
-                let code = ConfigDomain::get_invite_code().await?.and_then(|c| c.code);
+                let code = ConfigDomain::get_invite_code(&ctx).await?.and_then(|c| c.code);
 
-                ConfigDomain::set_invite_code(Some(req.invitee), code).await?;
+                ConfigDomain::set_invite_code(&ctx, Some(req.invitee), code).await?;
             }
             endpoint::LANGUAGE_INIT => {
                 backend.post_req_str::<()>(endpoint, &body).await?;
@@ -397,7 +397,7 @@ impl EndpointHandler for SpecialHandler {
                     .await?;
             }
             endpoint::ADDRESS_BATCH_INIT => {
-                let status = ConfigDomain::get_keys_reset_status().await?;
+                let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
@@ -466,7 +466,7 @@ impl EndpointHandler for SpecialHandler {
                     "OFFICIAL:WEBSITE" => {
                         let res =
                             backend.post_req_str::<FindConfigByKeyRes>(endpoint, &body).await?;
-                        ConfigDomain::set_official_website(res.value).await?;
+                        ConfigDomain::set_official_website(&ctx, res.value).await?;
                     }
                     _ => {
                         tracing::warn!("unknown key: {}", req.key);
@@ -475,7 +475,7 @@ impl EndpointHandler for SpecialHandler {
             }
             endpoint::APP_INSTALL_DOWNLOAD => {
                 let url = backend.post_req_str::<String>(endpoint, &body).await?;
-                ConfigDomain::set_app_download_qr_code_url(&url).await?;
+                ConfigDomain::set_app_download_qr_code_url(&ctx, &url).await?;
                 // ConfigDomain::set_version_download_url(&url).await?;
             }
             endpoint::VERSION_VIEW => {
@@ -547,11 +547,11 @@ impl EndpointHandler for SpecialHandler {
                 match backend.post_req_str::<Option<()>>(endpoint, &body).await {
                     Ok(_) => {
                         // 2. reset成功后，只设置status，epoch已在physical_reset中设置
-                        ConfigDomain::set_keys_reset_status(Some(true)).await?;
+                        ConfigDomain::set_keys_reset_status(&ctx, Some(true)).await?;
                     }
                     Err(err) => {
                         // 3. reset失败，status设为false
-                        ConfigDomain::set_keys_reset_status(Some(false)).await?;
+                        ConfigDomain::set_keys_reset_status(&ctx, Some(false)).await?;
                         return Err(err.into());
                     }
                 };

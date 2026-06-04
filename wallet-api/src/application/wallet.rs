@@ -61,7 +61,7 @@ impl WalletApplication {
             None => {
                 tracing::info!("password_proof is None, trying fallback validation");
                 if Self::try_decrypt_wallet_db(ctx, password).await? {
-                    let proof = Self::generate_password_proof(password).await?;
+                    let proof = Self::generate_password_proof(ctx, password).await?;
                     DeviceRepo::update_password_proof(core_pool.clone(), sn, Some(&proof)).await?;
                     tracing::info!("password_proof generated and stored");
                 } else {
@@ -196,11 +196,13 @@ impl WalletApplication {
             wallet_tree_strategy: wallet_tree::WalletTreeStrategy::V2,
         };
         crate::domain::app::config::ConfigDomain::set_config(
+            ctx,
             KEYSTORE_KDF_ALGORITHM,
             &keystore_kdf_algorithm.to_json_str()?,
         )
         .await?;
         crate::domain::app::config::ConfigDomain::set_config(
+            ctx,
             WALLET_TREE_STRATEGY,
             &wallet_tree_strategy.to_json_str()?,
         )
@@ -230,13 +232,14 @@ impl WalletApplication {
     }
 
     pub(crate) async fn get_seed(
+        ctx: &'static Context,
         dirs: &crate::dirs::Dirs,
         wallet_address: &str,
         wallet_password: &str,
     ) -> Result<Vec<u8>, ServiceError> {
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let wallet_tree_strategy =
-            crate::domain::app::config::ConfigDomain::get_wallet_tree_strategy().await?;
+            crate::domain::app::config::ConfigDomain::get_wallet_tree_strategy(ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         Ok(wallet_tree::api::KeystoreApi::load_seed(
@@ -275,11 +278,14 @@ impl WalletApplication {
         Ok(res.is_some())
     }
 
-    pub(crate) async fn generate_password_proof(password: &str) -> Result<String, ServiceError> {
+    pub(crate) async fn generate_password_proof(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<String, ServiceError> {
         const PROOF_STRING: &str = "wallet-sdk-password-proof";
 
         let algorithm =
-            crate::domain::app::config::ConfigDomain::get_keystore_kdf_algorithm().await?;
+            crate::domain::app::config::ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
         let rng = rand::rngs::OsRng::default();
 
         let proof =
@@ -313,7 +319,7 @@ impl WalletApplication {
             let dirs = ctx.get_global_dirs();
             let root_dir = dirs.get_root_dir(&wallet.address)?;
             let wallet_tree_strategy =
-                crate::domain::app::config::ConfigDomain::get_wallet_tree_strategy().await?;
+                crate::domain::app::config::ConfigDomain::get_wallet_tree_strategy(ctx).await?;
             let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
             if wallet_tree::api::KeystoreApi::load_seed(

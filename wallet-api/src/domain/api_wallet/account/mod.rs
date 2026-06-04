@@ -714,7 +714,7 @@ impl ApiAccountDomain {
             "api_wallet.account.list_api_accounts_v2 domain finished"
         );
 
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
         let exchange_rate =
             ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
         let cal_exchange_rate = |value: f64| {
@@ -843,6 +843,7 @@ impl ApiAccountDomain {
 
     /// 加密私钥的公共函数
     pub(crate) async fn encrypt_private_key(
+        ctx: &'static Context,
         password: &str,
         private_key_bytes: &[u8],
     ) -> Result<String, crate::error::service::ServiceError> {
@@ -851,7 +852,7 @@ impl ApiAccountDomain {
         use wallet_crypto::KeystoreJsonGenerator;
 
         // 获取加密算法
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
         let rng = OsRng;
         let mut generator = KeystoreJsonGenerator::new(rng, algorithm.clone());
         let encrypted_private_key = generator.generate(password.as_bytes(), private_key_bytes)?;
@@ -1588,7 +1589,7 @@ impl ApiAccountDomain {
         let mut deferred_tasks = Vec::new();
 
         // 获取当前 epoch，所有任务共用同一个 epoch
-        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let current_epoch = ConfigDomain::get_keys_reset_epoch(ctx).await?;
 
         for chain_code in chains {
             let mut created_addresses_for_chain = Vec::new();

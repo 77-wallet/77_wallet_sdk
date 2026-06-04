@@ -358,6 +358,7 @@ impl ConfigDomain {
     }
 
     pub(crate) async fn check_epoch_validity(
+        ctx: &Context,
         task_epoch: u64,
     ) -> Result<bool, crate::error::service::ServiceError> {
         // 获取当前epoch

@@ -421,7 +421,7 @@ impl ApiAssetsService {
         let mut account_total_assets = Some(wallet_types::Decimal::default());
         let mut amount = wallet_types::Decimal::default();
 
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(self.ctx).await?;
 
         for assets in assets.iter_mut() {
             let token_currency_id = TokenCurrencyId::new(
@@ -565,7 +565,7 @@ impl ApiAssetsService {
         )
         .await?;
 
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(self.ctx).await?;
         let exchange_rate =
             ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
         let cal_exchange_rate = |value: f64| {

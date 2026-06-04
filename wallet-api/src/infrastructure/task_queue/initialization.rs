@@ -116,7 +116,7 @@ impl TaskTrait for InitializationTask {
                 app_service.set_block_browser_url().await?;
             }
             InitializationTask::SetFiat => {
-                ConfigDomain::init_currency().await?;
+                ConfigDomain::init_currency(ctx).await?;
             }
             InitializationTask::RecoverQueueData => {
                 MultisigQueueDomain::recover_all_uid_queue_data().await?;

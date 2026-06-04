@@ -122,7 +122,7 @@ impl ApiCoinDomain {
     ) -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let pool = ctx.api_wallet_pool()?;
         let core_pool = ctx.core_pool()?;
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
 
         let coins = ApiCoinRepo::coin_list_v2(&pool, None, None).await?;
 

@@ -136,7 +136,7 @@ impl ApiChainDomain {
         let mut chain_codes = Vec::new();
         // let mut has_new_chain = false;
         let mut new_chains = Vec::new();
-        let app_version = ConfigDomain::get_app_version().await?.app_version;
+        let app_version = ConfigDomain::get_app_version(ctx).await?.app_version;
         for chain in chains.0 {
             let Some(master_token_code) = chain.master_token_code else {
                 continue;
@@ -254,7 +254,7 @@ impl ApiChainDomain {
                 chain_codes.push(chain_code.to_string());
             }
         }
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
 
         ApiChainRepo::toggle_chains_status(&pool, &chain_codes).await?;
         let chain_list_req = BackendApiTaskData::new(
@@ -323,7 +323,7 @@ impl ApiChainDomain {
         ctx: &'static Context,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         let backend = ctx.get_global_backend_api();
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
         let chain_list = backend.api_wallet_chain_list(&app_version.app_version).await?;
         ApiChainDomain::upsert_multi_api_chain_than_toggle(ctx, chain_list).await
     }
@@ -350,7 +350,7 @@ impl ApiChainDomain {
 
         // let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
         // 获取当前 epoch
-        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let current_epoch = ConfigDomain::get_keys_reset_epoch(ctx).await?;
 
         let mut api_address_init_req = ApiAddressInitReq::new(current_epoch);
 

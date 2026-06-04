@@ -276,10 +276,10 @@ impl AccountDomain {
 
         // Traverse the directory structure to obtain the current wallet tree.
 
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
         Ok(wallet_tree::api::KeystoreApi::update_root_password(
             root_dir,
             wallet_tree,
@@ -301,10 +301,10 @@ impl AccountDomain {
         let dirs = ctx.get_global_dirs();
         let subs_dir = dirs.get_subs_dir(wallet_address)?;
 
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
         wallet_tree::api::KeystoreApi::update_account_password(
             wallet_tree,
             &subs_dir,
@@ -323,7 +323,7 @@ impl AccountDomain {
     pub async fn set_verify_password(ctx: &Context, password: &str) -> Result<(), ServiceError> {
         let dirs = ctx.get_global_dirs();
         wallet_tree::api::KeystoreApi::remove_verify_file(&dirs.root_dir)?;
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         wallet_tree::api::KeystoreApi::store_verify_file(&*wallet_tree, &dirs.root_dir, password)?;
@@ -367,7 +367,7 @@ pub async fn open_accounts_pk_with_password(
 
     let subs_path = dirs.get_subs_dir(address)?;
     // let storage_path = subs_path.join(name);
-    let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+    let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
     let account_data = wallet_tree::api::KeystoreApi::load_account_pk(
@@ -436,7 +436,7 @@ pub async fn open_subpk_with_password(
     let chain_code: ChainCode = chain_code.try_into()?;
 
     let subs_path = dirs.get_subs_dir(&wallet.address)?;
-    let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+    let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
     let account_index_map =

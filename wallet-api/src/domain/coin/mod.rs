@@ -62,7 +62,7 @@ impl CoinDomain {
     -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let ctx = crate::get_context()?;
         let core_pool = ctx.core_pool()?;
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(&ctx).await?;
 
         let coins = CoinRepo::coin_list_v2(core_pool.clone(), None, None).await?;
 

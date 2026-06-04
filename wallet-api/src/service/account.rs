@@ -114,7 +114,7 @@ impl AccountService {
             .with_context(&format!("WalletRepo::wallet_detail_by_address: {}", wallet_address))?;
 
         // 获取种子
-        let seed = WalletDomain::get_seed(dirs.as_ref(), &wallet.address, wallet_password).await?;
+        let seed = WalletDomain::get_seed(self.ctx, dirs.as_ref(), &wallet.address, wallet_password).await?;
         // 获取默认链和币
         let default_chain_list = ChainRepo::get_chain_list(&core_pool).await?;
         let default_coins_list = CoinRepo::default_coin_list(&core_pool).await?;
@@ -186,9 +186,9 @@ impl AccountService {
         )
         .await?;
 
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
 
         let tron_address =
             subkeys.iter().find(|s| s.chain_code == chain_code::TRON).map(|s| s.address.clone());
@@ -275,7 +275,7 @@ impl AccountService {
         let dirs = self.ctx.get_global_dirs();
 
         let root_dir = dirs.get_root_dir(wallet_address)?;
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         let seed = wallet_tree::api::KeystoreApi::load_seed(
@@ -438,7 +438,7 @@ impl AccountService {
 
         Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
         let dirs = self.ctx.get_global_dirs();
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         wallet_tree.io().delete_account(
@@ -485,7 +485,7 @@ impl AccountService {
         // 生成并存储 password_proof
         let sn = self.ctx.get_sn();
         let proof =
-            crate::domain::wallet::WalletDomain::generate_password_proof(new_password).await?;
+            crate::domain::wallet::WalletDomain::generate_password_proof(self.ctx, new_password).await?;
         DeviceRepo::update_password_proof(pool.clone(), sn, Some(&proof)).await?;
         tracing::info!("password_proof updated");
 
@@ -519,7 +519,7 @@ impl AccountService {
         let subs_dir = dirs.get_subs_dir(&account.wallet_address)?;
 
         // Traverse the directory structure to obtain the current wallet tree.
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         let node = ChainDomain::get_node(chain_code).await?;
@@ -530,7 +530,7 @@ impl AccountService {
             crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
         )?;
 
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
         Ok(wallet_tree::api::KeystoreApi::update_child_password(
             subs_dir,
             instance,

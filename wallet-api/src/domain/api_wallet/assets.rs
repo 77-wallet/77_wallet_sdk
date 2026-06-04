@@ -202,7 +202,7 @@ impl ApiAssetsDomain {
         let assets = ApiAssetsRepo::list(pool, addresses, None).await?;
 
         // 获取汇率
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
         let core_pool = ctx.core_pool()?;
         let exchange_rate =
             ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
@@ -864,7 +864,7 @@ impl ApiAssetsDomain {
         )
         .await?;
 
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
         let exchange_rate =
             ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
         let cal_exchange_rate = |value: f64| {
@@ -971,7 +971,7 @@ impl ApiAssetsDomain {
                 total_amount_usd += qty * price;
             }
 
-            let currency = ConfigDomain::get_currency().await?;
+            let currency = ConfigDomain::get_currency(ctx).await?;
             let exchange_rate =
                 ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
             let cal_exchange_rate = |value: f64| {
