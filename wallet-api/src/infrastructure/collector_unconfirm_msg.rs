@@ -8,9 +8,9 @@ pub(crate) struct UnconfirmedMsgCollector {
 }
 
 impl UnconfirmedMsgCollector {
-    pub fn new() -> Self {
+    pub fn new(ctx: &'static crate::context::Context) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        Self::start_collect(rx);
+        Self::start_collect(rx, ctx);
         Self { tx }
     }
 
@@ -21,7 +21,10 @@ impl UnconfirmedMsgCollector {
         Ok(())
     }
 
-    pub fn start_collect(mut rx: tokio::sync::mpsc::UnboundedReceiver<Vec<String>>) {
+    pub fn start_collect(
+        mut rx: tokio::sync::mpsc::UnboundedReceiver<Vec<String>>,
+        ctx: &'static crate::context::Context,
+    ) {
         tokio::spawn(async move {
             let mut buffer = HashSet::new();
             let mut last_recv_time: Option<Instant> = None;
@@ -67,7 +70,7 @@ impl UnconfirmedMsgCollector {
 
                             last_recv_time = None;
 
-                            let handles = crate::get_context()?.get_global_handles().await;
+                            let handles = ctx.get_global_handles().await;
                             if let Some(handles) = handles.upgrade() {
                                 let notify = handles.get_global_notify();
                                 notify.notify_one();

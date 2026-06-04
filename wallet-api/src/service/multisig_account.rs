@@ -866,7 +866,10 @@ impl MultisigAccountService {
         let core_pool = self.ctx.core_pool()?;
         let member = MultisigMemberRepo::list_by_account_id(&core_pool, account_id).await?;
 
-        let fee = adapter.deploy_multisig_fee(&account, member, &main_coin.symbol).await?;
+        let backend = self.ctx.get_global_backend_api();
+        let fee = adapter
+            .deploy_multisig_fee_with_ctx(&account, member, &main_coin.symbol, backend.as_ref())
+            .await?;
 
         let fee_resp =
             response_vo::EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, fee);

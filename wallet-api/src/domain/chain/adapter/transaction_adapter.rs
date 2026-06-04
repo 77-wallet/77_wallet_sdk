@@ -674,8 +674,17 @@ impl TransactionAdapter {
         req: transaction::BaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let token_address = req.token_address.to_chain_token_option();
         let backend = crate::get_context()?.get_global_backend_api();
+        self.estimate_fee_with_ctx(req, main_symbol, backend.as_ref()).await
+    }
+
+    pub async fn estimate_fee_with_ctx(
+        &self,
+        req: transaction::BaseTransferReq,
+        main_symbol: &str,
+        backend_api: &wallet_transport_backend::api::BackendApi,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let token_address = req.token_address.to_chain_token_option();
 
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
@@ -709,12 +718,9 @@ impl TransactionAdapter {
                     ))?;
                 }
 
-                let gas_oracle = ChainTransDomain::gas_oracle(
-                    &req.chain_code,
-                    &chain.provider,
-                    backend.as_ref(),
-                )
-                .await?;
+                let gas_oracle =
+                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
+                        .await?;
 
                 let params = eth::operations::TransferOpt::new(
                     &req.from,
@@ -1068,7 +1074,18 @@ impl TransactionAdapter {
         symbol: &str,
         sol_instructions: Option<SolInstructResp>,
     ) -> Result<(U256, String, String), crate::error::service::ServiceError> {
-        // 考虑滑点计算最小金额
+        let backend = crate::get_context()?.get_global_backend_api();
+        self.swap_quote_with_ctx(req, quote_resp, symbol, sol_instructions, backend.as_ref()).await
+    }
+
+    pub async fn swap_quote_with_ctx(
+        &self,
+        req: &QuoteReq,
+        quote_resp: &AggQuoteResp,
+        symbol: &str,
+        sol_instructions: Option<SolInstructResp>,
+        backend_api: &wallet_transport_backend::api::BackendApi,
+    ) -> Result<(U256, String, String), crate::error::service::ServiceError> {
         let min_amount_out = U256::from(1);
 
         let currency = {
@@ -1097,14 +1114,9 @@ impl TransactionAdapter {
                 };
 
                 let resp = eth_tx::estimate_swap(swap_params, chain).await?;
-
-                let backend = crate::get_context()?.get_global_backend_api();
-                let gas_oracle = ChainTransDomain::gas_oracle(
-                    &req.chain_code,
-                    &chain.provider,
-                    backend.as_ref(),
-                )
-                .await?;
+                let gas_oracle =
+                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
+                        .await?;
                 let fee = FeeDetails::try_from((gas_oracle, resp.consumer.to::<i64>()))?
                     .to_resp(token_currency, &currency);
 

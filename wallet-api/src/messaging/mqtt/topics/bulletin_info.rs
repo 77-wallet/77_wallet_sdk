@@ -1,3 +1,4 @@
+use crate::context::Context;
 use wallet_database::entities::announcement::CreateAnnouncementVo;
 
 use crate::{
@@ -100,7 +101,15 @@ impl BulletinMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
+        let ctx = crate::context::get_context()?;
+        self.exec_with_ctx(_msg_id, ctx).await
+    }
+
+    pub(crate) async fn exec_with_ctx(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let Self { id, operation, .. } = self;
         if let Some(operation) = operation {
             match operation {

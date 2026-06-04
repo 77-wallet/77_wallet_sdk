@@ -10,6 +10,7 @@ use wallet_database::{
 };
 
 use crate::{
+    context::Context,
     messaging::{
         notify::{FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignAcceptFrontend},
         system_notification::{Notification, NotificationType},
@@ -84,17 +85,29 @@ impl From<&NewMultisigAccountEntity> for OrderMultiSignAccept {
 }
 
 impl OrderMultiSignAccept {
-    async fn check_if_cancelled(id: &str) -> Result<bool, crate::error::service::ServiceError> {
+    pub async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
+    }
+
+    async fn check_if_cancelled_with_ctx(
+        id: &str,
+        ctx: &'static Context,
+    ) -> Result<bool, crate::error::service::ServiceError> {
         tracing::info!("Checking if multisig account {} is cancelled...", id);
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = ctx.get_global_backend_api();
         let is_cancel = backend_api.check_multisig_account_is_cancel(id).await?;
         tracing::info!("Multisig account {} cancellation status: {}", id, is_cancel.status);
         Ok(is_cancel.status)
     }
 
-    pub(crate) async fn exec(
+    pub(crate) async fn exec_with_ctx(
         &self,
         _msg_id: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         tracing::info!(
@@ -102,9 +115,10 @@ impl OrderMultiSignAccept {
             ?self,
             "Starting to process OrderMultiSignAccept"
         );
+        let _ = _msg_id;
 
-        let db_pool = crate::get_context()?.get_global_sqlite_pool()?;
-        let core_pool = crate::get_context()?.core_pool()?;
+        let db_pool = ctx.get_global_sqlite_pool()?;
+        let core_pool = ctx.core_pool()?;
 
         let account = AccountRepo::account(core_pool.clone(), &self.address).await?;
 
@@ -129,7 +143,7 @@ impl OrderMultiSignAccept {
             None => MultiAccountOwner::Participant,
         };
 
-        Self::update_member_info(&mut params).await?;
+        Self::update_member_info_with_ctx(&mut params, ctx).await?;
         tracing::info!(
             event_name = %event_name,
             "Update member info for account {}",self.id);
@@ -137,7 +151,7 @@ impl OrderMultiSignAccept {
         Self::crate_multisig_account(&db_pool, params).await?;
 
         // 查询后端接口，判断是否账户已被取消
-        if Self::check_if_cancelled(&self.id).await? {
+        if Self::check_if_cancelled_with_ctx(&self.id, ctx).await? {
             tracing::warn!(
                 event_name = %event_name,
                 "Multisig Account {} has been canceled",self.id);
@@ -149,14 +163,22 @@ impl OrderMultiSignAccept {
             "Sync multisig for account {}",self.id);
         // Self::send_system_notification(msg_id, name, address, id).await?;
 
-        Self::send_to_frontend(&self).await?;
+        Self::send_to_frontend(&self, ctx).await?;
         Ok(())
     }
 
     async fn update_member_info(
         params: &mut NewMultisigAccountEntity,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::get_context()?.core_pool()?;
+        Self::update_member_info_with_ctx(params, ctx).await
+    }
+
+    async fn update_member_info_with_ctx(
+        params: &mut NewMultisigAccountEntity,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = ctx.core_pool()?;
         let mut status = MultisigAccountStatus::Confirmed;
         for m in params.member_list.iter_mut() {
             if m.confirmed != 1 {
@@ -182,6 +204,7 @@ impl OrderMultiSignAccept {
 
     async fn send_to_frontend(
         accept: &OrderMultiSignAccept,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let data = NotifyEvent::OrderMultiSignAccept(OrderMultiSignAcceptFrontend {
             name: accept.name.to_string(),
@@ -191,7 +214,7 @@ impl OrderMultiSignAccept {
             threshold: accept.threshold,
             member: accept.member.to_vec(),
         });
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 
@@ -214,6 +237,24 @@ impl OrderMultiSignAccept {
         account_name: &str,
         account_address: &str,
         multisig_account_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::_send_system_notification_with_ctx(
+            msg_id,
+            account_name,
+            account_address,
+            multisig_account_id,
+            ctx,
+        )
+        .await
+    }
+
+    async fn _send_system_notification_with_ctx(
+        msg_id: &str,
+        account_name: &str,
+        account_address: &str,
+        multisig_account_id: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let notification = Notification::new_multisig_notification(
             account_name,
@@ -221,7 +262,7 @@ impl OrderMultiSignAccept {
             multisig_account_id,
             NotificationType::DeployInvite,
         );
-        let system_notification_service = SystemNotificationService::new(crate::get_context()?);
+        let system_notification_service = SystemNotificationService::new(ctx);
 
         system_notification_service.add_system_notification(msg_id, notification, 0).await?;
         Ok(())

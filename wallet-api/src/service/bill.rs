@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{self, app::config::ConfigDomain, bill::BillDomain},
     response_vo::CoinCurrency,
 };
@@ -8,10 +9,23 @@ use wallet_database::{
     repositories::{account::AccountRepo, bill::BillRepo, permission::PermissionRepo},
 };
 
-pub struct BillService;
+pub struct BillService {
+    core_pool: wallet_database::CoreDbPool,
+    sqlite_pool: wallet_database::CoreDbPool,
+}
 
 impl BillService {
+    pub fn new(ctx: &'static Context) -> Result<Self, crate::error::service::ServiceError> {
+        let core_pool = ctx.core_pool()?;
+        let sqlite_pool = {
+            let pool = ctx.get_global_sqlite_pool()?;
+            wallet_database::CoreDbPool::new(pool)
+        };
+        Ok(Self { core_pool, sqlite_pool })
+    }
+
     pub async fn bill_lists(
+        &self,
         root_addr: Option<String>,
         account_id: Option<u32>,
         addr: Option<String>,
@@ -25,13 +39,11 @@ impl BillService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
-        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let adds = if let Some(addr) = addr {
             vec![addr]
         } else {
             let account = AccountRepo::get_account_list_by_wallet_address_and_account_id(
-                core_pool.clone(),
+                self.sqlite_pool.clone(),
                 root_addr.as_deref(),
                 account_id,
             )
@@ -41,7 +53,7 @@ impl BillService {
                 account.iter().map(|item| item.address.clone()).collect::<Vec<String>>();
 
             // 兼容权限里面的地址
-            let users = PermissionRepo::permission_by_users(&core_pool, &address).await?;
+            let users = PermissionRepo::permission_by_users(&self.sqlite_pool, &address).await?;
 
             for user in users {
                 address.push(user.grantor_addr.clone());
@@ -66,7 +78,7 @@ impl BillService {
             transfer_type,
             page,
             page_size,
-            &core_pool,
+            &self.sqlite_pool,
         )
         .await?;
 
@@ -76,6 +88,7 @@ impl BillService {
     }
 
     pub async fn sync_bill_by_address(
+        &self,
         chain_code: &str,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -83,13 +96,13 @@ impl BillService {
     }
 
     pub async fn sync_bill_by_wallet_and_account(
+        &self,
         wallet_address: String,
         account_id: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         // get all
-        let core_pool = crate::get_context()?.core_pool()?;
         let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
-            core_pool,
+            self.core_pool.clone(),
             Some(wallet_address.as_str()),
             Some(account_id),
         )
@@ -110,6 +123,7 @@ impl BillService {
     }
 
     pub async fn coin_currency_price(
+        &self,
         chain_code: String,
         symbol: String,
         token_key: AssetTokenKey,

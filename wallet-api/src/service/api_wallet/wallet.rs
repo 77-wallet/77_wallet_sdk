@@ -78,15 +78,16 @@ impl ApiWalletService {
 
         // 初始化API钱包MQTT
         #[cfg(feature = "api-mqtt")]
-        MqttDomain::init_api_mqtt().await?;
+        MqttDomain::init_api_mqtt(self.ctx).await?;
         self.ctx.set_init_api_swap(true).await;
 
         tracing::info!(
             "init api swap successful=================================================="
         );
 
+        let ctx = self.ctx;
         tokio::spawn(async move {
-            if let Err(e) = Self::init_data().await {
+            if let Err(e) = Self::init_data(ctx).await {
                 tracing::error!("初始化数据失败: {:?}", e);
             }
         });
@@ -94,15 +95,15 @@ impl ApiWalletService {
         Ok(())
     }
 
-    async fn init_data() -> ReturnType<()> {
+    async fn init_data(ctx: &'static Context) -> ReturnType<()> {
         // 初始化API_CHAIN_ADAPTER_FACTORY全局单例
         tracing::info!("初始化API_CHAIN_ADAPTER_FACTORY全局单例");
         let factory = ApiChainAdapterFactory::get_instance();
         // 预初始化所有链和节点的适配器
         tracing::info!("预初始化所有链和节点的适配器");
-        factory.pre_init_all_adapters().await?;
+        factory.pre_init_all_adapters_with_ctx(ctx).await?;
 
-        ApiChainDomain::init_api_chain_info().await?;
+        ApiChainDomain::init_api_chain_info(ctx).await?;
         Tasks::new().push(InitializationTask::PullApiWalletCoins).send().await?;
         Ok(())
     }

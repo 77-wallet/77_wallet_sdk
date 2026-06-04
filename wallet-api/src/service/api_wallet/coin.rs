@@ -101,7 +101,7 @@ impl ApiCoinService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
         let net = crate::domain::api_wallet::chain::ApiChainDomain::network_kind_by_chain_code(
-            chain_code,
+            chain_code, self.ctx,
         )
         .await?;
 
@@ -109,7 +109,8 @@ impl ApiCoinService {
 
         let _ = ChainDomain::get_node(chain_code).await?;
 
-        let chain_instance = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let chain_instance =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, chain_code).await?;
 
         let coin = ApiCoinRepo::coin_by_chain_token_key_opt(
             chain_code,

@@ -218,7 +218,17 @@ impl ProcessWithdrawTxConfirmReport {
             return;
         }
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = match crate::get_context() {
+            Ok(ctx) => ctx.get_global_backend_api(),
+            Err(err) => {
+                tracing::error!(
+                    trade_no=%req.trade_no,
+                    "[提现确认] 获取全局 context 失败: {}",
+                    err
+                );
+                return;
+            }
+        };
         tracing::info!(trade_no=%req.trade_no, "[提现确认] 准备调用后端API发送 Result ACK");
 
         match backend_api

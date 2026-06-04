@@ -9,6 +9,7 @@ use crate::{
 impl ApiAccountDomain {
     /// 地址搜索：在指定 API 钱包 uid 范围内搜索账户地址
     pub async fn search_address(
+        ctx: &crate::context::Context,
         uid: &str,
         keyword: &str,
     ) -> Result<ApiWalletAddressSearchResp, ServiceError> {
@@ -24,7 +25,7 @@ impl ApiAccountDomain {
             return Ok(ApiWalletAddressSearchResp { items: vec![] });
         }
 
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
 
         let entities = ApiAccountRepo::search_address_by_uid(&pool, uid, keyword).await?;
 

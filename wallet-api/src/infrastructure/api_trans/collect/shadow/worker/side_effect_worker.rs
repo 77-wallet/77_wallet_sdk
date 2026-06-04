@@ -295,8 +295,10 @@ impl SideEffectWorker {
         };
 
         // 3. 查询用户提币策略
+        let ctx = crate::context::get_context()?;
         let strategy =
-            crate::domain::api_wallet::strategy::StrategyDomain::query_withdraw_strategy(
+            crate::domain::api_wallet::strategy::StrategyDomain::query_withdraw_strategy_with_ctx(
+                &ctx,
                 &withdraw_wallet.uid,
             )
             .await?;
@@ -1006,6 +1008,7 @@ impl SideEffectWorker {
 
         // 获取交易信息
         let req = self.get_collect_entity(&trade_no).await?;
+        let ctx = crate::context::get_context()?;
 
         // 幂等保护：检查服务费是否已上传
         // invariant: uploaded_at.is_some() => attempted_at.is_some()
@@ -1019,7 +1022,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, exec_from_addr = %exec_from_addr, source = "side_effect_worker", "Resolved withdrawal address");
 
         // 查询主币信息
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
         info!(trade_no = %trade_no, source = "side_effect_worker", "Retrieved main coin information");
 
         // 解析链代码
@@ -1379,8 +1382,13 @@ impl SideEffectWorker {
             "Querying balance for service fee shortfall calculation"
         );
 
+        let ctx = crate::context::get_context()?;
         let adapter =
-            crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+            crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+                &ctx,
+                chain_code,
+            )
+            .await?;
         let balance = adapter.balance_token_key(owner_address, token_key.clone()).await?;
         let amount = unit::format_to_string(balance, decimals)?;
         let amount = conversion::decimal_from_str(&amount)?;
@@ -1404,8 +1412,13 @@ impl SideEffectWorker {
         main_coin: &ApiCoinEntity,
     ) -> Result<(String, AssetTokenKey, u8), ServiceError> {
         if token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(chain_code, token_addr.clone()).await?;
+            let ctx = crate::context::get_context()?;
+            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact_with_ctx(
+                &ctx,
+                chain_code,
+                token_addr.clone(),
+            )
+            .await?;
             Self::select_fee_estimation_coin_info(token_addr, main_coin, Some(&token_coin))
         } else {
             Self::select_fee_estimation_coin_info(token_addr, main_coin, None)
@@ -1426,7 +1439,13 @@ impl SideEffectWorker {
     ) -> Result<String, ServiceError> {
         info!(from=%from, to=%to, value=%value, chain_code=%chain_code.to_string(), symbol=%symbol, main_symbol=%main_symbol, token_address=%token_key.as_db_str(), source = "side_effect_worker", "Estimating transaction fee");
 
-        let adapter = crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+        let ctx = crate::context::get_context()?;
+        let adapter =
+            crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+                &ctx,
+                &chain_code.to_string(),
+            )
+            .await?;
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Retrieved transaction adapter");
 
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());

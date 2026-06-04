@@ -140,13 +140,13 @@ impl WalletManager {
     }
 
     pub async fn process_jpush_message(&self, message: &str) -> ReturnType<()> {
-        crate::service::jpush::JPushService::jpush(message).await.into()
+        crate::service::jpush::JPushService::new(self.ctx).jpush(message).await.into()
     }
 
     pub async fn get_task_queue_status(
         &self,
     ) -> ReturnType<crate::response_vo::standard_wallet::task_queue::TaskQueueStatus> {
-        TaskQueueService::new().get_task_queue_status().await
+        TaskQueueService::new(self.ctx).get_task_queue_status().await
     }
 
     pub async fn set_frontend_notify_sender(

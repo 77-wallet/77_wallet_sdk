@@ -163,7 +163,10 @@ impl TransactionService {
         let main_coin = CoinRepo::main_coin(&params.chain_code, &pool).await?;
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&params.chain_code).await?;
-        let fee = adapter.estimate_fee(params, main_coin.symbol.as_str()).await?;
+        let backend_api = self.ctx.get_global_backend_api();
+        let fee = adapter
+            .estimate_fee_with_ctx(params, main_coin.symbol.as_str(), backend_api.as_ref())
+            .await?;
 
         let fee_resp =
             response_vo::EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code.clone(), fee);

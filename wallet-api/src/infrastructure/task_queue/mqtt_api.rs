@@ -71,8 +71,11 @@ impl TaskTrait for ApiMqttStruct {
         Ok(Some(wallet_utils::serde_func::serde_to_string(self)?))
     }
 
-    async fn execute(&self, id: &str) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
+    async fn execute(
+        &self,
+        id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), ServiceError> {
         match &self.event_type {
             EventType::AwmOrderTrans => {
                 let data: AwmOrderTransMsg =

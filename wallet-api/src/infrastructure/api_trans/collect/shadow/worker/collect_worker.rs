@@ -656,7 +656,7 @@ impl ShadowCollectWorker {
                         && resource_rpc_auth::should_retry_after_rpc_auth_error(&err) =>
                 {
                     auth_retry_attempted = true;
-                    resource_rpc_auth::refresh_and_prepare_retry(
+                    resource_rpc_auth::refresh_and_prepare_retry_global(
                         &delegation.chain_code,
                         "collect_resource_delegation",
                         &delegation.resource_trade_no,
@@ -957,6 +957,7 @@ impl ShadowCollectWorker {
         origin_trade_no: String,
     ) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(&origin_trade_no).await?;
+        let ctx = crate::context::get_context()?;
         if !Self::is_tron_collect(&req.chain_code) {
             return Ok(());
         }
@@ -970,7 +971,7 @@ impl ShadowCollectWorker {
         }
 
         let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
         let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
             let token_coin =
                 ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
@@ -1014,11 +1015,12 @@ impl ShadowCollectWorker {
         req: &ApiCollectEntity,
         exec_to_addr: &str,
     ) -> Result<ResourceGateSnapshot, ServiceError> {
+        let ctx = crate::context::get_context()?;
         // 这里只做“评估快照”：
         // - 估算如果现在 BuildTx，需要多少资源
         // - 读取子账户当前链上资源余额
         // 不在这里决定走平台代理还是本地代理，也不直接写 blocked/released 事实。
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
         let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
             let token_coin =
                 ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
@@ -2474,10 +2476,11 @@ impl ShadowCollectWorker {
     pub(crate) async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
+        let ctx = crate::context::get_context()?;
 
         // 查询主币信息
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 主币信息: 币种={}, 小数位数={}", main_coin.symbol, main_coin.decimals);
 
         // 确定代币信息
@@ -2633,6 +2636,7 @@ impl ShadowCollectWorker {
         &self,
         req: &ApiCollectEntity,
     ) -> Result<bool, ServiceError> {
+        let ctx = crate::context::get_context()?;
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
         let token_key = if req.token_addr.is_contract() {
             req.token_addr.clone()
@@ -2644,7 +2648,7 @@ impl ShadowCollectWorker {
             ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
                 .await?
         } else {
-            ApiChainTransDomain::main_coin(&req.chain_code).await?
+            ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?
         };
 
         let balance_str =
@@ -2981,7 +2985,7 @@ impl ShadowCollectWorker {
     async fn check_digest(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         info!(trade_no = %req.trade_no, source = "shadow_worker_v2", "Checking transaction digest");
 
-        let sn = crate::get_context()?().get_sn();
+        let sn = crate::get_context()?.get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         // ⚠️ 这里必须用后端给的空字符串的to_addr，不能用查询策略解析的地址

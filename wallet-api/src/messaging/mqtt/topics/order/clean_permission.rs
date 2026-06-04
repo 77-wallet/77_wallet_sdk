@@ -1,5 +1,5 @@
 // 清空权限事件
-use crate::domain::permission::PermissionDomain;
+use crate::{context::Context, domain::permission::PermissionDomain};
 use wallet_database::{CoreDbPool, repositories::permission::PermissionRepo};
 
 // biz_type = CLEAN_PERMISSION
@@ -14,8 +14,20 @@ impl CleanPermission {
         "CLEAN_PERMISSION".to_string()
     }
 
-    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
+    pub async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
+    }
+
+    pub(crate) async fn exec_with_ctx(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let event_name = self.name();

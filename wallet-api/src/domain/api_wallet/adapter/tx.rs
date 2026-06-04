@@ -1,3 +1,4 @@
+use crate::context::Context;
 use crate::error::{service::ServiceError /*, system::SystemError*/}; // SystemError未使用
 use alloy::primitives::U256;
 use wallet_chain_interact::{
@@ -53,6 +54,13 @@ pub trait Oracle {
     async fn gas_oracle(&self) -> Result<GasOracle, crate::error::service::ServiceError>;
 
     async fn default_gas_oracle(&self) -> Result<GasOracle, crate::error::service::ServiceError>;
+
+    async fn gas_oracle_with_ctx(
+        &self,
+        _ctx: &Context,
+    ) -> Result<GasOracle, crate::error::service::ServiceError> {
+        self.gas_oracle().await
+    }
 }
 
 #[async_trait::async_trait]
@@ -148,11 +156,29 @@ pub trait Tx {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, crate::error::service::ServiceError>;
 
+    async fn transfer_with_ctx(
+        &self,
+        _ctx: &Context,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<TransferResp, crate::error::service::ServiceError> {
+        self.transfer(params, private_key).await
+    }
+
     async fn estimate_fee(
         &self,
         req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError>;
+
+    async fn estimate_fee_with_ctx(
+        &self,
+        _ctx: &Context,
+        req: ApiBaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        self.estimate_fee(req, main_symbol).await
+    }
 
     /// Estimate a fee without applying local balance gates.
     ///

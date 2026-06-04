@@ -1,25 +1,30 @@
-use crate::domain::{self, node::NodeDomain};
+use crate::{
+    context::Context,
+    domain::{self, node::NodeDomain},
+};
 use wallet_database::{
     entities::node::NodeCreateVo,
     repositories::{chain::ChainRepo, node::NodeRepo},
 };
 
-pub struct NodeService;
+pub struct NodeService {
+    ctx: &'static Context,
+}
 
 impl NodeService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn add_node(
-        &mut self,
+        &self,
         name: &str,
         chain_code: &str,
         rpc_url: &str,
         _ws_url: &str,
         http_url: Option<String>,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let id = NodeDomain::gen_node_id(name, chain_code);
         let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
         let res = NodeRepo::upsert(&core_pool, req)
@@ -45,13 +50,13 @@ impl NodeService {
     // }
 
     pub async fn get_node_list(
-        &mut self,
+        &self,
         chain_code: &str,
     ) -> Result<
         Vec<crate::response_vo::standard_wallet::chain::NodeListRes>,
         crate::error::service::ServiceError,
     > {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let Some(chain) = ChainRepo::detail(&core_pool, chain_code).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
@@ -84,14 +89,14 @@ impl NodeService {
 
     // 包括块高、延迟
     pub async fn get_node_dynamic_data(
-        &mut self,
+        &self,
         chain_code: &str,
     ) -> Result<
         Vec<crate::response_vo::standard_wallet::chain::NodeDynData>,
         crate::error::service::ServiceError,
     > {
         // let node_list = self.get_node_list(chain_code).await?;
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         // let list_with_node =
         //     wallet_database::dao::node::NodeDao::get_node_list_in_chain_codes(
         //         &*pool,

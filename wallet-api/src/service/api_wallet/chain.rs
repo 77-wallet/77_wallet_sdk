@@ -29,7 +29,7 @@ impl ApiChainService {
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
-        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies(self.ctx).await?;
 
         let mut account_addresses = Vec::<String>::new();
 
@@ -68,7 +68,7 @@ impl ApiChainService {
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
-        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies(self.ctx).await?;
 
         let mut account_addresses = std::collections::HashSet::<String>::new();
 
@@ -185,7 +185,7 @@ impl ApiChainService {
     }
 
     pub async fn sync_chains(&self) -> Result<Vec<String>, crate::error::service::ServiceError> {
-        ApiChainDomain::sync_chains().await
+        ApiChainDomain::sync_chains(self.ctx).await
         // let backend = crate::get_context()?.get_global_backend_api();
         // let app_version = ConfigDomain::get_app_version().await?;
         // let chain_list = backend.api_wallet_chain_list(&app_version.app_version).await?;
@@ -194,7 +194,7 @@ impl ApiChainService {
 
     pub async fn sync_wallet_chain_data(&self) -> Result<(), crate::error::service::ServiceError> {
         let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
-        ApiChainDomain::sync_wallet_chain_data(&unlock_token).await
+        ApiChainDomain::sync_wallet_chain_data(self.ctx, &unlock_token).await
     }
 }
 

@@ -256,7 +256,13 @@ impl ProcessFeeTxReport {
         };
 
         tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 调用后端API上传交易执行报告");
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = match crate::get_context() {
+            Ok(ctx) => ctx.get_global_backend_api(),
+            Err(err) => {
+                tracing::error!(trade_no=%req.trade_no, "[手续费归集报告] 获取全局 context 失败: {}", err);
+                return;
+            }
+        };
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 None,

@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::adapter::{
             btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,
@@ -62,11 +63,20 @@ impl ApiChainAdapterFactory {
         removed_count
     }
 
-    async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, ServiceError> {
+    #[deprecated(note = "use pre_init_all_adapters_with_ctx")]
+    pub async fn pre_init_all_adapters(&self) -> Result<(), ServiceError> {
+        let ctx = crate::context::get_context()?;
+        self.pre_init_all_adapters_with_ctx(&ctx).await
+    }
+
+    async fn get_chain_node(
+        ctx: &Context,
+        chain_code: ChainCode,
+    ) -> Result<ChainWithNode, ServiceError> {
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
 
-        let core_pool = crate::get_context()?.core_pool()?;
-        let api_pool = crate::get_context()?.api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
+        let api_pool = ctx.api_wallet_pool()?;
         let chain_code_str = chain_code.to_string();
         let ensurer = ChainNodeEnsurer::new(core_pool, api_pool);
         let chain_with_node = ensurer.ensure_and_get_api_chain_with_node(&chain_code_str).await?;
@@ -75,9 +85,9 @@ impl ApiChainAdapterFactory {
     }
 
     /// 预初始化所有链和节点的适配器
-    pub async fn pre_init_all_adapters(&self) -> Result<(), ServiceError> {
+    pub async fn pre_init_all_adapters_with_ctx(&self, ctx: &Context) -> Result<(), ServiceError> {
         // 获取所有节点
-        let pool = crate::get_context()?.core_pool()?;
+        let pool = ctx.core_pool()?;
         let all_nodes = NodeRepo::list(&pool, None).await?;
 
         tracing::info!(node_count = all_nodes.len(), "开始预初始化所有链和节点的适配器");
@@ -109,35 +119,53 @@ impl ApiChainAdapterFactory {
             tracing::debug!(chain_code=%chain_code, rpc_url=%node.rpc_url, "预初始化transaction_adapter");
 
             let header_opt = if rpc_need_header(&node.rpc_url)? {
-                Some(crate::get_context()?.get_rpc_header().await?)
+                Some(ctx.get_rpc_header().await?)
             } else {
                 None
             };
 
             let adapter: Arc<dyn Tx + Send + Sync> = match chain_code {
                 ChainCode::Tron => Arc::new(TronTx::new(&node.rpc_url, header_opt)?),
-                ChainCode::Bitcoin => Arc::new(BtcTx::new(&node.rpc_url, header_opt)?),
+                ChainCode::Bitcoin => Arc::new(BtcTx::new_with_ctx(
+                    &node.rpc_url,
+                    header_opt,
+                    ctx.api_wallet_pool()?,
+                )?),
                 ChainCode::Solana => Arc::new(SolTx::new(&node.rpc_url, header_opt)?),
-                ChainCode::Ethereum => Arc::new(EthTx::new(
+                ChainCode::Ethereum => Arc::new(EthTx::new_with_ctx(
                     chain_code,
                     &node.rpc_url,
                     crate::domain::chain::ChainDomain::network_kind_from_node_network(
                         &node.network,
                     ),
                     header_opt,
+                    ctx.get_global_backend_api(),
                 )?),
-                ChainCode::BnbSmartChain => Arc::new(EthTx::new(
+                ChainCode::BnbSmartChain => Arc::new(EthTx::new_with_ctx(
                     chain_code,
                     &node.rpc_url,
                     crate::domain::chain::ChainDomain::network_kind_from_node_network(
                         &node.network,
                     ),
                     header_opt,
+                    ctx.get_global_backend_api(),
                 )?),
-                ChainCode::Litecoin => Arc::new(LtcTx::new(&node.rpc_url, header_opt)?),
-                ChainCode::Dogcoin => Arc::new(DogeTx::new(&node.rpc_url, header_opt)?),
+                ChainCode::Litecoin => Arc::new(LtcTx::new_with_ctx(
+                    &node.rpc_url,
+                    header_opt,
+                    ctx.api_wallet_pool()?,
+                )?),
+                ChainCode::Dogcoin => Arc::new(DogeTx::new_with_ctx(
+                    &node.rpc_url,
+                    header_opt,
+                    ctx.api_wallet_pool()?,
+                )?),
                 ChainCode::Sui => Arc::new(SuiTx::new(&node.rpc_url, header_opt)?),
-                ChainCode::Ton => Arc::new(TonTx::new(&node.rpc_url, header_opt)?),
+                ChainCode::Ton => Arc::new(TonTx::new_with_ctx(
+                    &node.rpc_url,
+                    header_opt,
+                    ctx.api_wallet_pool()?,
+                )?),
             };
 
             // 存入缓存，包含创建时间
@@ -151,12 +179,12 @@ impl ApiChainAdapterFactory {
         Ok(())
     }
 
-    pub async fn new_transaction_adapter(
+    pub async fn new_transaction_adapter_with_ctx(
         &self,
+        ctx: &Context,
         chain_code: ChainCode,
     ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
-        // 首先获取链节点信息
-        let node = Self::get_chain_node(chain_code).await?;
+        let node = Self::get_chain_node(ctx, chain_code).await?;
 
         // 使用chain_code和rpc_url组合作为缓存键，确保不同节点的适配器不会被混用
         let cache_key = format!("{}:{}", chain_code.to_string(), node.rpc_url);
@@ -173,32 +201,39 @@ impl ApiChainAdapterFactory {
 
         // 缓存未命中或适配器已过期，创建新的适配器
         tracing::debug!(rpc_url=%node.rpc_url, chain_code=%chain_code, "创建新的transaction_adapter");
-        let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::get_context()?.get_rpc_header().await?)
-        } else {
-            None
-        };
+        let header_opt =
+            if rpc_need_header(&node.rpc_url)? { Some(ctx.get_rpc_header().await?) } else { None };
 
         let adapter: Arc<dyn Tx + Send + Sync> = match chain_code {
             ChainCode::Tron => Arc::new(TronTx::new(&node.rpc_url, header_opt)?),
-            ChainCode::Bitcoin => Arc::new(BtcTx::new(&node.rpc_url, header_opt)?),
+            ChainCode::Bitcoin => {
+                Arc::new(BtcTx::new_with_ctx(&node.rpc_url, header_opt, ctx.api_wallet_pool()?)?)
+            }
             ChainCode::Solana => Arc::new(SolTx::new(&node.rpc_url, header_opt)?),
-            ChainCode::Ethereum => Arc::new(EthTx::new(
+            ChainCode::Ethereum => Arc::new(EthTx::new_with_ctx(
                 chain_code,
                 &node.rpc_url,
                 crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
                 header_opt,
+                ctx.get_global_backend_api(),
             )?),
-            ChainCode::BnbSmartChain => Arc::new(EthTx::new(
+            ChainCode::BnbSmartChain => Arc::new(EthTx::new_with_ctx(
                 chain_code,
                 &node.rpc_url,
                 crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
                 header_opt,
+                ctx.get_global_backend_api(),
             )?),
-            ChainCode::Litecoin => Arc::new(LtcTx::new(&node.rpc_url, header_opt)?),
-            ChainCode::Dogcoin => Arc::new(DogeTx::new(&node.rpc_url, header_opt)?),
+            ChainCode::Litecoin => {
+                Arc::new(LtcTx::new_with_ctx(&node.rpc_url, header_opt, ctx.api_wallet_pool()?)?)
+            }
+            ChainCode::Dogcoin => {
+                Arc::new(DogeTx::new_with_ctx(&node.rpc_url, header_opt, ctx.api_wallet_pool()?)?)
+            }
             ChainCode::Sui => Arc::new(SuiTx::new(&node.rpc_url, header_opt)?),
-            ChainCode::Ton => Arc::new(TonTx::new(&node.rpc_url, header_opt)?),
+            ChainCode::Ton => {
+                Arc::new(TonTx::new_with_ctx(&node.rpc_url, header_opt, ctx.api_wallet_pool()?)?)
+            }
         };
 
         // 存入缓存，包含创建时间
@@ -209,8 +244,17 @@ impl ApiChainAdapterFactory {
         Ok(adapter)
     }
 
-    /// 静态方法，内部调用全局单例
+    #[deprecated(note = "use get_transaction_adapter_with_ctx")]
     pub async fn get_transaction_adapter(
+        chain_code: &str,
+    ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
+        let ctx = crate::context::get_context()?;
+        Self::get_transaction_adapter_with_ctx(&ctx, chain_code).await
+    }
+
+    /// 静态方法，内部调用全局单例
+    pub async fn get_transaction_adapter_with_ctx(
+        ctx: &Context,
         chain_code: &str,
     ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
         #[cfg(any(test, feature = "integration-tests"))]
@@ -222,6 +266,6 @@ impl ApiChainAdapterFactory {
 
         let chain: ChainCode = chain_code.try_into()?;
         let factory = Self::get_instance();
-        factory.new_transaction_adapter(chain).await
+        factory.new_transaction_adapter_with_ctx(ctx, chain).await
     }
 }

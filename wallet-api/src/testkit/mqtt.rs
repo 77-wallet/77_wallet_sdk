@@ -13,7 +13,8 @@ pub async fn exec_wallet_order_payload(payload: &serde_json::Value) -> Result<()
         payload: serde_json::to_vec(payload)?.into(),
         properties: Default::default(),
     };
-    crate::messaging::mqtt::handle::exec_incoming_publish(&publish).await
+    let ctx = crate::get_context()?;
+    crate::messaging::mqtt::handle::exec_incoming_publish(ctx, &publish).await
 }
 
 pub fn api_wallet_pool() -> Result<ApiWalletDbPool, crate::error::service::ServiceError> {

@@ -15,6 +15,7 @@ use wallet_database::{
 use wallet_types::constant::chain_code;
 
 use crate::{
+    context::Context,
     domain::{bill::BillDomain, multisig::MultisigQueueDomain},
     infrastructure::inner_event::{InnerEvent, SyncAssetsData},
     messaging::{
@@ -144,9 +145,17 @@ impl AcctChange {
     pub(crate) async fn exec(
         &self,
         msg_id: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
-        // let event_name = self.name();
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
+        self.exec_with_ctx(msg_id, ctx).await
+    }
+
+    pub(crate) async fn exec_with_ctx(
+        &self,
+        msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.get_global_sqlite_pool()?;
 
         // bill create
         let tx = NewBillEntity::<serde_json::Value>::try_from(self)?;
@@ -164,7 +173,7 @@ impl AcctChange {
         }
 
         // 更新资产,不进行新增(垃圾币)
-        Self::sync_assets(&self).await?;
+        Self::sync_assets_with_ctx(&self, ctx).await?;
 
         // 创建系统通知
         if tx_kind.needs_system_notify()
@@ -173,13 +182,13 @@ impl AcctChange {
             && !self.to_addr.is_empty()
             && !self.from_addr.is_empty()
         {
-            Self::system_notification(msg_id, self, &pool).await?;
+            Self::system_notification(msg_id, self, &pool, ctx).await?;
         }
 
         // send acct_change to frontend
         let change_frontend = AcctChangeFrontend::from(self);
         let data = NotifyEvent::AcctChange(change_frontend);
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 
@@ -214,14 +223,15 @@ impl AcctChange {
         Ok(())
     }
 
-    async fn sync_assets(
+    async fn sync_assets_with_ctx(
         acct_change: &AcctChange,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         if !acct_change.status {
             tracing::warn!("acct_change status is false, skip sync assets");
             return Ok(());
         }
-        let handles = crate::get_context()?.get_global_handles().await;
+        let handles = ctx.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
             let addr_list = vec![acct_change.from_addr.clone(), acct_change.to_addr.clone()];
@@ -287,6 +297,7 @@ impl AcctChange {
         msg_id: &str,
         acct_change: &AcctChange,
         pool: &DbPool,
+        ctx: &'static crate::context::Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
         let transaction_hash = BillDomain::handle_hash(&acct_change.tx_hash);
@@ -337,7 +348,7 @@ impl AcctChange {
             Some(transaction_hash),
         )?;
 
-        let system_notification_service = SystemNotificationService::new(crate::get_context()?);
+        let system_notification_service = SystemNotificationService::new(ctx);
 
         system_notification_service.add_multi_system_notification_with_key_value(&[req]).await?;
         Ok(())
@@ -380,12 +391,12 @@ mod test {
 
         let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":0,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<AcctChange>(&change).unwrap();
-        let _res = change.exec("2").await.unwrap();
+        let _res = change.exec("2", crate::get_context()?).await.unwrap();
 
         let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":1,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<AcctChange>(&change).unwrap();
 
-        let _res = change.exec("1").await.unwrap();
+        let _res = change.exec("1", crate::get_context()?).await.unwrap();
         Ok(())
     }
 }

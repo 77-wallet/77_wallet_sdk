@@ -28,7 +28,11 @@ pub(crate) trait TaskTrait: Send + Sync {
     fn get_type(&self) -> TaskType;
     fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError>;
 
-    async fn execute(&self, id: &str) -> Result<(), crate::error::service::ServiceError>;
+    async fn execute(
+        &self,
+        id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError>;
 
     fn as_any(&self) -> &dyn Any;
 }

@@ -20,6 +20,7 @@ use wallet_database::{
 use wallet_transport_backend::response_vo::{api_wallet::coin::ApiCoinInfo, coin::TokenCurrency};
 
 use crate::{
+    context::Context,
     domain::app::config::ConfigDomain,
     response_vo::standard_wallet::{
         chain::ChainList,
@@ -52,6 +53,15 @@ pub struct ApiCoinDomain {}
 static BACKFILL_RUNNING: AtomicBool = AtomicBool::new(false);
 
 impl ApiCoinDomain {
+    #[deprecated(note = "use get_coin_by_token_key_exact_with_ctx")]
+    pub async fn get_coin_by_token_key_exact(
+        chain_code: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
+        let ctx = crate::context::get_context()?;
+        Self::get_coin_by_token_key_exact_with_ctx(&ctx, chain_code, token_key).await
+    }
+
     fn active_chain_codes(coins: &[ApiCoinEntity]) -> HashSet<String> {
         coins.iter().filter(|coin| coin.status == 1).map(|coin| coin.chain_code.clone()).collect()
     }
@@ -65,9 +75,10 @@ impl ApiCoinDomain {
     }
 
     pub(crate) async fn upsert_hot_coin_list(
+        ctx: &Context,
         coins: Vec<ApiCoinData>,
     ) -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let mut seen = std::collections::HashSet::new();
         let mut coin_data = Vec::with_capacity(coins.len());
 
@@ -88,26 +99,27 @@ impl ApiCoinDomain {
         Ok(res)
     }
 
-    pub async fn pull_api_coins() -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError>
-    {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+    pub async fn pull_api_coins(
+        ctx: &Context,
+    ) -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
         // 删除掉无效的token
         ApiCoinRepo::drop_coin_just_null_token_address(&pool).await?;
 
         // 拉所有的币
-        let coins = ApiCoinDomain::fetch_all_coin().await?;
+        let coins = ApiCoinDomain::fetch_all_coin(ctx).await?;
         let data =
             coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<ApiCoinData>>();
 
-        let res = ApiCoinDomain::upsert_hot_coin_list(data).await?;
+        let res = ApiCoinDomain::upsert_hot_coin_list(ctx, data).await?;
 
         Ok(res)
     }
 
     /// 查询代币汇率
-    pub async fn get_api_token_currencies()
-    -> Result<TokenCurrencies, crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
+    pub async fn get_api_token_currencies(
+        ctx: &Context,
+    ) -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let pool = ctx.api_wallet_pool()?;
         let core_pool = ctx.core_pool()?;
         let currency = ConfigDomain::get_currency().await?;
@@ -182,8 +194,9 @@ impl ApiCoinDomain {
         Ok(data)
     }
 
-    pub async fn fetch_all_coin() -> Result<Vec<ApiCoinInfo>, crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
+    pub async fn fetch_all_coin(
+        ctx: &Context,
+    ) -> Result<Vec<ApiCoinInfo>, crate::error::service::ServiceError> {
         let pool = ctx.api_wallet_pool()?;
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
         let backend_api = ctx.get_global_backend_api();
@@ -208,8 +221,9 @@ impl ApiCoinDomain {
         Ok(coins)
     }
 
-    pub async fn init_token_price() -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
+    pub async fn init_token_price(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.api_wallet_pool()?;
         let backend_api = ctx.get_global_backend_api();
 
@@ -257,6 +271,7 @@ impl ApiCoinDomain {
     }
 
     pub async fn add_supported_coin(
+        ctx: &Context,
         coins: Vec<ApiCoinEntity>,
     ) -> Result<(), crate::error::service::ServiceError> {
         if BACKFILL_RUNNING
@@ -269,7 +284,6 @@ impl ApiCoinDomain {
             return Ok(());
         }
 
-        let ctx = crate::get_context()?;
         let pool = ctx.api_wallet_pool()?;
         let wallets =
             wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(&pool, None)
@@ -407,11 +421,12 @@ impl ApiCoinDomain {
         Ok(())
     }
 
-    pub async fn get_coin_by_token_key_exact(
+    pub async fn get_coin_by_token_key_exact_with_ctx(
+        ctx: &Context,
         chain_code: &str,
         token_key: AssetTokenKey,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let coin = ApiCoinRepo::coin_by_chain_token_key(chain_code, token_key, &pool).await?;
 
         Ok(coin)

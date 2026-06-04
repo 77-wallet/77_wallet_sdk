@@ -26,10 +26,23 @@ use wallet_types::chain::address::r#type::DogAddressType;
 
 pub(crate) struct DogeTx {
     chain: DogChain,
+    api_wallet_pool: wallet_database::ApiWalletDbPool,
 }
 
 impl DogeTx {
-    pub fn new(rpc_url: &str, header_opt: Option<HashMap<String, String>>) -> Result<Self, Error> {
+    pub fn new(
+        rpc_url: &str,
+        header_opt: Option<HashMap<String, String>>,
+        api_wallet_pool: wallet_database::ApiWalletDbPool,
+    ) -> Result<Self, Error> {
+        Self::new_with_ctx(rpc_url, header_opt, api_wallet_pool)
+    }
+
+    pub fn new_with_ctx(
+        rpc_url: &str,
+        header_opt: Option<HashMap<String, String>>,
+        api_wallet_pool: wallet_database::ApiWalletDbPool,
+    ) -> Result<Self, Error> {
         let network = wallet_types::chain::network::NetworkKind::Mainnet;
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let config = ProviderConfig {
@@ -40,7 +53,7 @@ impl DogeTx {
             access_key: None,
         };
         let dog_chain = DogChain::new(config, network, header_opt, timeout)?;
-        Ok(Self { chain: dog_chain })
+        Ok(Self { chain: dog_chain, api_wallet_pool })
     }
 
     pub fn handle_doge_fee_error(&self, err: wallet_chain_interact::Error) -> ServiceError {
@@ -80,6 +93,12 @@ impl DogeTx {
             }
             _ => err.into(),
         }
+    }
+}
+
+impl DogeTx {
+    fn api_wallet_pool(&self) -> &wallet_database::ApiWalletDbPool {
+        &self.api_wallet_pool
     }
 }
 
@@ -127,7 +146,44 @@ impl Tx for DogeTx {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let _ = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.api_wallet_pool();
+        let account = ApiAccountRepo::find_one_by_address_chain_code(
+            &params.base.from,
+            &params.base.chain_code,
+            &pool,
+        )
+        .await?
+        .ok_or(crate::error::business::BusinessError::Account(
+            crate::error::business::account::AccountError::NotFound(params.base.from.to_string()),
+        ))?;
+        let address_type = DogAddressType::try_from(Some(account.address_type))?;
+
+        let arg = TransferArg::new(
+            &params.base.from,
+            &params.base.to,
+            &params.base.value,
+            address_type.into(),
+            self.chain.network,
+        )?
+        .with_spend_all(params.base.spend_all);
+
+        let tx = self
+            .chain
+            .transfer(arg, private_key)
+            .await
+            .map_err(|e| self.handle_doge_fee_error(e))?;
+
+        Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
+    }
+
+    async fn transfer_with_ctx(
+        &self,
+        _ctx: &crate::context::Context,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<TransferResp, ServiceError> {
+        let _ = self.check_min_transfer(&params.base.value, params.base.decimals)?;
+        let pool = self.api_wallet_pool();
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
@@ -188,7 +244,46 @@ impl Tx for DogeTx {
         )
         .await?;
 
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.api_wallet_pool();
+        let account =
+            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+                .await?
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+                ))?;
+
+        let address_type = DogAddressType::try_from(Some(account.address_type))?;
+
+        let params =
+            TransferArg::new(&req.from, &req.to, &req.value, address_type, self.chain.network)?
+                .with_spend_all(req.spend_all);
+
+        let fee =
+            self.chain.estimate_fee(params).await.map_err(|e| self.handle_doge_fee_error(e))?;
+
+        let res = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        Ok(res)
+    }
+
+    async fn estimate_fee_with_ctx(
+        &self,
+        _ctx: &crate::context::Context,
+        req: ApiBaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        let currency = crate::app_state::APP_STATE.read().await;
+        let currency = currency.currency();
+
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            currency,
+            &req.chain_code,
+            main_symbol,
+            wallet_database::entities::asset_token_key::AssetTokenKey::Native,
+        )
+        .await?;
+
+        let pool = self.api_wallet_pool();
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?

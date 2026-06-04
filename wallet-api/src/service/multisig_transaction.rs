@@ -572,9 +572,17 @@ impl MultisigTransactionService {
         let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
         let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
 
-        let backend = self.ctx.get_global_backend_api();
+        let backend = self.ctx.get_global_sqlite_pool()?;
+        let backend_api = self.ctx.get_global_backend_api();
         let fee = instance
-            .estimate_fee(&queue, &coin, backend.as_ref(), sign_list, main_coin.symbol.as_str())
+            .estimate_fee_with_ctx(
+                &queue,
+                &coin,
+                backend_api.as_ref(),
+                sign_list,
+                main_coin.symbol.as_str(),
+                &backend,
+            )
             .await?;
 
         let fee_resp =

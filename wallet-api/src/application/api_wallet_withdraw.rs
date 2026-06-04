@@ -22,7 +22,7 @@ impl ApiWithdrawApplication {
         }
 
         self.report_audit_result(trade_no, true, "OK").await?;
-        ApiWithdrawDomain::sign_withdrawal_order(trade_no).await
+        ApiWithdrawDomain::sign_withdrawal_order(self.ctx, trade_no).await
     }
 
     pub(crate) async fn reject_withdrawal_order(&self, trade_no: &str) -> Result<(), ServiceError> {
@@ -31,7 +31,7 @@ impl ApiWithdrawApplication {
         }
 
         self.report_audit_result(trade_no, false, "user rejected").await?;
-        ApiWithdrawDomain::reject_withdrawal_order(trade_no).await
+        ApiWithdrawDomain::reject_withdrawal_order(self.ctx, trade_no).await
     }
 
     async fn should_report_audit_result(&self, trade_no: &str) -> Result<bool, ServiceError> {

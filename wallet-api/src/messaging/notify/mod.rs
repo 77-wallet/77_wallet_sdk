@@ -1,4 +1,5 @@
 // 发送给前端事件的
+use crate::context::Context;
 use event::NotifyEvent;
 use other::{DebugFront, ErrFront};
 
@@ -46,7 +47,14 @@ impl FrontendNotifyEvent {
     }
 
     pub(crate) async fn send(self) -> Result<(), crate::error::service::ServiceError> {
-        let sender = crate::get_context()?.get_global_frontend_notify_sender();
+        self.send_with_ctx(crate::get_context()?).await
+    }
+
+    pub(crate) async fn send_with_ctx(
+        self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let sender = ctx.get_global_frontend_notify_sender();
         let sender = sender.read().await;
         if let Some(sender) = sender.as_ref() {
             sender.send(self).map_err(|e| {

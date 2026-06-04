@@ -1590,7 +1590,7 @@ impl ShadowWithdrawWorker {
 
     async fn check_digest(&self, req: &ApiWithdrawEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "[提币] 验证交易摘要");
-        let sn = crate::get_context()?().get_sn();
+        let sn = crate::get_context()?.get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
@@ -1701,7 +1701,7 @@ impl ShadowWithdrawWorker {
                         && resource_rpc_auth::should_retry_after_rpc_auth_error(&err) =>
                 {
                     auth_retry_attempted = true;
-                    resource_rpc_auth::refresh_and_prepare_retry(
+                    resource_rpc_auth::refresh_and_prepare_retry_global(
                         &delegation.chain_code,
                         "withdraw_resource_delegation",
                         &delegation.resource_trade_no,

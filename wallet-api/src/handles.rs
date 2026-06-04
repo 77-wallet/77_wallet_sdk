@@ -45,7 +45,9 @@ pub struct Handles {
 
 impl Handles {
     pub async fn new(client_id: &str) -> Result<Self, crate::error::service::ServiceError> {
-        let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
+        let context = crate::get_context()?;
+
+        let unconfirmed_msg_collector = UnconfirmedMsgCollector::new(context);
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());
         let task_manager = TaskManager::new(notify.clone());
@@ -81,7 +83,6 @@ impl Handles {
         let private_key_manager =
             Arc::new(crate::infrastructure::private_key_manager::PrivateKeyManager::start());
         tracing::info!("Initialize private key manager completed");
-        let context = crate::get_context()?;
         let dirs = context.get_global_dirs();
         let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
         let upload_log_handle =
@@ -232,7 +233,7 @@ impl Handles {
                 crate::error::system::SystemError::MqttClientNotInit,
             ),
         )?;
-        let h = ProcessMqttHandle::new(property, url).await?;
+        let h = ProcessMqttHandle::new(property, url, ctx).await?;
         self.normal_wallet_mqtt.lock().await.replace(h);
         Ok(())
     }
@@ -262,7 +263,7 @@ impl Handles {
                 crate::error::system::SystemError::MqttClientNotInit,
             ),
         )?;
-        let h = ProcessMqttHandle::new(property, url).await?;
+        let h = ProcessMqttHandle::new(property, url, ctx).await?;
         self.api_wallet_mqtt.lock().await.replace(h);
         Ok(())
     }

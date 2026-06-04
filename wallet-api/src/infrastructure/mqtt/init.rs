@@ -25,7 +25,11 @@ pub(crate) struct ProcessMqttHandle {
 }
 
 impl ProcessMqttHandle {
-    pub async fn new(user_property: UserProperty, url: String) -> Result<Self, ServiceError> {
+    pub async fn new(
+        user_property: UserProperty,
+        url: String,
+        ctx: &'static crate::context::Context,
+    ) -> Result<Self, ServiceError> {
         let (shutdown_tx, _) = broadcast::channel(1);
         let shutdown_rx1 = shutdown_tx.subscribe();
         let shutdown_rx2 = shutdown_tx.subscribe();
@@ -40,7 +44,7 @@ impl ProcessMqttHandle {
 
         let mut ev = ProcessMqttEventLoop::new(user_property.clone(), shutdown_rx1, tx, event_loop);
         let ev_handle = tokio::spawn(async move { ev.handle_eventloop().await });
-        let mut e = ProcessMqttEvent::new(user_property, shutdown_rx2, rx, client.clone());
+        let mut e = ProcessMqttEvent::new(user_property, shutdown_rx2, rx, client.clone(), ctx);
         let e_handle = tokio::spawn(async move { e.exec_event().await });
 
         Ok(Self {
@@ -161,6 +165,7 @@ struct ProcessMqttEvent {
     shutdown_rx: broadcast::Receiver<()>,
     rx: tokio_stream::wrappers::UnboundedReceiverStream<Event>,
     client: Arc<rumqttc::v5::AsyncClient>,
+    ctx: &'static crate::context::Context,
 }
 
 impl ProcessMqttEvent {
@@ -169,8 +174,9 @@ impl ProcessMqttEvent {
         shutdown_rx: broadcast::Receiver<()>,
         rx: tokio_stream::wrappers::UnboundedReceiverStream<Event>,
         client: Arc<rumqttc::v5::AsyncClient>,
+        ctx: &'static crate::context::Context,
     ) -> Self {
-        Self { user_property, shutdown_rx, rx, client }
+        Self { user_property, shutdown_rx, rx, client, ctx }
     }
 
     async fn exec_event(&mut self) -> Result<(), ServiceError> {
@@ -211,11 +217,15 @@ impl ProcessMqttEvent {
     async fn exec_incoming(&self, packet: Packet) -> Result<(), Box<dyn std::error::Error>> {
         match packet {
             Packet::ConnAck(conn_ack) => {
-                crate::messaging::mqtt::handle::exec_incoming_connack(&self.client, conn_ack)
-                    .await?;
+                crate::messaging::mqtt::handle::exec_incoming_connack(
+                    self.ctx,
+                    &self.client,
+                    conn_ack,
+                )
+                .await?;
             }
             Packet::Publish(publish) => {
-                crate::messaging::mqtt::handle::exec_incoming_publish(&publish).await?;
+                crate::messaging::mqtt::handle::exec_incoming_publish(self.ctx, &publish).await?;
                 self.client.ack(&publish).await?;
             }
             Packet::PingResp(_) => {

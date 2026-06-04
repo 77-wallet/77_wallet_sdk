@@ -33,19 +33,29 @@ use wallet_utils::unit;
 
 pub(crate) struct TonTx {
     chain: TonChain,
+    api_wallet_pool: wallet_database::ApiWalletDbPool,
 }
 
 impl TonTx {
     pub fn new(
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
+        api_wallet_pool: wallet_database::ApiWalletDbPool,
+    ) -> Result<Self, wallet_chain_interact::Error> {
+        Self::new_with_ctx(rpc_url, header_opt, api_wallet_pool)
+    }
+
+    pub fn new_with_ctx(
+        rpc_url: &str,
+        header_opt: Option<HashMap<String, String>>,
+        api_wallet_pool: wallet_database::ApiWalletDbPool,
     ) -> Result<Self, wallet_chain_interact::Error> {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
         let provider = Provider::new(http_client);
 
         let ton = TonChain::new(provider)?;
-        Ok(Self { chain: ton })
+        Ok(Self { chain: ton, api_wallet_pool })
     }
 
     pub async fn build_ext_cell(
@@ -66,6 +76,12 @@ impl TonTx {
 
             Ok(arg.build_trans(address_type, provider).await?)
         }
+    }
+}
+
+impl TonTx {
+    fn api_wallet_pool(&self) -> &wallet_database::ApiWalletDbPool {
+        &self.api_wallet_pool
     }
 }
 
@@ -138,7 +154,7 @@ impl Tx for TonTx {
         }
         tracing::info!("transfer ------------------- 12:");
 
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.api_wallet_pool();
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
@@ -214,7 +230,7 @@ impl Tx for TonTx {
         )
         .await?;
 
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.api_wallet_pool();
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?
@@ -230,6 +246,24 @@ impl Tx for TonTx {
         let res = CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency)?;
         let fee = wallet_utils::serde_func::serde_to_string(&res)?;
         Ok(fee)
+    }
+
+    async fn transfer_with_ctx(
+        &self,
+        _ctx: &crate::context::Context,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<TransferResp, ServiceError> {
+        self.transfer(params, private_key).await
+    }
+
+    async fn estimate_fee_with_ctx(
+        &self,
+        _ctx: &crate::context::Context,
+        req: ApiBaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        self.estimate_fee(req, main_symbol).await
     }
 }
 

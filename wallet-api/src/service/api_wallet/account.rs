@@ -300,8 +300,8 @@ impl ApiAccountService {
         account_id: u32,
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
-        let core_pool = crate::get_context()?.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -310,7 +310,8 @@ impl ApiAccountService {
 
         let index = AccountIndexMap::from_account_id(account_id)?;
 
-        let strategy = StrategyDomain::query_withdraw_strategy(&api_wallet.uid).await?;
+        let strategy =
+            StrategyDomain::query_withdraw_strategy_with_ctx(self.ctx, &api_wallet.uid).await?;
 
         if strategy.chain_configs.iter().any(|config| {
             config.normal_address.index == Some(index.input_index)
@@ -368,7 +369,7 @@ impl ApiAccountService {
         password: &str,
         all: bool,
     ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         WalletDomain::validate_password_with_context(self.ctx, password).await?;
 
@@ -401,7 +402,7 @@ impl ApiAccountService {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Ok(node) = ApiChainDomain::get_node(chain).await else {
+            let Ok(node) = ApiChainDomain::get_node(chain, self.ctx).await else {
                 continue;
             };
             for address_type in address_types {
@@ -460,7 +461,7 @@ impl ApiAccountService {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<QueryApiAccountDerivationPath>, ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let results = ApiAccountRepo::list_by_wallet_address_account_id(
             &pool,
             Some(wallet_address),

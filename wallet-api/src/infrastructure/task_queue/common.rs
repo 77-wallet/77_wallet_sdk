@@ -52,7 +52,11 @@ impl TaskTrait for CommonTask {
         Ok(res)
     }
 
-    async fn execute(&self, _id: &str) -> Result<(), ServiceError> {
+    async fn execute(
+        &self,
+        _id: &str,
+        _ctx: &'static crate::context::Context,
+    ) -> Result<(), ServiceError> {
         match self {
             CommonTask::QueryCoinPrice(data) => {
                 CoinService::new(crate::get_context()?).query_token_price(data).await?;

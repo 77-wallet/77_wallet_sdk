@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain},
     messaging::notify::{
         FrontendNotifyEvent, event::NotifyEvent, permission::PermissionChangeFrontend,
@@ -100,15 +101,27 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
 }
 
 impl PermissionAccept {
-    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+    pub async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
+    }
 
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
+    pub(crate) async fn exec_with_ctx(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let _ = _msg_id;
+        let pool = ctx.get_global_sqlite_pool()?;
         let account = chain.account_info(&self.grantor_addr).await?;
 
         // 判断当前的事件是否是删除(删除需要同步所有的权限数据)
         if self.current.types == PermissionReq::DELETE {
-            self.recover_all_old_permission(pool.clone(), &account).await?;
+            self.recover_all_old_permission(pool.clone(), &account, ctx).await?;
 
             PermissionDomain::queue_fail_and_upload(&pool, &self.grantor_addr).await?;
         } else {
@@ -117,7 +130,7 @@ impl PermissionAccept {
                 PermissionDomain::find_permission(&account, self.current.active_id, address)
                     .await?;
 
-            self.upsert(pool.clone(), permissions).await?
+            self.upsert(pool.clone(), permissions, ctx).await?
         }
 
         Ok(())
@@ -128,6 +141,7 @@ impl PermissionAccept {
         &self,
         pool: DbPool,
         account: &TronAccount,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
         // 查询原来的数据并发送一个通知
@@ -153,7 +167,7 @@ impl PermissionAccept {
 
         // 系统通知发送
         if let Some(permission) = old_permission {
-            Self::frontend_event(&permission, PermissionReq::DELETE).await?;
+            Self::frontend_event(&permission, PermissionReq::DELETE, ctx).await?;
         };
 
         Ok(())
@@ -164,6 +178,7 @@ impl PermissionAccept {
         &self,
         pool: DbPool,
         permissions: NewPermissionUser,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
         // 查询出原来的权限
@@ -181,7 +196,7 @@ impl PermissionAccept {
 
             // 消息重复通知,避免新增判断为
             if self.current.types == PermissionReq::UPDATE {
-                Self::frontend_event(&permissions.permission, PermissionReq::UPDATE).await?;
+                Self::frontend_event(&permissions.permission, PermissionReq::UPDATE, ctx).await?;
             }
             Ok(())
         } else {
@@ -191,7 +206,7 @@ impl PermissionAccept {
             if users.iter().any(|u| u.is_self == 1) {
                 PermissionRepo::add_with_user(&core_pool, &permissions.permission, &users).await?;
 
-                Self::frontend_event(&permissions.permission, PermissionReq::NEW).await?;
+                Self::frontend_event(&permissions.permission, PermissionReq::NEW, ctx).await?;
 
                 return Ok(());
             }
@@ -245,6 +260,7 @@ impl PermissionAccept {
     async fn frontend_event(
         permission: &PermissionEntity,
         types: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         // 1. system notify
         // let repo = RepositoryFactory::repo(pool.clone());
@@ -266,7 +282,7 @@ impl PermissionAccept {
             types,
             operations,
         ));
-        FrontendNotifyEvent::new(event).send().await?;
+        FrontendNotifyEvent::new(event).send_with_ctx(ctx).await?;
 
         Ok(())
     }
@@ -285,7 +301,7 @@ mod test {
 
         let change = serde_json::from_str::<PermissionAccept>(&str).unwrap();
 
-        let res = change.exec("1").await;
+        let res = change.exec("1", crate::get_context()?).await;
         println!("{:?}", res);
         Ok(())
     }

@@ -97,6 +97,7 @@ impl AddressLockManager {
 struct CollectTxWorkerCtx {
     api_wallet_pool: ApiWalletDbPool,
     api_transaction_pool: ApiTransactionDbPool,
+    ctx: &'static crate::context::Context,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
     processing_trade: Arc<DashSet<String>>,
@@ -134,6 +135,7 @@ impl ProcessCollectTx {
     pub(super) fn new(
         api_wallet_pool: ApiWalletDbPool,
         pool: ApiTransactionDbPool,
+        ctx: &'static crate::context::Context,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
         report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
@@ -141,6 +143,7 @@ impl ProcessCollectTx {
         let worker_ctx = CollectTxWorkerCtx {
             api_wallet_pool,
             api_transaction_pool: pool.clone(),
+            ctx,
             address_locks: Arc::new(AddressLockManager::new()),
             global_sem: Arc::new(Semaphore::new(32)), // 比 report 小一点
             processing_trade: Arc::new(DashSet::new()),
@@ -358,7 +361,7 @@ impl ProcessCollectTx {
         }
 
         // 检查交易摘要 - 仍然使用后端原始 digest 语义，不依赖当前执行地址
-        if !Self::check_digest(&req).await {
+        if !Self::check_digest(&worker_ctx.ctx, &req).await {
             tracing::error!(trade_no=%trade_no, "collect_tx:send: 交易摘要验证失败");
             return Self::handle_collect_tx_failed(
                 &worker_ctx,
@@ -470,10 +473,10 @@ impl ProcessCollectTx {
         }
     }
 
-    async fn check_digest(req: &ApiCollectEntity) -> bool {
+    async fn check_digest(ctx: &crate::context::Context, req: &ApiCollectEntity) -> bool {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始验证交易摘要");
         // check digest
-        let sn = crate::get_context()?.get_sn();
+        let sn = ctx.get_sn();
         let mut d = Decimal::from_str(req.value.as_str()).unwrap();
         d = d.normalize();
         // let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
@@ -907,10 +910,11 @@ impl CheckFee for CollectTxWorkerCtx {
     async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
+        let ctx = crate::context::get_context()?;
 
         // 查询主币信息
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 主币信息: 币种={}, 小数位数={}", main_coin.symbol, main_coin.decimals);
 
         // 确定代币信息

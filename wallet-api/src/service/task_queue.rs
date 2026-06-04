@@ -11,21 +11,23 @@ use wallet_database::{
     },
 };
 
-use crate::response_vo::standard_wallet::task_queue::TaskQueueStatus;
+use crate::{context::Context, response_vo::standard_wallet::task_queue::TaskQueueStatus};
 
-pub struct TaskQueueService;
+pub struct TaskQueueService {
+    pub(crate) ctx: &'static Context,
+}
 
 impl TaskQueueService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn get_task_queue_status(
-        self,
+        &self,
     ) -> Result<TaskQueueStatus, crate::error::service::ServiceError> {
-        let task_pool = crate::get_context()?.task_pool()?;
-        let core_pool = crate::get_context()?.core_pool()?;
-        let api_wallet_pool = crate::get_context()?.api_wallet_pool()?;
+        let task_pool = self.ctx.task_pool()?;
+        let core_pool = self.ctx.core_pool()?;
+        let api_wallet_pool = self.ctx.api_wallet_pool()?;
         let all = TaskQueueRepo::all_tasks_queue(&task_pool).await?;
         let done = TaskQueueRepo::done_task_queue(&task_pool).await?;
         let running = TaskQueueRepo::running_task_queue(&task_pool).await?;

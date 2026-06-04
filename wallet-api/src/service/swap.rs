@@ -507,8 +507,16 @@ impl SwapServer {
 
         let instance = time::Instant::now();
         // 模拟报价(consumer 资源的消耗，，content 费用的具体内容)
-        let (amount_out, consumer, content) =
-            adapter.swap_quote(req, quote_resp, &main_coin.symbol, instructions).await?;
+        let backend_api = self.ctx.get_global_backend_api();
+        let (amount_out, consumer, content) = adapter
+            .swap_quote_with_ctx(
+                req,
+                quote_resp,
+                &main_coin.symbol,
+                instructions,
+                backend_api.as_ref(),
+            )
+            .await?;
 
         // 最终模拟交易能够获取多少 amount_out
         res.set_amount_out(amount_out, req.token_out.decimals);

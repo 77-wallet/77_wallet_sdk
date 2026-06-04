@@ -64,6 +64,7 @@ impl ProcessCollectTxHandle {
         let _tx = ProcessCollectTx::new(
             api_wallet_pool.clone(),
             api_transaction_pool.clone(),
+            ctx,
             shutdown_rx1,
             tx_rx,
             report_tx.clone(),

@@ -178,18 +178,18 @@ impl AwmOrderTransResMsg {
                 ApiWithdrawRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
                     .await?;
                 self.persist_withdraw_actual_fee(&api_transaction_pool).await?;
-                self.withdraw().await?;
+                self.withdraw(ctx).await?;
             }
             2 => {
                 ApiCollectRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
                     .await?;
                 let fail_type = self.fail_type.unwrap_or(0);
-                self.collect(fail_type).await?;
+                self.collect(ctx, fail_type).await?;
             }
             3 => {
                 ApiFeeRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
                     .await?;
-                self.transfer_fee().await?;
+                self.transfer_fee(ctx).await?;
             }
             4 => {
                 self.resource_operation_result(&api_transaction_pool).await?;
@@ -542,8 +542,11 @@ impl AwmOrderTransResMsg {
         Ok(())
     }
 
-    pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::service::ServiceError> {
-        ApiFeeDomain::confirm_tx(&self.trade_no, self.status).await.map_err(|e| {
+    pub(crate) async fn transfer_fee(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        ApiFeeDomain::confirm_tx(ctx, &self.trade_no, self.status).await.map_err(|e| {
             tracing::warn!(
                 trade_no = %self.trade_no,
                 trade_type = %self.trade_type,
@@ -557,23 +560,29 @@ impl AwmOrderTransResMsg {
 
     pub(crate) async fn collect(
         &self,
+        ctx: &'static Context,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        ApiCollectDomain::confirm_tx(&self.trade_no, self.status, fail_type).await.map_err(|e| {
-            tracing::warn!(
-                trade_no = %self.trade_no,
-                trade_type = %self.trade_type,
-                status = %self.status,
-                fail_type = %fail_type,
-                error = %e,
-                "ApiCollectDomain::confirm_tx failed for AwmOrderTransResMsg"
-            );
-            e
-        })
+        ApiCollectDomain::confirm_tx(ctx, &self.trade_no, self.status, fail_type).await.map_err(
+            |e| {
+                tracing::warn!(
+                    trade_no = %self.trade_no,
+                    trade_type = %self.trade_type,
+                    status = %self.status,
+                    fail_type = %fail_type,
+                    error = %e,
+                    "ApiCollectDomain::confirm_tx failed for AwmOrderTransResMsg"
+                );
+                e
+            },
+        )
     }
 
-    pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {
-        ApiWithdrawDomain::confirm_tx(&self.trade_no, self.status).await.map_err(|e| {
+    pub(crate) async fn withdraw(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        ApiWithdrawDomain::confirm_tx(ctx, &self.trade_no, self.status).await.map_err(|e| {
             tracing::warn!(
                 trade_no = %self.trade_no,
                 trade_type = %self.trade_type,

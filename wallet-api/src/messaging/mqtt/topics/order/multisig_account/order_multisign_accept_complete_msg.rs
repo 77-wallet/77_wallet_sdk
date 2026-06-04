@@ -4,6 +4,7 @@ use wallet_database::{
 };
 
 use crate::{
+    context::Context,
     domain::multisig::MultisigDomain,
     messaging::notify::{
         FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignAcceptCompleteMsgFrontend,
@@ -32,9 +33,10 @@ impl OrderMultiSignAcceptCompleteMsg {
 
 // 参与方同意后、同步数据给其他的成员同步对应的状态数据(多签账号数据状态流转)
 impl OrderMultiSignAcceptCompleteMsg {
-    pub(crate) async fn exec(
+    pub(crate) async fn exec_with_ctx(
         &self,
         _msg_id: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         tracing::info!(
@@ -42,6 +44,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             ?self,
             "Starting to process OrderMultiSignAcceptCompleteMsg"
         );
+        let _ = _msg_id;
 
         let OrderMultiSignAcceptCompleteMsg {
             status,
@@ -60,11 +63,12 @@ impl OrderMultiSignAcceptCompleteMsg {
             );
 
             let data = NotifyEvent::Err(ErrFront { event: event_name, message: err.to_string() });
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
             return Err(err);
         };
 
-        Self::all_members_confirmed(address_list, &account.id, account.status).await?;
+        Self::all_members_confirmed_with_ctx(address_list, &account.id, account.status, ctx)
+            .await?;
         tracing::info!(
             event_name = %event_name,
             multisig_account_id = %account.id,
@@ -75,19 +79,53 @@ impl OrderMultiSignAcceptCompleteMsg {
             &account.address,
             address_list.to_vec(),
             *accept_status,
+            ctx,
         )
         .await?;
 
         Ok(())
     }
 
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
+    }
+
+    pub async fn all_members_confirmed_with_ctx(
+        address_list: &[wallet_transport_backend::ConfirmedAddress],
+        multi_account_id: &str,
+        status: i8,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.get_global_sqlite_pool()?;
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
+        Self::all_members_confirmed_with_core_pool(
+            address_list,
+            multi_account_id,
+            status,
+            &core_pool,
+        )
+        .await
+    }
+
     pub async fn all_members_confirmed(
         address_list: &[wallet_transport_backend::ConfirmedAddress],
         multi_account_id: &str,
         status: i8,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
-        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
+        Self::all_members_confirmed_with_ctx(address_list, multi_account_id, status, ctx).await
+    }
+
+    async fn all_members_confirmed_with_core_pool(
+        address_list: &[wallet_transport_backend::ConfirmedAddress],
+        multi_account_id: &str,
+        status: i8,
+        core_pool: &wallet_database::CoreDbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
         for address in address_list.iter() {
             MultisigMemberRepo::sync_confirmed_and_pubkey_status(
                 &core_pool,
@@ -132,6 +170,7 @@ impl OrderMultiSignAcceptCompleteMsg {
         address: &str,
         address_list: Vec<wallet_transport_backend::ConfirmedAddress>,
         accept_status: bool,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let data =
             NotifyEvent::OrderMultiSignAcceptCompleteMsg(OrderMultiSignAcceptCompleteMsgFrontend {
@@ -140,7 +179,7 @@ impl OrderMultiSignAcceptCompleteMsg {
                 address_list,
                 accept_status,
             });
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 }

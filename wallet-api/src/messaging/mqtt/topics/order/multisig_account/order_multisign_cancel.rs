@@ -1,3 +1,4 @@
+use crate::context::Context;
 use wallet_database::{CoreDbPool, repositories::multisig_account::MultisigAccountRepo};
 
 use crate::messaging::notify::{
@@ -20,12 +21,13 @@ impl OrderMultiSignCancel {
 }
 
 impl OrderMultiSignCancel {
-    pub(crate) async fn exec(
+    pub(crate) async fn exec_with_ctx(
         &self,
         _msg_id: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
+        let pool = ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         tracing::info!(
             event_name = %event_name,
@@ -48,9 +50,17 @@ impl OrderMultiSignCancel {
             multisig_account_address: multisig_account.address,
             address_type: multisig_account.address_type,
         });
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
+    }
+
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
     }
 }
 
@@ -59,13 +69,14 @@ mod test {
     use crate::{messaging::mqtt::topics::OrderMultiSignCancel, testkit::env::get_manager};
 
     #[tokio::test]
-    async fn test_() {
+    async fn test_() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         let (_, _) = get_manager().await.unwrap();
 
         let raw = r#"{"multisigAccountId": "256890128948137984"}"#;
         let res = serde_json::from_str::<OrderMultiSignCancel>(&raw).unwrap();
 
-        let _c = res.exec("x").await.unwrap();
+        let _c = res.exec("x", crate::get_context()?).await?;
+        Ok(())
     }
 }

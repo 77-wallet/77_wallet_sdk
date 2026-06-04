@@ -1,3 +1,4 @@
+use crate::context::Context;
 use std::cmp::Ordering;
 use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
@@ -17,10 +18,10 @@ use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
 pub struct ConfigDomain;
 
 impl ConfigDomain {
-    pub async fn get_config_min_value(
+    pub async fn get_config_min_value_with_ctx(
+        ctx: &Context,
         symbol: &str,
     ) -> Result<Option<f64>, crate::error::service::ServiceError> {
-        let ctx = crate::context::get_context()?;
         let pool = ctx.core_pool()?;
         let sn = ctx.get_global_device().sn.clone();
         let key = MinValueSwitchConfig::get_key(symbol, &sn);
@@ -37,9 +38,17 @@ impl ConfigDomain {
         Ok(None)
     }
 
+    pub async fn get_config_min_value(
+        symbol: &str,
+    ) -> Result<Option<f64>, crate::error::service::ServiceError> {
+        Self::get_config_min_value_with_ctx(crate::get_context()?, symbol).await
+    }
+
     /// fetch the minimum filtering amount configuration to the backend each time a wallet is created.
-    pub async fn fetch_min_config(sn: &str) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::context::get_context()?;
+    pub async fn fetch_min_config_with_ctx(
+        ctx: &Context,
+        sn: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.core_pool()?;
         let backend = ctx.get_global_backend_api();
         let res = backend.fetch_min_config(sn.to_string()).await?;
@@ -56,15 +65,27 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn set_config(
+    pub async fn fetch_min_config(sn: &str) -> Result<(), crate::error::service::ServiceError> {
+        Self::fetch_min_config_with_ctx(crate::get_context()?, sn).await
+    }
+
+    pub async fn set_config_with_ctx(
+        ctx: &Context,
         key: &str,
         value: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = ctx.core_pool()?;
 
         ConfigRepo::upsert(key, value, None, &pool).await?;
 
         Ok(())
+    }
+
+    pub async fn set_config(
+        key: &str,
+        value: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::set_config_with_ctx(crate::get_context()?, key, value).await
     }
 
     pub async fn set_official_website(
@@ -121,9 +142,10 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn init_app_install_download_url() -> Result<(), crate::error::service::ServiceError>
-    {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub async fn init_app_install_download_url_with_ctx(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let app_install_download_url =
             ConfigRepo::find_by_key(APP_DOWNLOAD_QR_CODE_URL, &pool).await?;
         if let Some(app_install_download_url) = app_install_download_url {
@@ -136,8 +158,15 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn init_official_website() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub async fn init_app_install_download_url() -> Result<(), crate::error::service::ServiceError>
+    {
+        Self::init_app_install_download_url_with_ctx(crate::get_context()?).await
+    }
+
+    pub async fn init_official_website_with_ctx(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let official_website = ConfigRepo::find_by_key(OFFICIAL_WEBSITE, &pool).await?;
         if let Some(official_website) = official_website {
             let official_website = OfficialWebsite::try_from(official_website.value)?;
@@ -148,8 +177,14 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn init_currency() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub async fn init_official_website() -> Result<(), crate::error::service::ServiceError> {
+        Self::init_official_website_with_ctx(crate::get_context()?).await
+    }
+
+    pub async fn init_currency_with_ctx(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let currency = ConfigRepo::find_by_key(CURRENCY, &pool).await?;
         if let Some(currency) = currency {
             let mut config = crate::app_state::APP_STATE.write().await;
@@ -161,8 +196,14 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn init_language() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub async fn init_currency() -> Result<(), crate::error::service::ServiceError> {
+        Self::init_currency_with_ctx(crate::get_context()?).await
+    }
+
+    pub async fn init_language_with_ctx(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let language = ConfigRepo::find_by_key(LANGUAGE, &pool).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
         if let Some(language) = language {
@@ -178,8 +219,14 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub(crate) async fn get_currency() -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub async fn init_language() -> Result<(), crate::error::service::ServiceError> {
+        Self::init_language_with_ctx(crate::get_context()?).await
+    }
+
+    pub(crate) async fn get_currency_with_ctx(
+        ctx: &Context,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let currency = ConfigRepo::find_by_key(CURRENCY, &pool).await?;
         if let Some(currency) = currency {
             let currency = wallet_database::entities::config::Currency::try_from(currency.value)?;
@@ -189,9 +236,14 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_invite_code()
-    -> Result<Option<InviteCode>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub(crate) async fn get_currency() -> Result<String, crate::error::service::ServiceError> {
+        Self::get_currency_with_ctx(crate::get_context()?).await
+    }
+
+    pub(crate) async fn get_invite_code_with_ctx(
+        ctx: &Context,
+    ) -> Result<Option<InviteCode>, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let invite_code = ConfigRepo::find_by_key(INVITE_CODE, &pool).await?;
 
         invite_code
@@ -203,6 +255,11 @@ impl ConfigDomain {
             .transpose()
     }
 
+    pub(crate) async fn get_invite_code()
+    -> Result<Option<InviteCode>, crate::error::service::ServiceError> {
+        Self::get_invite_code_with_ctx(crate::get_context()?).await
+    }
+
     pub async fn set_keys_reset_status(
         status: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -212,9 +269,10 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub(crate) async fn get_keys_reset_status()
-    -> Result<Option<KeysResetStatus>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub(crate) async fn get_keys_reset_status_with_ctx(
+        ctx: &Context,
+    ) -> Result<Option<KeysResetStatus>, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
 
         let keys_reset_status = ConfigRepo::find_by_key(KEYS_RESET_STATUS, &pool).await?;
 
@@ -225,8 +283,10 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_keys_reset_epoch() -> Result<u64, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub(crate) async fn get_keys_reset_epoch_with_ctx(
+        ctx: &Context,
+    ) -> Result<u64, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
 
         // 尝试从数据库获取当前epoch
         let keys_reset_epoch = ConfigRepo::find_by_key(KEYS_RESET_EPOCH, &pool).await?;
@@ -248,8 +308,14 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn bump_keys_reset_epoch() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub(crate) async fn get_keys_reset_epoch() -> Result<u64, crate::error::service::ServiceError> {
+        Self::get_keys_reset_epoch_with_ctx(crate::get_context()?).await
+    }
+
+    pub(crate) async fn bump_keys_reset_epoch_with_ctx(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
 
         // 先获取当前epoch
         let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
@@ -263,6 +329,10 @@ impl ConfigDomain {
         Ok(())
     }
 
+    pub(crate) async fn bump_keys_reset_epoch() -> Result<(), crate::error::service::ServiceError> {
+        Self::bump_keys_reset_epoch_with_ctx(crate::get_context()?).await
+    }
+
     pub(crate) async fn check_epoch_validity(
         task_epoch: u64,
     ) -> Result<bool, crate::error::service::ServiceError> {
@@ -273,9 +343,10 @@ impl ConfigDomain {
         Ok(task_epoch == current_epoch)
     }
 
-    pub(crate) async fn get_app_version() -> Result<AppVersion, crate::error::service::ServiceError>
-    {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub(crate) async fn get_app_version_with_ctx(
+        ctx: &Context,
+    ) -> Result<AppVersion, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
 
         let app_version = ConfigRepo::find_by_key(APP_VERSION, &pool).await?.ok_or(
             crate::error::service::ServiceError::Business(
@@ -308,9 +379,10 @@ impl ConfigDomain {
         Ordering::Equal
     }
 
-    pub(crate) async fn get_keystore_kdf_algorithm()
-    -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub(crate) async fn get_keystore_kdf_algorithm_with_ctx(
+        ctx: &Context,
+    ) -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let keystore_kdf_algorithm = ConfigRepo::find_by_key(KEYSTORE_KDF_ALGORITHM, &pool).await?;
         if let Some(keystore_kdf_algorithm) = keystore_kdf_algorithm {
             let keystore_kdf_algorithm =
@@ -324,9 +396,10 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_wallet_tree_strategy()
-    -> Result<wallet_tree::WalletTreeStrategy, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub(crate) async fn get_wallet_tree_strategy_with_ctx(
+        ctx: &Context,
+    ) -> Result<wallet_tree::WalletTreeStrategy, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let wallet_tree_strategy = ConfigRepo::find_by_key(WALLET_TREE_STRATEGY, &pool).await?;
         if let Some(wallet_tree_strategy) = wallet_tree_strategy {
             let wallet_tree_strategy =
@@ -340,8 +413,10 @@ impl ConfigDomain {
         }
     }
 
-    pub async fn init_block_browser_url_list() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+    pub async fn init_block_browser_url_list_with_ctx(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let block_browser_url_list = ConfigRepo::find_by_key(BLOCK_BROWSER_URL_LIST, &pool).await?;
         if let Some(block_browser_url_list) = block_browser_url_list {
             let mut config = crate::app_state::APP_STATE.write().await;
@@ -351,6 +426,10 @@ impl ConfigDomain {
         }
 
         Ok(())
+    }
+
+    pub async fn init_block_browser_url_list() -> Result<(), crate::error::service::ServiceError> {
+        Self::init_block_browser_url_list_with_ctx(crate::get_context()?).await
     }
 
     pub(crate) async fn set_block_browser_url(
@@ -388,8 +467,9 @@ impl ConfigDomain {
 
     // Attempt to get the MQTT URI from the backend.
     // If an error occurs or the URI is not found, use the URI from the database instead.
-    pub async fn get_mqtt_uri() -> Result<Option<String>, crate::error::service::ServiceError> {
-        let ctx = crate::context::get_context()?;
+    pub async fn get_mqtt_uri_with_ctx(
+        ctx: &Context,
+    ) -> Result<Option<String>, crate::error::service::ServiceError> {
         let backend_api = ctx.get_global_backend_api();
         let pool = ctx.core_pool()?;
 
@@ -405,6 +485,30 @@ impl ConfigDomain {
             .map(|mqtt| mqtt.url_with_protocol());
 
         Ok(uri)
+    }
+
+    pub async fn get_mqtt_uri() -> Result<Option<String>, crate::error::service::ServiceError> {
+        Self::get_mqtt_uri_with_ctx(crate::get_context()?).await
+    }
+
+    pub(crate) async fn get_keystore_kdf_algorithm()
+    -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
+        Self::get_keystore_kdf_algorithm_with_ctx(crate::get_context()?).await
+    }
+
+    pub(crate) async fn get_wallet_tree_strategy()
+    -> Result<wallet_tree::WalletTreeStrategy, crate::error::service::ServiceError> {
+        Self::get_wallet_tree_strategy_with_ctx(crate::get_context()?).await
+    }
+
+    pub(crate) async fn get_app_version() -> Result<AppVersion, crate::error::service::ServiceError>
+    {
+        Self::get_app_version_with_ctx(crate::get_context()?).await
+    }
+
+    pub(crate) async fn get_keys_reset_status()
+    -> Result<Option<KeysResetStatus>, crate::error::service::ServiceError> {
+        Self::get_keys_reset_status_with_ctx(crate::get_context()?).await
     }
 }
 

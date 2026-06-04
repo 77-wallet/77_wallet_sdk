@@ -225,8 +225,9 @@ impl AppService {
         // 获取全局 topics
         let global_topics = self.ctx.get_global_mqtt_topics();
         let mut global_topics = global_topics.write().await;
+        let handles = self.ctx.get_handles_arc().await?;
 
-        global_topics.subscribe(topics, qos).await?;
+        global_topics.subscribe(topics, qos, &handles).await?;
 
         Ok(())
     }
@@ -238,8 +239,9 @@ impl AppService {
         // 获取全局已订阅的主题
         let global_topics = self.ctx.get_global_mqtt_topics();
         let mut global_topics = global_topics.write().await;
+        let handles = self.ctx.get_handles_arc().await?;
 
-        global_topics.unsubscribe(topics).await?;
+        global_topics.unsubscribe(topics, &handles).await?;
 
         Ok(())
     }
@@ -248,8 +250,9 @@ impl AppService {
         // 获取全局已订阅的主题
         let global_topics = self.ctx.get_global_mqtt_topics();
         let global_topics = global_topics.write().await;
+        let handles = self.ctx.get_handles_arc().await?;
 
-        global_topics.resubscribe().await?;
+        global_topics.resubscribe(&handles).await?;
 
         Ok(())
     }

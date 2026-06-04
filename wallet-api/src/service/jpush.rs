@@ -1,17 +1,26 @@
 use wallet_database::repositories::task_queue::TaskQueueRepo;
 use wallet_utils::serde_func;
 
-use crate::messaging::{mqtt::Message, notify::FrontendNotifyEvent};
+use crate::{
+    context::Context,
+    messaging::{mqtt::Message, notify::FrontendNotifyEvent},
+};
 
-pub struct JPushService {}
+pub struct JPushService {
+    ctx: &'static Context,
+}
 
 impl JPushService {
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
+    }
+
     // 前端发来的消息
-    pub async fn jpush(message: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn jpush(&self, message: &str) -> Result<(), crate::error::service::ServiceError> {
         // Self::jpush_multi(vec![message.to_string()], "JG").await?;
         match serde_func::serde_from_str::<Message>(message) {
             Ok(data) => {
-                let backend_api = crate::get_context()?.get_global_backend_api();
+                let backend_api = self.ctx.get_global_backend_api();
 
                 // 重新查询一次,前端给到的数据不全面
                 let data = backend_api
@@ -21,7 +30,7 @@ impl JPushService {
                     .await?;
 
                 if let Some(msg) = data.body {
-                    Self::jpush_multi(
+                    self.jpush_multi(
                         vec![msg],
                         // MsgConfirmSource::Jg
                     )
@@ -40,11 +49,12 @@ impl JPushService {
     }
 
     pub async fn jpush_multi(
+        &self,
         messages: Vec<String>,
         // source: MsgConfirmSource,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.task_pool()?;
-        let handles = crate::get_context()?.get_global_handles().await;
+        let pool = self.ctx.task_pool()?;
+        let handles = self.ctx.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
             for message in messages {
@@ -67,7 +77,9 @@ impl JPushService {
                     && task_entity.status == 2
                 {
                     unconfirmed_msg_collector.submit(vec![id])?;
-                } else if let Err(e) = crate::messaging::mqtt::handle::exec_payload(payload).await {
+                } else if let Err(e) =
+                    crate::messaging::mqtt::handle::exec_payload(payload, self.ctx).await
+                {
                     if let Err(e) =
                         FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
                     {

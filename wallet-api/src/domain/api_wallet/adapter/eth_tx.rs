@@ -29,7 +29,7 @@ use alloy::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha3::{Digest, Keccak256};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use wallet_chain_interact::{
     Error, QueryTransactionResult,
     eth::{self, EthChain, FeeSetting, operations::TransferOpt},
@@ -47,6 +47,7 @@ pub(crate) struct EthTx {
     provider: eth::Provider,
     rpc_url_for_log: String,
     rpc_header_for_query: Option<HashMap<String, String>>,
+    backend_api: Arc<wallet_transport_backend::api::BackendApi>,
 }
 
 impl EthTx {
@@ -55,6 +56,17 @@ impl EthTx {
         rpc_url: &str,
         network: NetworkKind,
         header_opt: Option<HashMap<String, String>>,
+        backend_api: Arc<wallet_transport_backend::api::BackendApi>,
+    ) -> Result<Self, wallet_chain_interact::Error> {
+        Self::new_with_ctx(chain_code, rpc_url, network, header_opt, backend_api)
+    }
+
+    pub(crate) fn new_with_ctx(
+        chain_code: ChainCode,
+        rpc_url: &str,
+        network: NetworkKind,
+        header_opt: Option<HashMap<String, String>>,
+        backend_api: Arc<wallet_transport_backend::api::BackendApi>,
     ) -> Result<Self, wallet_chain_interact::Error> {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let rpc_header_for_query = header_opt.clone();
@@ -68,6 +80,7 @@ impl EthTx {
             provider: provider1,
             rpc_url_for_log: rpc_url.to_string(),
             rpc_header_for_query,
+            backend_api,
         })
     }
 
@@ -293,14 +306,17 @@ impl EthTx {
 
 #[async_trait::async_trait]
 impl Oracle for EthTx {
-    async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
-        let backend = crate::get_context()?.get_global_backend_api();
-        let gas_oracle = backend.gas_oracle(&self.chain.chain_code.to_string()).await;
+    async fn gas_oracle_with_ctx(
+        &self,
+        ctx: &crate::context::Context,
+    ) -> Result<GasOracle, ServiceError> {
+        let _ctx = ctx;
+        let gas_oracle = self.backend_api.gas_oracle(&self.chain.chain_code.to_string()).await;
         tracing::info!("gas_oracle: {:?}", gas_oracle);
         match gas_oracle {
             Ok(gas_oracle) => Ok(gas_oracle),
             Err(err) => {
-                tracing::error!(error=?err, "gas_oracle failed");
+                tracing::error!(error = ?err, "gas_oracle failed");
                 // unit is wei need to gwei
                 let eth_fee = self.chain.provider.get_default_fee().await?;
 
@@ -308,17 +324,27 @@ impl Oracle for EthTx {
                 let propose = unit::format_to_string(propose, eth::consts::ETH_GWEI)?;
                 let base = unit::format_to_string(eth_fee.base_fee, eth::consts::ETH_GWEI)?;
 
-                let gas_oracle = GasOracle {
+                Ok(GasOracle {
                     safe_gas_price: None,
                     propose_gas_price: Some(propose),
                     fast_gas_price: None,
                     suggest_base_fee: Some(base),
                     gas_used_ratio: None,
-                };
-
-                Ok(gas_oracle)
+                })
             }
         }
+    }
+
+    async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
+        let gas_oracle = self.backend_api.gas_oracle(&self.chain.chain_code.to_string()).await;
+        tracing::info!("gas_oracle: {:?}", gas_oracle);
+        if let Ok(gas_oracle) = gas_oracle {
+            return Ok(gas_oracle);
+        }
+        tracing::warn!(
+            "gas_oracle: fallback to on-chain fee because backend API is not configured or failed"
+        );
+        self.default_gas_oracle().await
     }
 
     async fn default_gas_oracle(&self) -> Result<GasOracle, ServiceError> {

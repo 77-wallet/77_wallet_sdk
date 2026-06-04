@@ -1,5 +1,5 @@
 use crate::{
-    response_vo::standard_wallet::coin::TokenCurrencies,
+    context::Context, response_vo::standard_wallet::coin::TokenCurrencies,
     service::exchange_rate::ExchangeRateService,
 };
 use wallet_database::{
@@ -16,7 +16,7 @@ pub struct TokenPriceChange {
 }
 
 impl TokenPriceChange {
-    pub(crate) async fn exec(&self) -> Result<(), anyhow::Error> {
+    pub(crate) async fn exec(&self, ctx: &'static Context) -> Result<(), anyhow::Error> {
         let chain_code = &self.body.chain_code;
         let symbol = &self.body.symbol;
         let token_address = &self.body.token_address;
@@ -37,8 +37,8 @@ impl TokenPriceChange {
         //         unit,
         //     )
         //     .await?;
-        let api_wallet_pool = crate::get_context()?.api_wallet_pool()?;
-        let core_pool = crate::get_context()?.core_pool()?;
+        let api_wallet_pool = ctx.api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
         let coin_id = CoinId {
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
@@ -70,7 +70,7 @@ impl TokenPriceChange {
         let app_state = crate::app_state::APP_STATE.read().await;
         let currency = app_state.currency();
 
-        let exchange_rate = ExchangeRateService::new().detail(currency).await?;
+        let exchange_rate = ExchangeRateService::new(ctx).detail(currency).await?;
 
         let res =
             TokenCurrencies::calculate_token_price_changes(&self.body, exchange_rate.rate).await?;

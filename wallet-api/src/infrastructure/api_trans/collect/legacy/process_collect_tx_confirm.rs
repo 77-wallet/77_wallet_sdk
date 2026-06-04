@@ -206,7 +206,14 @@ impl ProcessCollectTxConfirmReport {
             return;
         }
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let Some(backend_api) = crate::get_context().ok().map(|ctx| ctx.get_global_backend_api())
+        else {
+            tracing::warn!(
+                trade_no=%req.trade_no,
+                "获取全局上下文失败，跳过归集交易确认 ACK 上报"
+            );
+            return;
+        };
         tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 准备调用后端API发送交易事件确认");
 
         // 检查 TxRes ACK 是否已发送

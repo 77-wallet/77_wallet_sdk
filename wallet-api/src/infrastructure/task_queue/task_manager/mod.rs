@@ -302,7 +302,9 @@ impl TaskManager {
 
         TaskQueueRepo::task_running(&pool, &id).await?;
 
-        task.execute(&id).await?;
+        let ctx = crate::get_context()?;
+
+        task.execute(&id, ctx).await?;
 
         TaskQueueRepo::task_done(&pool, &id).await?;
 

@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{self, address_book::AddressBookDomain},
     response_vo::standard_wallet::address_book::AddressBookResp,
 };
@@ -11,11 +12,12 @@ use wallet_database::{
 
 pub struct AddressBookService {
     pub pool: CoreDbPool,
+    core_pool: CoreDbPool,
 }
 
 impl AddressBookService {
-    pub fn new(pool: CoreDbPool) -> Self {
-        Self { pool }
+    pub fn new(pool: CoreDbPool, core_pool: CoreDbPool) -> Self {
+        Self { pool, core_pool }
     }
 }
 
@@ -96,8 +98,7 @@ impl AddressBookService {
             AddressBookRepo::find_by_address(&self.pool, &address, &chain_code).await?;
 
         // check is first transfer
-        let pool = crate::get_context()?.core_pool()?;
-        let bill = BillRepo::first_transfer(&address, &chain_code, &pool).await?;
+        let bill = BillRepo::first_transfer(&address, &chain_code, &self.core_pool).await?;
 
         Ok(AddressBookResp { address_book, first_transfer: bill.is_none() })
     }
@@ -148,5 +149,13 @@ impl AddressBookService {
             }
         }
         Ok(0)
+    }
+
+    pub fn new_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
+        let core_pool = ctx.core_pool()?;
+        Ok(Self { pool, core_pool })
     }
 }

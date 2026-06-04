@@ -1,6 +1,7 @@
 #![allow(deprecated)]
 
 use crate::{
+    context::Context,
     error::{
         business::{
             BusinessError,
@@ -41,11 +42,11 @@ impl ApiWithdrawDomain {
         entity.audit_passed_at.is_none() && entity.audit_rejected_at.is_none()
     }
 
-    pub(crate) async fn withdraw(
+    pub(crate) async fn withdraw_with_ctx(
+        ctx: &Context,
         req: &ApiWithdrawReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         // 获取数据库连接
-        let ctx = crate::get_context()?;
         let core_pool = ctx.api_wallet_pool()?;
         let api_transaction_pool = ctx.api_transaction_pool()?;
         // 获取钱包
@@ -109,7 +110,7 @@ impl ApiWithdrawDomain {
         FrontendNotifyEvent::new(data).send().await?;
 
         if req.audit == 1 {
-            Self::sign_withdrawal_order(&req.trade_no).await?;
+            Self::sign_withdrawal_order(ctx, &req.trade_no).await?;
         }
 
         ApiWithdrawRepo::update_api_withdraw_status(
@@ -139,9 +140,9 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn sign_withdrawal_order(
+        ctx: &Context,
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
         let pool = ctx.api_transaction_pool()?;
         // ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
         //     .await?;
@@ -165,9 +166,9 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn reject_withdrawal_order(
+        ctx: &Context,
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
         let pool = ctx.api_transaction_pool()?;
         // ApiWithdrawRepo::update_api_withdraw_status_and_err(
         //     &pool,
@@ -196,8 +197,11 @@ impl ApiWithdrawDomain {
         Ok(())
     }
 
-    pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
+    pub async fn confirm_tx(
+        ctx: &Context,
+        trade_no: &str,
+        status: bool,
+    ) -> Result<(), ServiceError> {
         let pool = ctx.api_transaction_pool()?;
         let outcome = match Self::confirm_tx_in_pool(&pool, trade_no, status).await {
             Ok(outcome) => outcome,

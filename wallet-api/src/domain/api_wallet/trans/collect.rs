@@ -1,6 +1,7 @@
 #![allow(deprecated)]
 
 use crate::{
+    context::Context,
     messaging::notify::{FrontendNotifyEvent, api_wallet::CollectFront, event::NotifyEvent},
     request::api_wallet::trans::ApiCollectReq,
 };
@@ -22,7 +23,8 @@ fn is_row_not_found_db_error(err: &wallet_database::Error) -> bool {
 }
 
 impl ApiCollectDomain {
-    pub(crate) async fn collect_v2(
+    pub(crate) async fn collect_v2_with_ctx(
+        ctx: &Context,
         req: &ApiCollectReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = Instant::now();
@@ -39,7 +41,6 @@ impl ApiCollectDomain {
             start_time
         );
 
-        let ctx = crate::get_context()?;
         let api_wallet_pool = ctx.api_wallet_pool()?;
         let api_transaction_pool = ctx.api_transaction_pool()?;
 
@@ -109,9 +110,7 @@ impl ApiCollectDomain {
         // 交易执行完全由事实驱动，而不是命令式触发
 
         // 3. 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::get_context()?.get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_collect_tx_handle().get_shadow_system()
             {
@@ -130,11 +129,14 @@ impl ApiCollectDomain {
     /// recover 的语义：
     /// 修复“手续费不足”这一事实，使交易重新具备构建条件
     /// 不做任何状态回滚，不保证一定继续推进
-    pub async fn recover(trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn recover(
+        ctx: &Context,
+        trade_no: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = Instant::now();
         tracing::info!(trade_no=%trade_no, "开始恢复归集交易");
 
-        let pool = crate::get_context()?.api_transaction_pool()?;
+        let pool = ctx.api_transaction_pool()?;
 
         // 1. 解除事实阻断（核心）
         tracing::info!(trade_no=%trade_no, "清除服务费需求标记");
@@ -143,9 +145,7 @@ impl ApiCollectDomain {
         tracing::info!(trade_no=%trade_no, "服务费需求标记清除成功, 耗时: {:?}", clear_time.elapsed());
 
         // 2. 快速触发 Shadow
-        if let Some(handles) =
-            crate::get_context()?.get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_collect_tx_handle().get_shadow_system()
             {
@@ -166,17 +166,16 @@ impl ApiCollectDomain {
     }
 
     pub async fn confirm_tx(
+        ctx: &Context,
         trade_no: &str,
         status: bool,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_transaction_pool()?;
+        let pool = ctx.api_transaction_pool()?;
         Self::confirm_tx_in_pool(&pool, trade_no, status, fail_type).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::get_context()?.get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_collect_tx_handle().get_shadow_system()
             {
@@ -362,6 +361,8 @@ impl ApiCollectDomain {
         Ok(())
     }
 }
+
+impl ApiCollectDomain {}
 
 #[cfg(test)]
 mod tests {

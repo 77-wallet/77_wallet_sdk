@@ -13,6 +13,7 @@ use wallet_transport_backend::request::{
 use wallet_types::chain::chain::ChainCode;
 
 use crate::{
+    context::Context,
     domain::{
         api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
@@ -34,13 +35,15 @@ pub struct ApiChainDomain {}
 impl ApiChainDomain {
     pub(crate) async fn network_kind_by_chain_code(
         chain_code: &str,
+        ctx: &'static Context,
     ) -> Result<wallet_types::chain::network::NetworkKind, crate::error::service::ServiceError>
     {
-        let node = Self::get_node(chain_code).await?;
+        let node = Self::get_node(chain_code, ctx).await?;
         Ok(ChainDomain::network_kind_from_node_network(&node.network))
     }
 
     pub(crate) async fn init_chains_api_assets(
+        ctx: &'static Context,
         _coins: &[ApiCoinEntity],
         _req: &mut TokenQueryPriceReq,
         api_address_init_req: &mut ApiAddressInitReq,
@@ -55,7 +58,7 @@ impl ApiChainDomain {
         is_recover: bool,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chains_count=chain_list.len(), "ApiChainDomain: starting init_chains_api_assets");
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let mut created_addresses = Vec::new();
 
         for chain in chain_list.iter() {
@@ -114,10 +117,11 @@ impl ApiChainDomain {
     }
 
     pub(crate) async fn upsert_multi_api_chain_than_toggle(
+        ctx: &'static Context,
         chains: wallet_transport_backend::response_vo::api_wallet::chain::ApiChainListResp,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         // let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         // // 本地后端节点
@@ -198,7 +202,7 @@ impl ApiChainDomain {
         }
 
         ApiChainRepo::upsert_multi_chain(&pool, input).await?;
-        Self::toggle_api_chains(&chain_codes).await?;
+        Self::toggle_api_chains(ctx, &chain_codes).await?;
 
         if !chain_codes.is_empty() {
             let chain_rpc_list_req = BackendApiTaskData::new(
@@ -212,15 +216,18 @@ impl ApiChainDomain {
     }
 
     pub async fn toggle_api_chains(
+        ctx: &'static Context,
         chain_codes: &[String],
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         ApiChainRepo::toggle_chains_status(&pool, chain_codes).await?;
         Ok(())
     }
 
-    pub async fn init_api_chain_info() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+    pub async fn init_api_chain_info(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
         let list = crate::default_data::chain::get_default_chains_list()?;
 
         // tracing::warn!("list {:#?}", list);
@@ -258,9 +265,10 @@ impl ApiChainDomain {
         Ok(())
     }
 
-    pub async fn sync_withdrawal_wallet_chain_data()
-    -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+    pub async fn sync_withdrawal_wallet_chain_data(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
 
         let chain_list: Vec<String> = ApiChainRepo::get_chain_list(&pool)
             .await?
@@ -287,8 +295,8 @@ impl ApiChainDomain {
 
     pub(crate) async fn get_node(
         chain_code: &str,
+        ctx: &'static Context,
     ) -> Result<NodeInfo, crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
         let core_pool = ctx.core_pool()?;
         let api_pool = ctx.api_wallet_pool()?;
         let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
@@ -311,17 +319,19 @@ impl ApiChainDomain {
         ))
     }
 
-    pub async fn sync_chains() -> Result<Vec<String>, crate::error::service::ServiceError> {
-        let backend = crate::get_context()?.get_global_backend_api();
+    pub async fn sync_chains(
+        ctx: &'static Context,
+    ) -> Result<Vec<String>, crate::error::service::ServiceError> {
+        let backend = ctx.get_global_backend_api();
         let app_version = ConfigDomain::get_app_version().await?;
         let chain_list = backend.api_wallet_chain_list(&app_version.app_version).await?;
-        ApiChainDomain::upsert_multi_api_chain_than_toggle(chain_list).await
+        ApiChainDomain::upsert_multi_api_chain_than_toggle(ctx, chain_list).await
     }
 
     pub async fn sync_wallet_chain_data(
+        ctx: &'static Context,
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
         let pool = ctx.api_wallet_pool()?;
 
         crate::domain::wallet::WalletDomain::validate_password_with_context(ctx, wallet_password)
@@ -351,6 +361,7 @@ impl ApiChainDomain {
             let seed = ApiWalletDomain::new(ctx).get_seed(&wallet.wallet_address).await?;
 
             ApiChainDomain::init_chains_api_assets(
+                ctx,
                 &coins,
                 &mut req,
                 &mut api_address_init_req,
@@ -392,9 +403,10 @@ pub struct ApiChainTransDomain;
 
 impl ApiChainTransDomain {
     pub async fn main_coin(
+        ctx: &'static Context,
         chain_code: &str,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let coin = ApiCoinRepo::main_coin(chain_code, &pool).await?;
         Ok(coin)
     }

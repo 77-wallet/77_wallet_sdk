@@ -10,6 +10,7 @@ use super::{
     },
 };
 use crate::{
+    context::Context,
     error::service::ServiceError,
     infrastructure::task_queue::{
         MqttTask,
@@ -44,8 +45,11 @@ use wallet_transport_backend::response::api_response::{
 };
 use wallet_utils::serde_func;
 
-pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Error> {
-    let pool = crate::get_context()?.task_pool()?;
+pub async fn exec_incoming_publish(
+    ctx: &'static Context,
+    publish: &Publish,
+) -> Result<(), anyhow::Error> {
+    let pool = ctx.task_pool()?;
     let topic = Topic::from_bytes_v3(publish.topic.to_vec())?;
 
     match topic.topic {
@@ -54,7 +58,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
         crate::messaging::mqtt::topics::Topic::Token => {
             let payload: crate::messaging::mqtt::topics::TokenPriceChange =
                 serde_json::from_slice(&publish.payload)?;
-            payload.exec().await?;
+            payload.exec(ctx).await?;
         }
         Topic::RpcChange => {
             let payload: RpcChange = serde_json::from_slice(&publish.payload)?;
@@ -63,7 +67,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
                 tracing::error!("[exec_incoming_publish] send debug error: {e}");
             };
 
-            payload.exec().await?;
+            payload.exec(ctx).await?;
         }
         Topic::ChainChange => {
             let payload: ChainChange = serde_json::from_slice(&publish.payload)?;
@@ -88,7 +92,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
                     let msg_id = payload.msg_id.clone();
                     let biz_type = payload.biz_type.clone();
                     let event = serde_func::serde_to_string(&payload.biz_type)?;
-                    if let Err(e) = exec_payload(payload).await {
+                    if let Err(e) = exec_payload(payload, ctx).await {
                         tracing::error!(
                             msg_id = %msg_id,
                             biz_type = ?biz_type,
@@ -142,6 +146,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
 
 pub(crate) async fn exec_payload(
     payload: Message,
+    ctx: &'static Context,
 ) -> Result<(), crate::error::service::ServiceError> {
     match payload.biz_type {
         BizType::OrderMultiSignAccept => {
@@ -280,10 +285,10 @@ where
 }
 
 pub async fn exec_incoming_connack(
+    context: &'static Context,
     client: &rumqttc::v5::AsyncClient,
     conn_ack: rumqttc::v5::mqttbytes::v5::ConnAck,
 ) -> Result<(), anyhow::Error> {
-    let context = crate::get_context()?;
     let pool = context.core_pool()?;
     let device_service = DeviceService::new(context);
     let sn = context.get_sn();
@@ -388,13 +393,17 @@ async fn exec_verify_api_mqtt_st(
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod tests {
-    use crate::{messaging::mqtt::handle::exec_incoming_publish, testkit::env::get_manager};
+    use crate::{
+        context::get_context, messaging::mqtt::handle::exec_incoming_publish,
+        testkit::env::get_manager,
+    };
 
     #[tokio::test]
     async fn test_multi_signature_transfer_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -442,7 +451,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -453,6 +462,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -500,7 +510,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -511,6 +521,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -558,7 +569,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -570,6 +581,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -617,7 +629,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -628,6 +640,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -675,7 +688,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -686,6 +699,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -733,7 +747,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -744,6 +758,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -789,7 +804,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -800,6 +815,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -845,7 +861,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -856,6 +872,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -900,7 +917,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -911,6 +928,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -958,7 +976,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -969,6 +987,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -1016,7 +1035,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -1027,6 +1046,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -1074,7 +1094,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -1085,6 +1105,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -1129,7 +1150,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
@@ -1140,6 +1161,7 @@ mod tests {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
+        let ctx = get_context()?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -1172,7 +1194,7 @@ mod tests {
         };
 
         // 调用 exec_incoming_publish 并断言结果
-        let result = exec_incoming_publish(&publish).await;
+        let result = exec_incoming_publish(ctx, &publish).await;
         assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())

@@ -49,7 +49,7 @@ impl CollectService {
             uid: uid.to_string(),
             risk_addr: 0,
         };
-        ApiCollectDomain::collect_v2(&req).await?;
+        ApiCollectDomain::collect_v2_with_ctx(self.ctx, &req).await?;
         Ok(())
     }
 }

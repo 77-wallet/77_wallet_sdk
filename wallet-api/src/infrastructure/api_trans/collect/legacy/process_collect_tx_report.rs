@@ -207,7 +207,14 @@ impl ProcessCollectTxReport {
             (TransStatus::Success, "".to_string())
         };
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let Some(backend_api) = crate::get_context().ok().map(|ctx| ctx.get_global_backend_api())
+        else {
+            tracing::warn!(
+                trade_no=%req.trade_no,
+                "获取全局上下文失败，跳过归集交易报告上报"
+            );
+            return;
+        };
         tracing::info!(
             trade_no=%req.trade_no,
             worker_type=%worker_type,

@@ -392,7 +392,8 @@ impl AwmOrderTransNormalMsg {
             trade_type = %req.trade_type,
             "手续费交易请求已构建"
         );
-        let result = ApiFeeDomain::transfer_fee(&req).await;
+        let ctx = crate::context::get_context()?;
+        let result = ApiFeeDomain::transfer_fee_with_ctx(ctx, &req).await;
 
         match &result {
             Ok(_) => {
@@ -440,7 +441,8 @@ impl AwmOrderTransNormalMsg {
             risk_addr = %req.risk_addr,
             "归集交易请求已构建"
         );
-        let result = ApiCollectDomain::collect_v2(&req).await;
+        let ctx = crate::context::get_context()?;
+        let result = ApiCollectDomain::collect_v2_with_ctx(ctx, &req).await;
 
         match &result {
             Ok(_) => tracing::info!("归集交易处理成功, trade_no: {}", self.trade_no),
@@ -472,7 +474,8 @@ impl AwmOrderTransNormalMsg {
             client_id: self.client_id.clone(),
             create_time: self.create_time.clone(),
         };
-        ApiWithdrawDomain::withdraw(&req).await
+        let ctx = crate::context::get_context()?;
+        ApiWithdrawDomain::withdraw_with_ctx(ctx, &req).await
     }
 }
 
@@ -593,7 +596,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn resource_operation_trade_type_4_persists_backend_stake_task() -> anyhow::Result<()> {
-        let (_manager, _params) = get_manager().await?;
+        let (manager, _params) = get_manager().await?;
         let trade_no =
             format!("RSC_STK_order_regression_{}", wallet_utils::time::now().timestamp_millis());
         let wallet_uid =
@@ -610,7 +613,7 @@ mod tests {
             uid: wallet_uid,
         });
 
-        msg.resource_operation(crate::get_context()?).await?;
+        msg.resource_operation(manager.ctx).await?;
 
         let tx_pool = api_transaction_pool()?;
         let got = ApiResourceOperationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;

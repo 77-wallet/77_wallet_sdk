@@ -82,21 +82,23 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<BillEntity>> {
-        BillService::bill_lists(
-            root_addr,
-            account_id,
-            addr,
-            chain_code.as_deref(),
-            symbol.as_deref(),
-            is_multisig,
-            filter_min_value,
-            start,
-            end,
-            transfer_type,
-            page,
-            page_size,
-        )
-        .await
+        let service = BillService::new(self.ctx)?;
+        service
+            .bill_lists(
+                root_addr,
+                account_id,
+                addr,
+                chain_code.as_deref(),
+                symbol.as_deref(),
+                is_multisig,
+                filter_min_value,
+                start,
+                end,
+                transfer_type,
+                page,
+                page_size,
+            )
+            .await
     }
 
     // 最近交易列表
@@ -117,7 +119,8 @@ impl WalletManager {
     }
 
     pub async fn sync_bill(&self, chain_code: String, address: String) -> ReturnType<()> {
-        BillService::sync_bill_by_address(&chain_code, &address).await
+        let service = BillService::new(self.ctx)?;
+        service.sync_bill_by_address(&chain_code, &address).await
     }
 
     pub async fn sync_bill_by_wallet_and_account(
@@ -125,7 +128,8 @@ impl WalletManager {
         wallet_address: String,
         account_id: u32,
     ) -> ReturnType<()> {
-        BillService::sync_bill_by_wallet_and_account(wallet_address, account_id).await
+        let service = BillService::new(self.ctx)?;
+        service.sync_bill_by_wallet_and_account(wallet_address, account_id).await
     }
 
     // 币汇率
@@ -135,12 +139,14 @@ impl WalletManager {
         symbol: String,
         token_address: Option<String>,
     ) -> ReturnType<CoinCurrency> {
-        BillService::coin_currency_price(
-            chain_code,
-            symbol,
-            AssetTokenKey::from_raw(token_address.as_deref()),
-        )
-        .await
+        let service = BillService::new(self.ctx)?;
+        service
+            .coin_currency_price(
+                chain_code,
+                symbol,
+                AssetTokenKey::from_raw(token_address.as_deref()),
+            )
+            .await
     }
 }
 

@@ -456,7 +456,7 @@ impl EndpointHandler for SpecialHandler {
                 let rates: TokenRates = backend.post_req_str::<TokenRates>(endpoint, &body).await?;
 
                 let exchange_rate_service =
-                    crate::service::exchange_rate::ExchangeRateService::new();
+                    crate::service::exchange_rate::ExchangeRateService::new(ctx);
                 exchange_rate_service.init(rates).await?;
             }
             endpoint::SYS_CONFIG_FIND_CONFIG_BY_KEY => {
@@ -507,9 +507,10 @@ impl EndpointHandler for SpecialHandler {
                 let app_version_code = body.get("appVersionCode");
                 let input = backend.api_wallet_chain_list(app_version_code.unwrap()).await?;
                 //先插入再过滤
-                if !ApiChainDomain::upsert_multi_api_chain_than_toggle(input).await?.is_empty() {
+                if !ApiChainDomain::upsert_multi_api_chain_than_toggle(ctx, input).await?.is_empty()
+                {
                     let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
-                    ApiChainDomain::sync_wallet_chain_data(&unlock_token).await?;
+                    ApiChainDomain::sync_wallet_chain_data(ctx, &unlock_token).await?;
                 }
             }
             endpoint::CHAIN_RPC_LIST => {

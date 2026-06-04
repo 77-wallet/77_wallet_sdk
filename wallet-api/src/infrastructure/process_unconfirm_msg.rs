@@ -60,8 +60,11 @@ impl UnconfirmedMsgProcessor {
         Self { shutdown_rx, client_id: client_id.into(), notify }
     }
 
-    async fn handle_once(&self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.task_pool()?;
+    async fn handle_once(
+        &self,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.task_pool()?;
 
         // 判断数据库中是否存在大量的未处理消息,如果有则跳过
         if TaskQueueRepo::failed_task_queue(&pool).await?.len() < 500 {
@@ -71,11 +74,11 @@ impl UnconfirmedMsgProcessor {
             return Ok(());
         }
 
-        MqttDomain::process_unconfirm_msg(&self.client_id).await
+        MqttDomain::process_unconfirm_msg(ctx, &self.client_id).await
     }
 
-    async fn handle_and_report(&self) {
-        if let Err(e) = self.handle_once().await {
+    async fn handle_and_report(&self, ctx: &'static crate::context::Context) {
+        if let Err(e) = self.handle_once(ctx).await {
             tracing::error!("处理未确认消息失败: {}", e);
             if let Err(send_err) = FrontendNotifyEvent::send_error(
                 "InitializationTask::ProcessUnconfirmMsg",
@@ -88,8 +91,7 @@ impl UnconfirmedMsgProcessor {
         }
     }
 
-    async fn api_wallet_msg_resend(&self) {
-        let ctx = crate::get_context()?;
+    async fn api_wallet_msg_resend(&self, ctx: &'static crate::context::Context) {
         let backend = ctx.get_global_backend_api();
         let res = backend
             .msg_ack_expired_resend(MsgAckExpiredResendReq {
@@ -113,10 +115,10 @@ impl UnconfirmedMsgProcessor {
         let mut interval_10min = tokio::time::interval(std::time::Duration::from_secs(60 * 3));
 
         // 启动的时候执行一次
-        self.handle_and_report().await;
+        self.handle_and_report(ctx).await;
         let r = ctx.is_init_api_swap().await;
         if r {
-            self.api_wallet_msg_resend().await;
+            self.api_wallet_msg_resend(ctx).await;
         }
         loop {
             tokio::select! {
@@ -127,17 +129,17 @@ impl UnconfirmedMsgProcessor {
                  _ = notify.notified() => {
                      tracing::debug!("收到通知，开始处理");
                     // 定时执行
-                    self.handle_and_report().await;
+                    self.handle_and_report(ctx).await;
                  }
                  _ = interval_30sec.tick() => {
                      tracing::debug!("30秒超时,开始自动处理");
                     // 定时执行
-                    self.handle_and_report().await;
+                    self.handle_and_report(ctx).await;
                  }
                 _ = interval_10min.tick() => {
                     let r = ctx.is_init_api_swap().await;
                     if r {
-                        self.api_wallet_msg_resend().await;
+                    self.api_wallet_msg_resend(ctx).await;
                     }
                 }
             }
