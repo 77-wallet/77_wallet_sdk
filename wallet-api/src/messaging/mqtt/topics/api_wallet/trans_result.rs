@@ -53,33 +53,8 @@ pub struct AwmOrderTransResMsg {
     block_number: Option<String>,
 }
 
-fn context() -> Result<&'static crate::context::Context, crate::error::service::ServiceError> {
-    crate::get_context()
-}
-
-fn context_optional() -> Option<&'static crate::context::Context> {
-    crate::context::CONTEXT.get()
-}
-
-fn api_wallet_pool() -> Result<wallet_database::ApiWalletDbPool, crate::error::service::ServiceError>
-{
-    context()?.api_wallet_pool()
-}
-
-fn api_transaction_pool()
--> Result<wallet_database::ApiTransactionDbPool, crate::error::service::ServiceError> {
-    context()?.api_transaction_pool()
-}
-
-fn backend_api() -> Result<
-    std::sync::Arc<wallet_transport_backend::api::BackendApi>,
-    crate::error::service::ServiceError,
-> {
-    Ok(context()?.get_global_backend_api())
-}
-
 async fn optional_handles() -> Option<std::sync::Arc<crate::handles::Handles>> {
-    let context = context_optional()?;
+    let context = crate::context::CONTEXT.get()?;
     context.get_global_handles().await.upgrade()
 }
 
@@ -126,7 +101,7 @@ impl AwmOrderTransResMsg {
             return Err(e);
         }
 
-        let backend = backend_api()?;
+        let backend = crate::get_context()?.get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         tracing::info!(
@@ -164,13 +139,13 @@ impl AwmOrderTransResMsg {
         );
 
         if self.uid_exists().await? {
-            let api_transaction_pool = api_transaction_pool()?;
+            let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
             self.resource_result(&api_transaction_pool).await?;
         } else {
             tracing::warn!("AwmCmdRscResMsg uid not found: {}", self.uid);
         }
 
-        let backend = backend_api()?;
+        let backend = crate::get_context()?.get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
@@ -191,7 +166,7 @@ impl AwmOrderTransResMsg {
 
         // ✅ 强顺序屏障：先持久化“已收到 SER TxRes”事实，再进入 confirm_tx 路径
         // ⚠️ 若此处失败，必须返回错误并禁止 ack MQTT（让其重投）
-        let api_transaction_pool = api_transaction_pool()?;
+        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
         match self.trade_type {
             1 => {
                 ApiWithdrawRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
@@ -228,7 +203,7 @@ impl AwmOrderTransResMsg {
     }
 
     async fn uid_exists(&self) -> Result<bool, crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         Ok(res.is_some())
     }

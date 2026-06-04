@@ -54,22 +54,6 @@ use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 
 pub(crate) struct ApiAccountDomain {}
 
-fn context() -> Result<&'static crate::context::Context, ServiceError> {
-    crate::context::get_context()
-}
-
-fn api_wallet_pool() -> Result<wallet_database::ApiWalletDbPool, ServiceError> {
-    context()?.api_wallet_pool()
-}
-
-fn core_pool() -> Result<wallet_database::CoreDbPool, ServiceError> {
-    context()?.core_pool()
-}
-
-fn sn() -> Result<String, ServiceError> {
-    Ok(context()?.get_sn().to_string())
-}
-
 /// 延迟执行数据结构
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub(crate) struct CreateAccountDeferredData {
@@ -429,8 +413,8 @@ fn can_emit(last_emit_at: Option<Instant>, now: Instant) -> bool {
 async fn try_notify_pages(
     states: &mut HashMap<String, PageNotifyState>,
 ) -> Result<(), ServiceError> {
-    let context = context()?;
-    let pool = context.api_wallet_pool()?;
+    let ctx = crate::context::get_context()?;
+    let pool = ctx.api_wallet_pool()?;
     let now = Instant::now();
 
     for (uid, state) in states.iter_mut() {
@@ -669,8 +653,9 @@ impl ApiAccountDomain {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-        let pool = api_wallet_pool()?;
-        let core_pool = core_pool()?;
+        let ctx = crate::context::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
         let chain_code_for_log = chain_code.clone();
         tracing::info!(
             wallet_address = %wallet_address,
@@ -791,7 +776,8 @@ impl ApiAccountDomain {
         account_id: u32,
     ) -> Result<Vec<u8>, crate::error::service::ServiceError> {
         // 解密种子
-        let seed = ApiWalletDomain::new(context()?).get_seed(wallet_address).await?;
+        let seed =
+            ApiWalletDomain::new(crate::context::get_context()?).get_seed(wallet_address).await?;
 
         // 转换链码
         let code: ChainCode = chain_code.try_into()?;
@@ -843,8 +829,9 @@ impl ApiAccountDomain {
         address: &str,
         chain_code: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
-        let api_pool = api_wallet_pool()?;
-        let core_pool = core_pool()?;
+        let ctx = crate::context::get_context()?;
+        let api_pool = ctx.api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
 
         // 查找账户信息
         let account =
@@ -947,7 +934,8 @@ impl ApiAccountDomain {
 
         let address_type = instance.address_type();
 
-        let pool = api_wallet_pool()?;
+        let ctx = crate::context::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: checking if account exists");
         let account = ApiAccountRepo::find_one(
             &pool,
@@ -957,7 +945,7 @@ impl ApiAccountDomain {
             api_wallet_type,
         )
         .await?;
-        let sn = sn()?;
+        let sn = ctx.get_sn().to_string();
 
         // 不再需要加密私钥并存储
         let address_type = instance.address_type();
@@ -1063,7 +1051,8 @@ impl ApiAccountDomain {
 
         let address_type = instance.address_type();
 
-        let pool = api_wallet_pool()?;
+        let ctx = crate::context::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
         let account = ApiAccountRepo::find_one(
             &pool,
             &address,
@@ -1072,7 +1061,7 @@ impl ApiAccountDomain {
             api_wallet_type,
         )
         .await?;
-        let sn = sn()?;
+        let sn = ctx.get_sn().to_string();
         // Generate account name
         let account_name = if is_default_name {
             format!("{account_name}{}", account_index_map.account_id)
@@ -1141,7 +1130,7 @@ impl ApiAccountDomain {
         index: i32,
         uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -1174,7 +1163,7 @@ impl ApiAccountDomain {
         account_id: Option<u32>,
         chain_codes: Vec<String>,
     ) -> Result<Vec<AddressChainCode>, ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let mut account_addresses = Vec::new();
 
         // 获取钱包下的这个账户的所有地址
@@ -1274,7 +1263,7 @@ impl ApiAccountDomain {
         //
         // 使用 page = -1 避免与地址分页（从 0 开始）冲突。
         const WITHDRAWAL_ASSET_QUERY_PAGE: i64 = -1;
-        let pool = api_wallet_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -1389,14 +1378,16 @@ impl ApiAccountDomain {
         is_last_page: bool, // ⭐ 添加：是否最后一页
         _current_page: i64, // ⭐ 添加：当前页码（不再在此处推进地址查询状态）
     ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         // 获取种子
-        let seed = ApiWalletDomain::new(context()?).get_seed(&api_wallet.address).await?;
+        let seed = ApiWalletDomain::new(crate::context::get_context()?)
+            .get_seed(&api_wallet.address)
+            .await?;
 
         // 遍历每个链，为每个链创建一个延迟任务
         let mut deferred_tasks = Vec::new();
@@ -1501,7 +1492,7 @@ impl ApiAccountDomain {
         data: CreateAccountDeferredData,
     ) -> Result<(), ServiceError> {
         tracing::info!("➡️ Before deferred");
-        let pool = api_wallet_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         // let mut all_asset_keys = Vec::new();
 
@@ -1629,7 +1620,7 @@ impl ApiAccountDomain {
         uid: &str,
         chain: &str,
     ) -> Result<std::collections::BTreeSet<i32>, crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
 
         // 1. account 已初始化的索引
         let account_indices = ApiAccountRepo::get_all_account_indices(&pool, uid, chain).await?;
@@ -1701,7 +1692,7 @@ impl ApiAccountDomain {
             "已收集所有已使用的索引"
         );
 
-        let pool = api_wallet_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let batch_item_count = ExpandBatchItemRepo::count_by_batch_id(&pool, batch_id).await?;
         let available_indices = requested_number.saturating_sub(batch_item_count as u32);
 
@@ -1723,8 +1714,8 @@ impl ApiAccountDomain {
     ) -> Result<(), ServiceError> {
         use crate::infrastructure::task_queue::task::Tasks;
 
-        let context = context()?;
-        let pool = context.api_wallet_pool()?;
+        let ctx = crate::context::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
 
         tracing::info!(uid = %query_state.uid, chain_code = %query_state.chain_code, status = %query_state.status as u8, "继续恢复地址查询状态");
 

@@ -33,27 +33,6 @@ use wallet_database::{
 #[serde(rename_all = "camelCase")]
 pub struct ApiWalletAcctChange(AcctChange);
 
-fn context() -> Result<&'static crate::context::Context, ServiceError> {
-    crate::get_context()
-}
-
-fn api_wallet_pool() -> Result<wallet_database::ApiWalletDbPool, ServiceError> {
-    context()?.api_wallet_pool()
-}
-
-fn api_transaction_pool() -> Result<wallet_database::ApiTransactionDbPool, ServiceError> {
-    context()?.api_transaction_pool()
-}
-
-fn backend_api() -> Result<std::sync::Arc<wallet_transport_backend::api::BackendApi>, ServiceError>
-{
-    Ok(context()?.get_global_backend_api())
-}
-
-async fn global_handles() -> Result<std::sync::Weak<crate::handles::Handles>, ServiceError> {
-    Ok(context()?.get_global_handles().await)
-}
-
 impl From<&ApiWalletAcctChange> for AcctChangeFrontend {
     fn from(value: &ApiWalletAcctChange) -> Self {
         Self {
@@ -87,7 +66,7 @@ impl ApiWalletAcctChange {
     ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
         tracing::debug!("处理帐变: {:?}", self);
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         if let Some(token_str) = &self.0.token {
             let has_coin = ApiCoinRepo::has_coin(
@@ -258,8 +237,9 @@ impl ApiWalletAcctChange {
             }
         };
 
-        let wallet_pool = api_wallet_pool()?;
-        let api_transaction_pool = api_transaction_pool()?;
+        let ctx = crate::get_context()?;
+        let wallet_pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
 
         // Restrict to subaccount-originated transfers; destination is intentionally NOT
         // constrained to a local withdrawal wallet because collect targets can vary.
@@ -570,8 +550,9 @@ impl ApiWalletAcctChange {
             }
         };
 
-        let wallet_pool = api_wallet_pool()?;
-        let api_transaction_pool = api_transaction_pool()?;
+        let ctx = crate::get_context()?;
+        let wallet_pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
 
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
@@ -848,8 +829,9 @@ impl ApiWalletAcctChange {
             }
         };
 
-        let wallet_pool = api_wallet_pool()?;
-        let api_transaction_pool = api_transaction_pool()?;
+        let ctx = crate::get_context()?;
+        let wallet_pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
 
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
@@ -1070,7 +1052,7 @@ impl ApiWalletAcctChange {
     async fn sync_assets(
         acct_change: &ApiWalletAcctChange,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         // 记录帐变信息用于调试
         tracing::info!(
@@ -1221,7 +1203,7 @@ impl ApiWalletAcctChange {
             return Ok(());
         }
 
-        let handles = global_handles().await?;
+        let handles = crate::get_context()?.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
 
@@ -1262,14 +1244,15 @@ impl ApiWalletAcctChange {
         chain_code: &str,
         token_address: &str,
     ) -> Result<(), ServiceError> {
-        let pool = api_wallet_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
         tracing::error!("为地址创建代币22: chain_code={}, token={}", chain_code, token_address);
         if token_address.is_empty() {
             return Ok(());
         }
 
         let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
-        let backend_api = backend_api()?;
+        let backend_api = ctx.get_global_backend_api();
         let coins_finds = backend_api.fetch_all_api_tokens(None, None).await?;
         tracing::error!(
             "1try_create_coin_for_address find token coin , price is :{:?}",
@@ -1313,8 +1296,9 @@ impl ApiWalletAcctChange {
     }
 
     async fn deposit_acct_change(&self) -> Result<(), ServiceError> {
-        let pool = api_wallet_pool()?;
-        let api_transaction_pool = api_transaction_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
         let to_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.to_addr,
             &self.0.chain_code,
@@ -1377,8 +1361,9 @@ impl ApiWalletAcctChange {
     }
 
     async fn self_transfer_acct_change(&self) -> Result<(), ServiceError> {
-        let pool = api_wallet_pool()?;
-        let api_transaction_pool = api_transaction_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
             &self.0.chain_code,

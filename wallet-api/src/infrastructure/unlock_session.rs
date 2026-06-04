@@ -51,12 +51,12 @@ fn runtime() -> Result<&'static UnlockSessionRuntime, ServiceError> {
     RUNTIME.get().ok_or_else(|| crate::error::system::SystemError::ContextNotInit.into())
 }
 
-fn context() -> Result<&'static Context, ServiceError> {
+fn runtime_context() -> Result<&'static Context, ServiceError> {
     Ok(runtime()?.context)
 }
 
 pub(crate) async fn wallet_unlock_session_snapshot() -> Option<WalletUnlockSession> {
-    let Ok(context) = context() else {
+    let Ok(context) = runtime_context() else {
         return None;
     };
 
@@ -64,7 +64,7 @@ pub(crate) async fn wallet_unlock_session_snapshot() -> Option<WalletUnlockSessi
 }
 
 pub(crate) async fn rotate_wallet_unlock_session_if_due() -> Result<bool, ServiceError> {
-    let context = context()?;
+    let context = runtime_context()?;
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Ok(false);
     };
@@ -114,7 +114,7 @@ pub(crate) async fn start_wallet_unlock_session_rotation_task(
 }
 
 pub(crate) async fn wallet_unlock_token() -> Result<String, ServiceError> {
-    let context = context()?;
+    let context = runtime_context()?;
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Err(crate::error::system::SystemError::SystemNotReady.into());
     };
@@ -123,7 +123,7 @@ pub(crate) async fn wallet_unlock_token() -> Result<String, ServiceError> {
 }
 
 pub(crate) async fn wallet_unlock_token_is_active(token: &str) -> Result<bool, ServiceError> {
-    let context = context()?;
+    let context = runtime_context()?;
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Ok(false);
     };
@@ -134,7 +134,7 @@ pub(crate) async fn wallet_unlock_token_is_active(token: &str) -> Result<bool, S
 pub(crate) async fn wallet_unlock_material(
     wallet_address: &str,
 ) -> Result<WalletUnlockMaterial, ServiceError> {
-    let context = context()?;
+    let context = runtime_context()?;
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Err(crate::error::system::SystemError::SystemNotReady.into());
     };
@@ -149,7 +149,7 @@ pub(crate) async fn upsert_wallet_unlock_material(
     wallet_address: &str,
     wallet_password: &str,
 ) -> Result<(), ServiceError> {
-    let context = context()?;
+    let context = runtime_context()?;
     let pool = context.api_wallet_pool()?;
     let Some(wallet) =
         wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_address(

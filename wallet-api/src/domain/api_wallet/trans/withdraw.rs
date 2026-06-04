@@ -19,22 +19,6 @@ use wallet_database::{
 
 pub struct ApiWithdrawDomain {}
 
-fn context() -> Result<&'static crate::context::Context, ServiceError> {
-    crate::get_context()
-}
-
-fn api_wallet_pool() -> Result<wallet_database::ApiWalletDbPool, ServiceError> {
-    context()?.api_wallet_pool()
-}
-
-fn api_transaction_pool() -> Result<wallet_database::ApiTransactionDbPool, ServiceError> {
-    context()?.api_transaction_pool()
-}
-
-async fn global_handles() -> Result<std::sync::Weak<crate::handles::Handles>, ServiceError> {
-    Ok(context()?.get_global_handles().await)
-}
-
 #[derive(Debug)]
 pub(crate) struct WithdrawConfirmOutcome {
     pub tx: wallet_database::entities::api_withdraw::ApiWithdrawEntity,
@@ -61,8 +45,9 @@ impl ApiWithdrawDomain {
         req: &ApiWithdrawReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         // 获取数据库连接
-        let core_pool = api_wallet_pool()?;
-        let api_transaction_pool = api_transaction_pool()?;
+        let ctx = crate::get_context()?;
+        let core_pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
         // 获取钱包
         tracing::info!(trade_no=%req.trade_no, "查询钱包信息");
         let wallet = ApiWalletRepo::find_by_uid(&core_pool, &req.uid).await?.ok_or(
@@ -139,7 +124,7 @@ impl ApiWithdrawDomain {
         // 交易执行完全由事实驱动，而不是命令式触发
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) = global_handles().await?.upgrade() {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
             {
@@ -156,14 +141,15 @@ impl ApiWithdrawDomain {
     pub async fn sign_withdrawal_order(
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_transaction_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_transaction_pool()?;
         // ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
         //     .await?;
 
         ApiWithdrawRepo::set_audit_passed(&pool, trade_no).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) = global_handles().await?.upgrade() {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
             {
@@ -181,7 +167,8 @@ impl ApiWithdrawDomain {
     pub async fn reject_withdrawal_order(
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_transaction_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_transaction_pool()?;
         // ApiWithdrawRepo::update_api_withdraw_status_and_err(
         //     &pool,
         //     trade_no,
@@ -194,7 +181,7 @@ impl ApiWithdrawDomain {
         ApiWithdrawRepo::set_audit_rejected(&pool, trade_no, "rejected").await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) = global_handles().await?.upgrade() {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
             {
@@ -210,7 +197,8 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
-        let pool = api_transaction_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_transaction_pool()?;
         let outcome = match Self::confirm_tx_in_pool(&pool, trade_no, status).await {
             Ok(outcome) => outcome,
             Err(e) => {
@@ -238,7 +226,7 @@ impl ApiWithdrawDomain {
         // 交易执行完全由事实驱动，而不是命令式触发
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) = global_handles().await?.upgrade() {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
             {
