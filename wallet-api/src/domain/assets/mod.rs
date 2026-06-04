@@ -24,6 +24,18 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 
 pub struct AssetsDomain;
 
+fn context() -> Result<&'static crate::context::Context, ServiceError> {
+    crate::get_context()
+}
+
+fn core_pool() -> Result<CoreDbPool, ServiceError> {
+    context()?.core_pool()
+}
+
+fn backend_api() -> Result<Arc<wallet_transport_backend::api::BackendApi>, ServiceError> {
+    Ok(context()?.get_global_backend_api())
+}
+
 enum SyncFilter {
     Symbol(Vec<String>),
     Token(AssetTokenKey),
@@ -211,7 +223,7 @@ impl AssetsDomain {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
 
         let list =
             AccountRepo::lists_by_wallet_address(pool.clone(), &wallet_address, account_id, None)
@@ -235,7 +247,7 @@ impl AssetsDomain {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
 
         Self::do_async_balance(pool, addr, chain_code, SyncFilter::Symbol(symbol)).await
     }
@@ -245,7 +257,7 @@ impl AssetsDomain {
         chain_code: Option<String>,
         token_address: AssetTokenKey,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
 
         Self::do_async_balance(pool, addr, chain_code, SyncFilter::Token(token_address)).await
     }
@@ -256,9 +268,9 @@ impl AssetsDomain {
         chain_code: Option<String>,
     ) -> Result<(), ServiceError> {
         // 单个地址处理
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
 
-        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backhand = backend_api()?;
 
         // 获取这个地址对应的链码,如果未传
         let codes = if let Some(chain_code) = chain_code.clone() {
@@ -298,11 +310,11 @@ impl AssetsDomain {
         wallet_address: String,
         account_id: Option<u32>,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
         let wallet = WalletRepo::detail(pool.clone(), &wallet_address).await?;
 
         if let Some(wallet) = wallet {
-            let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let backhand = backend_api()?;
 
             // 本地的index 进行了 + 1
             let index = account_id.map(|x| x - 1);
@@ -385,7 +397,7 @@ impl AssetsDomain {
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
                 let assets_id =
@@ -414,7 +426,7 @@ impl AssetsDomain {
         address: String,
         chain_code: String,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
         let default_coins =
             CoinRepo::list_v2(&pool, None, Some(chain_code.clone()), Some(1)).await?;
         let mut token_keys = Vec::new();
@@ -454,8 +466,8 @@ impl AssetsDomain {
         chain_code: String,
     ) -> Result<(), ServiceError> {
         // notes 不能更新币价
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
+        let core_pool = core_pool()?;
         // let time = wallet_utils::time::now();
         let coin = CoinRepo::coin_by_chain_token_key(
             &chain_code,

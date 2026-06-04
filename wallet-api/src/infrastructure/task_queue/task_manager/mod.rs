@@ -22,6 +22,30 @@ use wallet_utils::{RetryableError as _, error::RetryPolicy};
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
 
+fn context() -> Result<&'static crate::context::Context, ServiceError> {
+    crate::get_context()
+}
+
+fn task_pool() -> Result<wallet_database::TaskDbPool, ServiceError> {
+    context()?.task_pool()
+}
+
+fn core_pool() -> Result<wallet_database::CoreDbPool, ServiceError> {
+    context()?.core_pool()
+}
+
+fn sn() -> Result<String, ServiceError> {
+    Ok(context()?.get_sn().to_string())
+}
+
+fn backend_api() -> Result<Arc<wallet_transport_backend::api::BackendApi>, ServiceError> {
+    Ok(context()?.get_global_backend_api())
+}
+
+async fn handles() -> Result<Arc<crate::handles::Handles>, ServiceError> {
+    context()?.get_handles_arc().await
+}
+
 #[derive(Debug, Clone)]
 pub struct TaskManager {
     running_tasks: RunningTasks,
@@ -48,7 +72,7 @@ impl TaskManager {
     pub async fn start_task_check(&self) -> Result<(), ServiceError> {
         let running_tasks = Arc::clone(&self.running_tasks);
 
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = task_pool()?;
         TaskQueueRepo::delete_tasks_with_request_body_like(&pool, SEND_MSG_CONFIRM).await?;
 
         tokio::spawn(async move {
@@ -74,8 +98,8 @@ impl TaskManager {
 
     /// 检查并发送任务的处理函数
     async fn check_handle(running_tasks: &RunningTasks) -> Result<(), ServiceError> {
-        let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let handles = handles().await?;
+        let pool = task_pool()?;
         let manager = handles.get_global_task_manager();
 
         TaskQueueRepo::delete_old(&pool, 15).await?;
@@ -160,7 +184,7 @@ impl TaskManager {
                         }
                     }
 
-                    if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
+                    if let Ok(pool) = task_pool() {
                         if let Err(err) =
                             TaskQueueRepo::task_failed(&pool, &task_id, &e.to_string()).await
                         {
@@ -178,7 +202,7 @@ impl TaskManager {
                             task_id,
                             retry_count
                         );
-                        if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
+                        if let Ok(pool) = task_pool() {
                             if let Err(err) = TaskQueueRepo::task_hang_up(&pool, &task_id).await {
                                 tracing::warn!(
                                     task_id = %task_id,
@@ -237,9 +261,9 @@ impl TaskManager {
         task_entity: &TaskQueueEntity,
         error_info: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
-        let sn = crate::context::get_context()?.get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let pool = core_pool()?;
+        let sn = sn()?;
+        let Some(device) = DeviceRepo::get_device_info(pool, &sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -260,12 +284,12 @@ impl TaskManager {
             error_info,
         );
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = backend_api()?;
         backend_api.client_task_log_upload(req).await?;
 
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
         if task.get_type() == TaskType::Mqtt {
-            let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
+            let handles = handles().await?;
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
             tracing::info!(
                 "upload task error info mqtt submit unconfirmed msg collector: {}",
@@ -280,7 +304,7 @@ impl TaskManager {
         task_id: &str,
         retry_count: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = task_pool()?;
 
         if retry_count > 0 {
             TaskQueueRepo::increase_retry_times(&pool, task_id).await?;
@@ -292,7 +316,7 @@ impl TaskManager {
     async fn handle_task(
         task_entity: &TaskQueueEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = task_pool()?;
 
         let id = task_entity.id.clone();
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
@@ -305,7 +329,7 @@ impl TaskManager {
         TaskQueueRepo::task_done(&pool, &id).await?;
 
         if task_type == TaskType::Mqtt {
-            let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
+            let handles = handles().await?;
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
             tracing::info!("handle task mqtt submit unconfirmed msg collector: {}", id);
             unconfirmed_msg_collector.submit(vec![id])?;

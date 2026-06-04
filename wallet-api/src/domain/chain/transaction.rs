@@ -42,13 +42,28 @@ pub const DEFAULT_UNITS: u64 = 100_000;
 
 pub struct ChainTransDomain;
 
+fn context() -> Result<&'static crate::context::Context, crate::error::service::ServiceError> {
+    crate::get_context()
+}
+
+fn core_pool() -> Result<wallet_database::CoreDbPool, crate::error::service::ServiceError> {
+    context()?.core_pool()
+}
+
+fn backend_api() -> Result<
+    std::sync::Arc<wallet_transport_backend::api::BackendApi>,
+    crate::error::service::ServiceError,
+> {
+    Ok(context()?.get_global_backend_api())
+}
+
 impl ChainTransDomain {
     pub async fn assets(
         chain_code: &str,
         from: &str,
         token_key: AssetTokenKey,
     ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
 
         let assets_id = AssetsId {
             address: from.to_string(),
@@ -68,7 +83,7 @@ impl ChainTransDomain {
         chain_code: &str,
         address: &str,
     ) -> Result<AccountEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
         let account = AccountRepo::detail_by_address_and_chain_code(pool, address, chain_code)
             .await?
             .ok_or(crate::error::business::BusinessError::Account(
@@ -84,7 +99,7 @@ impl ChainTransDomain {
         token_key: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
 
         let assets_id = AssetsId {
             address: address.to_string(),
@@ -103,7 +118,7 @@ impl ChainTransDomain {
                     .map_err(crate::error::service::ServiceError::Database)?;
 
                 // 上报后端修改余额
-                let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+                let backend = backend_api()?;
                 let rs =
                     backend.wallet_assets_refresh_bal(address, chain_code, refresh_symbol).await;
                 if let Err(e) = rs {
@@ -118,7 +133,7 @@ impl ChainTransDomain {
     pub async fn main_coin(
         chain_code: &str,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
         let coin = CoinRepo::main_coin(chain_code, &pool).await?;
         Ok(coin)
     }
@@ -128,7 +143,7 @@ impl ChainTransDomain {
         from: &str,
         chain_code: &str,
     ) -> Result<bool, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = core_pool()?;
 
         if chain_code == chain_code::BTC {
             let res = BillRepo::on_going_bill(chain_code::BTC, from, &pool).await?;
@@ -171,7 +186,7 @@ impl ChainTransDomain {
 
         // 如果使用了权限，上报给后端
         if let Some(signer) = params.signer {
-            let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+            let pool = core_pool()?;
             let permission = PermissionRepo::permission_with_user(
                 &pool,
                 &params.base.from,
@@ -208,7 +223,7 @@ impl ChainTransDomain {
         BillDomain::create_bill(new_bill).await?;
 
         if let Some(request_id) = params.base.request_resource_id {
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let backend = backend_api()?;
             backend.delegate_complete(&request_id).await?;
         }
 

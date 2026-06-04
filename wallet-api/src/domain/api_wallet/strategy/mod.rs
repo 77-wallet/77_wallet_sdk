@@ -10,6 +10,22 @@ use wallet_transport_backend::request::api_wallet::strategy::{
 
 pub(crate) struct StrategyDomain {}
 
+fn context() -> Result<&'static crate::context::Context, crate::error::service::ServiceError> {
+    crate::get_context()
+}
+
+fn api_wallet_pool() -> Result<wallet_database::ApiWalletDbPool, crate::error::service::ServiceError>
+{
+    context()?.api_wallet_pool()
+}
+
+fn backend_api() -> Result<
+    std::sync::Arc<wallet_transport_backend::api::BackendApi>,
+    crate::error::service::ServiceError,
+> {
+    Ok(context()?.get_global_backend_api())
+}
+
 impl StrategyDomain {
     pub async fn query_collect_strategy(
         uid: &str,
@@ -17,7 +33,7 @@ impl StrategyDomain {
         wallet_transport_backend::request::api_wallet::strategy::Strategy,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = api_wallet_pool()?;
 
         // 1. 先尝试从本地数据库查询
         if let Some(local_strategy) = ApiCollectStrategyRepo::get_by_uid(&pool, uid).await? {
@@ -51,7 +67,7 @@ impl StrategyDomain {
         }
 
         // 2. 本地没有则从后端查询
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api().clone();
+        let backend_api = backend_api()?;
         let backend_resp = backend_api.query_collect_strategy(uid).await?;
 
         // 3. 将后端结果保存到本地数据库
@@ -82,7 +98,7 @@ impl StrategyDomain {
         uid: &str,
         backend_resp: &wallet_transport_backend::response_vo::api_wallet::strategy::CollectionStrategyResp,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = api_wallet_pool()?;
 
         // 1. 保存主策略
         let strategy_entity =
@@ -133,7 +149,7 @@ impl StrategyDomain {
         uid: &str,
         strategy: &wallet_transport_backend::request::api_wallet::strategy::Strategy,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = api_wallet_pool()?;
 
         // 1. 保存主策略
         let strategy_entity =
@@ -189,7 +205,7 @@ impl StrategyDomain {
         wallet_transport_backend::request::api_wallet::strategy::Strategy,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = api_wallet_pool()?;
 
         // 1. 先尝试从本地数据库查询
         if let Some(local_strategy) = ApiWithdrawStrategyRepo::get_by_uid(&pool, uid).await? {
@@ -223,7 +239,7 @@ impl StrategyDomain {
         }
 
         // 2. 本地没有则从后端查询
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api().clone();
+        let backend_api = backend_api()?;
         let backend_resp = backend_api.query_withdrawal_strategy(uid).await?;
 
         // 3. 将后端结果保存到本地数据库
@@ -254,7 +270,7 @@ impl StrategyDomain {
         uid: &str,
         backend_resp: &wallet_transport_backend::response_vo::api_wallet::strategy::WithdrawStrategyResp,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = api_wallet_pool()?;
 
         // 1. 保存主策略
         let strategy_entity =
@@ -305,7 +321,7 @@ impl StrategyDomain {
         uid: &str,
         strategy: &wallet_transport_backend::request::api_wallet::strategy::Strategy,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = api_wallet_pool()?;
 
         // 1. 保存主策略
         let strategy_entity =
