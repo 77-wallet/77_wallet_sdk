@@ -111,12 +111,6 @@ impl ApiWalletDomain {
                     ApiWalletRepo::find_by_address(&pool, binding_address).await?;
 
                 if let Some(recharge_wallet) = recharge_wallet {
-                    // let info = ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
-                    // if info.bind_status {
-                    //     let backend = CONTEXT.get().unwrap().get_global_backend_api();
-                    //     backend.appid_withdrawal_wallet_change(uid, &info.app_id).await?;
-                    // }
-
                     if let Some(address) = recharge_wallet.binding_address {
                         tracing::info!("address: {address}, wallet_address: {wallet_address}");
                         if address != wallet_address {
@@ -344,7 +338,7 @@ impl ApiWalletDomain {
         let _guard = EXPAND_INDEX_LOCK.lock().await;
 
         let pool = self.ctx.api_wallet_pool()?;
-        let backend = self.ctx.get_global_backend_api();
+        let backend = self.ctx.get_api_wallet_backend();
 
         let Some(api_wallet) = ApiWalletRepo::find_by_uid(&pool, &uid).await? else {
             let req = ExpandAddressCompleteReq::new(
@@ -380,11 +374,12 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn initialize_wallet_unlock_session(
+        &self,
         wallet_password: &str,
     ) -> Result<(), ServiceError> {
         // The session assembly itself lives in unlock.rs; this wrapper only reads wallets
         // and writes the resulting unlock session back.
-        let pool = crate::context::get_context()?.api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         let mut wallet_materials = std::collections::HashMap::new();
 
@@ -403,21 +398,20 @@ impl ApiWalletDomain {
             wallet_materials,
         );
         tracing::info!("wallet unlock session initialized");
-        crate::context::get_context()?.set_wallet_unlock_session(unlock_session).await?;
+        self.ctx.set_wallet_unlock_session(unlock_session).await?;
         ExpandBootstrap::start_after_first_wallet_unlock().await?;
         Ok(())
     }
 
-    pub(crate) async fn clear_wallet_unlock_session() -> Result<(), ServiceError> {
-        crate::context::get_context()?.clear_wallet_unlock_session().await?;
+    pub(crate) async fn clear_wallet_unlock_session(&self) -> Result<(), ServiceError> {
+        self.ctx.clear_wallet_unlock_session().await?;
         Ok(())
     }
 
-    pub(crate) async fn rotate_wallet_session_key() -> Result<(), ServiceError> {
+    pub(crate) async fn rotate_wallet_session_key(&self) -> Result<(), ServiceError> {
         // Rotation rewraps the seed envelope using the current unlock material and refreshes
         // the wallet-level unlock session without touching the plaintext password again.
-        let context = crate::context::get_context()?;
-        let pool = context.api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         let mut wallet_materials = unlock_session::wallet_unlock_session_snapshot()
             .await
@@ -477,7 +471,7 @@ impl ApiWalletDomain {
             wallet_materials,
         );
         tracing::info!("wallet unlock session rotated");
-        context.set_wallet_unlock_session(unlock_session).await?;
+        self.ctx.set_wallet_unlock_session(unlock_session).await?;
         Ok(())
     }
 
@@ -565,7 +559,7 @@ impl ApiWalletDomain {
             )
             .into());
         };
-        let backend = self.ctx.get_global_backend_api();
+        let backend = self.ctx.get_api_wallet_backend();
         backend.appid_withdrawal_wallet_change(withdrawal_uid, &app_id).await?;
         if let Some(binding_address) = recharge_wallet.binding_address {
             self.unbind_uid_by_address(&binding_address).await?;
@@ -805,8 +799,11 @@ mod tests {
     use wallet_transport_backend::{
         request::{
             KeysInitReq,
-            api_wallet::wallet::{
-                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            api_wallet::{
+                address::ExpandAddressCompleteReq,
+                wallet::{
+                    AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+                },
             },
         },
         response_vo::api_wallet::wallet::{
@@ -987,6 +984,21 @@ mod tests {
         ) -> Result<AppIdUidUsageRes, crate::error::service::ServiceError> {
             Ok(AppIdUidUsageRes { used: false })
         }
+
+        async fn expand_address_complete(
+            &self,
+            _: ExpandAddressCompleteReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+
+        async fn appid_withdrawal_wallet_change(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
     }
 
     async fn seed_cache_test_env() -> &'static SeedCacheTestEnv {
@@ -1095,7 +1107,8 @@ oss:
     async fn wallet_unlock_session_rotation_replaces_token() {
         init_test_tracing();
         let _ = seed_cache_test_env().await;
-        ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
+        ApiWalletDomain::new(get_context().expect("context"))
+            .initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
 
@@ -1109,20 +1122,26 @@ oss:
         )
         .await;
 
-        ApiWalletDomain::rotate_wallet_session_key().await.expect("rotate session key");
+        ApiWalletDomain::new(get_context().expect("context"))
+            .rotate_wallet_session_key()
+            .await
+            .expect("rotate session key");
 
         let after = ApiWalletDomain::get_wallet_unlock_token().await.expect("read rotated token");
         assert!(!after.is_empty());
         assert_ne!(after, before);
 
-        let _ = ApiWalletDomain::clear_wallet_unlock_session().await;
+        let _ = ApiWalletDomain::new(get_context().expect("context"))
+            .clear_wallet_unlock_session()
+            .await;
     }
 
     #[tokio::test]
     async fn session_key_rotation_rewraps_seed_without_password() {
         init_test_tracing();
         let env = seed_cache_test_env().await;
-        ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
+        ApiWalletDomain::new(get_context().expect("context"))
+            .initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
 
@@ -1133,7 +1152,10 @@ oss:
             .expect("wallet before rotation")
             .seed;
 
-        ApiWalletDomain::rotate_wallet_session_key().await.expect("rotate session key");
+        ApiWalletDomain::new(get_context().expect("context"))
+            .rotate_wallet_session_key()
+            .await
+            .expect("rotate session key");
 
         let after = ApiWalletRepo::find_by_address(&pool, &env.wallet_address)
             .await
@@ -1149,7 +1171,9 @@ oss:
             .expect("decrypt seed after rotation");
         assert_eq!(seed, b"seed-cache-seed");
 
-        let _ = ApiWalletDomain::clear_wallet_unlock_session().await;
+        let _ = ApiWalletDomain::new(get_context().expect("context"))
+            .clear_wallet_unlock_session()
+            .await;
     }
 
     #[tokio::test]
@@ -1194,7 +1218,8 @@ oss:
     async fn seed_cache_is_not_retained() {
         init_test_tracing();
         let env = seed_cache_test_env().await;
-        ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
+        ApiWalletDomain::new(get_context().expect("context"))
+            .initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
 
@@ -1203,6 +1228,9 @@ oss:
             .await
             .expect("decrypt seed");
         assert_eq!(seed, b"seed-cache-seed");
-        ApiWalletDomain::clear_wallet_unlock_session().await.expect("clear password");
+        ApiWalletDomain::new(get_context().expect("context"))
+            .clear_wallet_unlock_session()
+            .await
+            .expect("clear password");
     }
 }

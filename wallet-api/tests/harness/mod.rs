@@ -30,8 +30,11 @@ use wallet_database::{
 use wallet_transport_backend::{
     request::{
         KeysInitReq,
-        api_wallet::wallet::{
-            AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+        api_wallet::{
+            address::ExpandAddressCompleteReq,
+            wallet::{
+                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            },
         },
     },
     response_vo::api_wallet::wallet::{
@@ -120,6 +123,23 @@ pub struct AppIdUidUsageCall {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpandAddressCompleteCall {
+    pub uid: String,
+    pub batch_id: String,
+    pub serial_no: String,
+    pub status: bool,
+    pub remark: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppIdWithdrawalWalletChangeCall {
+    pub withdrawal_uid: String,
+    pub org_app_id: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeysInitCall {
     pub uid: String,
     pub sn: String,
@@ -139,6 +159,8 @@ pub enum ApiWalletBackendCall {
     QueryUidBindInfo { uid: String },
     QueryWalletActivationInfo { uid: String },
     AppIdUidUsage(AppIdUidUsageCall),
+    ExpandAddressComplete(ExpandAddressCompleteCall),
+    AppIdWithdrawalWalletChange(AppIdWithdrawalWalletChangeCall),
     InitApiWallet(AppIdImportCall),
     OldKeysInit(KeysInitCall),
 }
@@ -177,6 +199,17 @@ struct AppIdUidUsageReqView {
     org_app_id: String,
     uid: String,
     wallet_type: UidStatus,
+}
+
+#[allow(dead_code)]
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExpandAddressCompleteReqView {
+    uid: String,
+    batch_id: String,
+    serial_no: String,
+    status: bool,
+    remark: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -450,6 +483,40 @@ impl ApiWalletBackend for FakeApiWalletBackend {
             .pop_front()
             .unwrap_or_else(|| panic!("appid_uid_usage response not configured"));
         Ok(AppIdUidUsageRes { used })
+    }
+
+    async fn expand_address_complete(
+        &self,
+        req: ExpandAddressCompleteReq,
+    ) -> Result<(), wallet_api::error::service::ServiceError> {
+        let view: ExpandAddressCompleteReqView = serde_json::from_value(
+            serde_json::to_value(req).expect("serialize expand address complete req"),
+        )
+        .expect("deserialize expand address complete req");
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::ExpandAddressComplete(ExpandAddressCompleteCall {
+            uid: view.uid,
+            batch_id: view.batch_id,
+            serial_no: view.serial_no,
+            status: view.status,
+            remark: view.remark,
+        }));
+        Ok(())
+    }
+
+    async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), wallet_api::error::service::ServiceError> {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::AppIdWithdrawalWalletChange(
+            AppIdWithdrawalWalletChangeCall {
+                withdrawal_uid: withdrawal_uid.to_string(),
+                org_app_id: org_app_id.to_string(),
+            },
+        ));
+        Ok(())
     }
 }
 

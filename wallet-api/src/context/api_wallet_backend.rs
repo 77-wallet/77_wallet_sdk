@@ -5,8 +5,11 @@ use wallet_transport_backend::{
     api::BackendApi,
     request::{
         KeysInitReq,
-        api_wallet::wallet::{
-            AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+        api_wallet::{
+            address::ExpandAddressCompleteReq,
+            wallet::{
+                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            },
         },
     },
     response_vo::api_wallet::wallet::{
@@ -34,6 +37,15 @@ pub trait ApiWalletBackend: Send + Sync {
         &self,
         req: AppIdUidUsageReq,
     ) -> Result<AppIdUidUsageRes, ServiceError>;
+    async fn expand_address_complete(
+        &self,
+        req: ExpandAddressCompleteReq,
+    ) -> Result<(), ServiceError>;
+    async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), ServiceError>;
 }
 
 pub struct RealApiWalletBackend {
@@ -92,5 +104,23 @@ impl ApiWalletBackend for RealApiWalletBackend {
         req: AppIdUidUsageReq,
     ) -> Result<AppIdUidUsageRes, ServiceError> {
         self.inner.appid_uid_usage(req).await.map_err(|e| e.into())
+    }
+
+    async fn expand_address_complete(
+        &self,
+        req: ExpandAddressCompleteReq,
+    ) -> Result<(), ServiceError> {
+        self.inner.expand_address_complete(req).await.map_err(|e| e.into())
+    }
+
+    async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), ServiceError> {
+        self.inner
+            .appid_withdrawal_wallet_change(withdrawal_uid, org_app_id)
+            .await
+            .map_err(|e| e.into())
     }
 }

@@ -855,7 +855,7 @@ impl ApiWalletService {
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(wallet_password).await?;
-        ApiWalletDomain::initialize_wallet_unlock_session(wallet_password).await?;
+        self.wallet_domain().initialize_wallet_unlock_session(wallet_password).await?;
         crate::infrastructure::system_ready::mark_system_ready();
 
         Ok(())
@@ -953,7 +953,7 @@ impl ApiWalletService {
             if !has_standard_wallets && !has_api_wallets {
                 KeystoreApi::remove_verify_file(&dirs.root_dir)?;
                 DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;
-                ApiWalletDomain::clear_wallet_unlock_session().await?;
+                self.wallet_domain().clear_wallet_unlock_session().await?;
             }
 
             // tx.update_password(None).await?;

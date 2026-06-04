@@ -11,8 +11,11 @@ use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     request::{
         KeysInitReq,
-        api_wallet::wallet::{
-            AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+        api_wallet::{
+            address::ExpandAddressCompleteReq,
+            wallet::{
+                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            },
         },
     },
     response_vo::api_wallet::wallet::{
@@ -175,6 +178,21 @@ impl ApiWalletBackend for NoopApiWalletBackend {
         Err(wallet_api::error::service::ServiceError::System(
             wallet_api::error::system::SystemError::Internal("noop".to_string()),
         ))
+    }
+
+    async fn expand_address_complete(
+        &self,
+        _req: ExpandAddressCompleteReq,
+    ) -> Result<(), wallet_api::error::service::ServiceError> {
+        Ok(())
+    }
+
+    async fn appid_withdrawal_wallet_change(
+        &self,
+        _withdrawal_uid: &str,
+        _org_app_id: &str,
+    ) -> Result<(), wallet_api::error::service::ServiceError> {
+        Ok(())
     }
 }
 

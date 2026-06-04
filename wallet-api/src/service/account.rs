@@ -452,7 +452,9 @@ impl AccountService {
         new_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(old_password).await?;
-        ApiWalletDomain::clear_wallet_unlock_session().await?;
+        ApiWalletDomain::new(crate::context::CONTEXT.get().unwrap())
+            .clear_wallet_unlock_session()
+            .await?;
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let indices = AccountRepo::get_all_account_indices(pool.clone()).await?;
         let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
@@ -475,7 +477,9 @@ impl AccountService {
             .reset_api_wallet_seed(old_password, new_password)
             .await?;
         tracing::info!("reset_api_wallet_seed done");
-        ApiWalletDomain::initialize_wallet_unlock_session(new_password).await?;
+        ApiWalletDomain::new(crate::context::CONTEXT.get().unwrap())
+            .initialize_wallet_unlock_session(new_password)
+            .await?;
         tracing::info!("wallet unlock session reinitialized after password change");
 
         // 生成并存储 password_proof

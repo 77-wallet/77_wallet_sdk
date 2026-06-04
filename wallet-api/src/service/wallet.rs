@@ -788,7 +788,7 @@ impl WalletService {
         if rest_standard_uids.is_empty() && rest_api_uids.is_empty() {
             KeystoreApi::remove_verify_file(&dirs.root_dir)?;
             DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;
-            ApiWalletDomain::clear_wallet_unlock_session().await?;
+            self.api_wallet_domain().clear_wallet_unlock_session().await?;
         }
 
         let pool = core_pool.clone().into_inner();
@@ -940,7 +940,7 @@ impl WalletService {
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
-        ApiWalletDomain::clear_wallet_unlock_session().await?;
+        self.api_wallet_domain().clear_wallet_unlock_session().await?;
         KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;
 

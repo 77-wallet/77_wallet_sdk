@@ -73,7 +73,9 @@ pub(crate) async fn rotate_wallet_unlock_session_if_due() -> Result<bool, Servic
     }
 
     tracing::debug!("wallet unlock session rotation due, rotating session");
-    crate::domain::api_wallet::wallet::ApiWalletDomain::rotate_wallet_session_key().await?;
+    crate::domain::api_wallet::wallet::ApiWalletDomain::new(context)
+        .rotate_wallet_session_key()
+        .await?;
     Ok(true)
 }
 
@@ -217,8 +219,11 @@ mod tests {
     use wallet_transport_backend::{
         request::{
             KeysInitReq,
-            api_wallet::wallet::{
-                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            api_wallet::{
+                address::ExpandAddressCompleteReq,
+                wallet::{
+                    AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+                },
             },
         },
         response_vo::api_wallet::wallet::{
@@ -301,6 +306,21 @@ mod tests {
             _: AppIdUidUsageReq,
         ) -> Result<AppIdUidUsageRes, ServiceError> {
             Ok(AppIdUidUsageRes { used: false })
+        }
+
+        async fn expand_address_complete(
+            &self,
+            _: ExpandAddressCompleteReq,
+        ) -> Result<(), ServiceError> {
+            Ok(())
+        }
+
+        async fn appid_withdrawal_wallet_change(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<(), ServiceError> {
+            Ok(())
         }
     }
 
