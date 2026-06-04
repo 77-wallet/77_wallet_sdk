@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         self,
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
@@ -69,13 +70,14 @@ struct TempBuildTransaction {
 }
 
 pub struct StackService {
+    ctx: &'static Context,
     chain: TronChain,
 }
 
 impl StackService {
-    pub async fn new() -> Result<Self, crate::error::service::ServiceError> {
+    pub async fn new(ctx: &'static Context) -> Result<Self, crate::error::service::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
-        Ok(Self { chain })
+        Ok(Self { ctx, chain })
     }
 
     // 获取私钥
@@ -153,7 +155,7 @@ impl StackService {
 
         // if use permission upload backend
         if let Some(signer) = signer {
-            let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+            let pool = self.ctx.core_pool()?;
             let permission = PermissionRepo::permission_with_user(
                 &pool,
                 from,
@@ -649,7 +651,7 @@ impl StackService {
         let account = self.chain.account_info(owner).await?;
         let resource = self.chain.account_resource(owner).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         let mut res = vec![];
 
@@ -1337,7 +1339,7 @@ impl StackService {
         &self,
         address: String,
     ) -> Result<SystemEnergyResp, crate::error::service::ServiceError> {
-        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backhand = self.ctx.get_global_backend_api();
         let req = serde_json::json!({
             "address": address
         });
@@ -1352,7 +1354,7 @@ impl StackService {
         account: String,
         energy: i64,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backhand = self.ctx.get_global_backend_api();
 
         // 验证后端的配置(是否开启了能量的补偿)
         if !backhand.delegate_is_open().await? {
@@ -1580,7 +1582,7 @@ impl StackService {
         password: String,
         signer: Signer,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let to = args.get_to();
 
@@ -1639,7 +1641,7 @@ impl StackService {
         expiration: i64,
         password: String,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let to = args.get_to();
 
         let account = MultisigDomain::account_by_address(&address, true, &pool).await?;

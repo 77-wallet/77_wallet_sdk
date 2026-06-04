@@ -115,7 +115,7 @@ impl ApiResourceApplication {
         owner_address: &str,
     ) -> Result<VoterInfoResp, ServiceError> {
         ApiResourceDomain::withdraw_wallet_account_context(self.ctx, owner_address).await?;
-        StackService::new().await?.voter_info(&owner_address).await
+        StackService::new(self.ctx).await?.voter_info(&owner_address).await
     }
 
     pub(crate) async fn withdraw_wallet_votes_node_list(
@@ -125,7 +125,7 @@ impl ApiResourceApplication {
         if let Some(owner_address) = owner_address {
             ApiResourceDomain::withdraw_wallet_account_context(self.ctx, owner_address).await?;
         }
-        StackService::new().await?.vote_list(owner_address).await
+        StackService::new(self.ctx).await?.vote_list(owner_address).await
     }
 
     pub(crate) async fn withdraw_wallet_claim_votes_rewards(

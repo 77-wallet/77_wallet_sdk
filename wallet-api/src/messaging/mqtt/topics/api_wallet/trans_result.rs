@@ -53,6 +53,36 @@ pub struct AwmOrderTransResMsg {
     block_number: Option<String>,
 }
 
+fn context() -> Result<&'static crate::context::Context, crate::error::service::ServiceError> {
+    crate::get_context()
+}
+
+fn context_optional() -> Option<&'static crate::context::Context> {
+    crate::context::CONTEXT.get()
+}
+
+fn api_wallet_pool() -> Result<wallet_database::ApiWalletDbPool, crate::error::service::ServiceError>
+{
+    context()?.api_wallet_pool()
+}
+
+fn api_transaction_pool()
+-> Result<wallet_database::ApiTransactionDbPool, crate::error::service::ServiceError> {
+    context()?.api_transaction_pool()
+}
+
+fn backend_api() -> Result<
+    std::sync::Arc<wallet_transport_backend::api::BackendApi>,
+    crate::error::service::ServiceError,
+> {
+    Ok(context()?.get_global_backend_api())
+}
+
+async fn optional_handles() -> Option<std::sync::Arc<crate::handles::Handles>> {
+    let context = context_optional()?;
+    context.get_global_handles().await.upgrade()
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct WithdrawActualFeeUpdate {
     transaction_fee: Option<String>,
@@ -96,7 +126,7 @@ impl AwmOrderTransResMsg {
             return Err(e);
         }
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = backend_api()?;
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         tracing::info!(
@@ -134,14 +164,13 @@ impl AwmOrderTransResMsg {
         );
 
         if self.uid_exists().await? {
-            let api_transaction_pool =
-                crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+            let api_transaction_pool = api_transaction_pool()?;
             self.resource_result(&api_transaction_pool).await?;
         } else {
             tracing::warn!("AwmCmdRscResMsg uid not found: {}", self.uid);
         }
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = backend_api()?;
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
@@ -162,7 +191,7 @@ impl AwmOrderTransResMsg {
 
         // ✅ 强顺序屏障：先持久化“已收到 SER TxRes”事实，再进入 confirm_tx 路径
         // ⚠️ 若此处失败，必须返回错误并禁止 ack MQTT（让其重投）
-        let api_transaction_pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let api_transaction_pool = api_transaction_pool()?;
         match self.trade_type {
             1 => {
                 ApiWithdrawRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
@@ -199,7 +228,7 @@ impl AwmOrderTransResMsg {
     }
 
     async fn uid_exists(&self) -> Result<bool, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         Ok(res.is_some())
     }
@@ -437,15 +466,12 @@ impl AwmOrderTransResMsg {
     }
 
     async fn trigger_collect_shadow(&self, origin_trade_no: &str) {
-        let Some(context) = crate::context::CONTEXT.get() else {
+        let Some(handles) = optional_handles().await else {
             tracing::debug!(
                 resource_trade_no = %self.trade_no,
                 origin_trade_no = %origin_trade_no,
-                "Skip collect shadow trigger: global context is not initialized"
+                "Skip collect shadow trigger: global handles are not available"
             );
-            return;
-        };
-        let Some(handles) = context.get_global_handles().await.upgrade() else {
             return;
         };
         let collect_handle = handles.get_global_processed_collect_tx_handle();
@@ -463,15 +489,12 @@ impl AwmOrderTransResMsg {
     }
 
     async fn trigger_withdraw_shadow(&self, origin_trade_no: &str) {
-        let Some(context) = crate::context::CONTEXT.get() else {
+        let Some(handles) = optional_handles().await else {
             tracing::debug!(
                 resource_trade_no = %self.trade_no,
                 origin_trade_no = %origin_trade_no,
-                "Skip withdraw shadow trigger: global context is not initialized"
+                "Skip withdraw shadow trigger: global handles are not available"
             );
-            return;
-        };
-        let Some(handles) = context.get_global_handles().await.upgrade() else {
             return;
         };
         let withdraw_handle = handles.get_global_processed_withdraw_tx_handle();
@@ -489,14 +512,11 @@ impl AwmOrderTransResMsg {
     }
 
     async fn trigger_resource_operation_shadow(&self) {
-        let Some(context) = crate::context::CONTEXT.get() else {
+        let Some(handles) = optional_handles().await else {
             tracing::debug!(
                 resource_trade_no = %self.trade_no,
-                "Skip resource operation shadow trigger: global context is not initialized"
+                "Skip resource operation shadow trigger: global handles are not available"
             );
-            return;
-        };
-        let Some(handles) = context.get_global_handles().await.upgrade() else {
             return;
         };
         if let Err(e) = handles.trigger_resource_operation(&self.trade_no).await {
