@@ -53,7 +53,7 @@ impl TaskTrait for InitializationTask {
     async fn execute(&self, _id: &str) -> Result<(), crate::error::service::ServiceError> {
         match self {
             InitializationTask::PullAnnouncement => {
-                let announcement_service = AnnouncementService::new();
+                let announcement_service = AnnouncementService::new(crate::get_context()?);
                 let res = announcement_service.pull_announcement().await;
 
                 res?;

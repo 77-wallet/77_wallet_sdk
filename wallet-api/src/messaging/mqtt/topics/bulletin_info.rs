@@ -100,6 +100,7 @@ impl BulletinMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let ctx = crate::get_context()?;
         let Self { id, operation, .. } = self;
         if let Some(operation) = operation {
             match operation {
@@ -114,10 +115,10 @@ impl BulletinMsg {
                         status: 0,
                         send_time,
                     };
-                    AnnouncementService::new().add(vec![input]).await?;
+                    AnnouncementService::new(ctx).add(vec![input]).await?;
                 }
                 Operation::Delete => {
-                    AnnouncementService::new().physical_delete(id).await?;
+                    AnnouncementService::new(ctx).physical_delete(id).await?;
                 }
             }
         }

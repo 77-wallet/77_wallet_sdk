@@ -337,7 +337,7 @@ impl AcctChange {
             Some(transaction_hash),
         )?;
 
-        let system_notification_service = SystemNotificationService::new();
+        let system_notification_service = SystemNotificationService::new(crate::get_context()?);
 
         system_notification_service.add_multi_system_notification_with_key_value(&[req]).await?;
         Ok(())

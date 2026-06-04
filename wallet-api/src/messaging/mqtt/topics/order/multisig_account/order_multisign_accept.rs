@@ -221,7 +221,7 @@ impl OrderMultiSignAccept {
             multisig_account_id,
             NotificationType::DeployInvite,
         );
-        let system_notification_service = SystemNotificationService::new();
+        let system_notification_service = SystemNotificationService::new(crate::get_context()?);
 
         system_notification_service.add_system_notification(msg_id, notification, 0).await?;
         Ok(())
