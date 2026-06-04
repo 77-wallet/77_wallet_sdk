@@ -452,10 +452,10 @@ impl AccountService {
         new_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(old_password).await?;
-        ApiWalletDomain::new(crate::context::CONTEXT.get().unwrap())
-            .clear_wallet_unlock_session()
-            .await?;
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let ctx = crate::context::get_context()?;
+        let api_wallet_domain = ApiWalletDomain::new(ctx);
+        api_wallet_domain.clear_wallet_unlock_session().await?;
+        let pool = ctx.core_pool()?;
         let indices = AccountRepo::get_all_account_indices(pool.clone()).await?;
         let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
 
@@ -473,17 +473,13 @@ impl AccountService {
             }
         }
         tracing::info!("set_all_password done");
-        ApiWalletDomain::new(crate::context::CONTEXT.get().unwrap())
-            .reset_api_wallet_seed(old_password, new_password)
-            .await?;
+        api_wallet_domain.reset_api_wallet_seed(old_password, new_password).await?;
         tracing::info!("reset_api_wallet_seed done");
-        ApiWalletDomain::new(crate::context::CONTEXT.get().unwrap())
-            .initialize_wallet_unlock_session(new_password)
-            .await?;
+        api_wallet_domain.initialize_wallet_unlock_session(new_password).await?;
         tracing::info!("wallet unlock session reinitialized after password change");
 
         // 生成并存储 password_proof
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = ctx.get_sn();
         let proof =
             crate::domain::wallet::WalletDomain::generate_password_proof(new_password).await?;
         DeviceRepo::update_password_proof(pool.clone(), sn, Some(&proof)).await?;

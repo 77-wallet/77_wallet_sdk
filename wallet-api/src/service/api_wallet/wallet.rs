@@ -833,10 +833,6 @@ impl ApiWalletService {
         self.wallet_domain().unbind_uid(withdrawal_uid).await?;
 
         todo!();
-        // let backend = crate::Context::get_global_backend_api()?;
-        // backend
-        //     .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
-        //     .await?;
         Ok(())
     }
 
@@ -992,16 +988,6 @@ impl ApiWalletService {
         }
         Ok(())
     }
-
-    // pub async fn appid_withdrawal_wallet_change(
-    //     &self,
-    //     withdrawal_uid: &str,
-    //     org_app_id: &str,
-    // ) -> Result<(), crate::error::service::ServiceError> {
-    //     let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-    //     backend.appid_withdrawal_wallet_change(withdrawal_uid, org_app_id).await?;
-    //     Ok(())
-    // }
 
     pub async fn change_withdrawal_wallet(
         &self,
