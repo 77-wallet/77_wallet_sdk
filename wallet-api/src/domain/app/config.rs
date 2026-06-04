@@ -39,9 +39,10 @@ impl ConfigDomain {
     }
 
     pub async fn get_config_min_value(
+        ctx: &Context,
         symbol: &str,
     ) -> Result<Option<f64>, crate::error::service::ServiceError> {
-        Self::get_config_min_value_with_ctx(crate::get_context()?, symbol).await
+        Self::get_config_min_value_with_ctx(ctx, symbol).await
     }
 
     /// fetch the minimum filtering amount configuration to the backend each time a wallet is created.
@@ -65,8 +66,11 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn fetch_min_config(sn: &str) -> Result<(), crate::error::service::ServiceError> {
-        Self::fetch_min_config_with_ctx(crate::get_context()?, sn).await
+    pub async fn fetch_min_config(
+        ctx: &Context,
+        sn: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::fetch_min_config_with_ctx(ctx, sn).await
     }
 
     pub async fn set_config_with_ctx(
@@ -82,18 +86,20 @@ impl ConfigDomain {
     }
 
     pub async fn set_config(
+        ctx: &Context,
         key: &str,
         value: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Self::set_config_with_ctx(crate::get_context()?, key, value).await
+        Self::set_config_with_ctx(ctx, key, value).await
     }
 
     pub async fn set_official_website(
+        ctx: &Context,
         website: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
         if let Some(official_website) = website {
             let config = OfficialWebsite { url: official_website.clone() };
-            ConfigDomain::set_config(OFFICIAL_WEBSITE, &config.to_json_str()?).await?;
+            ConfigDomain::set_config(ctx, OFFICIAL_WEBSITE, &config.to_json_str()?).await?;
             let mut config = crate::app_state::APP_STATE.write().await;
             config.set_official_website(Some(official_website));
         }
@@ -102,16 +108,18 @@ impl ConfigDomain {
     }
 
     pub async fn set_invite_code(
+        ctx: &Context,
         status: Option<bool>,
         code: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let config = InviteCode { code, status };
-        ConfigDomain::set_config(INVITE_CODE, &config.to_json_str()?).await?;
+        ConfigDomain::set_config(ctx, INVITE_CODE, &config.to_json_str()?).await?;
 
         Ok(())
     }
 
     pub async fn set_currency(
+        ctx: &Context,
         currency: Option<Currency>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut config = crate::app_state::APP_STATE.write().await;
@@ -124,19 +132,20 @@ impl ConfigDomain {
             Currency::default()
         };
         drop(config);
-        ConfigDomain::set_config(CURRENCY, &currency.to_json_str()?).await?;
+        ConfigDomain::set_config(ctx, CURRENCY, &currency.to_json_str()?).await?;
 
         Ok(())
     }
 
     pub async fn set_app_download_qr_code_url(
+        ctx: &Context,
         app_download_qr_code_url: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         // let tx = &mut self.repo;
         let config = wallet_database::entities::config::AppInstallDownload {
             url: app_download_qr_code_url.to_string(),
         };
-        ConfigDomain::set_config(APP_DOWNLOAD_QR_CODE_URL, &config.to_json_str()?).await?;
+        ConfigDomain::set_config(ctx, APP_DOWNLOAD_QR_CODE_URL, &config.to_json_str()?).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
         config.set_app_download_qr_code_url(Some(app_download_qr_code_url.to_string()));
         Ok(())
@@ -158,9 +167,10 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn init_app_install_download_url() -> Result<(), crate::error::service::ServiceError>
-    {
-        Self::init_app_install_download_url_with_ctx(crate::get_context()?).await
+    pub async fn init_app_install_download_url(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::init_app_install_download_url_with_ctx(ctx).await
     }
 
     pub async fn init_official_website_with_ctx(
@@ -177,8 +187,10 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn init_official_website() -> Result<(), crate::error::service::ServiceError> {
-        Self::init_official_website_with_ctx(crate::get_context()?).await
+    pub async fn init_official_website(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::init_official_website_with_ctx(ctx).await
     }
 
     pub async fn init_currency_with_ctx(
@@ -191,13 +203,15 @@ impl ConfigDomain {
             let currency = wallet_database::entities::config::Currency::try_from(currency.value)?;
             config.set_fiat_from_str(&currency.currency);
         } else {
-            ConfigDomain::set_currency(None).await?;
+            ConfigDomain::set_currency(ctx, None).await?;
         };
         Ok(())
     }
 
-    pub async fn init_currency() -> Result<(), crate::error::service::ServiceError> {
-        Self::init_currency_with_ctx(crate::get_context()?).await
+    pub async fn init_currency(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::init_currency_with_ctx(ctx).await
     }
 
     pub async fn init_language_with_ctx(
@@ -212,15 +226,17 @@ impl ConfigDomain {
         } else {
             let l = config.language();
             let config = wallet_database::entities::config::Language::new(l);
-            ConfigDomain::set_config(LANGUAGE, &config.to_json_str()?).await?;
+            ConfigDomain::set_config(ctx, LANGUAGE, &config.to_json_str()?).await?;
         };
         drop(config);
 
         Ok(())
     }
 
-    pub async fn init_language() -> Result<(), crate::error::service::ServiceError> {
-        Self::init_language_with_ctx(crate::get_context()?).await
+    pub async fn init_language(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::init_language_with_ctx(ctx).await
     }
 
     pub(crate) async fn get_currency_with_ctx(
@@ -236,8 +252,10 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_currency() -> Result<String, crate::error::service::ServiceError> {
-        Self::get_currency_with_ctx(crate::get_context()?).await
+    pub(crate) async fn get_currency(
+        ctx: &Context,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        Self::get_currency_with_ctx(ctx).await
     }
 
     pub(crate) async fn get_invite_code_with_ctx(
@@ -255,16 +273,18 @@ impl ConfigDomain {
             .transpose()
     }
 
-    pub(crate) async fn get_invite_code()
-    -> Result<Option<InviteCode>, crate::error::service::ServiceError> {
-        Self::get_invite_code_with_ctx(crate::get_context()?).await
+    pub(crate) async fn get_invite_code(
+        ctx: &Context,
+    ) -> Result<Option<InviteCode>, crate::error::service::ServiceError> {
+        Self::get_invite_code_with_ctx(ctx).await
     }
 
     pub async fn set_keys_reset_status(
+        ctx: &Context,
         status: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let config = KeysResetStatus { status };
-        ConfigDomain::set_config(KEYS_RESET_STATUS, &config.to_json_str()?).await?;
+        ConfigDomain::set_config(ctx, KEYS_RESET_STATUS, &config.to_json_str()?).await?;
 
         Ok(())
     }
@@ -308,8 +328,10 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_keys_reset_epoch() -> Result<u64, crate::error::service::ServiceError> {
-        Self::get_keys_reset_epoch_with_ctx(crate::get_context()?).await
+    pub(crate) async fn get_keys_reset_epoch(
+        ctx: &Context,
+    ) -> Result<u64, crate::error::service::ServiceError> {
+        Self::get_keys_reset_epoch_with_ctx(ctx).await
     }
 
     pub(crate) async fn bump_keys_reset_epoch_with_ctx(
@@ -318,7 +340,7 @@ impl ConfigDomain {
         let pool = ctx.core_pool()?;
 
         // 先获取当前epoch
-        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let current_epoch = ConfigDomain::get_keys_reset_epoch(ctx).await?;
 
         // 递增epoch
         let new_epoch = current_epoch + 1;
@@ -329,15 +351,17 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub(crate) async fn bump_keys_reset_epoch() -> Result<(), crate::error::service::ServiceError> {
-        Self::bump_keys_reset_epoch_with_ctx(crate::get_context()?).await
+    pub(crate) async fn bump_keys_reset_epoch(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::bump_keys_reset_epoch_with_ctx(ctx).await
     }
 
     pub(crate) async fn check_epoch_validity(
         task_epoch: u64,
     ) -> Result<bool, crate::error::service::ServiceError> {
         // 获取当前epoch
-        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let current_epoch = ConfigDomain::get_keys_reset_epoch(ctx).await?;
 
         // 检查任务epoch是否与当前epoch匹配
         Ok(task_epoch == current_epoch)
@@ -428,11 +452,14 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn init_block_browser_url_list() -> Result<(), crate::error::service::ServiceError> {
-        Self::init_block_browser_url_list_with_ctx(crate::get_context()?).await
+    pub async fn init_block_browser_url_list(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::init_block_browser_url_list_with_ctx(ctx).await
     }
 
     pub(crate) async fn set_block_browser_url(
+        ctx: &Context,
         list: &[ChainUrlInfo],
     ) -> Result<(), crate::error::service::ServiceError> {
         let block_browser_url_list = list
@@ -447,20 +474,20 @@ impl ConfigDomain {
             })
             .collect();
         let value = wallet_utils::serde_func::serde_to_string(&block_browser_url_list)?;
-        ConfigDomain::set_config(BLOCK_BROWSER_URL_LIST, &value).await?;
+        ConfigDomain::set_config(ctx, BLOCK_BROWSER_URL_LIST, &value).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
         config.set_block_browser_url(block_browser_url_list);
         Ok(())
     }
 
-    pub async fn init_url() -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_url(ctx: &Context) -> Result<(), crate::error::service::ServiceError> {
         // Self::init_mqtt_url().await?;
         // crate::WalletManager::init_mqtt().await?;
 
-        Self::init_official_website().await?;
-        Self::init_block_browser_url_list().await?;
-        Self::init_app_install_download_url().await?;
-        Self::init_language().await?;
+        Self::init_official_website(ctx).await?;
+        Self::init_block_browser_url_list(ctx).await?;
+        Self::init_app_install_download_url(ctx).await?;
+        Self::init_language(ctx).await?;
 
         Ok(())
     }
@@ -475,7 +502,7 @@ impl ConfigDomain {
 
         if let Ok(mqtt_url) = backend_api.mqtt_init().await {
             let config = MqttUrl { url: mqtt_url.clone() };
-            ConfigDomain::set_config(MQTT_URL, &config.to_json_str()?).await?;
+            ConfigDomain::set_config(ctx, MQTT_URL, &config.to_json_str()?).await?;
             return Ok(Some(config.url_with_protocol()));
         }
 
@@ -487,28 +514,38 @@ impl ConfigDomain {
         Ok(uri)
     }
 
-    pub async fn get_mqtt_uri() -> Result<Option<String>, crate::error::service::ServiceError> {
-        Self::get_mqtt_uri_with_ctx(crate::get_context()?).await
+    pub async fn get_mqtt_uri(
+        ctx: &Context,
+    ) -> Result<Option<String>, crate::error::service::ServiceError> {
+        Self::get_mqtt_uri_with_ctx(ctx).await
     }
 
-    pub(crate) async fn get_keystore_kdf_algorithm()
+    pub(crate) async fn get_keystore_kdf_algorithm(
+        ctx: &Context,
+    )
     -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
-        Self::get_keystore_kdf_algorithm_with_ctx(crate::get_context()?).await
+        Self::get_keystore_kdf_algorithm_with_ctx(ctx).await
     }
 
-    pub(crate) async fn get_wallet_tree_strategy()
+    pub(crate) async fn get_wallet_tree_strategy(
+        ctx: &Context,
+    )
     -> Result<wallet_tree::WalletTreeStrategy, crate::error::service::ServiceError> {
-        Self::get_wallet_tree_strategy_with_ctx(crate::get_context()?).await
+        Self::get_wallet_tree_strategy_with_ctx(ctx).await
     }
 
-    pub(crate) async fn get_app_version() -> Result<AppVersion, crate::error::service::ServiceError>
+    pub(crate) async fn get_app_version(
+        ctx: &Context,
+    ) -> Result<AppVersion, crate::error::service::ServiceError>
     {
-        Self::get_app_version_with_ctx(crate::get_context()?).await
+        Self::get_app_version_with_ctx(ctx).await
     }
 
-    pub(crate) async fn get_keys_reset_status()
+    pub(crate) async fn get_keys_reset_status(
+        ctx: &Context,
+    )
     -> Result<Option<KeysResetStatus>, crate::error::service::ServiceError> {
-        Self::get_keys_reset_status_with_ctx(crate::get_context()?).await
+        Self::get_keys_reset_status_with_ctx(ctx).await
     }
 }
 

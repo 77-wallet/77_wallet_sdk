@@ -294,6 +294,7 @@ impl ChainDomain {
     }
 
     pub(crate) async fn init_chains_assets(
+        ctx: &'static crate::context::Context,
         coins: &[CoinEntity],
         req: &mut TokenQueryPriceReq,
         address_batch_init_task_data: &mut AddressBatchInitReq,
@@ -326,6 +327,7 @@ impl ChainDomain {
 
                 let (account_address, derivation_path, address_init_req) =
                     AccountDomain::create_account_v2(
+                        ctx,
                         seed,
                         &instance,
                         derivation_path,
@@ -353,6 +355,7 @@ impl ChainDomain {
                     .await?,
                 );
                 AssetsDomain::init_default_assets(
+                    ctx,
                     coins,
                     &account_address.address,
                     &code.to_string(),

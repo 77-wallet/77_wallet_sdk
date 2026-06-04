@@ -58,8 +58,9 @@ impl CoinService {
         let account_domain = AccountDomain::new();
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
-        let accounts =
-            account_domain.get_addresses(address, account_id, chain_codes, is_multisig).await?;
+        let accounts = account_domain
+            .get_addresses(address, account_id, chain_codes, is_multisig, &core_pool)
+            .await?;
 
         let addresses =
             accounts.into_iter().map(|address| address.address).collect::<Vec<String>>();
@@ -327,8 +328,10 @@ impl CoinService {
             }
         } else {
             let chain_instance =
-                domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
-                    .await?;
+                domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
+                    &self.ctx, chain_code,
+                )
+                .await?;
 
             let decimals = chain_instance.decimals(&token_address).await.map_err(|e| match e {
                 wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
@@ -401,7 +404,8 @@ impl CoinService {
 
         let _ = ChainDomain::get_node(chain_code).await?;
 
-        let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let chain_instance =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, chain_code).await?;
 
         let coin = CoinRepo::coin_by_chain_token_key_opt(
             chain_code,
@@ -467,7 +471,13 @@ impl CoinService {
         };
 
         let mut account_addresses = account_domain
-            .get_addresses(address, account_id, vec![chain_code.to_string()], Some(is_multisig))
+            .get_addresses(
+                address,
+                account_id,
+                vec![chain_code.to_string()],
+                Some(is_multisig),
+                &core_pool,
+            )
             .await?;
 
         tracing::debug!("[customize_coin] account_addresses: {:?}", account_addresses);

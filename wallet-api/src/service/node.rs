@@ -112,7 +112,8 @@ impl NodeService {
             let name = node.name.clone();
             let node_id = node.node_id.clone();
             let chain_instance =
-                domain::chain::adapter::ChainAdapterFactory::get_node_transaction_adapter(
+                domain::chain::adapter::ChainAdapterFactory::get_node_transaction_adapter_with_ctx(
+                    &self.ctx,
                     chain_code,
                     &node.rpc_url,
                     &node.network,

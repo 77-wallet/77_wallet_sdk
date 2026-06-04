@@ -37,10 +37,6 @@ impl NodeDomain {
     }
 
     pub fn get_env_network_name() -> String {
-        if let Ok(ctx) = crate::context::get_context() {
-            return ctx.chain_network().as_str().to_owned();
-        }
-
         let mut env = "mainnet".to_owned();
         #[cfg(any(feature = "test", feature = "dev"))]
         {

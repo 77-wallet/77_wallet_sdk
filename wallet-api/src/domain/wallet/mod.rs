@@ -44,19 +44,11 @@ impl WalletDomain {
         }
     }
 
-    pub(crate) async fn validate_password(password: &str) -> Result<(), ServiceError> {
-        Self::validate_password_with_context(crate::get_context()?, password).await
-    }
-
     pub(crate) async fn validate_password_with_context(
         ctx: &'static Context,
         password: &str,
     ) -> Result<(), ServiceError> {
         WalletApplication::validate_password(ctx, password).await
-    }
-
-    pub(crate) async fn upgrade_algorithm(password: &str) -> Result<(), ServiceError> {
-        Self::upgrade_algorithm_with_context(crate::get_context()?, password).await
     }
 
     pub(crate) async fn upgrade_algorithm_with_context(
@@ -80,10 +72,6 @@ impl WalletDomain {
         address: &str,
     ) -> Result<std::collections::HashSet<u32>, ServiceError> {
         WalletApplication::restart_existing_wallet(core_pool, address).await
-    }
-
-    pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, ServiceError> {
-        Self::check_api_wallet_exist_with_context(crate::get_context()?, address).await
     }
 
     pub(crate) async fn check_api_wallet_exist_with_context(

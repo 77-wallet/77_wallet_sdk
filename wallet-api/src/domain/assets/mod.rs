@@ -1,5 +1,6 @@
 use super::chain::adapter::ChainAdapterFactory;
 use crate::{
+    context::Context,
     domain::coin::CoinDomain,
     error::service::ServiceError,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
@@ -207,11 +208,11 @@ impl AssetsDomain {
 
     // 根据钱包地址来同步资产余额( 目前不需要在进行使用 )
     pub async fn sync_assets_by_wallet(
+        ctx: &Context,
         wallet_address: String,
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
 
         let list =
@@ -232,22 +233,22 @@ impl AssetsDomain {
     }
 
     pub async fn sync_assets_by_addr_chain(
+        ctx: &Context,
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
 
         Self::do_async_balance(pool, addr, chain_code, SyncFilter::Symbol(symbol)).await
     }
 
     pub async fn sync_assets_by_addr_chain_token(
+        ctx: &Context,
         addr: Vec<String>,
         chain_code: Option<String>,
         token_address: AssetTokenKey,
     ) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
 
         Self::do_async_balance(pool, addr, chain_code, SyncFilter::Token(token_address)).await
@@ -255,11 +256,11 @@ impl AssetsDomain {
 
     // 从后端同步余额(根据地址-链)
     pub async fn async_balance_from_backend_addr(
+        ctx: &Context,
         addr: String,
         chain_code: Option<String>,
     ) -> Result<(), ServiceError> {
         // 单个地址处理
-        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
 
         let backhand = ctx.get_global_backend_api();
@@ -299,10 +300,10 @@ impl AssetsDomain {
 
     // 从后端同步余额(根据钱包-账号)
     pub async fn async_balance_from_backend_wallet(
+        ctx: &Context,
         wallet_address: String,
         account_id: Option<u32>,
     ) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
         let wallet = WalletRepo::detail(pool.clone(), &wallet_address).await?;
 
@@ -385,12 +386,12 @@ impl AssetsDomain {
     }
 
     pub(crate) async fn init_default_assets(
+        ctx: &Context,
         coins: &[CoinEntity],
         address: &str,
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
     ) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
@@ -417,10 +418,10 @@ impl AssetsDomain {
     // 根据地址和链初始化多签账号里面的资产
     // address :multisig account address ,
     pub async fn init_default_multisig_assets(
+        ctx: &Context,
         address: String,
         chain_code: String,
     ) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
         let default_coins =
             CoinRepo::list_v2(&pool, None, Some(chain_code.clone()), Some(1)).await?;
@@ -445,6 +446,7 @@ impl AssetsDomain {
         let mut seen = std::collections::HashSet::new();
         for token_key in token_keys.into_iter().filter(|key| seen.insert(key.clone())) {
             AssetsDomain::sync_assets_by_addr_chain_token(
+                ctx,
                 vec![address.clone()],
                 Some(chain_code.clone()),
                 token_key,
@@ -456,14 +458,14 @@ impl AssetsDomain {
 
     // swap 增加本地不存在的资产
     pub async fn swap_sync_assets(
+        ctx: &Context,
         token: SwapTokenInfo,
         recipient: String,
         chain_code: String,
     ) -> Result<(), ServiceError> {
         // notes 不能更新币价
-        let ctx = crate::get_context()?;
         let pool = ctx.core_pool()?;
-        let core_pool = ctx.core_pool()?;
+        let core_pool = pool.clone();
         // let time = wallet_utils::time::now();
         let coin = CoinRepo::coin_by_chain_token_key(
             &chain_code,

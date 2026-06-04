@@ -106,7 +106,9 @@ impl MultisigTransactionService {
 
         let main_coin = ChainTransDomain::main_coin(&assets.chain_code).await?;
 
-        let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &account.chain_code)
+                .await?;
         let asset_token = assets.token_key().to_chain_token_option();
 
         let res = adapter
@@ -197,7 +199,9 @@ impl MultisigTransactionService {
             "initiator key loaded for multisig create"
         );
 
-        let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &account.chain_code)
+                .await?;
         tracing::info!(
             msq_step = "build_multisig_with_account_start",
             from = %req.from,
@@ -306,7 +310,8 @@ impl MultisigTransactionService {
             ));
         };
 
-        let adapter = ChainAdapterFactory::get_multisig_adapter(&req.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &req.chain_code).await?;
         tracing::info!(
             msq_step = "build_multisig_with_permission_start",
             from = %req.from,
@@ -486,7 +491,9 @@ impl MultisigTransactionService {
         let multisig_account =
             MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;
 
-        let adapter = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &queue.chain_code)
+                .await?;
 
         let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
 
@@ -569,7 +576,9 @@ impl MultisigTransactionService {
         let signs = MultisigQueueRepo::get_signed_list(&core_pool, queue_id).await?;
         let sign_list = signs.get_order_sign_str();
 
-        let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
+        let instance =
+            ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &queue.chain_code)
+                .await?;
         let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
 
         let backend = self.ctx.get_global_sqlite_pool()?;
@@ -647,7 +656,9 @@ impl MultisigTransactionService {
         let mut signed_num = 0;
 
         // 批量执行签名
-        let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
+        let instance =
+            ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &queue.chain_code)
+                .await?;
         for i in 0..sign_addr.len() {
             let address = sign_addr.get(i).unwrap();
             // filter already signed
@@ -672,7 +683,8 @@ impl MultisigTransactionService {
                     address.clone(),
                     queue.chain_code.clone(),
                 );
-                domain::bill::BillDomain::create_bill(tx).await?;
+                let pool = self.ctx.core_pool()?;
+                domain::bill::BillDomain::create_bill(&pool, tx).await?;
             }
 
             signed_num += 1;
@@ -746,7 +758,8 @@ impl MultisigTransactionService {
                     address.clone(),
                     queue.chain_code.clone(),
                 );
-                domain::bill::BillDomain::create_bill(tx).await?;
+                let pool = self.ctx.core_pool()?;
+                domain::bill::BillDomain::create_bill(&pool, tx).await?;
             }
         }
 
@@ -775,7 +788,9 @@ impl MultisigTransactionService {
 
         let bill_kind = BillKind::try_from(queue.transfer_type)?;
 
-        let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
+        let instance =
+            ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &queue.chain_code)
+                .await?;
         let tx_resp = match instance {
             MultisigAdapter::Ethereum(chain) => {
                 let multisig_account =
@@ -794,6 +809,7 @@ impl MultisigTransactionService {
                 )?;
 
                 let key = crate::domain::account::open_subpk_with_password(
+                    self.ctx,
                     &queue.chain_code,
                     &multisig_account.initiator_addr,
                     &password,
@@ -856,6 +872,7 @@ impl MultisigTransactionService {
                     MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;
 
                 let key = crate::domain::account::open_subpk_with_password(
+                    self.ctx,
                     &queue.chain_code,
                     &multisig_account.initiator_addr,
                     &password,
@@ -1017,7 +1034,8 @@ impl MultisigTransactionService {
         .with_resource_consume(&tx_resp.resource_consume()?)
         .with_transaction_fee(&tx_resp.fee);
 
-        domain::bill::BillDomain::create_bill(tx).await?;
+        let pool = self.ctx.core_pool()?;
+        domain::bill::BillDomain::create_bill(&pool, tx).await?;
 
         // sync status and tx_hash
         MultisigQueueRepo::update_status_and_hash(

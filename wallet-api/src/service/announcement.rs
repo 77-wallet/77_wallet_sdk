@@ -25,7 +25,7 @@ impl AnnouncementService {
 
     pub async fn pull_announcement(self) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = self.ctx.core_pool()?;
-        AnnouncementDomain::pull_announcement(&core_pool).await?;
+        AnnouncementDomain::pull_announcement(&core_pool, self.ctx).await?;
         Ok(())
     }
 

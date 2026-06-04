@@ -170,6 +170,7 @@ impl AccountService {
         let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
 
         ChainDomain::init_chains_assets(
+            self.ctx,
             &default_coins_list,
             &mut req,
             &mut address_batch_init_task_data,
@@ -461,10 +462,12 @@ impl AccountService {
         let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
 
         for wallet in wallet_list {
-            AccountDomain::set_root_password(&wallet.address, old_password, new_password).await?;
+            AccountDomain::set_root_password(self.ctx, &wallet.address, old_password, new_password)
+                .await?;
             for index in &indices {
                 let account_index_map = AccountIndexMap::from_account_id(*index)?;
                 AccountDomain::set_account_password(
+                    self.ctx,
                     &wallet.address,
                     &account_index_map,
                     old_password,
@@ -567,6 +570,7 @@ impl AccountService {
         let account_index_map = AccountIndexMap::from_account_id(account_id)?;
 
         let data = domain::account::open_accounts_pk_with_password(
+            self.ctx,
             &account_index_map,
             wallet_address,
             password,

@@ -573,7 +573,7 @@ impl MultisigAccountService {
             // 波场的上报原始的权限
             if multisig_account.chain_code == chain_code::TRON {
                 // 从脸上获取当前账号的情况
-                let chain = ChainAdapterFactory::get_tron_adapter().await?;
+                let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
                 let account = chain.account_info(&multisig_account.address).await?;
 
                 let users = account.all_actives_user();
@@ -585,8 +585,11 @@ impl MultisigAccountService {
             let member =
                 MultisigMemberRepo::list_by_account_id(&core_pool, &multisig_account.id).await?;
 
-            let multisig_adapter =
-                ChainAdapterFactory::get_multisig_adapter(&multisig_account.chain_code).await?;
+            let multisig_adapter = ChainAdapterFactory::get_multisig_adapter_with_ctx(
+                &self.ctx,
+                &multisig_account.chain_code,
+            )
+            .await?;
 
             // 有交易hash验证是否成功，如果已经成功了不在重复部署
             if !multisig_account.deploy_hash.is_empty() {
@@ -626,6 +629,7 @@ impl MultisigAccountService {
 
             // 初始化默认资产资产(发起方如果是波场的情况单独处理,将这个地址的其他资产也同步为多签的)
             AssetsDomain::init_default_multisig_assets(
+                self.ctx,
                 resp.multisig_address.clone(),
                 multisig_account.chain_code.clone(),
             )
@@ -683,7 +687,9 @@ impl MultisigAccountService {
         payer: transaction::ServiceFeePayer,
         password: &str,
     ) -> Result<(String, String), crate::error::service::ServiceError> {
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&payer.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &payer.chain_code)
+                .await?;
 
         // 如果交易hash存在，验证交易是否成功了避免重复
         if !multisig_account.fee_hash.is_empty() {
@@ -797,6 +803,7 @@ impl MultisigAccountService {
     ) -> Result<String, crate::error::service::ServiceError> {
         // 1.执行链上部署交易
         let key = domain::account::open_subpk_with_password(
+            self.ctx,
             &account.chain_code,
             &account.initiator_addr,
             password,
@@ -818,7 +825,8 @@ impl MultisigAccountService {
                 main_coin.symbol,
             );
             new_bill.resource_consume = bill_consumer;
-            crate::domain::bill::BillDomain::create_bill(new_bill).await?;
+            let pool = self.ctx.core_pool()?;
+            crate::domain::bill::BillDomain::create_bill(&pool, new_bill).await?;
         }
 
         // 3.同步后端数据(used to sync other member update data)
@@ -861,7 +869,9 @@ impl MultisigAccountService {
         let main_coin =
             domain::chain::transaction::ChainTransDomain::main_coin(&account.chain_code).await?;
 
-        let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &account.chain_code)
+                .await?;
 
         let core_pool = self.ctx.core_pool()?;
         let member = MultisigMemberRepo::list_by_account_id(&core_pool, account_id).await?;
@@ -884,8 +894,11 @@ impl MultisigAccountService {
     ) -> Result<AddressStatus, crate::error::service::ServiceError> {
         let core_pool = self.ctx.core_pool()?;
         let adapter =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(&chain_code)
-                .await?;
+            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
+                &self.ctx,
+                &chain_code,
+            )
+            .await?;
 
         let mut status = AddressStatus { address_status: 0 };
 

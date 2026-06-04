@@ -45,7 +45,7 @@ pub struct PermissionService {
 
 impl PermissionService {
     pub async fn new(ctx: &'static Context) -> Result<Self, crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
         Ok(Self { ctx, chain })
     }
 
@@ -103,7 +103,7 @@ impl PermissionService {
         ));
         FrontendNotifyEvent::new(data).send().await?;
 
-        let key = open_subpk_with_password(chain_code::TRON, from, password).await?;
+        let key = open_subpk_with_password(self.ctx, chain_code::TRON, from, password).await?;
         let hash = self.chain.exec_transaction_v1(resp, key).await?;
 
         let transaction_fee = consumer.transaction_fee();
@@ -120,7 +120,8 @@ impl PermissionService {
             transaction_fee,
             None::<String>,
         );
-        domain::bill::BillDomain::create_bill(entity).await?;
+        let pool = self.ctx.core_pool()?;
+        domain::bill::BillDomain::create_bill(&pool, entity).await?;
 
         Ok(hash)
     }

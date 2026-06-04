@@ -206,7 +206,8 @@ impl ChainTransDomain {
             new_bill.signer = users;
         }
 
-        BillDomain::create_bill(new_bill).await?;
+        let core_pool = crate::get_context()?.core_pool()?;
+        BillDomain::create_bill(&core_pool, new_bill).await?;
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::get_context()?.get_global_backend_api();
@@ -454,9 +455,11 @@ impl ChainTransDomain {
         tracing::info!("get_key signer: {:?}", signer);
         let address =
             if let Some(signer) = signer { signer.address.clone() } else { from.to_string() };
+        let ctx = crate::get_context()?;
 
-        let key = crate::domain::account::open_subpk_with_password(chain_code, &address, password)
-            .await?;
+        let key =
+            crate::domain::account::open_subpk_with_password(ctx, chain_code, &address, password)
+                .await?;
 
         Ok(key)
     }

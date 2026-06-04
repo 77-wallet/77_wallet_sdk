@@ -12,6 +12,7 @@ use wallet_types::chain::{
 
 use super::app::config::ConfigDomain;
 use crate::{
+    context::Context,
     error::{business::BusinessError, service::ServiceError, system::SystemError},
     response_vo::standard_wallet::account::CreateAccountRes,
     service::asset::AddressChainCode,
@@ -64,9 +65,8 @@ impl AccountDomain {
         account_id: Option<u32>,
         chain_codes: Vec<String>,
         is_multisig: Option<bool>,
+        core_pool: &wallet_database::CoreDbPool,
     ) -> Result<Vec<AddressChainCode>, ServiceError> {
-        let ctx = crate::get_context()?;
-        let core_pool = ctx.core_pool()?;
         let mut account_addresses = Vec::new();
 
         if let Some(is_multisig) = is_multisig {
@@ -90,7 +90,7 @@ impl AccountDomain {
                 // 获取钱包下的这个账户的所有地址
                 let accounts =
                     AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
-                        core_pool,
+                        core_pool.clone(),
                         Some(address),
                         account_id,
                         chain_codes,
@@ -113,7 +113,7 @@ impl AccountDomain {
             // 获取钱包下的这个账户的所有地址
             let accounts =
                 AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
-                    core_pool,
+                    core_pool.clone(),
                     Some(address),
                     account_id,
                     chain_codes,
@@ -135,6 +135,7 @@ impl AccountDomain {
     }
 
     pub(crate) async fn create_account_v2(
+        ctx: &Context,
         seed: &[u8],
         instance: &wallet_chain_instance::instance::ChainObject,
         derivation_path: Option<&str>,
@@ -145,6 +146,7 @@ impl AccountDomain {
         is_default_name: bool,
     ) -> Result<(CreateAccountRes, String, Option<AddressInitReq>), ServiceError> {
         let (address, derivation_path, address_init_req) = Self::derive_subkey(
+            ctx,
             uid,
             seed,
             account_index_map,
@@ -161,6 +163,7 @@ impl AccountDomain {
     }
 
     pub(crate) async fn derive_subkey(
+        ctx: &Context,
         uid: &str,
         seed: &[u8],
         account_index_map: &wallet_utils::address::AccountIndexMap,
@@ -203,7 +206,6 @@ impl AccountDomain {
             &account_name,
         );
 
-        let ctx = crate::get_context()?;
         let core_pool = ctx.core_pool()?;
         let sn = ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), &sn).await? else {
@@ -254,13 +256,12 @@ impl AccountDomain {
     }
 
     pub async fn set_root_password(
+        ctx: &Context,
         wallet_address: &str,
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
         // let tx = &mut self.repo;
-
-        let ctx = crate::get_context()?;
         let dirs = ctx.get_global_dirs();
         let core_pool = ctx.core_pool()?;
 
@@ -291,12 +292,12 @@ impl AccountDomain {
     }
 
     pub async fn set_account_password(
+        ctx: &Context,
         wallet_address: &str,
         account_index_map: &wallet_utils::address::AccountIndexMap,
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
         let dirs = ctx.get_global_dirs();
         let subs_dir = dirs.get_subs_dir(wallet_address)?;
 
@@ -319,8 +320,7 @@ impl AccountDomain {
 
     /// 废弃方法，不再使用
     #[deprecated(since = "0.1.0", note = "此方法已被废弃，不再使用")]
-    pub async fn set_verify_password(password: &str) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
+    pub async fn set_verify_password(ctx: &Context, password: &str) -> Result<(), ServiceError> {
         let dirs = ctx.get_global_dirs();
         wallet_tree::api::KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -354,6 +354,7 @@ impl AccountDomain {
 }
 
 pub async fn open_accounts_pk_with_password(
+    ctx: &Context,
     account_index_map: &wallet_utils::address::AccountIndexMap,
     address: &str,
     password: &str,
@@ -361,7 +362,6 @@ pub async fn open_accounts_pk_with_password(
     std::collections::HashMap<wallet_tree::KeyMeta, wallet_chain_interact::types::ChainPrivateKey>,
     ServiceError,
 > {
-    let ctx = crate::get_context()?;
     let core_pool = ctx.core_pool()?;
     let dirs = ctx.get_global_dirs();
 
@@ -405,11 +405,11 @@ pub async fn open_accounts_pk_with_password(
 }
 
 pub async fn open_subpk_with_password(
+    ctx: &Context,
     chain_code: &str,
     address: &str,
     password: &str,
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, ServiceError> {
-    let ctx = crate::get_context()?;
     let core_pool = ctx.core_pool()?;
     let dirs = ctx.get_global_dirs();
 

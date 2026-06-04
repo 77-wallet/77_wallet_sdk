@@ -156,6 +156,7 @@ impl AcctChange {
         ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.get_global_sqlite_pool()?;
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
 
         // bill create
         let tx = NewBillEntity::<serde_json::Value>::try_from(self)?;
@@ -164,7 +165,7 @@ impl AcctChange {
         if tx.chain_code == chain_code::TON {
             Self::handle_ton_bill(tx, &pool).await?;
         } else {
-            BillDomain::create_check_swap(tx, &pool).await?;
+            BillDomain::create_check_swap(tx, &core_pool).await?;
             // BillRepo::create(tx, &core_pool).await?;
         }
 

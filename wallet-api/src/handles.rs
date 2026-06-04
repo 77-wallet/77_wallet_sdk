@@ -223,12 +223,12 @@ impl Handles {
         let client_id = DeviceDomain::client_id_by_device(&device)?;
         let password = DeviceDomain::md5_sn(&device.sn);
 
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
 
         let property =
             UserProperty::new(content, client_id, &device.sn, password, &app_version.app_version);
 
-        let url = ConfigDomain::get_mqtt_uri().await?.ok_or(
+        let url = ConfigDomain::get_mqtt_uri(ctx).await?.ok_or(
             crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::MqttClientNotInit,
             ),
@@ -253,12 +253,12 @@ impl Handles {
         let client_id = DeviceDomain::client_id_by_device(&device)? + "_aw";
         let password = DeviceDomain::md5_sn(&device.sn);
 
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
 
         let property =
             UserProperty::new(content, client_id, &device.sn, password, &app_version.app_version);
 
-        let url = ConfigDomain::get_mqtt_uri().await?.ok_or(
+        let url = ConfigDomain::get_mqtt_uri(ctx).await?.ok_or(
             crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::MqttClientNotInit,
             ),

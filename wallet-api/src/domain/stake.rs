@@ -158,6 +158,7 @@ const VOTER_VOTES: f64 = 10_000_000.0;
 
 impl StakeDomain {
     pub async fn get_delegate_info(
+        ctx: &'static crate::context::Context,
         from: &str,
         to: &str,
         chain: &TronChain,
@@ -165,7 +166,7 @@ impl StakeDomain {
         let key = format!("{}_{}_delegate", from, to);
 
         // 现从缓存中获取数据、没有在从链上获取
-        let cache = crate::get_context()?.get_global_cache();
+        let cache = ctx.get_global_cache();
         let res: Option<DelegatedResource> = cache.get(&key).await;
         match res {
             Some(res) => {
@@ -216,9 +217,11 @@ impl StakeDomain {
     }
 
     // 从后端获取代表列表
-    pub(crate) async fn vote_list_from_backend()
+    pub(crate) async fn vote_list_from_backend(
+        ctx: &'static crate::context::Context,
+    )
     -> Result<VoteListResp, crate::error::service::ServiceError> {
-        let backend = crate::get_context()?.get_global_backend_api();
+        let backend = ctx.get_global_backend_api();
         let mut list = backend.vote_list().await?;
         // let witness_list = list.node_resp_list;
         list.node_resp_list.iter_mut().for_each(|item| {

@@ -101,6 +101,7 @@ impl OrderMultiSignCreated {
         if let Some(account) = account {
             // 初始化资产
             crate::domain::assets::AssetsDomain::init_default_multisig_assets(
+                ctx,
                 multisig_account_address.clone(),
                 account.chain_code.clone(),
             )

@@ -73,12 +73,14 @@ impl ApiResourceDomain {
             frozen_balance_trx,
             args,
             &req.signer,
+            ctx,
         )
         .await?;
         outcome.uid = Some(owner_ctx.uid);
         outcome.resource_type = Some(resource_type);
         let resource_value =
-            Self::resource_value(&outcome.owner_address, frozen_balance_trx, resource_type).await?;
+            Self::resource_value(&outcome.owner_address, frozen_balance_trx, resource_type, ctx)
+                .await?;
         let resource = ResourceResp::new(frozen_balance_trx, resource_type, resource_value);
         outcome.resp = Some(FreezeResp::new(
             outcome.owner_address.clone(),
@@ -103,17 +105,22 @@ impl ApiResourceDomain {
             ResourceType::ENERGY => BillKind::UnFreezeEnergy,
         };
 
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
         let can_withdraw =
             chain.get_provider().can_withdraw_unfreeze_amount(&req.owner_address).await?;
 
-        let mut outcome =
-            Self::execute_tron_resource_operation(owner_ctx.owner_address, 0, args, &req.signer)
-                .await?;
+        let mut outcome = Self::execute_tron_resource_operation(
+            owner_ctx.owner_address,
+            0,
+            args,
+            &req.signer,
+            ctx,
+        )
+        .await?;
         outcome.uid = Some(owner_ctx.uid);
         outcome.resource_type = Some(resource_type);
         let resource_value =
-            Self::resource_value(&outcome.owner_address, unfreeze_balance_trx, resource_type)
+            Self::resource_value(&outcome.owner_address, unfreeze_balance_trx, resource_type, ctx)
                 .await?;
         let resource = ResourceResp::new(unfreeze_balance_trx, resource_type, resource_value);
         outcome.resp = Some(
@@ -135,9 +142,14 @@ impl ApiResourceDomain {
     ) -> Result<String, ServiceError> {
         Self::withdraw_wallet_account_context(ctx, &req.owner_address).await?;
         let args = VoteWitnessArgs::try_from(&req)?;
-        let outcome =
-            Self::execute_tron_resource_operation(req.owner_address.clone(), 0, args, &req.signer)
-                .await?;
+        let outcome = Self::execute_tron_resource_operation(
+            req.owner_address.clone(),
+            0,
+            args,
+            &req.signer,
+            ctx,
+        )
+        .await?;
         Ok(outcome.tx_hash)
     }
 
@@ -146,16 +158,21 @@ impl ApiResourceDomain {
         req: WithdrawBalanceReq,
     ) -> Result<String, ServiceError> {
         Self::withdraw_wallet_account_context(ctx, &req.owner_address).await?;
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
         let value = chain.get_provider().get_reward(&req.owner_address).await?.to_sun();
         if value < 0.0 {
             return Err(ServiceError::Business(BusinessError::Chain(ChainError::NoRewardClaim)));
         }
         let mut args = WithdrawBalanceArgs::try_from(&req)?;
         args.value = Some(value);
-        let outcome =
-            Self::execute_tron_resource_operation(req.owner_address.clone(), 0, args, &req.signer)
-                .await?;
+        let outcome = Self::execute_tron_resource_operation(
+            req.owner_address.clone(),
+            0,
+            args,
+            &req.signer,
+            ctx,
+        )
+        .await?;
         Ok(outcome.tx_hash)
     }
 
@@ -224,11 +241,12 @@ impl ApiResourceDomain {
         stake_amount_trx: i64,
         args: impl TronTxOperation<T>,
         signer: &Option<Signer>,
+        ctx: &'static Context,
     ) -> Result<ApiResourceBroadcastOutcome, ServiceError>
     where
         T: Send + 'static,
     {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
         let raw_tx = args.build_raw_transaction(&chain.provider).await?;
         let balance = chain.balance(&owner_address, None).await?;
         let consumer = chain
@@ -290,8 +308,9 @@ impl ApiResourceDomain {
         owner_address: &str,
         amount: i64,
         resource_type: ResourceType,
+        ctx: &'static Context,
     ) -> Result<f64, ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
         let resource = chain.account_resource(owner_address).await?;
         Ok(resource.resource_value(resource_type, amount)?)
     }

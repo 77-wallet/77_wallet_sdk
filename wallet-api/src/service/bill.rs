@@ -12,6 +12,7 @@ use wallet_database::{
 pub struct BillService {
     core_pool: wallet_database::CoreDbPool,
     sqlite_pool: wallet_database::CoreDbPool,
+    ctx: &'static crate::context::Context,
 }
 
 impl BillService {
@@ -21,7 +22,7 @@ impl BillService {
             let pool = ctx.get_global_sqlite_pool()?;
             wallet_database::CoreDbPool::new(pool)
         };
-        Ok(Self { core_pool, sqlite_pool })
+        Ok(Self { core_pool, sqlite_pool, ctx })
     }
 
     pub async fn bill_lists(
@@ -92,7 +93,9 @@ impl BillService {
         chain_code: &str,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        BillDomain::sync_bills(chain_code, address).await
+        let backend_api = self.ctx.get_global_backend_api();
+        let pool = self.ctx.core_pool()?;
+        BillDomain::sync_bills(&pool, &backend_api, chain_code, address).await
     }
 
     pub async fn sync_bill_by_wallet_and_account(
@@ -109,7 +112,12 @@ impl BillService {
         .await?;
 
         for account in accounts.iter() {
-            if let Err(e) = BillDomain::sync_bills(&account.chain_code, &account.address).await {
+            let backend_api = self.ctx.get_global_backend_api();
+            let pool = self.ctx.core_pool()?;
+            if let Err(e) =
+                BillDomain::sync_bills(&pool, &backend_api, &account.chain_code, &account.address)
+                    .await
+            {
                 tracing::warn!(
                     "[bill::sync_bill_by_wallet_and_account] chain_code:{},address {},fail {}",
                     account.chain_code,

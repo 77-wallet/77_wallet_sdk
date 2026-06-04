@@ -55,11 +55,11 @@ impl TaskTrait for CommonTask {
     async fn execute(
         &self,
         _id: &str,
-        _ctx: &'static crate::context::Context,
+        ctx: &'static crate::context::Context,
     ) -> Result<(), ServiceError> {
         match self {
             CommonTask::QueryCoinPrice(data) => {
-                CoinService::new(crate::get_context()?).query_token_price(data).await?;
+                CoinService::new(ctx).query_token_price(data).await?;
             }
             CommonTask::QueryQueueResult(data) => {
                 MultisigQueueDomain::sync_queue_status(&data.id).await?
@@ -67,7 +67,7 @@ impl TaskTrait for CommonTask {
             CommonTask::RecoverMultisigAccountData(body) => {
                 MultisigDomain::recover_uid_multisig_data(&body.uid, None).await?;
                 if let Some(address) = &body.tron_address {
-                    PermissionDomain::recover_permission(vec![address.clone()]).await?;
+                    PermissionDomain::recover_permission(ctx, vec![address.clone()]).await?;
                 }
 
                 MultisigQueueDomain::recover_all_queue_data(&body.uid).await?;

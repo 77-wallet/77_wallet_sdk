@@ -122,6 +122,7 @@ impl ChainService {
 
             tracing::info!("sync_wallet_chain_data: init_chains_assets");
             ChainDomain::init_chains_assets(
+                self.ctx,
                 &coins,
                 &mut req,
                 &mut address_batch_init_task_data,

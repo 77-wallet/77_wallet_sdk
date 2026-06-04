@@ -354,8 +354,10 @@ impl MultisigDomain {
         if pay_status == MultisigAccountPayStatus::Paid && status == MultisigAccountStatus::OnChain
         {
             let core_pool = CoreDbPool::new(pool.clone());
+            let ctx = crate::get_context()?;
             // 初始化多签资产
             domain::assets::AssetsDomain::init_default_multisig_assets(
+                ctx,
                 params.address.clone(),
                 params.chain_code.clone(),
             )

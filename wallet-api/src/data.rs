@@ -14,10 +14,10 @@ use crate::{
 };
 
 pub(crate) async fn init_some_data() -> Result<(), crate::error::service::ServiceError> {
-    crate::domain::app::config::ConfigDomain::init_url().await?;
-
-    let core_pool = crate::context::get_context()?.core_pool()?;
-    let api_wallet_pool = crate::context::get_context()?.api_wallet_pool()?;
+    let ctx = crate::get_context()?;
+    crate::domain::app::config::ConfigDomain::init_url(ctx).await?;
+    let core_pool = ctx.core_pool()?;
+    let api_wallet_pool = ctx.api_wallet_pool()?;
     // // 1. 先初始化链兜底
     NodeDomain::init_load_default_nodes().await?;
     ChainDomain::init_chain_info().await?;
@@ -59,7 +59,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
     let sn = crate::get_context()?.get_sn();
-    let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
+    let _ = domain::app::config::ConfigDomain::fetch_min_config(ctx, &sn).await;
 
     let device = DeviceRepo::get_device_info(core_pool, sn).await?;
 

@@ -12,12 +12,12 @@ use wallet_database::{
 
 pub struct AddressBookService {
     pub pool: CoreDbPool,
-    core_pool: CoreDbPool,
+    ctx: &'static Context,
 }
 
 impl AddressBookService {
-    pub fn new(pool: CoreDbPool, core_pool: CoreDbPool) -> Self {
-        Self { pool, core_pool }
+    pub fn new(pool: CoreDbPool, ctx: &'static Context) -> Self {
+        Self { pool, ctx }
     }
 }
 
@@ -98,14 +98,14 @@ impl AddressBookService {
             AddressBookRepo::find_by_address(&self.pool, &address, &chain_code).await?;
 
         // check is first transfer
-        let bill = BillRepo::first_transfer(&address, &chain_code, &self.core_pool).await?;
+        let bill = BillRepo::first_transfer(&address, &chain_code, &self.pool).await?;
 
         Ok(AddressBookResp { address_book, first_transfer: bill.is_none() })
     }
 
     // 查询地址的动态状态 0 正常的状态 1冻结
     pub async fn address_status(
-        self,
+        &self,
         address: String,
         chain_code: String,
     ) -> Result<i64, crate::error::service::ServiceError> {
@@ -113,8 +113,11 @@ impl AddressBookService {
 
         // query address is black
         let adapter =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(&chain_code)
-                .await?;
+            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
+                &self.ctx,
+                &chain_code,
+            )
+            .await?;
 
         let token_address = match chain {
             wallet_types::chain::chain::ChainCode::Bitcoin => {
@@ -155,7 +158,6 @@ impl AddressBookService {
         ctx: &'static Context,
     ) -> Result<Self, crate::error::service::ServiceError> {
         let pool = ctx.core_pool()?;
-        let core_pool = ctx.core_pool()?;
-        Ok(Self { pool, core_pool })
+        Ok(Self { pool, ctx })
     }
 }

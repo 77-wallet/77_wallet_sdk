@@ -76,7 +76,7 @@ pub struct StackService {
 
 impl StackService {
     pub async fn new(ctx: &'static Context) -> Result<Self, crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
         Ok(Self { ctx, chain })
     }
 
@@ -191,7 +191,8 @@ impl StackService {
             entity.signer = users;
         }
 
-        domain::bill::BillDomain::create_bill(entity).await?;
+        let pool = self.ctx.core_pool()?;
+        domain::bill::BillDomain::create_bill(&pool, entity).await?;
 
         Ok(hash)
     }
@@ -286,7 +287,8 @@ impl StackService {
                         transaction_fee,
                         Some(extra),
                     );
-                    domain::bill::BillDomain::create_bill(entity).await?;
+                    let pool = self.ctx.core_pool()?;
+                    domain::bill::BillDomain::create_bill(&pool, entity).await?;
 
                     let ra = BatchRes { address: item.to.clone(), status: true };
                     exec_res.push(ra);
@@ -863,7 +865,7 @@ impl StackService {
         &self,
         owner: &str,
     ) -> Result<AccountResource, crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         let resource = chain.account_resource(owner).await?;
         let account = chain.account_info(owner).await?;
@@ -965,7 +967,7 @@ impl StackService {
         resource_type: String,
         is_multisig: Option<bool>,
     ) -> Result<resp::ResourceResp, crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
         let res = chain.provider.can_delegate_resource(account.as_str(), resource_type).await?;
@@ -1069,7 +1071,7 @@ impl StackService {
         resource_type: ops::stake::ResourceType,
         now: i64,
     ) -> Result<Option<i64>, crate::error::service::ServiceError> {
-        let mut res = StakeDomain::get_delegate_info(from, to, &self.chain).await?;
+        let mut res = StakeDomain::get_delegate_info(self.ctx, from, to, &self.chain).await?;
 
         let time = match resource_type {
             ops::stake::ResourceType::BANDWIDTH => {
@@ -1263,7 +1265,7 @@ impl StackService {
         page_size: i64,
     ) -> Result<Pagination<DelegateListResp>, crate::error::service::ServiceError> {
         // 查询所有的代理
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         let delegate_other = chain.provider.delegate_others_list(owner_address).await?;
 
@@ -1309,7 +1311,7 @@ impl StackService {
         page_size: i64,
     ) -> Result<Pagination<DelegateListResp>, crate::error::service::ServiceError> {
         // 查询所有的代理
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         let delegate_other = chain.provider.delegate_others_list(to).await?;
 
@@ -1361,7 +1363,7 @@ impl StackService {
             return Err(BusinessError::Stake(StakeError::SwitchClose))?;
         }
 
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         // request resource
         let res = backhand.delegate_order(&account, energy).await?;
@@ -1403,7 +1405,7 @@ impl StackService {
         // 所有的超级节点列表
         // let chain = self.chain.get_provider();
         // let mut res = StakeDomain::vote_list(chain).await?;
-        let mut res = StakeDomain::vote_list_from_backend().await?;
+        let mut res = StakeDomain::vote_list_from_backend(self.ctx).await?;
         if let Some(owner_address) = owner_address {
             let account_info = self.chain.account_info(owner_address).await?;
             // 投票人投票列表
@@ -1426,7 +1428,7 @@ impl StackService {
     ) -> Result<resp::VoterInfoResp, crate::error::service::ServiceError> {
         // let chain = self.chain.get_provider();
         // let vote_list = StakeDomain::vote_list(chain).await?;
-        let vote_list = StakeDomain::vote_list_from_backend().await?;
+        let vote_list = StakeDomain::vote_list_from_backend(self.ctx).await?;
         let reward = self.chain.get_provider().get_reward(owner).await?;
 
         let account_info = self.chain.account_info(owner).await?;
@@ -1466,7 +1468,7 @@ impl StackService {
     ) -> Result<Option<resp::Witness>, crate::error::service::ServiceError> {
         // let chain = self.chain.get_provider();
         // let list = StakeDomain::vote_list(chain).await?.data;
-        let list = StakeDomain::vote_list_from_backend().await?.data;
+        let list = StakeDomain::vote_list_from_backend(self.ctx).await?.data;
         // 获取最大投票数的witness
         let mut max_apr = 0.0f64;
         let mut max_witness = None;

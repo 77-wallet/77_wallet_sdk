@@ -55,7 +55,8 @@ impl TransactionService {
             request_token_address = %token_key.as_db_str(),
             "chain_balance request start"
         );
-        let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, chain_code).await?;
 
         let coin = match CoinDomain::get_coin_by_token_key(chain_code, token_key.clone()).await {
             Ok(coin) => coin,
@@ -162,7 +163,9 @@ impl TransactionService {
 
         let main_coin = CoinRepo::main_coin(&params.chain_code, &pool).await?;
 
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&params.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &params.chain_code)
+                .await?;
         let backend_api = self.ctx.get_global_backend_api();
         let fee = adapter
             .estimate_fee_with_ctx(params, main_coin.symbol.as_str(), backend_api.as_ref())
@@ -178,7 +181,11 @@ impl TransactionService {
         params: transaction::TransferReq,
         bill_kind: BillKind,
     ) -> Result<TransactionResult, crate::error::service::ServiceError> {
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&params.base.chain_code).await?;
+        let adapter = ChainAdapterFactory::get_transaction_adapter_with_ctx(
+            &self.ctx,
+            &params.base.chain_code,
+        )
+        .await?;
 
         let private_key = ChainTransDomain::get_key(
             &params.base.from,
@@ -295,7 +302,7 @@ impl TransactionService {
 
         let mut res = vec![];
         for id in req.iter() {
-            match Self::sync_bill_info(id, pool.clone()).await {
+            match self.sync_bill_info(id, pool.clone()).await {
                 Ok(tx) => res.push(tx),
                 Err(e) => {
                     tracing::warn!("sync bill err id = {},err = {}", id, e)
@@ -306,6 +313,7 @@ impl TransactionService {
     }
 
     async fn sync_bill_info(
+        &self,
         id: &str,
         pool: CoreDbPool,
     ) -> Result<BillEntity, crate::error::service::ServiceError> {
@@ -320,7 +328,7 @@ impl TransactionService {
             return Ok(transaction);
         }
 
-        let sync_bill = match Self::get_tx_res(&transaction).await? {
+        let sync_bill = match self.get_tx_res(&transaction).await? {
             Some(tx_result) => tx_result,
             None => {
                 // 处理交易是否失败的逻辑
@@ -429,12 +437,15 @@ impl TransactionService {
     }
 
     async fn get_tx_res(
+        &self,
         transaction: &BillEntity,
     ) -> Result<Option<SyncBillEntity>, crate::error::service::ServiceError> {
-        let adapter = domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(
-            &transaction.chain_code,
-        )
-        .await?;
+        let adapter =
+            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
+                &self.ctx,
+                &transaction.chain_code,
+            )
+            .await?;
 
         let Some(tx_result) = adapter.query_tx_res(&transaction.hash).await? else {
             return Ok(None);

@@ -416,6 +416,7 @@ impl InnerEventHandle {
 
         match target {
             SyncTarget::Assets => {
+                let ctx = crate::get_context()?;
                 let chain_code_for_log = chain_code.clone();
                 let token_address_for_log = token_address.clone();
                 let addr_count = addr_list.len();
@@ -429,6 +430,7 @@ impl InnerEventHandle {
                     addr_list
                 );
                 let result = AssetsDomain::sync_assets_by_addr_chain_token(
+                    ctx,
                     addr_list_for_call,
                     Some(chain_code),
                     token_address,

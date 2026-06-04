@@ -213,6 +213,7 @@ impl WalletService {
             )?;
 
             let (account, _, address_init_req) = AccountDomain::create_account_v2(
+                self.ctx,
                 &seed,
                 &instance,
                 Some(&data.derivation_path),
@@ -401,6 +402,7 @@ impl WalletService {
                 wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
 
             ChainDomain::init_chains_assets(
+                self.ctx,
                 &coins,
                 &mut req,
                 &mut address_init_task_data,

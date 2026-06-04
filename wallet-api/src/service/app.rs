@@ -59,13 +59,13 @@ impl AppService {
         let url = config.url().clone();
         drop(config);
         if url.block_browser_url_list.is_empty() {
-            ConfigDomain::init_block_browser_url_list().await?;
+            ConfigDomain::init_block_browser_url_list(self.ctx).await?;
         }
         if url.official_website.is_none() {
-            ConfigDomain::init_official_website().await?;
+            ConfigDomain::init_official_website(self.ctx).await?;
         }
         if url.app_download_qr_code_url.is_none() {
-            ConfigDomain::init_app_install_download_url().await?;
+            ConfigDomain::init_app_install_download_url(self.ctx).await?;
         }
         let pool = self.ctx.core_pool()?;
         let standard_wallet_list = WalletRepo::wallet_list(pool.clone())
@@ -117,7 +117,7 @@ impl AppService {
         language: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let val = wallet_database::entities::config::Language::new(language);
-        ConfigDomain::set_config(LANGUAGE, &val.to_json_str()?).await?;
+        ConfigDomain::set_config(self.ctx, LANGUAGE, &val.to_json_str()?).await?;
 
         let pool = self.ctx.core_pool()?;
         let sn = self.ctx.get_sn();
@@ -158,7 +158,7 @@ impl AppService {
         fiat: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let config = wallet_database::entities::config::Currency { currency: fiat.to_string() };
-        ConfigDomain::set_currency(Some(config)).await?;
+            ConfigDomain::set_currency(self.ctx, Some(config)).await?;
 
         Ok(())
     }
@@ -197,11 +197,11 @@ impl AppService {
         // let tx = &mut self.repo;
         let backend_api = self.ctx.get_global_backend_api();
 
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(self.ctx).await?;
 
         let req = wallet_transport_backend::request::ChainListReq::new(app_version.app_version);
         let list = backend_api.chain_list(req).await?.list;
-        ConfigDomain::set_block_browser_url(&list).await?;
+        ConfigDomain::set_block_browser_url(self.ctx, &list).await?;
         Ok(())
     }
 
@@ -337,9 +337,9 @@ impl AppService {
         let req = AppInstallSaveReq::new(sn, device_type, channel);
         // 1. 首先递增Epoch，切换世代，这是reset的核心事实
         // 确保reset开始后，所有后续操作都使用新世代的Epoch
-        ConfigDomain::bump_keys_reset_epoch().await?;
+        ConfigDomain::bump_keys_reset_epoch(self.ctx).await?;
         // 获取新的epoch值用于日志
-        let new_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let new_epoch = ConfigDomain::get_keys_reset_epoch(self.ctx).await?;
         tracing::info!(
             epoch = new_epoch,
             sn = sn,
@@ -441,7 +441,7 @@ impl AppService {
             invitee: is_invite,
         };
 
-        ConfigDomain::set_invite_code(Some(is_invite), invite_code).await?;
+        ConfigDomain::set_invite_code(self.ctx, Some(is_invite), invite_code).await?;
         let task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS,
             &req,

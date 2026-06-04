@@ -1,7 +1,7 @@
 use crate::messaging::mqtt::topics::AcctChange;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
 use wallet_database::{
-    CoreDbPool, DbPool,
+    CoreDbPool,
     entities::{
         self,
         asset_token_key::AssetTokenKey,
@@ -17,30 +17,29 @@ pub struct BillDomain;
 
 impl BillDomain {
     pub async fn create_bill<T>(
+        pool: &CoreDbPool,
         params: entities::bill::NewBillEntity<T>,
     ) -> Result<(), crate::error::service::ServiceError>
     where
         T: serde::Serialize,
     {
-        let pool = crate::get_context()?.core_pool()?;
         Ok(BillRepo::create(params, &pool).await?)
     }
 
     // 对于swap的交易，先判断有没有对应的交易
     pub async fn create_check_swap<T>(
         tx: entities::bill::NewBillEntity<T>,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<(), crate::error::service::ServiceError>
     where
         T: serde::Serialize,
     {
-        let core_pool = CoreDbPool::new(pool.clone());
-        match BillRepo::get_by_hash_opt(&tx.hash, &core_pool).await? {
+        match BillRepo::get_by_hash_opt(&tx.hash, pool).await? {
             Some(bill) if bill.tx_kind == BillKind::Swap.to_i8() => {
-                BillRepo::update_all(&core_pool, tx, bill.id).await?;
+                BillRepo::update_all(pool, tx, bill.id).await?;
             }
             _ => {
-                BillRepo::create(tx, &core_pool).await?;
+                BillRepo::create(tx, pool).await?;
             }
         }
 
@@ -49,11 +48,14 @@ impl BillDomain {
 
     // query tx resource consume
     pub async fn get_bill_resource_consumer(
+        ctx: &'static crate::context::Context,
         tx_hash: &str,
         chain_code: &str,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let adapter =
-            super::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter = super::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
+            ctx, chain_code,
+        )
+        .await?;
         let res = adapter.query_tx_res(tx_hash).await?;
         match res {
             Some(res) => Ok(res.resource_consume),
@@ -62,16 +64,20 @@ impl BillDomain {
     }
 
     pub async fn get_onchain_bill(
+        ctx: &'static crate::context::Context,
         tx_hash: &str,
         chain_code: &str,
     ) -> Result<Option<QueryTransactionResult>, crate::error::service::ServiceError> {
-        let adapter =
-            super::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter = super::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
+            ctx, chain_code,
+        )
+        .await?;
 
         Ok(adapter.query_tx_res(tx_hash).await?)
     }
 
     pub async fn handle_sync_bill(
+        pool: &CoreDbPool,
         item: SyncBillResp,
     ) -> Result<(), crate::error::service::ServiceError> {
         if item.value == 0.0 {
@@ -110,27 +116,28 @@ impl BillDomain {
         new_entity.signer = item.signer;
         new_entity.extra = item.extra;
 
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
         if new_entity.chain_code == chain_code::TON {
-            AcctChange::handle_ton_bill(new_entity, &pool).await?;
+            let bill_pool = pool.read_pool();
+            AcctChange::handle_ton_bill(new_entity, &bill_pool).await?;
         } else {
-            BillDomain::create_check_swap(new_entity, &pool).await?;
+            BillDomain::create_check_swap(new_entity, pool).await?;
         }
 
         Ok(())
     }
 
     pub(crate) async fn sync_bills(
+        pool: &CoreDbPool,
+        backend: &wallet_transport_backend::api::BackendApi,
         chain_code: &str,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
+        let start_time = BillDomain::get_last_bill_time(pool, chain_code, address).await?;
 
-        let backend = crate::get_context()?.get_global_backend_api();
         let resp = backend.record_lists(chain_code, address, start_time).await?;
 
         for item in resp.list {
-            if let Err(e) = BillDomain::handle_sync_bill(item).await {
+            if let Err(e) = BillDomain::handle_sync_bill(pool, item).await {
                 tracing::warn!("[bill::sync_bills] failed {}", e);
             }
         }
@@ -152,12 +159,11 @@ impl BillDomain {
     //    1. If the account is a participant: only synchronize the order data created after the account was created.
     //    2. If the account is the creator: the logic is the same as for non-TRON networks.
     pub(crate) async fn get_last_bill_time(
+        pool: &CoreDbPool,
         chain_code: &str,
         address: &str,
     ) -> Result<Option<String>, crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.core_pool()?;
-
-        let bill = BillRepo::last_bill(&pool, chain_code, address)
+        let bill = BillRepo::last_bill(pool, chain_code, address)
             .await
             .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
@@ -185,7 +191,7 @@ impl BillDomain {
 
         // Check multisig account if regular account not found
         let condition = vec![("address", address), ("chain_code", chain_code), ("is_del", "0")];
-        let account = MultisigAccountRepo::find_by_conditions(&pool, condition).await?;
+        let account = MultisigAccountRepo::find_by_conditions(pool, condition).await?;
 
         if let Some(account) = account {
             if account.owner == MultiAccountOwner::Participant.to_i8() {

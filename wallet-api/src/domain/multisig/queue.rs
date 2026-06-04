@@ -172,9 +172,13 @@ impl MultisigQueueDomain {
 
         let mut report = false;
         if !params.tx_hash.is_empty() && params.status == MultisigQueueStatus::InConfirmation {
-            let tx =
-                domain::bill::BillDomain::get_onchain_bill(&params.tx_hash, &params.chain_code)
-                    .await?;
+            let ctx = crate::get_context()?;
+            let tx = domain::bill::BillDomain::get_onchain_bill(
+                ctx,
+                &params.tx_hash,
+                &params.chain_code,
+            )
+            .await?;
             if let Some(tx) = tx {
                 if tx.status == 2 {
                     params.status = MultisigQueueStatus::Success;
@@ -233,7 +237,10 @@ impl MultisigQueueDomain {
         }
 
         // 获取链上交易状态
-        if let Some(rs) = BillDomain::get_onchain_bill(&queue.tx_hash, &queue.chain_code).await? {
+        let ctx = crate::get_context()?;
+        if let Some(rs) =
+            BillDomain::get_onchain_bill(ctx, &queue.tx_hash, &queue.chain_code).await?
+        {
             // 更新状态：2 为成功，否则为失败
             let tx_status = if rs.status == 2 {
                 MultisigQueueStatus::Success
@@ -278,7 +285,9 @@ impl MultisigQueueDomain {
         let sign_num = members.0.len().min(account.threshold as usize);
         for i in 0..sign_num {
             let member = members.0.get(i).unwrap();
+            let ctx = crate::get_context()?;
             let key = crate::domain::account::open_subpk_with_password(
+                &ctx,
                 &queue.chain_code,
                 &member.address,
                 &password,
