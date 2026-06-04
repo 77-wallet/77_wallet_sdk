@@ -42,31 +42,6 @@ mod total_query_policy;
 
 use total_query_policy::invalidate_wallet_total_assets_cache;
 
-fn context() -> Result<&'static crate::context::Context, crate::error::service::ServiceError> {
-    crate::get_context()
-}
-
-fn api_wallet_pool() -> Result<wallet_database::ApiWalletDbPool, crate::error::service::ServiceError>
-{
-    context()?.api_wallet_pool()
-}
-
-fn core_pool() -> Result<wallet_database::CoreDbPool, crate::error::service::ServiceError> {
-    context()?.core_pool()
-}
-
-fn backend_api() -> Result<
-    std::sync::Arc<wallet_transport_backend::api::BackendApi>,
-    crate::error::service::ServiceError,
-> {
-    Ok(context()?.get_global_backend_api())
-}
-
-async fn global_handles()
--> Result<std::sync::Weak<crate::handles::Handles>, crate::error::service::ServiceError> {
-    Ok(context()?.get_global_handles().await)
-}
-
 enum SyncFilter {
     Symbol(Vec<String>),
     Token(AssetTokenKey),
@@ -164,7 +139,8 @@ impl ApiAssetsDomain {
         token_address: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
 
         let assets_id = AssetsId::new(address, chain_code, token_address.clone());
 
@@ -184,7 +160,7 @@ impl ApiAssetsDomain {
                 .await?;
 
                 // 上报后端修改余额
-                let backend = backend_api()?;
+                let backend = ctx.get_global_backend_api();
                 let rs =
                     backend.wallet_assets_refresh_bal(address, chain_code, &asset.symbol).await;
                 if let Err(e) = rs {
@@ -225,7 +201,7 @@ impl ApiAssetsDomain {
 
         // 获取汇率
         let currency = ConfigDomain::get_currency().await?;
-        let core_pool = core_pool()?;
+        let core_pool = crate::get_context()?.core_pool()?;
         let exchange_rate =
             ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
 
@@ -276,7 +252,7 @@ impl ApiAssetsDomain {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         let Some(wallet) = ApiWalletRepo::find_by_address(&pool, &wallet_address).await? else {
             tracing::warn!("跳过 api 钱包资产同步：钱包不存在 wallet_address={}", wallet_address);
@@ -345,7 +321,7 @@ impl ApiAssetsDomain {
         chain_code: Option<String>,
         token_address: AssetTokenKey,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         Self::do_async_balance(pool, addr, chain_code, SyncFilter::Token(token_address), 0).await
     }
@@ -356,7 +332,7 @@ impl ApiAssetsDomain {
         token_address: AssetTokenKey,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         Self::do_async_balance(
             pool,
@@ -766,7 +742,7 @@ impl ApiAssetsDomain {
 
         // 延迟重试，避免立即重试导致的资源浪费和网络拥塞
         // 在 spawn 之前获取 inner_event_handle，确保 Send trait
-        let handles = global_handles().await?;
+        let handles = crate::get_context()?.get_global_handles().await;
         let inner_event_handle = if let Some(handles) = handles.upgrade() {
             Some(handles.get_global_inner_event_handle())
         } else {
@@ -831,8 +807,9 @@ impl ApiAssetsDomain {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
-        let core_pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
         let total = ApiAssetsRepo::get_api_wallet_total_assets_v2(
             &pool,
             wallet_address,
@@ -866,8 +843,9 @@ impl ApiAssetsDomain {
         chain_code: Option<&str>,
         timeout: Duration,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
-        let core_pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
         tokio::time::timeout(timeout, async {
             let assets = ApiAssetsRepo::get_api_wallet_total_assets_v3(
                 &pool,

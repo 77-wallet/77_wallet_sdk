@@ -19,22 +19,6 @@ use crate::{
 
 pub struct AccountDomain {}
 
-fn context() -> Result<&'static crate::context::Context, ServiceError> {
-    crate::get_context()
-}
-
-fn core_pool() -> Result<wallet_database::CoreDbPool, ServiceError> {
-    context()?.core_pool()
-}
-
-fn dirs() -> Result<std::sync::Arc<crate::dirs::Dirs>, ServiceError> {
-    Ok(context()?.get_global_dirs())
-}
-
-fn sn() -> Result<String, ServiceError> {
-    Ok(context()?.get_sn().to_string())
-}
-
 impl Default for AccountDomain {
     fn default() -> Self {
         Self::new()
@@ -81,7 +65,8 @@ impl AccountDomain {
         chain_codes: Vec<String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AddressChainCode>, ServiceError> {
-        let core_pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let core_pool = ctx.core_pool()?;
         let mut account_addresses = Vec::new();
 
         if let Some(is_multisig) = is_multisig {
@@ -218,8 +203,9 @@ impl AccountDomain {
             &account_name,
         );
 
-        let core_pool = core_pool()?;
-        let sn = sn()?;
+        let ctx = crate::get_context()?;
+        let core_pool = ctx.core_pool()?;
+        let sn = ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), &sn).await? else {
             return Err(ServiceError::Business(BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -274,8 +260,9 @@ impl AccountDomain {
     ) -> Result<(), ServiceError> {
         // let tx = &mut self.repo;
 
-        let dirs = dirs()?;
-        let core_pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let dirs = ctx.get_global_dirs();
+        let core_pool = ctx.core_pool()?;
 
         let wallet = WalletRepo::detail(core_pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::Wallet(
@@ -309,7 +296,8 @@ impl AccountDomain {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
-        let dirs = dirs()?;
+        let ctx = crate::get_context()?;
+        let dirs = ctx.get_global_dirs();
         let subs_dir = dirs.get_subs_dir(wallet_address)?;
 
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -332,7 +320,8 @@ impl AccountDomain {
     /// 废弃方法，不再使用
     #[deprecated(since = "0.1.0", note = "此方法已被废弃，不再使用")]
     pub async fn set_verify_password(password: &str) -> Result<(), ServiceError> {
-        let dirs = dirs()?;
+        let ctx = crate::get_context()?;
+        let dirs = ctx.get_global_dirs();
         wallet_tree::api::KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
@@ -372,8 +361,9 @@ pub async fn open_accounts_pk_with_password(
     std::collections::HashMap<wallet_tree::KeyMeta, wallet_chain_interact::types::ChainPrivateKey>,
     ServiceError,
 > {
-    let core_pool = core_pool()?;
-    let dirs = dirs()?;
+    let ctx = crate::get_context()?;
+    let core_pool = ctx.core_pool()?;
+    let dirs = ctx.get_global_dirs();
 
     let subs_path = dirs.get_subs_dir(address)?;
     // let storage_path = subs_path.join(name);
@@ -419,8 +409,9 @@ pub async fn open_subpk_with_password(
     address: &str,
     password: &str,
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, ServiceError> {
-    let core_pool = core_pool()?;
-    let dirs = dirs()?;
+    let ctx = crate::get_context()?;
+    let core_pool = ctx.core_pool()?;
+    let dirs = ctx.get_global_dirs();
 
     let account =
         AccountRepo::detail_by_address_and_chain_code(core_pool.clone(), address, chain_code)

@@ -31,30 +31,6 @@ use crate::{
 
 pub struct ApiChainDomain {}
 
-fn context() -> Result<&'static crate::context::Context, crate::error::service::ServiceError> {
-    crate::get_context()
-}
-
-fn api_wallet_pool() -> Result<wallet_database::ApiWalletDbPool, crate::error::service::ServiceError>
-{
-    context()?.api_wallet_pool()
-}
-
-fn core_pool() -> Result<wallet_database::CoreDbPool, crate::error::service::ServiceError> {
-    context()?.core_pool()
-}
-
-fn backend_api() -> Result<
-    std::sync::Arc<wallet_transport_backend::api::BackendApi>,
-    crate::error::service::ServiceError,
-> {
-    Ok(context()?.get_global_backend_api())
-}
-
-fn api_wallet_domain() -> Result<ApiWalletDomain, crate::error::service::ServiceError> {
-    Ok(ApiWalletDomain::new(context()?))
-}
-
 impl ApiChainDomain {
     pub(crate) async fn network_kind_by_chain_code(
         chain_code: &str,
@@ -79,7 +55,7 @@ impl ApiChainDomain {
         is_recover: bool,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chains_count=chain_list.len(), "ApiChainDomain: starting init_chains_api_assets");
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let mut created_addresses = Vec::new();
 
         for chain in chain_list.iter() {
@@ -141,7 +117,7 @@ impl ApiChainDomain {
         chains: wallet_transport_backend::response_vo::api_wallet::chain::ApiChainListResp,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         // let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         // // 本地后端节点
@@ -238,13 +214,13 @@ impl ApiChainDomain {
     pub async fn toggle_api_chains(
         chain_codes: &[String],
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         ApiChainRepo::toggle_chains_status(&pool, chain_codes).await?;
         Ok(())
     }
 
     pub async fn init_api_chain_info() -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let list = crate::default_data::chain::get_default_chains_list()?;
 
         // tracing::warn!("list {:#?}", list);
@@ -284,7 +260,7 @@ impl ApiChainDomain {
 
     pub async fn sync_withdrawal_wallet_chain_data()
     -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         let chain_list: Vec<String> = ApiChainRepo::get_chain_list(&pool)
             .await?
@@ -312,8 +288,9 @@ impl ApiChainDomain {
     pub(crate) async fn get_node(
         chain_code: &str,
     ) -> Result<NodeInfo, crate::error::service::ServiceError> {
-        let core_pool = core_pool()?;
-        let api_pool = api_wallet_pool()?;
+        let ctx = crate::get_context()?;
+        let core_pool = ctx.core_pool()?;
+        let api_pool = ctx.api_wallet_pool()?;
         let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
         let node_id = ensurer.ensure_and_get_api_chain_node(chain_code).await?;
 
@@ -335,7 +312,7 @@ impl ApiChainDomain {
     }
 
     pub async fn sync_chains() -> Result<Vec<String>, crate::error::service::ServiceError> {
-        let backend = backend_api()?;
+        let backend = crate::get_context()?.get_global_backend_api();
         let app_version = ConfigDomain::get_app_version().await?;
         let chain_list = backend.api_wallet_chain_list(&app_version.app_version).await?;
         ApiChainDomain::upsert_multi_api_chain_than_toggle(chain_list).await
@@ -344,13 +321,11 @@ impl ApiChainDomain {
     pub async fn sync_wallet_chain_data(
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
 
-        crate::domain::wallet::WalletDomain::validate_password_with_context(
-            context()?,
-            wallet_password,
-        )
-        .await?;
+        crate::domain::wallet::WalletDomain::validate_password_with_context(ctx, wallet_password)
+            .await?;
         let chain_list: Vec<String> = ApiChainRepo::get_chain_list(&pool)
             .await?
             .into_iter()
@@ -373,7 +348,7 @@ impl ApiChainDomain {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(wallet.account_id)?;
 
-            let seed = api_wallet_domain()?.get_seed(&wallet.wallet_address).await?;
+            let seed = ApiWalletDomain::new(ctx).get_seed(&wallet.wallet_address).await?;
 
             ApiChainDomain::init_chains_api_assets(
                 &coins,
@@ -419,7 +394,7 @@ impl ApiChainTransDomain {
     pub async fn main_coin(
         chain_code: &str,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let coin = ApiCoinRepo::main_coin(chain_code, &pool).await?;
         Ok(coin)
     }

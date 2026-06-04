@@ -51,33 +51,6 @@ pub struct ApiCoinDomain {}
 
 static BACKFILL_RUNNING: AtomicBool = AtomicBool::new(false);
 
-fn context() -> Result<&'static crate::context::Context, crate::error::service::ServiceError> {
-    crate::get_context()
-}
-
-fn api_wallet_pool() -> Result<wallet_database::ApiWalletDbPool, crate::error::service::ServiceError>
-{
-    context()?.api_wallet_pool()
-}
-
-fn core_pool() -> Result<wallet_database::CoreDbPool, crate::error::service::ServiceError> {
-    context()?.core_pool()
-}
-
-fn backend_api() -> Result<
-    std::sync::Arc<wallet_transport_backend::api::BackendApi>,
-    crate::error::service::ServiceError,
-> {
-    Ok(context()?.get_global_backend_api())
-}
-
-fn background_task_pool() -> Result<
-    std::sync::Arc<crate::infrastructure::recovery::pool::BackgroundTaskPool>,
-    crate::error::service::ServiceError,
-> {
-    Ok(context()?.get_global_background_task_pool())
-}
-
 impl ApiCoinDomain {
     fn active_chain_codes(coins: &[ApiCoinEntity]) -> HashSet<String> {
         coins.iter().filter(|coin| coin.status == 1).map(|coin| coin.chain_code.clone()).collect()
@@ -94,7 +67,7 @@ impl ApiCoinDomain {
     pub(crate) async fn upsert_hot_coin_list(
         coins: Vec<ApiCoinData>,
     ) -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let mut seen = std::collections::HashSet::new();
         let mut coin_data = Vec::with_capacity(coins.len());
 
@@ -117,7 +90,7 @@ impl ApiCoinDomain {
 
     pub async fn pull_api_coins() -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError>
     {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         // 删除掉无效的token
         ApiCoinRepo::drop_coin_just_null_token_address(&pool).await?;
 
@@ -134,8 +107,9 @@ impl ApiCoinDomain {
     /// 查询代币汇率
     pub async fn get_api_token_currencies()
     -> Result<TokenCurrencies, crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
-        let core_pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
         let coins = ApiCoinRepo::coin_list_v2(&pool, None, None).await?;
@@ -209,9 +183,10 @@ impl ApiCoinDomain {
     }
 
     pub async fn fetch_all_coin() -> Result<Vec<ApiCoinInfo>, crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
-        let backend_api = backend_api()?;
+        let backend_api = ctx.get_global_backend_api();
         let mut coins = Vec::new();
 
         // TODO 1.5 版本验证币数量如果大于500说明已经同步过最新的币了,拉最新的。
@@ -234,8 +209,9 @@ impl ApiCoinDomain {
     }
 
     pub async fn init_token_price() -> Result<(), crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
-        let backend_api = backend_api()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
+        let backend_api = ctx.get_global_backend_api();
 
         let update_at = if let Some(last_coin) = ApiCoinRepo::last_coin(&pool, false).await? {
             last_coin.updated_at.map(|s| s.format("%Y-%m-%d %H:%M:%S").to_string())
@@ -293,7 +269,8 @@ impl ApiCoinDomain {
             return Ok(());
         }
 
-        let pool = api_wallet_pool()?;
+        let ctx = crate::get_context()?;
+        let pool = ctx.api_wallet_pool()?;
         let wallets =
             wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(&pool, None)
                 .await?;
@@ -307,7 +284,7 @@ impl ApiCoinDomain {
             chain_count = active_chain_codes.len(),
             "ApiCoinDomain::add_supported_coin -> schedule paged wallet/chain account scan"
         );
-        let background_task_pool = background_task_pool()?;
+        let background_task_pool = ctx.get_global_background_task_pool();
         let active_chain_codes: Vec<String> = active_chain_codes.into_iter().collect();
         struct BackfillRunningGuard;
         impl Drop for BackfillRunningGuard {
@@ -434,7 +411,7 @@ impl ApiCoinDomain {
         chain_code: &str,
         token_key: AssetTokenKey,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
-        let pool = api_wallet_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let coin = ApiCoinRepo::coin_by_chain_token_key(chain_code, token_key, &pool).await?;
 
         Ok(coin)

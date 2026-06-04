@@ -36,21 +36,6 @@ mod chain_stable_coin {
 
 pub struct CoinDomain {}
 
-fn context() -> Result<&'static crate::context::Context, crate::error::service::ServiceError> {
-    crate::get_context()
-}
-
-fn core_pool() -> Result<CoreDbPool, crate::error::service::ServiceError> {
-    context()?.core_pool()
-}
-
-fn backend_api() -> Result<
-    std::sync::Arc<wallet_transport_backend::api::BackendApi>,
-    crate::error::service::ServiceError,
-> {
-    Ok(context()?.get_global_backend_api())
-}
-
 impl Default for CoinDomain {
     fn default() -> Self {
         Self::new()
@@ -65,7 +50,8 @@ impl CoinDomain {
         chain_code: &str,
         token_key: AssetTokenKey,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        let core_pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let core_pool = ctx.core_pool()?;
         let coin = CoinRepo::coin_by_chain_token_key(chain_code, token_key, &core_pool).await?;
 
         Ok(coin)
@@ -74,7 +60,8 @@ impl CoinDomain {
     /// 查询代币汇率
     pub async fn get_token_currencies_v2()
     -> Result<TokenCurrencies, crate::error::service::ServiceError> {
-        let core_pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let core_pool = ctx.core_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
         let coins = CoinRepo::coin_list_v2(core_pool.clone(), None, None).await?;
@@ -195,7 +182,8 @@ impl CoinDomain {
 
     pub async fn sync_default_coins_by_bound_nodes()
     -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let core_pool = ctx.core_pool()?;
         let chains = ChainRepo::get_chain_list(&core_pool).await?;
 
         if chains.is_empty() {
@@ -279,7 +267,8 @@ impl CoinDomain {
     pub async fn get_stable_coin(
         chain_code: ChainCode,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let core_pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let core_pool = ctx.core_pool()?;
         let chain_code_str = chain_code.to_string();
         let usdt_coins = CoinRepo::coin_list_v2(
             core_pool,
@@ -326,7 +315,8 @@ impl CoinDomain {
         pool: &CoreDbPool,
     ) -> Result<Vec<CoinInfo>, crate::error::service::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
-        let backend_api = backend_api()?;
+        let ctx = crate::get_context()?;
+        let backend_api = ctx.get_global_backend_api();
         let mut coins = Vec::new();
 
         // TODO 1.5 版本验证币数量如果大于500说明已经同步过最新的币了,拉最新的。
@@ -351,8 +341,9 @@ impl CoinDomain {
     pub(crate) async fn query_token_price(
         req: &TokenQueryPriceReq,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend_api = backend_api()?;
-        let pool = core_pool()?;
+        let ctx = crate::get_context()?;
+        let backend_api = ctx.get_global_backend_api();
+        let pool = ctx.core_pool()?;
         let tokens = backend_api.token_query_price(req).await?.list;
         for token in tokens {
             let coin_id = CoinId {
