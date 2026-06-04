@@ -53,13 +53,16 @@ use wallet_types::{
 use wallet_utils::serde_func;
 
 pub struct MultisigAccountService {
+    ctx: &'static crate::context::Context,
     backend: Arc<BackendApi>,
 }
 
 impl MultisigAccountService {
-    pub fn new() -> Result<Self, crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api().clone();
-        Ok(Self { backend })
+    pub fn new(
+        ctx: &'static crate::context::Context,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let backend = ctx.get_global_backend_api().clone();
+        Ok(Self { ctx, backend })
     }
 
     pub async fn crate_account(
@@ -71,7 +74,7 @@ impl MultisigAccountService {
         mut member_list: Vec<MemberVo>,
         address_type: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         // check address type
         let address_type = match chain_code.as_str() {
             chain_code::BTC => {
@@ -187,7 +190,7 @@ impl MultisigAccountService {
             return Ok(());
         }
 
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let count =
             wallet_database::repositories::multisig_account::MultisigAccountRepo::account_count(
                 &core_pool,
@@ -204,7 +207,7 @@ impl MultisigAccountService {
         params: &mut NewMultisigAccountEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut flag = true;
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
 
         for item in params.member_list.iter_mut() {
             if let Some(account) = wallet_database::repositories::multisig_account::MultisigAccountRepo::wallet_account(
@@ -240,7 +243,7 @@ impl MultisigAccountService {
         self,
         id: &str,
     ) -> Result<Option<MultisigAccountInfo>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let account =
             wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
                 &core_pool, id,
@@ -262,7 +265,7 @@ impl MultisigAccountService {
         &self,
         address: &str,
     ) -> Result<Option<MultisigAccountInfo>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let account = wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_condition(
             &core_pool,
             "address",
@@ -285,7 +288,7 @@ impl MultisigAccountService {
         account_id: String,
         name: String,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         Ok(wallet_database::repositories::multisig_account::MultisigAccountRepo::update_name(
             &core_pool,
             &account_id,
@@ -298,7 +301,7 @@ impl MultisigAccountService {
         self,
         id: String,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let account =
             wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
                 &core_pool, &id,
@@ -344,7 +347,7 @@ impl MultisigAccountService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<MultisigAccountList>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         // 同步部署中多签账号的状态
         let _r =
@@ -398,7 +401,7 @@ impl MultisigAccountService {
         account_chain: &str,
         pay_address: &str,
     ) -> Result<MultisigFeeVo, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let account_with_wallet =
             AccountRepo::account_with_wallet(pay_address, pay_chain, core_pool).await?;
 
@@ -414,7 +417,7 @@ impl MultisigAccountService {
         &self,
         account_id: String,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let multisig_account =
             wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
                 &core_pool,
@@ -451,7 +454,7 @@ impl MultisigAccountService {
         self,
         id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let multisig_account =
             wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
                 &core_pool, id,
@@ -524,7 +527,7 @@ impl MultisigAccountService {
         payer: Option<transaction::ServiceFeePayer>,
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let multisig_account =
             wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
                 &core_pool, account_id,
@@ -619,7 +622,7 @@ impl MultisigAccountService {
                 )
                 .await?;
 
-            let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+            let pool = self.ctx.core_pool()?;
 
             // 初始化默认资产资产(发起方如果是波场的情况单独处理,将这个地址的其他资产也同步为多签的)
             AssetsDomain::init_default_multisig_assets(
@@ -698,7 +701,7 @@ impl MultisigAccountService {
             }
         }
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
 
         // fetch address
         let req = SignedFindAddressReq::new(&payer.chain_code);
@@ -706,7 +709,7 @@ impl MultisigAccountService {
         let to = &address.address;
 
         // fetch value
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let account_with_wallet =
             AccountRepo::account_with_wallet(&payer.from, &payer.chain_code, core_pool).await?;
 
@@ -851,7 +854,7 @@ impl MultisigAccountService {
         &self,
         account_id: &str,
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
 
         let account = MultisigDomain::account_by_id(account_id, pool.clone()).await?;
 
@@ -860,7 +863,7 @@ impl MultisigAccountService {
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
 
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let member = MultisigMemberRepo::list_by_account_id(&core_pool, account_id).await?;
 
         let fee = adapter.deploy_multisig_fee(&account, member, &main_coin.symbol).await?;
@@ -876,7 +879,7 @@ impl MultisigAccountService {
         address: String,
         chain_code: String,
     ) -> Result<AddressStatus, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let adapter =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(&chain_code)
                 .await?;

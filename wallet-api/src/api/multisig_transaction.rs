@@ -13,12 +13,16 @@ use crate::{
 use wallet_database::{entities::asset_token_key::AssetTokenKey, pagination::Pagination};
 
 impl WalletManager {
+    fn multisig_transaction_service(&self) -> ReturnType<MultisigTransactionService> {
+        Ok(MultisigTransactionService::new(self.ctx))
+    }
+
     // only solana has create fee
     pub async fn create_queue_fee(
         &self,
         params: MultisigQueueFeeParams,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigTransactionService::create_queue_fee(params).await
+        self.multisig_transaction_service()?.create_queue_fee(params).await
     }
 
     /// Creates a new multisig transaction with the provided parameters.
@@ -27,7 +31,7 @@ impl WalletManager {
         params: TransferParams,
         password: String,
     ) -> ReturnType<String> {
-        MultisigTransactionService::create_multisig_queue(params, password).await
+        self.multisig_transaction_service()?.create_multisig_queue(params, password).await
     }
 
     pub async fn multisig_queue_list(
@@ -38,18 +42,13 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<MultisigQueueInfoVo>> {
-        MultisigTransactionService::multisig_queue_list(
-            from.as_deref(),
-            chain_code.as_deref(),
-            status,
-            page,
-            page_size,
-        )
-        .await
+        self.multisig_transaction_service()?
+            .multisig_queue_list(from.as_deref(), chain_code.as_deref(), status, page, page_size)
+            .await
     }
 
     pub async fn multisig_queue_info(&self, queue_id: String) -> ReturnType<MultisigQueueInfoVo> {
-        MultisigTransactionService::multisig_queue_info(&queue_id).await.into()
+        self.multisig_transaction_service()?.multisig_queue_info(&queue_id).await.into()
     }
 
     pub async fn sign_fee(
@@ -57,7 +56,7 @@ impl WalletManager {
         queue_id: String,
         address: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigTransactionService::sign_fee(queue_id, address).await.into()
+        self.multisig_transaction_service()?.sign_fee(queue_id, address).await.into()
     }
 
     pub async fn sign_transaction(
@@ -67,7 +66,8 @@ impl WalletManager {
         password: String,
         address: Option<String>,
     ) -> ReturnType<()> {
-        MultisigTransactionService::sign_multisig_transaction(&queue_id, status, &password, address)
+        self.multisig_transaction_service()?
+            .sign_multisig_transaction(&queue_id, status, &password, address)
             .await
     }
 
@@ -75,7 +75,7 @@ impl WalletManager {
         &self,
         queue_id: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigTransactionService::multisig_transfer_fee(&queue_id).await
+        self.multisig_transaction_service()?.multisig_transfer_fee(&queue_id).await
     }
 
     pub async fn exec_transaction(
@@ -85,13 +85,9 @@ impl WalletManager {
         fee_setting: Option<String>,
         request_resource_id: Option<String>,
     ) -> ReturnType<String> {
-        MultisigTransactionService::exec_multisig_transaction(
-            &queue_id,
-            password,
-            fee_setting,
-            request_resource_id,
-        )
-        .await
+        self.multisig_transaction_service()?
+            .exec_multisig_transaction(&queue_id, password, fee_setting, request_resource_id)
+            .await
     }
 
     // 多签的余额
@@ -102,13 +98,14 @@ impl WalletManager {
         symbol: String,
         token_address: Option<String>,
     ) -> ReturnType<Balance> {
-        crate::service::transaction::TransactionService::chain_balance(
-            &address,
-            &chain_code,
-            &symbol,
-            AssetTokenKey::from_raw(token_address.as_deref()),
-        )
-        .await
+        crate::service::transaction::TransactionService::new(self.ctx)
+            .chain_balance(
+                &address,
+                &chain_code,
+                &symbol,
+                AssetTokenKey::from_raw(token_address.as_deref()),
+            )
+            .await
     }
 
     pub async fn check_ongoing_queue(
@@ -116,10 +113,10 @@ impl WalletManager {
         chain_code: String,
         address: String,
     ) -> ReturnType<Option<QueueInfo>> {
-        MultisigTransactionService::check_ongoing_queue(chain_code, address).await
+        self.multisig_transaction_service()?.check_ongoing_queue(chain_code, address).await
     }
 
     pub async fn cancel_queue(&self, queue_id: String) -> ReturnType<()> {
-        MultisigTransactionService::cancel_queue(queue_id).await
+        self.multisig_transaction_service()?.cancel_queue(queue_id).await
     }
 }

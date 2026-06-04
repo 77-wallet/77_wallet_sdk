@@ -13,35 +13,39 @@ use wallet_database::pagination::Pagination;
 use wallet_transport_backend::api::wallet::swap::ChainDex;
 
 impl WalletManager {
+    fn swap_server(&self) -> ReturnType<SwapServer> {
+        SwapServer::new(self.ctx)
+    }
+
     pub async fn default_quote(
         &self,
         chain_code: String,
         token_in: String,
     ) -> ReturnType<DefaultQuoteResp> {
-        SwapServer::new()?.default_quote(chain_code, token_in).await
+        self.swap_server()?.default_quote(chain_code, token_in).await
     }
 
     // 获取报价
     pub async fn quote(&self, req: QuoteReq) -> ReturnType<ApiQuoteResp> {
-        SwapServer::new()?.quote(req).await
+        self.swap_server()?.quote(req).await
     }
 
     pub async fn swap(&self, req: SwapReq, fee: String, password: String) -> ReturnType<String> {
-        SwapServer::new()?.swap(req, fee, password).await
+        self.swap_server()?.swap(req, fee, password).await
     }
 
     // 获取token列表
     pub async fn token_list(&self, req: SwapTokenListReq) -> ReturnType<Pagination<SwapTokenInfo>> {
-        SwapServer::new()?.token_list(req).await
+        self.swap_server()?.token_list(req).await
     }
 
     // 支持兑换的链
     pub async fn chain_list(&self) -> ReturnType<Vec<ChainDex>> {
-        SwapServer::new()?.chain_list().await
+        self.swap_server()?.chain_list().await
     }
 
     pub async fn approve(&self, req: ApproveReq, password: String) -> ReturnType<String> {
-        SwapServer::new()?.approve(req, password).await
+        self.swap_server()?.approve(req, password).await
     }
 
     pub async fn approve_fee(
@@ -49,15 +53,15 @@ impl WalletManager {
         req: ApproveReq,
         is_cancel: bool,
     ) -> ReturnType<EstimateFeeResp> {
-        SwapServer::new()?.approve_fee(req, is_cancel).await
+        self.swap_server()?.approve_fee(req, is_cancel).await
     }
 
     pub async fn approve_list(&self, uid: String, account_id: u32) -> ReturnType<Vec<ApproveList>> {
-        SwapServer::new()?.approve_list(uid, account_id).await
+        self.swap_server()?.approve_list(uid, account_id).await
     }
 
     pub async fn approve_cancel(&self, req: ApproveReq, password: String) -> ReturnType<String> {
-        SwapServer::new()?.approve_cancel(req, password).await
+        self.swap_server()?.approve_cancel(req, password).await
     }
 }
 

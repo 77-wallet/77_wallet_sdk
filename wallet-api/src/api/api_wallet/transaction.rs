@@ -20,7 +20,7 @@ impl WalletManager {
         &self,
         req: transaction::BaseTransferReq,
     ) -> ReturnType<crate::response_vo::EstimateFeeResp> {
-        TransactionService::transaction_fee(req).await
+        TransactionService::new(self.ctx).transaction_fee(req).await
     }
 
     /// tokenAddress前端必须传

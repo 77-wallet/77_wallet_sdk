@@ -14,7 +14,7 @@ use wallet_database::{entities::multisig_member::MemberVo, pagination::Paginatio
 
 impl WalletManager {
     fn multisig_account_service(&self) -> ReturnType<MultisigAccountService> {
-        MultisigAccountService::new()
+        MultisigAccountService::new(self.ctx)
     }
 
     pub async fn create_multisig_account(

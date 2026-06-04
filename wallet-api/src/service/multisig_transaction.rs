@@ -47,9 +47,15 @@ use wallet_transport_backend::{
 use wallet_types::constant::chain_code;
 use wallet_utils::unit;
 
-pub struct MultisigTransactionService;
+pub struct MultisigTransactionService {
+    ctx: &'static crate::context::Context,
+}
 
 impl MultisigTransactionService {
+    pub fn new(ctx: &'static crate::context::Context) -> Self {
+        Self { ctx }
+    }
+
     fn remap_tron_to_not_found_error(
         err: crate::error::service::ServiceError,
         req: &TransferParams,
@@ -84,9 +90,10 @@ impl MultisigTransactionService {
     }
 
     pub async fn create_queue_fee(
+        &self,
         req_params: MultisigQueueFeeParams,
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
 
         let account = MultisigDomain::account_by_address(&req_params.from, true, &pool).await?;
 
@@ -119,17 +126,19 @@ impl MultisigTransactionService {
 
     // Creates a new multisig transaction queue.
     pub async fn create_multisig_queue(
+        &self,
         req: TransferParams,
         password: String,
     ) -> Result<String, crate::error::service::ServiceError> {
         if let Some(signer) = req.signer.clone() {
-            Self::create_with_permission(req, &password, signer).await
+            self.create_with_permission(req, &password, signer).await
         } else {
-            Self::create_with_account(req, &password).await
+            self.create_with_account(req, &password).await
         }
     }
 
     async fn create_with_account(
+        &self,
         req: TransferParams,
         password: &str,
     ) -> Result<String, crate::error::service::ServiceError> {
@@ -143,7 +152,7 @@ impl MultisigTransactionService {
             signer = ?req.signer,
             "start create multisig queue with account"
         );
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let assets = ChainTransDomain::assets(&req.chain_code, &req.from, req.token_key()).await?;
@@ -251,6 +260,7 @@ impl MultisigTransactionService {
     }
 
     async fn create_with_permission(
+        &self,
         req: TransferParams,
         password: &str,
         signer: Signer,
@@ -266,7 +276,7 @@ impl MultisigTransactionService {
             signer_permission_id = signer.permission_id,
             "start create multisig queue with permission"
         );
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let coin = CoinDomain::get_coin_by_token_key(&req.chain_code, req.token_key()).await?;
@@ -364,13 +374,14 @@ impl MultisigTransactionService {
     }
 
     pub async fn multisig_queue_list(
+        &self,
         from: Option<&str>,
         chain_code: Option<&str>,
         status: i32,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<MultisigQueueInfoVo>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         // 先处理过期的交易
@@ -434,9 +445,10 @@ impl MultisigTransactionService {
 
     // queue info
     pub async fn multisig_queue_info(
+        &self,
         queue_id: &str,
     ) -> Result<MultisigQueueInfoVo, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let queue = MultisigQueueRepo::find_by_id_with_extra(queue_id, &core_pool).await?.ok_or(
@@ -465,10 +477,11 @@ impl MultisigTransactionService {
 
     // only solana used
     pub async fn sign_fee(
+        &self,
         queue_id: String,
         address: String,
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let queue = MultisigDomain::queue_by_id(&queue_id, &pool).await?;
         let multisig_account =
             MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;
@@ -488,6 +501,7 @@ impl MultisigTransactionService {
 
     // multisig sign message
     pub async fn sign_multisig_transaction(
+        &self,
         queue_id: &str,
         status: i32,
         password: &str,
@@ -496,7 +510,7 @@ impl MultisigTransactionService {
         let status = MultisigSignatureStatus::try_from(status)
             .map_err(|e| crate::error::service::ServiceError::Parameter(e.to_string()))?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
@@ -505,7 +519,7 @@ impl MultisigTransactionService {
         let sign_addr = Self::get_address_to_sign(pool.clone(), &queue, address).await?;
         // 1.签名
         let signed =
-            Self::_sign_transaction(&queue, status, pool.clone(), password, sign_addr).await?;
+            self._sign_transaction(&queue, status, pool.clone(), password, sign_addr).await?;
 
         // 2.同步签名的结果状态
         MultisigQueueRepo::sync_sign_status(&queue, queue.status, core_pool.clone()).await?;
@@ -541,9 +555,10 @@ impl MultisigTransactionService {
     }
 
     pub async fn multisig_transfer_fee(
+        &self,
         queue_id: &str,
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
@@ -557,7 +572,7 @@ impl MultisigTransactionService {
         let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
         let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         let fee = instance
             .estimate_fee(&queue, &coin, backend.as_ref(), sign_list, main_coin.symbol.as_str())
             .await?;
@@ -569,6 +584,7 @@ impl MultisigTransactionService {
 
     // 执行签名
     pub async fn _sign_transaction(
+        &self,
         queue: &MultisigQueueEntity,
         status: MultisigSignatureStatus,
         pool: DbPool,
@@ -591,15 +607,16 @@ impl MultisigTransactionService {
             }
             MultisigSignatureStatus::Approved => {
                 if !queue.account_id.is_empty() {
-                    Self::signed_account(queue, pool, sign_addr, password, status).await
+                    self.signed_account(queue, pool, sign_addr, password, status).await
                 } else {
-                    Self::signed_permission(queue, pool, sign_addr, password, status).await
+                    self.signed_permission(queue, pool, sign_addr, password, status).await
                 }
             }
         }
     }
 
     async fn signed_account(
+        &self,
         queue: &MultisigQueueEntity,
         pool: DbPool,
         sign_addr: Vec<String>,
@@ -661,6 +678,7 @@ impl MultisigTransactionService {
 
     // 目前只有tron链实现了权限相关的内容
     async fn signed_permission(
+        &self,
         queue: &MultisigQueueEntity,
         pool: DbPool,
         sign_addr: Vec<String>,
@@ -728,12 +746,13 @@ impl MultisigTransactionService {
     }
 
     pub async fn exec_multisig_transaction(
+        &self,
         queue_id: &str,
         password: String,
         fee_setting: Option<String>,
         request_resource_id: Option<String>,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
@@ -1024,7 +1043,7 @@ impl MultisigTransactionService {
 
         // 回收资源
         if let Some(request_id) = request_resource_id {
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let backend = self.ctx.get_global_backend_api();
             let _rs = backend.delegate_complete(&request_id).await;
         }
 
@@ -1032,6 +1051,7 @@ impl MultisigTransactionService {
     }
 
     pub async fn check_ongoing_queue(
+        &self,
         chain_code: String,
         address: String,
     ) -> Result<Option<QueueInfo>, crate::error::service::ServiceError> {
@@ -1039,7 +1059,7 @@ impl MultisigTransactionService {
             || chain_code.as_str() == chain_code::BNB
             || chain_code.as_str() == chain_code::BTC
         {
-            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            let pool = self.ctx.get_global_sqlite_pool()?;
             let core_pool = CoreDbPool::new(pool.clone());
 
             let rs = MultisigQueueRepo::ongoing_queue(&chain_code, &address, &core_pool)
@@ -1052,8 +1072,11 @@ impl MultisigTransactionService {
     }
 
     // cancel multisig queue
-    pub async fn cancel_queue(queue_id: String) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    pub async fn cancel_queue(
+        &self,
+        queue_id: String,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let queue = MultisigDomain::queue_by_id(&queue_id, &pool).await?;
 
@@ -1072,7 +1095,7 @@ impl MultisigTransactionService {
         // report to backend ,if error rollback status
         let raw_data =
             MultisigQueueRepo::multisig_queue_data(&queue_id, core_pool).await?.to_string()?;
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
 
         if let Err(e) = backend.signed_trans_cancel(&queue_id, raw_data).await {
             tracing::error!("cancel queue[{}] upload fail roolback err:{}", queue_id, e);

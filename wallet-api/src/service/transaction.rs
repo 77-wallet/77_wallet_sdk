@@ -31,11 +31,18 @@ use wallet_database::{
 };
 use wallet_utils::unit;
 
-pub struct TransactionService;
+pub struct TransactionService {
+    ctx: &'static crate::context::Context,
+}
 
 impl TransactionService {
+    pub fn new(ctx: &'static crate::context::Context) -> Self {
+        Self { ctx }
+    }
+
     // 本币的余额
     pub async fn chain_balance(
+        &self,
         address: &str,
         chain_code: &str,
         symbol: &str,
@@ -142,9 +149,10 @@ impl TransactionService {
 
     /// 计算交易的手续费
     pub async fn transaction_fee(
+        &self,
         mut params: transaction::BaseTransferReq,
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         let token_key = params.token_address.clone();
         let coin = CoinRepo::coin_by_chain_token_key(&params.chain_code, token_key, &pool).await?;
@@ -163,6 +171,7 @@ impl TransactionService {
     }
 
     pub async fn transfer(
+        &self,
         params: transaction::TransferReq,
         bill_kind: BillKind,
     ) -> Result<TransactionResult, crate::error::service::ServiceError> {
@@ -227,13 +236,14 @@ impl TransactionService {
     }
 
     pub async fn bill_detail(
+        &self,
         tx_hash: &str,
         owner: &str,
     ) -> Result<BillDetailVo, crate::error::service::ServiceError> {
         let tx_hash = BillDomain::handle_hash(tx_hash);
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
 
         let mut bill = BillRepo::get_by_hash_and_owner(&tx_hash, owner, &pool).await?;
         bill.truncate_to_8_decimals();
@@ -262,21 +272,23 @@ impl TransactionService {
     }
 
     pub async fn recent_bill(
+        &self,
         token: &str,
         addr: &str,
         chain_code: &str,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<RecentBillListVo>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         Ok(BillRepo::recent_bill(token, addr, chain_code, page, page_size, pool).await?)
     }
 
     pub async fn query_tx_result(
+        &self,
         req: Vec<String>,
     ) -> Result<Vec<BillEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         let mut res = vec![];
         for id in req.iter() {
@@ -318,7 +330,7 @@ impl TransactionService {
 
         // 对于服务费订单和部署多签账号订单，需要修改对应的多签账号的状态
         if sync_bill.tx_update.status == entities::bill::BillStatus::Success.to_i8() {
-            Self::handle_tx_kind(&transaction).await?;
+            Self::handle_tx_kind(&transaction, &pool).await?;
         }
 
         // query transaction and handle result
@@ -379,8 +391,8 @@ impl TransactionService {
     // 对不同kind的交易做不同类型的处理
     async fn handle_tx_kind(
         bill_detail: &BillEntity,
+        pool: &CoreDbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let tx_kind = BillKind::try_from(bill_detail.tx_kind).unwrap();
         match tx_kind {
             // deploy multisig account
@@ -449,10 +461,11 @@ impl TransactionService {
     }
 
     pub async fn list_by_hashs(
+        &self,
         owner: String,
         hashs: Vec<String>,
     ) -> Result<Vec<BillEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         Ok(BillRepo::lists_by_hashs(&owner, hashs, &pool).await?)
     }
