@@ -55,7 +55,7 @@ impl TaskTrait for CommonTask {
     async fn execute(&self, _id: &str) -> Result<(), ServiceError> {
         match self {
             CommonTask::QueryCoinPrice(data) => {
-                CoinService::query_token_price(data).await?;
+                CoinService::new(crate::get_context()?).query_token_price(data).await?;
             }
             CommonTask::QueryQueueResult(data) => {
                 MultisigQueueDomain::sync_queue_status(&data.id).await?

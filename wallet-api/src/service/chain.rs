@@ -25,11 +25,13 @@ use wallet_database::{
 use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};
 use wallet_tree::api::KeystoreApi;
 
-pub struct ChainService;
+pub struct ChainService {
+    ctx: &'static crate::context::Context,
+}
 
 impl ChainService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(ctx: &'static crate::context::Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn add(
@@ -39,7 +41,7 @@ impl ChainService {
         protocols: &[String],
         main_symbol: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let input =
             ChainCreateVo::new(name, chain_code, protocols, NodeBindType::AutoLocal, main_symbol);
         let _res = ChainRepo::add(&core_pool, input).await?;
@@ -52,8 +54,8 @@ impl ChainService {
         chain_code: &str,
         node_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let api_pool = crate::context::get_context()?.api_wallet_pool()?;
+        let core_pool = self.ctx.core_pool()?;
+        let api_pool = self.ctx.api_wallet_pool()?;
         ChainRepo::set_chain_node_with_type(
             &core_pool,
             chain_code,
@@ -74,7 +76,7 @@ impl ChainService {
     }
 
     pub async fn sync_chains(self) -> Result<bool, crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
 
         let app_version = ConfigDomain::get_app_version().await?;
 
@@ -87,9 +89,9 @@ impl ChainService {
         self,
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = self.ctx.get_global_dirs();
 
         domain::wallet::WalletDomain::validate_password(wallet_password).await?;
         let chain_list: Vec<String> = ChainRepo::get_chain_node_list(&core_pool)
@@ -165,21 +167,21 @@ impl ChainService {
     pub async fn get_hot_chain_list(
         self,
     ) -> Result<Vec<ChainEntity>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         Ok(ChainRepo::get_chain_list_v2(&core_pool).await?)
     }
 
     pub async fn get_market_chain_list(
         self,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         Ok(CoinRepo::get_market_chain_list(&core_pool).await?)
     }
 
     pub async fn get_chain_list_with_node_info(
         self,
     ) -> Result<Vec<ChainWithNode>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         Ok(ChainRepo::get_chain_node_list(&core_pool).await?)
     }
 
@@ -187,7 +189,7 @@ impl ChainService {
         self,
         chain_code: &str,
     ) -> Result<Option<ChainEntity>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         Ok(ChainRepo::detail(&core_pool, chain_code).await?)
     }
 
@@ -199,7 +201,7 @@ impl ChainService {
         chain_list: HashMap<String, String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         let mut account_addresses = Vec::<String>::new();

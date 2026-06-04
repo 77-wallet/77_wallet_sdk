@@ -445,7 +445,9 @@ impl EndpointHandler for SpecialHandler {
                 let res = backend.post_req_str::<bool>(endpoint, &body).await;
                 res?;
 
-                crate::service::coin::CoinService::init_token_price().await?;
+                crate::service::coin::CoinService::new(crate::get_context()?)
+                    .init_token_price()
+                    .await?;
             }
 
             endpoint::TOKEN_QUERY_RATES => {

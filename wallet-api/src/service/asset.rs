@@ -23,13 +23,14 @@ pub struct AddressChainCode {
 }
 
 pub struct AssetsService {
+    ctx: &'static crate::context::Context,
     account_domain: AccountDomain,
     assets_domain: AssetsDomain,
 }
 
 impl AssetsService {
-    pub fn new() -> Self {
-        Self { account_domain: AccountDomain::new(), assets_domain: AssetsDomain::new() }
+    pub fn new(ctx: &'static crate::context::Context) -> Self {
+        Self { ctx, account_domain: AccountDomain::new(), assets_domain: AssetsDomain::new() }
     }
 
     pub async fn get_multisig_account_assets(
@@ -38,7 +39,7 @@ impl AssetsService {
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let multisig = MultisigDomain::account_by_address(address, true, &pool).await?;
         let address = vec![multisig.address];
 
@@ -56,7 +57,7 @@ impl AssetsService {
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes = if let Some(chain_code) = chain_code {
             vec![chain_code]
@@ -83,7 +84,7 @@ impl AssetsService {
         chain_code: &str,
         token_key: AssetTokenKey,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
         let address = if let Some(account_id) = account_id {
             let account = AccountRepo::detail_by_wallet_address_and_account_id_and_chain_code(
@@ -118,7 +119,7 @@ impl AssetsService {
         account_id: u32,
         wallet_address: Option<&str>,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
-        let core_pool = crate::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
             core_pool.clone(),
             wallet_address,
@@ -145,7 +146,7 @@ impl AssetsService {
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<AccountChainAssetList, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
@@ -229,7 +230,7 @@ impl AssetsService {
         chain_list: ChainList,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let chains = chain_list.keys().cloned().collect();
         let accounts =
@@ -283,7 +284,7 @@ impl AssetsService {
         chain_list: ChainList,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
 
         let chains = chain_list.keys().cloned().collect();
@@ -340,7 +341,7 @@ impl AssetsService {
         symbol: &str,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let accounts = self
             .account_domain
             .get_addresses(address, account_id, vec![], is_multisig)
@@ -398,7 +399,7 @@ impl AssetsService {
         crate::response_vo::standard_wallet::coin::CoinInfoList,
         crate::error::service::ServiceError,
     > {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
             .account_domain

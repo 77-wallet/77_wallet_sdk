@@ -59,9 +59,10 @@ impl TaskTrait for InitializationTask {
                 res?;
             }
             InitializationTask::PullHotCoins => {
-                CoinService::pull_hot_coins().await?;
+                let coin_service = CoinService::new(crate::get_context()?);
+                coin_service.pull_hot_coins().await?;
 
-                CoinService::init_token_price().await?;
+                coin_service.init_token_price().await?;
             }
             InitializationTask::PullApiWalletCoins => {
                 // 从后端获取最新的币数据

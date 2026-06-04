@@ -30,14 +30,17 @@ use wallet_transport_backend::{
     response_vo::coin::{CoinMarketValue, TokenHistoryPrices},
 };
 
-pub struct CoinService;
+pub struct CoinService {
+    ctx: &'static crate::context::Context,
+}
 
 impl CoinService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(ctx: &'static crate::context::Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn get_hot_coin_list(
+        &self,
         address: &str,
         account_id: Option<u32>,
         mut chain_code: Option<String>,
@@ -51,7 +54,7 @@ impl CoinService {
         >,
         crate::error::service::ServiceError,
     > {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let account_domain = AccountDomain::new();
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
@@ -115,8 +118,8 @@ impl CoinService {
         Ok(res)
     }
 
-    pub async fn pull_hot_coins() -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+    pub async fn pull_hot_coins(&self) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = self.ctx.core_pool()?;
 
         CoinRepo::drop_coin_just_null_token_address(&core_pool).await?;
 
@@ -128,7 +131,7 @@ impl CoinService {
         CoinDomain::upsert_hot_coin_list(&core_pool, data).await?;
 
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
-        let api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let api = self.ctx.get_global_backend_api();
         let coin = api.swappable_coin().await?;
 
         let swap_coins = coin
@@ -141,7 +144,7 @@ impl CoinService {
             .collect::<Vec<_>>();
         CoinRepo::multi_update_swappable(swap_coins, &core_pool).await?;
 
-        let _e = Self::delete_wsol_error(&core_pool).await;
+        let _e = CoinService::delete_wsol_error(&core_pool).await;
 
         Ok(())
     }
@@ -183,9 +186,9 @@ impl CoinService {
         Ok(())
     }
 
-    pub async fn init_token_price() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+    pub async fn init_token_price(&self) -> Result<(), crate::error::service::ServiceError> {
+        let pool = self.ctx.core_pool()?;
+        let backend_api = self.ctx.get_global_backend_api();
 
         let update_at = if let Some(last_coin) = CoinRepo::last_coin(&pool, false).await? {
             last_coin.updated_at.map(|s| s.format("%Y-%m-%d %H:%M:%S").to_string())
@@ -231,6 +234,7 @@ impl CoinService {
     }
 
     pub async fn query_token_price(
+        &self,
         req: &TokenQueryPriceReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         CoinDomain::query_token_price(req).await
@@ -238,11 +242,12 @@ impl CoinService {
 
     // 查询价格 顺便更新一次币价·
     pub async fn get_token_price(
+        &self,
         symbols: Vec<String>,
     ) -> Result<Vec<TokenPriceChangeRes>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let pool = self.ctx.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
+        let backend_api = self.ctx.get_global_backend_api();
 
         let coins = CoinRepo::coin_list_with_symbols(pool.clone(), &symbols, None).await?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
@@ -295,13 +300,14 @@ impl CoinService {
     }
 
     pub async fn query_token_info(
+        &self,
         chain_code: &str,
         mut token_address: String,
     ) -> Result<
         crate::response_vo::standard_wallet::coin::TokenInfo,
         crate::error::service::ServiceError,
     > {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
@@ -379,6 +385,7 @@ impl CoinService {
 
     // 用户自定义添加币种
     pub async fn customize_coin(
+        &self,
         address: &str,
         account_id: Option<u32>,
         chain_code: &str,
@@ -386,7 +393,7 @@ impl CoinService {
         protocol: Option<String>,
         is_multisig: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let account_domain = AccountDomain::new();
         let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
 
@@ -536,9 +543,10 @@ impl CoinService {
     //   "currency": "usd"
     // }
     pub async fn query_history_price(
+        &self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> Result<TokenHistoryPrices, crate::error::service::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
 
         let prices = backend_api.query_history_price(&req).await?;
 
@@ -546,14 +554,15 @@ impl CoinService {
     }
 
     pub async fn query_popular_by_page(
+        &self,
         // chain_code: Option<String>,
         req: wallet_transport_backend::request::TokenQueryPopularByPageReq,
     ) -> Result<
         wallet_database::pagination::Pagination<TokenPriceChangeRes>,
         crate::error::service::ServiceError,
     > {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let core_pool = self.ctx.core_pool()?;
+        let backend_api = self.ctx.get_global_backend_api();
 
         let prices = backend_api.query_popular_by_page(&req).await?;
 
@@ -592,9 +601,10 @@ impl CoinService {
     }
 
     pub async fn market_value(
+        &self,
         coin: std::collections::HashMap<String, String>,
     ) -> Result<CoinMarketValue, crate::error::service::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         Ok(backend_api.coin_market_value(coin).await?)
     }
 }

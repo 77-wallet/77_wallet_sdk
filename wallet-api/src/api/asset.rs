@@ -12,7 +12,7 @@ use wallet_database::entities::asset_token_key::AssetTokenKey;
 
 impl WalletManager {
     fn assets_service(&self) -> ReturnType<AssetsService> {
-        Ok(AssetsService::new())
+        Ok(AssetsService::new(self.ctx))
     }
 
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {

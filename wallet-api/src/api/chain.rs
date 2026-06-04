@@ -8,36 +8,40 @@ use crate::{
 };
 
 impl WalletManager {
+    fn chain_service(&self) -> ReturnType<ChainService> {
+        Ok(ChainService::new(self.ctx))
+    }
+
     pub async fn add_chain(&self, name: &str, chain_code: &str) -> ReturnType<()> {
-        ChainService::new().add(name, chain_code, &[], "").await
+        self.chain_service()?.add(name, chain_code, &[], "").await
     }
 
     pub async fn set_chain_node(&self, chain_code: &str, node_id: &str) -> ReturnType<()> {
-        ChainService::new().set_chain_node(chain_code, node_id).await
+        self.chain_service()?.set_chain_node(chain_code, node_id).await
     }
 
     pub async fn get_market_chain_list(&self) -> ReturnType<Vec<String>> {
-        ChainService::new().get_market_chain_list().await
+        self.chain_service()?.get_market_chain_list().await
     }
 
     pub async fn sync_chains(&self) -> ReturnType<bool> {
-        ChainService::new().sync_chains().await
+        self.chain_service()?.sync_chains().await
     }
 
     pub async fn sync_wallet_chain_data(&self, wallet_password: &str) -> ReturnType<()> {
-        ChainService::new().sync_wallet_chain_data(wallet_password).await
+        self.chain_service()?.sync_wallet_chain_data(wallet_password).await
     }
 
     pub async fn get_hot_chain_list(&self) -> ReturnType<Vec<ChainEntity>> {
-        ChainService::new().get_hot_chain_list().await
+        self.chain_service()?.get_hot_chain_list().await
     }
 
     pub async fn get_setting_chain_list(&self) -> ReturnType<Vec<ChainWithNode>> {
-        ChainService::new().get_chain_list_with_node_info().await
+        self.chain_service()?.get_chain_list_with_node_info().await
     }
 
     pub async fn get_protocol_list(&self, chain_code: &str) -> ReturnType<Option<ChainEntity>> {
-        ChainService::new().get_protocol_list(chain_code).await
+        self.chain_service()?.get_protocol_list(chain_code).await
     }
 
     pub async fn get_chain_list(
@@ -47,7 +51,7 @@ impl WalletManager {
         // symbol: &str,
         chain_list: HashMap<String, String>,
     ) -> ReturnType<Vec<ChainAssets>> {
-        ChainService::new()
+        self.chain_service()?
             .get_chain_assets_list(wallet_address, Some(account_id), chain_list, None)
             .await
     }
@@ -57,7 +61,7 @@ impl WalletManager {
         address: &str,
         chain_list: HashMap<String, String>,
     ) -> ReturnType<Vec<ChainAssets>> {
-        ChainService::new().get_chain_assets_list(address, None, chain_list, Some(true)).await
+        self.chain_service()?.get_chain_assets_list(address, None, chain_list, Some(true)).await
     }
 }
 
