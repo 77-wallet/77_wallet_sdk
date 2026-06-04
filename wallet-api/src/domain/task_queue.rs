@@ -10,7 +10,7 @@ pub(crate) struct TaskQueueDomain;
 impl TaskQueueDomain {
     /// 执行TaskQueue从core_db到task_db的迁移（幂等 & 可重复执行）
     pub async fn migrate_task_queue_to_db() -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::context::CONTEXT.get().unwrap();
+        let ctx = crate::get_context()?;
 
         let core_pool = ctx.core_pool()?;
         let task_pool = ctx.task_pool()?;
@@ -104,8 +104,8 @@ impl TaskQueueDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         if !ids.is_empty() {
             const BATCH_SIZE: usize = 500;
+            let api = crate::get_context()?.get_global_backend_api();
             for chunk in ids.chunks(BATCH_SIZE) {
-                let api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
                 api.send_msg_confirm(&wallet_transport_backend::request::SendMsgConfirmReq::new(
                     chunk.to_vec(),
                 ))
@@ -120,7 +120,7 @@ impl TaskQueueDomain {
         req: T,
         endpoint: &str,
     ) -> Result<Option<BackendApiTask>, crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::get_context()?.get_global_backend_api();
 
         let res = backend.post_request::<_, serde_json::Value>(endpoint, &req).await;
 

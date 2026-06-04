@@ -166,8 +166,9 @@ impl EndpointHandler for DefaultHandler {
         backend: &BackendApi,
         // _wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let ctx = crate::get_context()?;
+        let pool = ctx.core_pool()?;
+        let sn = ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -240,10 +241,11 @@ impl EndpointHandler for SpecialHandler {
         // TODO： 完全不需要这个
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let ctx = crate::get_context()?;
+        let core_pool = ctx.core_pool()?;
+        let api_pool = ctx.api_wallet_pool()?;
         // let mut repo = wallet_database::factory::RepositoryFactory::repo(core_pool.into_inner());
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = ctx.get_sn();
         match endpoint {
             endpoint::DEVICE_INIT => {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
@@ -364,7 +366,7 @@ impl EndpointHandler for SpecialHandler {
             }
 
             endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS => {
-                let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+                let pool = ctx.core_pool()?;
                 let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
                     return Err(crate::error::business::BusinessError::Device(
                         crate::error::business::device::DeviceError::Uninitialized,

@@ -101,7 +101,8 @@ pub(crate) async fn dispatch_task_entities(
         return Ok(());
     }
 
-    let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+    let ctx = crate::get_context()?;
+    let handles = ctx.get_global_handles().await;
     let Some(handles) = handles.upgrade() else {
         return Err(crate::error::service::ServiceError::System(
             crate::error::system::SystemError::Internal(
@@ -111,7 +112,7 @@ pub(crate) async fn dispatch_task_entities(
     };
 
     let task_sender = handles.get_global_task_manager();
-    let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+    let pool = ctx.task_pool()?;
 
     let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
     for task_entity in entities.into_iter() {
@@ -203,7 +204,7 @@ impl Tasks {
             return Ok(());
         }
         let create_entities = self.create_task_entities().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = crate::get_context()?.task_pool()?;
         let entities = TaskQueueRepo::create_multi_task(&pool, &create_entities).await?;
         Self::dispatch_tasks(entities).await?;
         Ok(())
