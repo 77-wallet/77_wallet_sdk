@@ -132,7 +132,7 @@ impl ApiAccountService {
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let pool = self.ctx.api_wallet_pool()?;
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
@@ -164,7 +164,7 @@ impl ApiAccountService {
         name: &str,
         is_default_name: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let pool = self.ctx.api_wallet_pool()?;
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
@@ -249,7 +249,7 @@ impl ApiAccountService {
         chain_code: &str,
         password: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
-        WalletDomain::validate_password(password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, password).await?;
         Ok(ApiAccountDomain::get_private_key(address, chain_code).await?)
     }
 
@@ -331,7 +331,7 @@ impl ApiAccountService {
             )
             .into());
         };
-        WalletDomain::validate_password(password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, password).await?;
         // Check if this is the last account
         let account_count = ApiAccountRepo::count_unique_account_ids(&pool, wallet_address).await?;
         if account_count <= 1 {
@@ -370,7 +370,7 @@ impl ApiAccountService {
     ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
-        WalletDomain::validate_password(password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
 

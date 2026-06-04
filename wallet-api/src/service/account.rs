@@ -104,7 +104,7 @@ impl AccountService {
         let core_pool = self.ctx.core_pool()?;
         let dirs = self.ctx.get_global_dirs();
 
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let wallet = WalletRepo::wallet_detail_by_address(core_pool.clone(), wallet_address)
             .await?
@@ -268,7 +268,7 @@ impl AccountService {
     ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
         let pool = self.ctx.core_pool()?;
 
-        WalletDomain::validate_password(password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
         let dirs = self.ctx.get_global_dirs();
@@ -405,7 +405,7 @@ impl AccountService {
             )
             .into());
         };
-        WalletDomain::validate_password(password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, password).await?;
         // Check if this is the last account
         let account_count =
             AccountRepo::count_unique_account_ids(pool.clone(), wallet_address).await?;
@@ -453,7 +453,7 @@ impl AccountService {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletDomain::validate_password(old_password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, old_password).await?;
         let api_wallet_domain = ApiWalletDomain::new(self.ctx);
         api_wallet_domain.clear_wallet_unlock_session().await?;
         let pool = self.ctx.core_pool()?;
@@ -550,7 +550,7 @@ impl AccountService {
         crate::response_vo::standard_wallet::account::GetAccountPrivateKeyRes,
         crate::error::service::ServiceError,
     > {
-        WalletDomain::validate_password(password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, password).await?;
         let pool = self.ctx.core_pool()?;
         let account_list =
             AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(

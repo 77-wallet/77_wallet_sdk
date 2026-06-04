@@ -95,7 +95,7 @@ impl ApiTransService {
         params: ApiTransferExReq,
         _bill_kind: BillKind,
     ) -> Result<TransactionResult, ServiceError> {
-        WalletDomain::validate_password(&params.password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, &params.password).await?;
 
         let private_key = crate::domain::api_wallet::account::ApiAccountDomain::get_private_key(
             &params.base.from,

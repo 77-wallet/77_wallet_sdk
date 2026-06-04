@@ -127,7 +127,7 @@ impl ApiWalletService {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
         let pool = self.ctx.api_wallet_pool()?;
@@ -356,7 +356,7 @@ impl ApiWalletService {
         );
 
         let password_validation_start = std::time::Instant::now();
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
@@ -850,7 +850,7 @@ impl ApiWalletService {
         self,
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
         self.wallet_domain().initialize_wallet_unlock_session(wallet_password).await?;
         crate::infrastructure::system_ready::mark_system_ready();
 

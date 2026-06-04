@@ -34,7 +34,11 @@ impl WalletManager {
         req: ApiTransferExReq,
         private_key: wallet_chain_interact::types::ChainPrivateKey,
     ) -> ReturnType<TransactionResult> {
-        crate::domain::wallet::WalletDomain::validate_password(&req.password).await?;
+        crate::domain::wallet::WalletDomain::validate_password_with_context(
+            self.ctx,
+            &req.password,
+        )
+        .await?;
         ApiTransService::new(self.ctx).transfer_with_private_key(req, private_key).await
     }
 

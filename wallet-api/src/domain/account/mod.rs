@@ -403,8 +403,6 @@ pub async fn open_subpk_with_password(
     address: &str,
     password: &str,
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, ServiceError> {
-    // super::wallet::WalletDomain::validate_password(password).await?;
-
     let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
     let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 

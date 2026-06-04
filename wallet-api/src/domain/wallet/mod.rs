@@ -5,7 +5,9 @@ use wallet_types::chain::{
     chain::ChainCode,
 };
 
-use crate::{application::wallet::WalletApplication, error::service::ServiceError};
+use crate::{
+    application::wallet::WalletApplication, context::Context, error::service::ServiceError,
+};
 
 const DEFAULT_SALT: &str = "salt";
 
@@ -43,11 +45,25 @@ impl WalletDomain {
     }
 
     pub(crate) async fn validate_password(password: &str) -> Result<(), ServiceError> {
-        WalletApplication::validate_password(password).await
+        Self::validate_password_with_context(crate::get_context()?, password).await
+    }
+
+    pub(crate) async fn validate_password_with_context(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<(), ServiceError> {
+        WalletApplication::validate_password(ctx, password).await
     }
 
     pub(crate) async fn upgrade_algorithm(password: &str) -> Result<(), ServiceError> {
-        WalletApplication::upgrade_algorithm(password).await
+        Self::upgrade_algorithm_with_context(crate::get_context()?, password).await
+    }
+
+    pub(crate) async fn upgrade_algorithm_with_context(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<(), ServiceError> {
+        WalletApplication::upgrade_algorithm(ctx, password).await
     }
 
     pub(crate) async fn get_seed(
@@ -67,7 +83,14 @@ impl WalletDomain {
     }
 
     pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, ServiceError> {
-        WalletApplication::check_api_wallet_exist(address).await
+        Self::check_api_wallet_exist_with_context(crate::get_context()?, address).await
+    }
+
+    pub(crate) async fn check_api_wallet_exist_with_context(
+        ctx: &'static Context,
+        address: &str,
+    ) -> Result<bool, ServiceError> {
+        WalletApplication::check_api_wallet_exist(ctx, address).await
     }
 
     pub(crate) async fn generate_password_proof(password: &str) -> Result<String, ServiceError> {

@@ -93,7 +93,8 @@ impl ChainService {
 
         let dirs = self.ctx.get_global_dirs();
 
-        domain::wallet::WalletDomain::validate_password(wallet_password).await?;
+        domain::wallet::WalletDomain::validate_password_with_context(self.ctx, wallet_password)
+            .await?;
         let chain_list: Vec<String> = ChainRepo::get_chain_node_list(&core_pool)
             .await?
             .into_iter()

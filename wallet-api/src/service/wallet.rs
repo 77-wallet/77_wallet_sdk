@@ -87,7 +87,7 @@ impl WalletService {
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!("validate_password");
-        WalletApplication::validate_password(password).await?;
+        WalletApplication::validate_password(self.ctx, password).await?;
         tracing::info!("validate_password end");
         Ok(())
     }
@@ -176,7 +176,7 @@ impl WalletService {
     > {
         let pool = self.ctx.core_pool()?;
 
-        WalletApplication::validate_password(wallet_password).await?;
+        WalletApplication::validate_password(self.ctx, wallet_password).await?;
         let dirs = self.ctx.get_global_dirs();
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;
@@ -317,7 +317,7 @@ impl WalletService {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
-        WalletApplication::validate_password(wallet_password).await?;
+        WalletApplication::validate_password(self.ctx, wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = self.ctx.core_pool()?;
@@ -340,7 +340,7 @@ impl WalletService {
 
         let address = &address.to_string();
 
-        if WalletApplication::check_api_wallet_exist(address).await? {
+        if WalletApplication::check_api_wallet_exist(self.ctx, address).await? {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
             )));
@@ -962,7 +962,7 @@ impl WalletService {
         &self,
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletApplication::upgrade_algorithm(password).await?;
+        WalletApplication::upgrade_algorithm(self.ctx, password).await?;
         Ok(())
     }
 }

@@ -11,22 +11,25 @@ use wallet_database::{
 use wallet_tree::{KdfAlgorithm, WalletTreeStrategy};
 
 use crate::{
-    domain::api_wallet::wallet::ApiWalletDomain, error::service::ServiceError,
+    context::Context, domain::api_wallet::wallet::ApiWalletDomain, error::service::ServiceError,
     infrastructure::unlock_session,
 };
 
 pub struct WalletApplication;
 
 impl WalletApplication {
-    pub(crate) async fn validate_password(password: &str) -> Result<(), ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+    pub(crate) async fn validate_password(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<(), ServiceError> {
+        let core_pool = ctx.core_pool()?;
+        let api_pool = ctx.api_wallet_pool()?;
 
         if unlock_session::wallet_unlock_token_is_active(password).await? {
             return Ok(());
         }
 
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -35,7 +38,7 @@ impl WalletApplication {
         };
 
         if device.password.is_some() {
-            Self::upgrade_algorithm(password).await?;
+            Self::upgrade_algorithm(ctx, password).await?;
             return Ok(());
         }
 
@@ -57,7 +60,7 @@ impl WalletApplication {
             }
             None => {
                 tracing::info!("password_proof is None, trying fallback validation");
-                if Self::try_decrypt_wallet_db(password).await? {
+                if Self::try_decrypt_wallet_db(ctx, password).await? {
                     let proof = Self::generate_password_proof(password).await?;
                     DeviceRepo::update_password_proof(core_pool.clone(), sn, Some(&proof)).await?;
                     tracing::info!("password_proof generated and stored");
@@ -74,8 +77,11 @@ impl WalletApplication {
         Ok(())
     }
 
-    pub(crate) async fn upgrade_algorithm(password: &str) -> Result<(), ServiceError> {
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+    pub(crate) async fn upgrade_algorithm(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<(), ServiceError> {
+        let dirs = ctx.get_global_dirs();
 
         let mut legacy_wallet_tree = WalletTreeStrategy::V1.get_wallet_tree(&dirs.wallet_dir)?;
         #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -216,8 +222,8 @@ impl WalletApplication {
             )?;
         }
 
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let sn = ctx.get_sn();
+        let core_pool = ctx.core_pool()?;
         DeviceRepo::update_password(core_pool, sn, None).await?;
 
         Ok(())
@@ -260,8 +266,11 @@ impl WalletApplication {
         Ok(account_ids)
     }
 
-    pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+    pub(crate) async fn check_api_wallet_exist(
+        ctx: &'static Context,
+        address: &str,
+    ) -> Result<bool, ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_address(&pool, address).await?;
         Ok(res.is_some())
     }
@@ -293,12 +302,15 @@ impl WalletApplication {
         }
     }
 
-    async fn try_decrypt_wallet_db(password: &str) -> Result<bool, ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+    async fn try_decrypt_wallet_db(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<bool, ServiceError> {
+        let core_pool = ctx.core_pool()?;
+        let pool = ctx.api_wallet_pool()?;
 
         if let Some(wallet) = WalletRepo::wallet_latest(core_pool.clone()).await? {
-            let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+            let dirs = ctx.get_global_dirs();
             let root_dir = dirs.get_root_dir(&wallet.address)?;
             let wallet_tree_strategy =
                 crate::domain::app::config::ConfigDomain::get_wallet_tree_strategy().await?;
