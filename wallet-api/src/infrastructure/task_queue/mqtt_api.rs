@@ -72,46 +72,47 @@ impl TaskTrait for ApiMqttStruct {
     }
 
     async fn execute(&self, id: &str) -> Result<(), ServiceError> {
+        let ctx = crate::get_context()?;
         match &self.event_type {
             EventType::AwmOrderTrans => {
                 let data: AwmOrderTransMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmOrderTransRes => {
                 let data: AwmOrderTransResMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmCmdRscRes => {
                 let data: AwmOrderTransResMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec_resource_result(id).await?
+                data.exec_resource_result(ctx, id).await?
             }
             EventType::AwmCmdAddrExpand => {
                 let data: AwmCmdAddrExpandMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmCmdUidUnbind => {
                 let data: AwmCmdUidUnbindMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmCmdFeeRes => {
                 let data: AwmCmdFeeResMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmCmdActive => {
                 let data: AwmCmdActiveMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmCmdDevChange => {
                 let data: AwmCmdDevChangeMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
         }
 

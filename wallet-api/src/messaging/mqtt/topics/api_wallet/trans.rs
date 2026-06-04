@@ -3,6 +3,7 @@ use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
+    context::Context,
     domain::api_wallet::trans::{
         collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
     },
@@ -171,18 +172,22 @@ pub struct AwmResourceDelegationMsg {
 impl AwmOrderTransMsg {
     pub(crate) async fn exec(
         &self,
+        ctx: &'static Context,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = ctx.get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
 
-        self.check_uid().await?;
+        self.check_uid(ctx).await?;
         Ok(())
     }
 
-    pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn check_uid(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 根据强约束原则，只使用输入字段原值，不查询数据库
         match self {
             Self::Normal(msg) => match msg.trade_type {
@@ -191,26 +196,28 @@ impl AwmOrderTransMsg {
                 3 => msg.transfer_fee().await?,
                 _ => {}
             },
-            Self::ResourceOperation(msg) => msg.resource_operation().await?,
-            Self::ResourceDelegation(msg) => msg.resource_delegation().await?,
+            Self::ResourceOperation(msg) => msg.resource_operation(ctx).await?,
+            Self::ResourceDelegation(msg) => msg.resource_delegation(ctx).await?,
         }
         Ok(())
     }
 
     pub(crate) async fn resource_operation(
         &self,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         match self {
-            Self::ResourceOperation(msg) => msg.resource_operation().await,
+            Self::ResourceOperation(msg) => msg.resource_operation(ctx).await,
             _ => Ok(()),
         }
     }
 
     pub(crate) async fn resource_delegation(
         &self,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         match self {
-            Self::ResourceDelegation(msg) => msg.resource_delegation().await,
+            Self::ResourceDelegation(msg) => msg.resource_delegation(ctx).await,
             _ => Ok(()),
         }
     }
@@ -226,6 +233,7 @@ impl AwmOrderTransMsg {
 impl AwmResourceOperationMsg {
     pub(crate) async fn resource_operation(
         &self,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let operation_type = match self.stk_type {
             1 => ApiResourceOperationType::Stake,
@@ -257,7 +265,7 @@ impl AwmResourceOperationMsg {
             operation_type,
         );
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let pool = ctx.api_transaction_pool()?;
         ApiResourceOperationRepo::upsert(&pool, req).await?;
         tracing::info!(
             trade_no = %self.trade_no,
@@ -273,6 +281,7 @@ impl AwmResourceOperationMsg {
 impl AwmResourceDelegationMsg {
     pub(crate) async fn resource_delegation(
         &self,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let (origin_trade_type, operation_type) = match self.trade_type {
             5 => (ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate),
@@ -305,7 +314,7 @@ impl AwmResourceDelegationMsg {
         )
         .with_delegation_auth(self.resource_delegation_mode(), self.normalized_permission_id());
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let pool = ctx.api_transaction_pool()?;
         ApiResourceDelegationRepo::upsert(&pool, req).await?;
         tracing::info!(
             trade_no = %self.trade_no,
@@ -601,7 +610,7 @@ mod tests {
             uid: wallet_uid,
         });
 
-        msg.resource_operation().await?;
+        msg.resource_operation(crate::get_context()?).await?;
 
         let tx_pool = api_transaction_pool()?;
         let got = ApiResourceOperationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;

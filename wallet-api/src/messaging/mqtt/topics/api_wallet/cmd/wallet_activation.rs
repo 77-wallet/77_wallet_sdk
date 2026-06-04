@@ -2,7 +2,10 @@ use wallet_transport_backend::{
     request::api_wallet::msg::MsgAckReq, response_vo::api_wallet::wallet::ActiveStatus,
 };
 
-use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
+use crate::{
+    context::Context,
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+};
 
 // biz_type = AWM_CMD_ACTIVE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -18,9 +21,10 @@ pub struct AwmCmdActiveMsg {
 impl AwmCmdActiveMsg {
     pub(crate) async fn exec(
         &self,
+        ctx: &'static Context,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = ctx.get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;

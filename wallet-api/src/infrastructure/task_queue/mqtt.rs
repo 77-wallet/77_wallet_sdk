@@ -136,7 +136,7 @@ impl TaskTrait for MqttTask {
             MqttTask::CleanPermission(data) => data.exec(id).await?,
             MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
             MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.execute(id).await?,
-            MqttTask::ApiWalletAcctChange(data) => data.exec(id).await?,
+            MqttTask::ApiWalletAcctChange(data) => data.exec(crate::get_context()?, id).await?,
         }
         Ok(())
     }

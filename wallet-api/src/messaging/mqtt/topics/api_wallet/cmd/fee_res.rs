@@ -1,8 +1,11 @@
-use crate::messaging::{
-    mqtt::topics::api_wallet::result_fields::{
-        AwmResultTxFee, deserialize_optional_non_empty_string,
+use crate::{
+    context::Context,
+    messaging::{
+        mqtt::topics::api_wallet::result_fields::{
+            AwmResultTxFee, deserialize_optional_non_empty_string,
+        },
+        notify::{FrontendNotifyEvent, event::NotifyEvent},
     },
-    notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 use wallet_database::repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo};
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
@@ -40,12 +43,13 @@ pub struct AwmCmdFeeResMsg {
 impl AwmCmdFeeResMsg {
     pub(crate) async fn exec(
         &self,
+        ctx: &'static Context,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!("exec AwmCmdFeeResMsg: {:?}", self);
-        self.check_uid().await?;
+        self.check_uid(ctx).await?;
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = ctx.get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
@@ -55,8 +59,10 @@ impl AwmCmdFeeResMsg {
         Ok(())
     }
 
-    pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::context::CONTEXT.get().unwrap();
+    pub(crate) async fn check_uid(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         if res.is_none() {
