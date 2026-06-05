@@ -71,6 +71,7 @@ pub enum ShadowFeeCommand {
 /// - nonce 从"动态信息"升级为"已裁决事实"
 /// - chain_rpc_guard 作为 RPC 压力阀
 pub struct ShadowFeeWorker {
+    ctx: &'static crate::context::Context,
     pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
     address_locks: Arc<AddressLockManager>,
@@ -209,12 +210,13 @@ impl ShadowFeeWorker {
     }
 
     pub fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
         address_locks: Arc<AddressLockManager>,
         scanner: Arc<ShadowScanner>,
     ) -> Self {
-        Self { pool, core_pool, address_locks, scanner }
+        Self { ctx, pool, core_pool, address_locks, scanner }
     }
 
     /// 处理命令
@@ -679,7 +681,7 @@ impl ShadowFeeWorker {
         }
 
         // 通过Context获取Handles实例，然后获取私钥管理器
-        let handles = crate::context::get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key =
             private_key_manager.get_private_key(&fee.from_addr, &fee.chain_code).await?;
@@ -967,7 +969,7 @@ impl ShadowFeeWorker {
 
     async fn check_digest(&self, req: &ApiFeeEntity) -> Result<bool, ServiceError> {
         info!(trade_no=%req.trade_no, "[手续费归集] 验证交易摘要");
-        let sn = crate::get_context()?.get_sn();
+        let sn = self.ctx.get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
@@ -1404,6 +1406,7 @@ mod tests {
                 None,
             ));
         let worker = ShadowFeeWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(

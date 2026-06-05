@@ -30,7 +30,8 @@ pub async fn send_resource_result_ack_via_worker(
         intent_tx,
         None,
     ));
-    let worker = WithdrawShadowSideEffectWorker::new(tx_pool, core_pool, scanner);
+    let worker =
+        WithdrawShadowSideEffectWorker::new(crate::get_context()?, tx_pool, core_pool, scanner);
     worker
         .handle(WithdrawShadowSideEffectCommand::SendResourceResultAck(
             resource_trade_no.to_string(),
@@ -53,7 +54,8 @@ pub async fn send_tx_ack_via_worker(
         intent_tx,
         None,
     ));
-    let worker = WithdrawShadowSideEffectWorker::new(tx_pool, core_pool, scanner);
+    let worker =
+        WithdrawShadowSideEffectWorker::new(crate::get_context()?, tx_pool, core_pool, scanner);
     worker.handle(WithdrawShadowSideEffectCommand::SendTxAck(trade_no.to_string())).await
 }
 
@@ -72,7 +74,8 @@ pub async fn upload_resource_tx_exec_receipt_via_worker(
         intent_tx,
         None,
     ));
-    let worker = WithdrawShadowSideEffectWorker::new(tx_pool, core_pool, scanner);
+    let worker =
+        WithdrawShadowSideEffectWorker::new(crate::get_context()?, tx_pool, core_pool, scanner);
     worker
         .handle(WithdrawShadowSideEffectCommand::UploadResourceTxExecReceipt(
             resource_trade_no.to_string(),

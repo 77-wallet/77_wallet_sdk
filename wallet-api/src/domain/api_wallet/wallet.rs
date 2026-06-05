@@ -399,7 +399,7 @@ impl ApiWalletDomain {
         );
         tracing::info!("wallet unlock session initialized");
         self.ctx.set_wallet_unlock_session(unlock_session).await?;
-        ExpandBootstrap::start_after_first_wallet_unlock().await?;
+        ExpandBootstrap::start_after_first_wallet_unlock(self.ctx).await?;
         Ok(())
     }
 

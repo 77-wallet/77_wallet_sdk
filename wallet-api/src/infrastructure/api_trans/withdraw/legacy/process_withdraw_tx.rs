@@ -89,7 +89,7 @@ impl ProcessWithdrawTxHandle {
         // 初始化Shadow系统
         shadow::enable();
         let shadow_system =
-            shadow::init(api_transaction_pool.clone(), api_wallet_pool.clone()).await;
+            shadow::init(ctx, api_transaction_pool.clone(), api_wallet_pool.clone()).await;
 
         Ok(Self {
             shutdown_tx,

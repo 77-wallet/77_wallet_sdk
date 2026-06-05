@@ -48,6 +48,7 @@ enum ResourceGateReleaseOutcome {
 /// - 禁止修改链事实
 #[derive(Clone)]
 pub struct SideEffectWorker {
+    ctx: &'static crate::context::Context,
     pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
     /// ShadowScanner 引用，用于直接调用 try_advance
@@ -95,11 +96,12 @@ impl SideEffectWorker {
     }
 
     pub fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
         scanner: Arc<ShadowScanner>,
     ) -> Self {
-        Self { pool, core_pool, scanner }
+        Self { ctx, pool, core_pool, scanner }
     }
 
     /// 处理命令
@@ -183,7 +185,7 @@ impl SideEffectWorker {
         };
 
         // 发送交易 ACK 逻辑
-        let backend = crate::get_context()?.get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         use wallet_transport_backend::request::api_wallet::transaction::{
             TransAckType, TransEventAckReq, TransType,
         };
@@ -290,7 +292,7 @@ impl SideEffectWorker {
         }
 
         // 发送交易结果 ACK 逻辑
-        let backend = crate::get_context()?.get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         use wallet_transport_backend::request::api_wallet::transaction::{
             TransAckType, TransEventAckReq, TransType,
         };
@@ -356,7 +358,7 @@ impl SideEffectWorker {
         } else {
             (platform_resource_task_trans_type(&resource_task), platform_resource_result_ack_type())
         };
-        let backend = crate::get_context()?.get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         if let Err(e) = backend
             .trans_event_ack(&TransEventAckReq::new(&resource_trade_no, trans_type, ack_type))
             .await
@@ -395,7 +397,7 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        let backend = crate::get_context()?.get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         backend
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -436,7 +438,7 @@ impl SideEffectWorker {
             ));
         }
 
-        let backend = crate::get_context()?.get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         backend.upload_tx_exec_receipt(&payload).await?;
         let affected = ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(
             &self.pool,
@@ -601,7 +603,7 @@ impl SideEffectWorker {
         }
 
         // 上传交易执行回执
-        let backend = crate::get_context()?.get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         match backend.upload_tx_exec_receipt(&upload_payload).await {
             Ok(_) => {
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Tx exec receipt uploaded successfully");
@@ -853,7 +855,12 @@ mod tests {
             intent_tx,
             None,
         ));
-        let worker = SideEffectWorker::new(tx_pool.clone(), core_pool, scanner);
+        let worker = SideEffectWorker::new(
+            crate::get_context().expect("context"),
+            tx_pool.clone(),
+            core_pool,
+            scanner,
+        );
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &tx_pool,

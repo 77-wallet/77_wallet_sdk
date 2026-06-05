@@ -206,7 +206,11 @@ pub struct WithdrawShadowActorSystem {
 }
 
 impl WithdrawShadowActorSystem {
-    pub fn new(api_withdraw_pool: ApiTransactionDbPool, core_pool: ApiWalletDbPool) -> Self {
+    pub fn new(
+        ctx: &'static crate::context::Context,
+        api_withdraw_pool: ApiTransactionDbPool,
+        core_pool: ApiWalletDbPool,
+    ) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();
@@ -235,6 +239,7 @@ impl WithdrawShadowActorSystem {
 
         // 初始化Shadow Worker
         let shadow_worker = Arc::new(ShadowWithdrawWorker::new(
+            ctx,
             api_withdraw_pool.clone(),
             core_pool.clone(),
             scanner.clone(),
@@ -242,6 +247,7 @@ impl WithdrawShadowActorSystem {
 
         // 初始化SideEffect Worker
         let side_effect_worker = Arc::new(SideEffectWorker::new(
+            ctx,
             api_withdraw_pool.clone(),
             core_pool.clone(),
             scanner.clone(),

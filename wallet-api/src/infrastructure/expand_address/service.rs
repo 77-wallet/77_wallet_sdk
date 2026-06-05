@@ -24,8 +24,18 @@ impl ExpandService {
         to_create: &[i32],
         batch_id: &str,
     ) -> Result<(), ServiceError> {
-        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
         let pool = crate::context::get_context()?.api_wallet_pool()?;
+        Self::create_account_with_ctx(uid, chain, to_create, batch_id, &pool).await
+    }
+
+    pub(crate) async fn create_account_with_ctx(
+        uid: &str,
+        chain: &str,
+        to_create: &[i32],
+        batch_id: &str,
+        pool: &wallet_database::ApiWalletDbPool,
+    ) -> Result<(), ServiceError> {
+        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
         let wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -55,11 +65,20 @@ impl ExpandService {
         to_init: &[i32],
         batch_id: &str,
     ) -> Result<(), ServiceError> {
+        let ctx = crate::context::get_context()?;
+        Self::init_account_with_ctx(ctx, uid, chain, to_init, batch_id).await
+    }
+
+    pub(crate) async fn init_account_with_ctx(
+        ctx: &'static crate::context::Context,
+        uid: &str,
+        chain: &str,
+        to_init: &[i32],
+        batch_id: &str,
+    ) -> Result<(), ServiceError> {
         const INIT_CHUNK: usize = 40;
 
-        let ctx = crate::context::get_context()?;
         let sn = ctx.get_sn();
-
         let pool = ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
@@ -124,13 +143,22 @@ impl ExpandService {
 
     pub(crate) async fn expand_complete(uid: &str, batch_id: &str) -> Result<(), ServiceError> {
         let pool = crate::context::get_context()?.api_wallet_pool()?;
+        let backend = crate::context::get_context()?.get_global_backend_api();
+        Self::expand_complete_with_ctx(uid, batch_id, &pool, backend.as_ref()).await
+    }
+
+    pub(crate) async fn expand_complete_with_ctx(
+        uid: &str,
+        batch_id: &str,
+        pool: &wallet_database::ApiWalletDbPool,
+        backend: &wallet_transport_backend::api::BackendApi,
+    ) -> Result<(), ServiceError> {
         let batch = ExpandBatchRepo::get_batch(&pool, batch_id).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::account::AccountError::ExpandBatchNotFound
                     .into(),
             )),
         )?;
-        let backend = crate::context::get_context()?.get_global_backend_api();
         backend
             .expand_address_complete(ExpandAddressCompleteReq::new(
                 uid,

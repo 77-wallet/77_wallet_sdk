@@ -97,6 +97,7 @@ use wallet_utils::{RetryableError as _, conversion, unit};
 /// - nonce 从"动态信息"升级为"已裁决事实"
 /// - chain_rpc_guard 作为 RPC 压力阀
 pub struct ShadowWithdrawWorker {
+    ctx: &'static crate::context::Context,
     pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
     /// ShadowScanner 引用，用于直接调用 try_advance
@@ -345,11 +346,12 @@ impl ShadowWithdrawWorker {
     }
 
     pub fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
         scanner: Arc<ShadowScanner>,
     ) -> Self {
-        Self { pool, core_pool, scanner }
+        Self { ctx, pool, core_pool, scanner }
     }
 
     /// 处理命令
@@ -701,7 +703,7 @@ impl ShadowWithdrawWorker {
             TransType::Wd,
         );
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         let resp = backend_api.apply_resource_delegation(&req).await?;
         let is_success = resp.is_success();
         let outcome = Self::platform_apply_outcome(is_success, resp.dl_trade_no);
@@ -1218,7 +1220,7 @@ impl ShadowWithdrawWorker {
         }
 
         // 通过Context获取Handles实例，然后获取私钥管理器
-        let handles = crate::context::get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key =
             private_key_manager.get_private_key(&withdraw.from_addr, &withdraw.chain_code).await?;
@@ -1590,7 +1592,7 @@ impl ShadowWithdrawWorker {
 
     async fn check_digest(&self, req: &ApiWithdrawEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "[提币] 验证交易摘要");
-        let sn = crate::get_context()?.get_sn();
+        let sn = self.ctx.get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
@@ -1794,7 +1796,7 @@ impl ShadowWithdrawWorker {
             )));
         }
 
-        let handles = crate::context::get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key = private_key_manager
             .get_private_key(&signer.signer_address, &delegation.chain_code)
@@ -2447,7 +2449,12 @@ mod tests {
                 intent_tx,
                 None,
             ));
-        let worker = ShadowWithdrawWorker::new(collect_pool.clone(), wallet_pool, scanner);
+        let worker = ShadowWithdrawWorker::new(
+            crate::get_context().expect("context"),
+            collect_pool.clone(),
+            wallet_pool,
+            scanner,
+        );
 
         let trade_no = "W_clear_build_slot_after_claim";
         ApiWithdrawRepo::upsert_api_withdraw(
@@ -2519,7 +2526,12 @@ mod tests {
                 intent_tx,
                 None,
             ));
-        let worker = ShadowWithdrawWorker::new(transaction_pool.clone(), wallet_pool, scanner);
+        let worker = ShadowWithdrawWorker::new(
+            crate::get_context().expect("context"),
+            transaction_pool.clone(),
+            wallet_pool,
+            scanner,
+        );
 
         ApiResourceDelegationRepo::upsert(
             &transaction_pool,
@@ -2617,7 +2629,12 @@ mod tests {
                 intent_tx,
                 None,
             ));
-        let worker = ShadowWithdrawWorker::new(transaction_pool, wallet_pool, scanner);
+        let worker = ShadowWithdrawWorker::new(
+            crate::get_context().expect("context"),
+            transaction_pool,
+            wallet_pool,
+            scanner,
+        );
 
         let (app_id, org_id) =
             worker.resolve_resource_apply_identity("wallet_uid").await.expect("resolve identity");

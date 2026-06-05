@@ -126,6 +126,7 @@ pub(crate) use worker::{
 
 /// Shadow系统初始化
 pub(crate) async fn init(
+    ctx: &'static crate::context::Context,
     api_withdraw_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
 ) -> Option<actor::WithdrawShadowActorSystem> {
@@ -136,7 +137,7 @@ pub(crate) async fn init(
     }
 
     // 初始化Shadow Actor系统
-    let actor_system = actor::WithdrawShadowActorSystem::new(api_withdraw_pool, core_pool);
+    let actor_system = actor::WithdrawShadowActorSystem::new(ctx, api_withdraw_pool, core_pool);
 
     tracing::info!("Withdraw Shadow System initialized and started");
     Some(actor_system)
