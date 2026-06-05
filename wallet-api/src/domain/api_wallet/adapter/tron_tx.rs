@@ -54,6 +54,10 @@ pub(crate) struct TronTx {
 }
 
 impl TronTx {
+    fn has_enough_main_balance_for_token_fee(balance: i64, transaction_fee: i64) -> bool {
+        transaction_fee <= 0 || balance >= transaction_fee
+    }
+
     fn is_empty_tx_query_payload(err_msg: &str) -> bool {
         err_msg.contains("missing field `Error`")
             || err_msg.contains("value = {}")
@@ -314,12 +318,6 @@ impl Tx for TronTx {
             tracing::info!("transfer ---------------- 12");
 
             let account = provider.account_info(&transfer_params.owner_address).await?;
-            // 主币是否有钱(可能账号未被初始化)
-            if account.balance <= 0 {
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
-                ))?;
-            }
             tracing::info!("transfer ---------------- 13");
 
             // constant contract to fee
@@ -327,7 +325,12 @@ impl Tx for TronTx {
             let consumer =
                 provider.contract_fee(constant, 1, &transfer_params.owner_address).await?;
 
-            if account.balance < consumer.transaction_fee_i64() {
+            // TRON token transfer can be fully covered by delegated resources.
+            // A zero-TRX sender is valid when the simulated fee is already zero.
+            if !Self::has_enough_main_balance_for_token_fee(
+                account.balance,
+                consumer.transaction_fee_i64(),
+            ) {
                 return Err(crate::error::business::BusinessError::Chain(
                     crate::error::business::chain::ChainError::InsufficientFeeBalance,
                 ))?;
@@ -1141,3 +1144,47 @@ impl Tx for TronTx {
 //         Ok(wallet_utils::serde_func::serde_to_string(&res)?)
 //     }
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::TronTx;
+
+    #[test]
+    fn tron_token_fee_balance_gate_allows_zero_trx_when_fee_is_zero() {
+        // Arrange
+        let balance = 0;
+        let transaction_fee = 0;
+
+        // Act
+        let allowed = TronTx::has_enough_main_balance_for_token_fee(balance, transaction_fee);
+
+        // Assert
+        assert!(allowed);
+    }
+
+    #[test]
+    fn tron_token_fee_balance_gate_rejects_positive_fee_without_balance() {
+        // Arrange
+        let balance = 0;
+        let transaction_fee = 1;
+
+        // Act
+        let allowed = TronTx::has_enough_main_balance_for_token_fee(balance, transaction_fee);
+
+        // Assert
+        assert!(!allowed);
+    }
+
+    #[test]
+    fn tron_token_fee_balance_gate_allows_positive_fee_with_enough_balance() {
+        // Arrange
+        let balance = 1_000;
+        let transaction_fee = 1_000;
+
+        // Act
+        let allowed = TronTx::has_enough_main_balance_for_token_fee(balance, transaction_fee);
+
+        // Assert
+        assert!(allowed);
+    }
+}
