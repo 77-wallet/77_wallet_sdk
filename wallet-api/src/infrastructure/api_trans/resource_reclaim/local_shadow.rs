@@ -174,14 +174,15 @@ impl LocalResourceReclaimScannerActor {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LocalResourceReclaimWorker {
+    ctx: &'static crate::context::Context,
     pool: ApiTransactionDbPool,
 }
 
 impl LocalResourceReclaimWorker {
-    pub fn new(pool: ApiTransactionDbPool) -> Self {
-        Self { pool }
+    pub fn new(ctx: &'static crate::context::Context, pool: ApiTransactionDbPool) -> Self {
+        Self { ctx, pool }
     }
 
     pub async fn handle(&self, intent: LocalResourceReclaimIntent) -> Result<(), ServiceError> {
@@ -445,7 +446,7 @@ impl LocalResourceReclaimWorker {
             )));
         }
 
-        let handles = get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key = private_key_manager
             .get_private_key(&delegation.owner_address, &delegation.chain_code)
@@ -589,13 +590,13 @@ pub struct LocalResourceReclaimShadowActorSystem {
 }
 
 impl LocalResourceReclaimShadowActorSystem {
-    pub fn new(pool: ApiTransactionDbPool) -> Self {
+    pub fn new(ctx: &'static crate::context::Context, pool: ApiTransactionDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let (intent_tx, intent_rx) = mpsc::channel(100);
 
         let scanner = Arc::new(LocalResourceReclaimScanner::new(pool.clone()));
-        let worker = LocalResourceReclaimWorker::new(pool);
+        let worker = LocalResourceReclaimWorker::new(ctx, pool);
 
         info!(
             scan_interval_secs = scanner.config.scan_interval.as_secs(),
@@ -651,13 +652,16 @@ impl LocalResourceReclaimShadowActorSystem {
     }
 }
 
-pub(crate) async fn init(pool: ApiTransactionDbPool) -> LocalResourceReclaimShadowActorSystem {
-    LocalResourceReclaimShadowActorSystem::new(pool)
+pub(crate) async fn init(
+    ctx: &'static crate::context::Context,
+    pool: ApiTransactionDbPool,
+) -> LocalResourceReclaimShadowActorSystem {
+    LocalResourceReclaimShadowActorSystem::new(ctx, pool)
 }
 
 pub async fn scan_and_process_once(pool: ApiTransactionDbPool) -> Result<(), ServiceError> {
     let scanner = LocalResourceReclaimScanner::new(pool.clone());
-    let worker = LocalResourceReclaimWorker::new(pool);
+    let worker = LocalResourceReclaimWorker::new(crate::get_context()?, pool);
 
     for intent in scanner.scan_round().await {
         worker.handle(intent).await?;
@@ -755,7 +759,8 @@ mod tests {
             .into_transaction_db_pool()
             .expect("transaction pool");
 
-        let worker = LocalResourceReclaimWorker::new(pool.clone());
+        let worker =
+            LocalResourceReclaimWorker::new(crate::get_context().expect("context"), pool.clone());
 
         ApiResourceDelegationRepo::upsert(
             &pool,

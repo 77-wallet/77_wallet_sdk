@@ -61,21 +61,28 @@ impl Handles {
         let process_fee_tx_handle = ProcessFeeTxHandle::new().await?;
         let process_collect_tx_handle = ProcessCollectTxHandle::new().await?;
         let resource_operation_shadow = {
-            let ctx = crate::context::get_context()?;
-            let api_transaction_pool = ctx.api_transaction_pool()?;
-            infrastructure::api_trans::resource_operation::shadow::init(api_transaction_pool).await
+            let api_transaction_pool = context.api_transaction_pool()?;
+            infrastructure::api_trans::resource_operation::shadow::init(
+                context,
+                api_transaction_pool,
+            )
+            .await
         };
         let resource_reclaim_shadow = {
-            let ctx = crate::context::get_context()?;
-            let api_transaction_pool = ctx.api_transaction_pool()?;
-            infrastructure::api_trans::resource_reclaim::local_shadow::init(api_transaction_pool)
-                .await
+            let api_transaction_pool = context.api_transaction_pool()?;
+            infrastructure::api_trans::resource_reclaim::local_shadow::init(
+                context,
+                api_transaction_pool,
+            )
+            .await
         };
         let platform_resource_reclaim_shadow = {
-            let ctx = crate::context::get_context()?;
-            let api_transaction_pool = ctx.api_transaction_pool()?;
-            infrastructure::api_trans::resource_reclaim::platform_shadow::init(api_transaction_pool)
-                .await
+            let api_transaction_pool = context.api_transaction_pool()?;
+            infrastructure::api_trans::resource_reclaim::platform_shadow::init(
+                context,
+                api_transaction_pool,
+            )
+            .await
         };
 
         // 初始化私钥管理器

@@ -291,6 +291,7 @@ impl AssetKey {
 
 // AssetCalcActor结构体
 struct AssetCalcActor {
+    ctx: &'static crate::context::Context,
     state: AssetCalcState,
     sender: mpsc::Sender<AssetCalcMessage>,
     receiver: mpsc::Receiver<AssetCalcMessage>,
@@ -299,12 +300,13 @@ struct AssetCalcActor {
 impl AssetCalcActor {
     // 创建新的Actor
     fn new(
+        ctx: &'static crate::context::Context,
         pool: Arc<SqlitePool>,
         sender: mpsc::Sender<AssetCalcMessage>,
         receiver: mpsc::Receiver<AssetCalcMessage>,
     ) -> Self {
         let state = AssetCalcState::new(pool);
-        Self { state: state, sender, receiver }
+        Self { ctx, state: state, sender, receiver }
     }
 
     /// 获取启用的链列表
@@ -684,7 +686,7 @@ impl AssetCalcActor {
         &mut self,
         assets: &[AssetEntry],
     ) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
+        let ctx = self.ctx;
         let currency = ConfigDomain::get_currency(ctx).await?;
 
         // 使用标准迭代器替代并行迭代，确保线程安全
@@ -800,7 +802,7 @@ impl AssetCalcActor {
             return Ok(());
         }
 
-        let ctx = crate::get_context()?;
+        let ctx = self.ctx;
         let currency = ConfigDomain::get_currency(ctx).await?;
         let exchange_rates = self.get_exchange_rates().await?;
         let rate_value = exchange_rates.get(&currency).copied().unwrap_or_default();
@@ -854,7 +856,7 @@ impl AssetCalcActor {
         price_real: f64,
         decimals: u8,
     ) -> Result<(), ServiceError> {
-        let ctx = crate::get_context()?;
+        let ctx = self.ctx;
         let currency = ConfigDomain::get_currency(ctx).await?;
 
         // 更新token价格
@@ -1165,7 +1167,7 @@ impl AssetCalcActor {
 
     // 处理初始化账户缓存
     async fn handle_init_account_cache(&mut self) -> Result<(), ServiceError> {
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let wallet_map =
             wallet_database::repositories::api_wallet::account::ApiAccountRepo::account_to_wallet(
                 pool.clone(),
@@ -1303,7 +1305,7 @@ impl AssetCalcActor {
     async fn refresh_all_caches(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // 分块拉取地址资产，避免大钱包/大账号集合一次性查询后占用过多内存。
         const ADDRESS_CHUNK: usize = 200;
-        let ctx = crate::get_context()?;
+        let ctx = self.ctx;
         let currency = ConfigDomain::get_currency(ctx).await?;
         debug!("Starting full cache refresh");
 
@@ -1543,11 +1545,11 @@ pub struct AssetCalcActorManager {
 
 impl AssetCalcActorManager {
     // 创建并启动新的Actor
-    pub fn start(pool: Arc<SqlitePool>) -> Self {
+    pub fn start(ctx: &'static crate::context::Context, pool: Arc<SqlitePool>) -> Self {
         let (sender, receiver) = mpsc::channel(100);
 
         // 启动Actor
-        let actor = AssetCalcActor::new(pool, sender.clone(), receiver);
+        let actor = AssetCalcActor::new(ctx, pool, sender.clone(), receiver);
         tokio::spawn(actor.run());
 
         Self { sender }

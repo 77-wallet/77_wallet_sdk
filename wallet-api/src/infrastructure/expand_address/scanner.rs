@@ -243,6 +243,7 @@ impl ExpandDispatchRuntime {
 /// - It may re-dispatch side effects multiple times
 /// - Correctness relies solely on DB facts and idempotency
 pub struct ExpandScanner {
+    ctx: &'static crate::context::Context,
     pool: ApiWalletDbPool,
     scan_interval: Duration,
     planner: ExpandPlanner,
@@ -264,6 +265,7 @@ pub struct ExpandScanner {
 
 impl ExpandScanner {
     pub fn new(
+        ctx: &'static crate::context::Context,
         core_pool: ApiWalletDbPool,
         scan_interval: Duration,
         max_items_per_scan: u32,
@@ -278,6 +280,7 @@ impl ExpandScanner {
         let (result_tx, result_rx) = tokio::sync::mpsc::unbounded_channel::<ExpandJobResult>();
 
         Self {
+            ctx,
             pool: core_pool,
             scan_interval,
             planner,
@@ -822,6 +825,7 @@ impl ExpandScanner {
 
         // 创建包含所有indexes的job
         let job = ExpandJob::new_create(
+            self.ctx,
             batch.uid.clone(),
             batch.chain_code.clone(),
             batch.batch_id.clone(),
@@ -869,6 +873,7 @@ impl ExpandScanner {
 
         // 创建包含所有indexes的job
         let job = ExpandJob::new_init(
+            self.ctx,
             batch.uid.clone(),
             batch.chain_code.clone(),
             batch.batch_id.clone(),
@@ -1036,6 +1041,7 @@ impl ExpandScanner {
 
         // 创建通知任务
         let job = ExpandJob::new_notify(
+            self.ctx,
             batch.uid.clone(),
             batch.chain_code.clone(),
             batch.batch_id.clone(),

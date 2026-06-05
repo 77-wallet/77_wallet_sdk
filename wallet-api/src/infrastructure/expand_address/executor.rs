@@ -63,11 +63,13 @@ pub enum FatalReason {
 /// 🔒 Scanner 的状态推进只能基于 DB 事实，禁止基于 ExecOutcome 直接推进状态
 /// 🔒 ExecOutcome 只影响 Worker 内部是否 retry，不允许直接修改 Item / Batch 状态
 /// 🔒 禁止在 Executor 中修改 DB 状态，必须由 Scanner 基于 DB 事实推进状态
-pub struct ExpandExecutor;
+pub struct ExpandExecutor {
+    ctx: &'static crate::context::Context,
+}
 
 impl ExpandExecutor {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(ctx: &'static crate::context::Context) -> Self {
+        Self { ctx }
     }
 
     /// 执行账户创建操作
@@ -82,7 +84,8 @@ impl ExpandExecutor {
         tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "ExpandExecutor: executing create account");
 
         // 执行实际的账户创建操作
-        match ExpandService::create_account(uid, chain, indices, batch_id).await {
+        let pool = self.ctx.api_wallet_pool()?;
+        match ExpandService::create_account_with_ctx(uid, chain, indices, batch_id, &pool).await {
             Ok(_) => {
                 tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "ExpandExecutor: create account succeeded");
                 Ok(ExecOutcome::Success)
@@ -171,7 +174,7 @@ impl ExpandExecutor {
         tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "ExpandExecutor: executing init account");
 
         // 执行实际的账户初始化操作
-        match ExpandService::init_account(uid, chain, indices, batch_id).await {
+        match ExpandService::init_account_with_ctx(self.ctx, uid, chain, indices, batch_id).await {
             Ok(_) => {
                 tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "ExpandExecutor: init account succeeded");
                 Ok(ExecOutcome::Success)
@@ -258,7 +261,10 @@ impl ExpandExecutor {
         tracing::info!(uid=%uid, batch_id=%batch_id, "ExpandExecutor: executing notify expand complete");
 
         // 执行实际的通知操作
-        match ExpandService::expand_complete(uid, batch_id).await {
+        let pool = self.ctx.api_wallet_pool()?;
+        let backend = self.ctx.get_global_backend_api();
+        match ExpandService::expand_complete_with_ctx(uid, batch_id, &pool, backend.as_ref()).await
+        {
             Ok(_) => Ok(ExecOutcome::Success),
             Err(e) => {
                 tracing::error!(error = %e, uid=%uid, batch_id=%batch_id, "expand complete notify failed");

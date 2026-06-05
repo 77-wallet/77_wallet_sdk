@@ -368,16 +368,17 @@ impl PlatformResourceReclaimScannerActor {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PlatformResourceReclaimWorker {
+    ctx: &'static crate::context::Context,
     pool: ApiTransactionDbPool,
 }
 
 impl PlatformResourceReclaimWorker {
     const PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE: &'static str = "ERR_6008";
 
-    pub fn new(pool: ApiTransactionDbPool) -> Self {
-        Self { pool }
+    pub fn new(ctx: &'static crate::context::Context, pool: ApiTransactionDbPool) -> Self {
+        Self { ctx, pool }
     }
 
     pub async fn handle(&self, intent: PlatformResourceReclaimIntent) -> Result<(), ServiceError> {
@@ -448,7 +449,7 @@ impl PlatformResourceReclaimWorker {
             )));
         }
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -520,7 +521,7 @@ impl PlatformResourceReclaimWorker {
             return Ok(());
         }
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         if let Err(e) = backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -810,7 +811,7 @@ impl PlatformResourceReclaimWorker {
         }
 
         let payload = Self::build_platform_undelegation_tx_exec_receipt_payload(&delegation)?;
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         backend_api.upload_tx_exec_receipt(&payload).await?;
 
         let affected =
@@ -950,7 +951,7 @@ impl PlatformResourceReclaimWorker {
             )));
         }
 
-        let handles = get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key = private_key_manager
             .get_private_key(&signer.signer_address, &delegation.chain_code)
@@ -1124,13 +1125,13 @@ pub struct PlatformResourceReclaimShadowActorSystem {
 }
 
 impl PlatformResourceReclaimShadowActorSystem {
-    pub fn new(pool: ApiTransactionDbPool) -> Self {
+    pub fn new(ctx: &'static crate::context::Context, pool: ApiTransactionDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let (intent_tx, intent_rx) = mpsc::channel(100);
 
         let scanner = Arc::new(PlatformResourceReclaimScanner::new(pool.clone()));
-        let worker = PlatformResourceReclaimWorker::new(pool);
+        let worker = PlatformResourceReclaimWorker::new(ctx, pool);
 
         info!(
             scan_interval_secs = scanner.config.scan_interval.as_secs(),
@@ -1186,13 +1187,16 @@ impl PlatformResourceReclaimShadowActorSystem {
     }
 }
 
-pub(crate) async fn init(pool: ApiTransactionDbPool) -> PlatformResourceReclaimShadowActorSystem {
-    PlatformResourceReclaimShadowActorSystem::new(pool)
+pub(crate) async fn init(
+    ctx: &'static crate::context::Context,
+    pool: ApiTransactionDbPool,
+) -> PlatformResourceReclaimShadowActorSystem {
+    PlatformResourceReclaimShadowActorSystem::new(ctx, pool)
 }
 
 pub async fn scan_and_process_once(pool: ApiTransactionDbPool) -> Result<(), ServiceError> {
     let scanner = PlatformResourceReclaimScanner::new(pool.clone());
-    let worker = PlatformResourceReclaimWorker::new(pool);
+    let worker = PlatformResourceReclaimWorker::new(crate::get_context()?, pool);
 
     for intent in scanner.scan_round().await {
         worker.handle(intent).await?;
@@ -1360,7 +1364,10 @@ mod tests {
         .await
         .expect("insert platform reclaim");
 
-        let worker = PlatformResourceReclaimWorker::new(pool.clone());
+        let worker = PlatformResourceReclaimWorker::new(
+            crate::get_context().expect("context"),
+            pool.clone(),
+        );
         worker
             .handle_platform_undelegation_execute_failure_if_needed(
                 "rsc_terminal_reclaim",

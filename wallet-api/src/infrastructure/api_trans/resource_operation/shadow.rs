@@ -311,14 +311,15 @@ impl ResourceOperationScannerActor {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ResourceOperationWorker {
+    ctx: &'static crate::context::Context,
     pool: ApiTransactionDbPool,
 }
 
 impl ResourceOperationWorker {
-    pub fn new(pool: ApiTransactionDbPool) -> Self {
-        Self { pool }
+    pub fn new(ctx: &'static crate::context::Context, pool: ApiTransactionDbPool) -> Self {
+        Self { ctx, pool }
     }
 
     pub async fn handle(&self, intent: ResourceOperationIntent) -> Result<(), ServiceError> {
@@ -393,7 +394,7 @@ impl ResourceOperationWorker {
             return Ok(());
         }
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -541,7 +542,7 @@ impl ResourceOperationWorker {
             )));
         }
 
-        let handles = get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key = private_key_manager
             .get_private_key(&operation.owner_address, &operation.chain_code)
@@ -922,7 +923,7 @@ impl ResourceOperationWorker {
             ));
         }
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         backend_api.upload_tx_exec_receipt(&payload).await?;
 
         let affected =
@@ -962,7 +963,7 @@ impl ResourceOperationWorker {
             return Ok(());
         }
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -1112,13 +1113,13 @@ pub struct ResourceOperationShadowActorSystem {
 }
 
 impl ResourceOperationShadowActorSystem {
-    pub fn new(pool: ApiTransactionDbPool) -> Self {
+    pub fn new(ctx: &'static crate::context::Context, pool: ApiTransactionDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let (intent_tx, intent_rx) = mpsc::channel(100);
 
         let scanner = Arc::new(ResourceOperationScanner::new(pool.clone()));
-        let worker = ResourceOperationWorker::new(pool);
+        let worker = ResourceOperationWorker::new(ctx, pool);
 
         info!(
             scan_interval_secs = scanner.config.scan_interval.as_secs(),
@@ -1194,13 +1195,16 @@ impl ResourceOperationShadowActorSystem {
     }
 }
 
-pub(crate) async fn init(pool: ApiTransactionDbPool) -> ResourceOperationShadowActorSystem {
-    ResourceOperationShadowActorSystem::new(pool)
+pub(crate) async fn init(
+    ctx: &'static crate::context::Context,
+    pool: ApiTransactionDbPool,
+) -> ResourceOperationShadowActorSystem {
+    ResourceOperationShadowActorSystem::new(ctx, pool)
 }
 
 pub async fn scan_and_process_once(pool: ApiTransactionDbPool) -> Result<(), ServiceError> {
     let scanner = ResourceOperationScanner::new(pool.clone());
-    let worker = ResourceOperationWorker::new(pool);
+    let worker = ResourceOperationWorker::new(crate::get_context()?, pool);
 
     for intent in scanner.scan_round().await {
         worker.handle(intent).await?;
@@ -1479,7 +1483,8 @@ mod tests {
         .await
         .unwrap();
 
-        let worker = ResourceOperationWorker::new(pool.clone());
+        let worker =
+            ResourceOperationWorker::new(crate::get_context().expect("context"), pool.clone());
         worker
             .handle_terminal_failure_if_needed(
                 "op_terminal_failed",

@@ -13,6 +13,13 @@ use wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq;
 /// 返回：Result<(), ServiceError> - 执行结果
 pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
     let ctx = crate::context::get_context()?;
+    do_init_with_ctx(ctx, init_req).await
+}
+
+pub async fn do_init_with_ctx(
+    ctx: &'static crate::context::Context,
+    init_req: ApiAddressInitReq,
+) -> Result<(), ServiceError> {
     tracing::info!(
         batch_id = ?init_req.batch_id,
         address_count = init_req.address_list.0.len(),
@@ -31,7 +38,7 @@ pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
     }
 
     // 2. 检查Epoch有效性（核心校验）
-    let is_valid = ConfigDomain::check_epoch_validity(&ctx, init_req.epoch).await?;
+    let is_valid = ConfigDomain::check_epoch_validity(ctx, init_req.epoch).await?;
     if !is_valid {
         tracing::info!(
             batch_id = ?init_req.batch_id,
@@ -43,7 +50,7 @@ pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
     }
 
     // 2. 检查keys_reset_status（向后兼容）
-    let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
+    let status = ConfigDomain::get_keys_reset_status(ctx).await?;
     if let Some(status) = status
         && let Some(false) = status.status
     {
@@ -55,7 +62,7 @@ pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
     }
 
     // 2. 获取backend实例并调用expand_address接口
-    let backend = crate::context::get_context()?.get_global_backend_api();
+    let backend = ctx.get_global_backend_api();
 
     tracing::info!(
         "INIT_EXECUTOR: calling backend.expand_address, address_count={}, batch_id={:?}",
@@ -73,7 +80,7 @@ pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
             );
 
             // 3. 更新数据库中account的init状态
-            let pool = crate::context::get_context()?.api_wallet_pool()?;
+            let pool = ctx.api_wallet_pool()?;
 
             tracing::info!("INIT_EXECUTOR: starting database operations for address init");
             let mut pairs = Vec::new();

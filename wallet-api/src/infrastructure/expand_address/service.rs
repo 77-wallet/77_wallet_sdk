@@ -124,10 +124,11 @@ impl ExpandService {
             // 适用于：同步请求场景，调用方会处理重试
             if !chunk_req.address_list.0.is_empty() {
                 let req_clone = chunk_req;
+                let ctx = ctx;
                 crate::infrastructure::expand_init::INIT_POOL
-                    .push(
-                        async move { crate::infrastructure::expand_init::do_init(req_clone).await },
-                    )
+                    .push(async move {
+                        crate::infrastructure::expand_init::do_init_with_ctx(ctx, req_clone).await
+                    })
                     .await;
 
                 tracing::info!(
