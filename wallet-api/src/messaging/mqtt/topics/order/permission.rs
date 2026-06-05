@@ -123,7 +123,7 @@ impl PermissionAccept {
         if self.current.types == PermissionReq::DELETE {
             self.recover_all_old_permission(pool.clone(), &account, ctx).await?;
 
-            PermissionDomain::queue_fail_and_upload(&pool, &self.grantor_addr).await?;
+            PermissionDomain::queue_fail_and_upload(ctx, &pool, &self.grantor_addr).await?;
         } else {
             let address = &self.grantor_addr;
             let permissions =
@@ -192,7 +192,7 @@ impl PermissionAccept {
 
         // 存在走更新流程
         if let Some(old_permission) = old_permission {
-            self.update(&pool, &permissions, old_permission).await?;
+            self.update(ctx, &pool, &permissions, old_permission).await?;
 
             // 消息重复通知,避免新增判断为
             if self.current.types == PermissionReq::UPDATE {
@@ -217,6 +217,7 @@ impl PermissionAccept {
 
     async fn update(
         &self,
+        ctx: &'static Context,
         pool: &DbPool,
         permissions: &NewPermissionUser,
         old_permission: PermissionWithUserEntity,
@@ -230,7 +231,7 @@ impl PermissionAccept {
             PermissionRepo::update_permission(&core_pool, &permissions.permission).await?;
         }
 
-        PermissionDomain::queue_fail_and_upload(pool, &self.grantor_addr).await?;
+        PermissionDomain::queue_fail_and_upload(ctx, pool, &self.grantor_addr).await?;
         Ok(())
     }
 

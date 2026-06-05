@@ -335,7 +335,12 @@ impl MultisigAccountService {
             .await?
             .to_string()?;
         let req = SingedOrderCancelReq { order_id: account.id.clone(), raw_data };
-        TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_ORDER_CANCEL).await?;
+        TaskQueueDomain::send_or_to_queue_with_ctx(
+            self.ctx,
+            req,
+            endpoint::multisig::SIGNED_ORDER_CANCEL,
+        )
+        .await?;
 
         Ok(())
     }
@@ -509,7 +514,12 @@ impl MultisigAccountService {
             status: 1,
             raw_data,
         };
-        TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_ORDER_ACCEPT).await?;
+        TaskQueueDomain::send_or_to_queue_with_ctx(
+            self.ctx,
+            req,
+            endpoint::multisig::SIGNED_ORDER_ACCEPT,
+        )
+        .await?;
 
         // let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
         //     endpoint: endpoint::multisig::SIGNED_ORDER_ACCEPT.to_string(),
@@ -729,8 +739,12 @@ impl MultisigAccountService {
 
         let tx_hash = if amount.free != 0.0 {
             let value = amount.free.to_string();
-            let coin =
-                CoinDomain::get_coin_by_token_key(&payer.chain_code, payer.token_key()).await?;
+            let coin = CoinDomain::get_coin_by_token_key_with_ctx(
+                self.ctx,
+                &payer.chain_code,
+                payer.token_key(),
+            )
+            .await?;
             // transfer parameter
             let mut base = transaction::BaseTransferReq::new(
                 &payer.from,
@@ -748,7 +762,8 @@ impl MultisigAccountService {
                 signer: None,
             };
 
-            let private_key = ChainTransDomain::get_key(
+            let private_key = ChainTransDomain::get_key_with_ctx(
+                self.ctx,
                 &params.base.from,
                 &params.base.chain_code,
                 &params.password,
@@ -756,8 +771,14 @@ impl MultisigAccountService {
             )
             .await?;
 
-            ChainTransDomain::transfer(params, BillKind::ServiceCharge, &adapter, private_key)
-                .await?
+            ChainTransDomain::transfer_with_ctx(
+                self.ctx,
+                params,
+                BillKind::ServiceCharge,
+                &adapter,
+                private_key,
+            )
+            .await?
         } else {
             // 服务费为0的传入固定的hash
             MultisigAccountEntity::NONE_TRANS_HASH.to_string()
@@ -815,9 +836,11 @@ impl MultisigAccountService {
 
         // 2. 不是btc的创建一个部署的bill
         if account.chain_code != chain_code::BTC {
-            let main_coin =
-                domain::chain::transaction::ChainTransDomain::main_coin(&account.chain_code)
-                    .await?;
+            let main_coin = domain::chain::transaction::ChainTransDomain::main_coin_with_ctx(
+                self.ctx,
+                &account.chain_code,
+            )
+            .await?;
             let mut new_bill = BillRepo::build_deploy_bill(
                 hash.clone(),
                 account.initiator_addr.clone(),
@@ -866,8 +889,11 @@ impl MultisigAccountService {
 
         let account = MultisigDomain::account_by_id(account_id, pool.clone()).await?;
 
-        let main_coin =
-            domain::chain::transaction::ChainTransDomain::main_coin(&account.chain_code).await?;
+        let main_coin = domain::chain::transaction::ChainTransDomain::main_coin_with_ctx(
+            self.ctx,
+            &account.chain_code,
+        )
+        .await?;
 
         let adapter =
             ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &account.chain_code)

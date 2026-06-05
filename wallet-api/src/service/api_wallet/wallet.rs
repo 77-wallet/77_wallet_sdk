@@ -135,7 +135,8 @@ impl ApiWalletService {
         let core_pool = self.ctx.core_pool()?;
 
         let sn = self.ctx.get_sn();
-        let password_proof = WalletDomain::generate_password_proof(wallet_password).await?;
+        let password_proof =
+            WalletDomain::generate_password_proof(self.ctx, wallet_password).await?;
         DeviceRepo::update_password_proof(core_pool.clone(), sn, Some(&password_proof)).await?;
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(

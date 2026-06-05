@@ -62,15 +62,15 @@ impl TaskTrait for CommonTask {
                 CoinService::new(ctx).query_token_price(data).await?;
             }
             CommonTask::QueryQueueResult(data) => {
-                MultisigQueueDomain::sync_queue_status(&data.id).await?
+                MultisigQueueDomain::sync_queue_status_with_ctx(ctx, &data.id).await?
             }
             CommonTask::RecoverMultisigAccountData(body) => {
-                MultisigDomain::recover_uid_multisig_data(&body.uid, None).await?;
+                MultisigDomain::recover_uid_multisig_data_with_ctx(ctx, &body.uid, None).await?;
                 if let Some(address) = &body.tron_address {
                     PermissionDomain::recover_permission(ctx, vec![address.clone()]).await?;
                 }
 
-                MultisigQueueDomain::recover_all_queue_data(&body.uid).await?;
+                MultisigQueueDomain::recover_all_queue_data_with_ctx(ctx, &body.uid).await?;
 
                 // 恢复完成后发送事件给前端
                 let data = NotifyEvent::RecoverComplete;

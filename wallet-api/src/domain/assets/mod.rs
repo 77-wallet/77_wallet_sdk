@@ -120,6 +120,7 @@ impl AssetsDomain {
 
     pub async fn get_local_coin_list(
         &self,
+        ctx: &Context,
         core_pool: &CoreDbPool,
         addresses: Vec<String>,
         chain_code: Option<String>,
@@ -140,8 +141,12 @@ impl AssetsDomain {
         let show_contract = keyword.is_some();
         let mut res = crate::response_vo::standard_wallet::coin::CoinInfoList::default();
         for assets in assets_list {
-            let coin =
-                CoinDomain::get_coin_by_token_key(&assets.chain_code, assets.token_key()).await?;
+            let coin = CoinDomain::get_coin_by_token_key_with_ctx(
+                ctx,
+                &assets.chain_code,
+                assets.token_key(),
+            )
+            .await?;
             if let Some(info) =
                 res.iter_mut().find(|info| info.symbol == assets.symbol && coin.is_default == 1)
             {

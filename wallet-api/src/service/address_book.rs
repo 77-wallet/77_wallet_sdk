@@ -19,7 +19,9 @@ impl AddressBookService {
         Self { pool }
     }
 
-    pub fn new_with_ctx(ctx: &'static Context) -> Result<Self, crate::error::service::ServiceError> {
+    pub fn new_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let pool = ctx.core_pool()?;
         Ok(Self { pool })
     }

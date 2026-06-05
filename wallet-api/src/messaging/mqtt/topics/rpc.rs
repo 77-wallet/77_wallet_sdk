@@ -67,7 +67,7 @@ impl RpcChange {
         let api_pool = ctx.api_wallet_pool()?;
         let ensurer = ChainNodeEnsurer::new(pool, api_pool);
         ensurer.ensure_all().await?;
-        crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
+        crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx).await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;

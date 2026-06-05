@@ -272,7 +272,11 @@ pub struct CollectorShadowActorSystem {
 }
 
 impl CollectorShadowActorSystem {
-    pub fn new(api_transaction_pool: ApiTransactionDbPool, core_pool: ApiWalletDbPool) -> Self {
+    pub fn new(
+        ctx: &'static crate::context::Context,
+        api_transaction_pool: ApiTransactionDbPool,
+        core_pool: ApiWalletDbPool,
+    ) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();
@@ -598,6 +602,7 @@ impl CollectorShadowActorSystem {
         let address_locks = Arc::new(AddressLockManager::new());
         // 创建ShadowCollectWorker
         let shadow_worker = Arc::new(ShadowCollectWorker::new(
+            ctx,
             api_transaction_pool.clone(),
             core_pool.clone(),
             address_locks,
@@ -606,6 +611,7 @@ impl CollectorShadowActorSystem {
 
         // 初始化SideEffect Worker
         let side_effect_worker = Arc::new(SideEffectWorker::new(
+            ctx,
             api_transaction_pool.clone(),
             core_pool.clone(),
             advancer.clone(),

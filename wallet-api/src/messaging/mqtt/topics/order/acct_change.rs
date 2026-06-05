@@ -170,7 +170,7 @@ impl AcctChange {
         }
 
         if !self.queue_id.is_empty() {
-            Self::handle_queue(&self, &pool).await?;
+            Self::handle_queue(&self, &pool, ctx).await?;
         }
 
         // 更新资产,不进行新增(垃圾币)
@@ -196,6 +196,7 @@ impl AcctChange {
     async fn handle_queue(
         change: &AcctChange,
         pool: &DbPool,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
         let status =
@@ -210,7 +211,8 @@ impl AcctChange {
         .await?;
 
         // 多签队列不存在可以允许 不上报忽略
-        let rs = MultisigQueueDomain::update_raw_data(&change.queue_id, pool.clone()).await;
+        let rs = MultisigQueueDomain::update_raw_data_with_ctx(ctx, &change.queue_id, pool.clone())
+            .await;
         match rs {
             Ok(_) => {}
             Err(e) => {

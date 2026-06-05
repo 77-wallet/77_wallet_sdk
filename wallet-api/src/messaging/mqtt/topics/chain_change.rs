@@ -1,6 +1,6 @@
 use crate::{
-    domain::app::config::ConfigDomain,
     context::Context,
+    domain::app::config::ConfigDomain,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent, other::ChainChangeFrontend},
 };
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
@@ -20,7 +20,11 @@ impl ChainChange {
         ConfigDomain::set_block_browser_url(ctx, body).await?;
 
         let has_new_chain =
-            crate::domain::chain::ChainDomain::upsert_multi_chain_than_toggle(body.into()).await?;
+            crate::domain::chain::ChainDomain::upsert_multi_chain_than_toggle_with_ctx(
+                ctx,
+                body.into(),
+            )
+            .await?;
         let data = ChainChangeFrontend { has_new_chain, chains: self.0.to_vec() };
         let data = NotifyEvent::ChainChange(data);
         FrontendNotifyEvent::new(data).send().await?;

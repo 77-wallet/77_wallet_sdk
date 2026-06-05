@@ -54,7 +54,9 @@ impl OrderMultiSignAcceptCompleteMsg {
             accept_status,
         } = &self;
 
-        let account = MultisigDomain::check_multisig_account_exists(multisig_account_id).await?;
+        let account =
+            MultisigDomain::check_multisig_account_exists_with_ctx(ctx, multisig_account_id)
+                .await?;
 
         let Some(account) = account else {
             tracing::error!(event_name = %event_name, multisig_account_id = %multisig_account_id, "multisig account not found");

@@ -33,7 +33,8 @@ impl OrderAllConfirmed {
         );
 
         let account =
-            MultisigDomain::check_multisig_account_exists(&self.multisig_account_id).await?;
+            MultisigDomain::check_multisig_account_exists_with_ctx(ctx, &self.multisig_account_id)
+                .await?;
 
         let Some(_account) = account else {
             tracing::warn!(

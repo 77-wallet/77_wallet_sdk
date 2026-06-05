@@ -133,7 +133,8 @@ impl PermissionService {
     ) -> Result<EstimateFeeResp, crate::error::service::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_ctx(
+            self.ctx,
             currency,
             "tron",
             "TRX",
@@ -434,6 +435,7 @@ impl PermissionService {
         );
 
         let res = MultisigQueueDomain::tron_sign_and_create_queue(
+            self.ctx,
             &mut queue,
             &account,
             password,
@@ -445,8 +447,14 @@ impl PermissionService {
         backend_params.back_user = new_users.into_iter().collect();
         backend_params.multi_sign_id = res.id.clone();
 
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, Some(backend_params), None)
-            .await?;
+        MultisigQueueDomain::upload_queue_backend(
+            self.ctx,
+            res.id,
+            &pool,
+            Some(backend_params),
+            None,
+        )
+        .await?;
 
         Ok(resp.tx_hash)
     }

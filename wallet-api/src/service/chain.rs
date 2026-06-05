@@ -82,7 +82,7 @@ impl ChainService {
 
         let req = wallet_transport_backend::request::ChainListReq::new(app_version.app_version);
         let chain_list = backend.chain_list(req).await?;
-        ChainDomain::upsert_multi_chain_than_toggle(chain_list).await
+        ChainDomain::upsert_multi_chain_than_toggle_with_ctx(self.ctx, chain_list).await
     }
 
     pub async fn sync_wallet_chain_data(
@@ -114,6 +114,7 @@ impl ChainService {
                 wallet_utils::address::AccountIndexMap::from_account_id(wallet.account_id)?;
 
             let seed = domain::wallet::WalletDomain::get_seed(
+                self.ctx,
                 dirs.as_ref(),
                 &wallet.wallet_address,
                 wallet_password,
@@ -204,7 +205,7 @@ impl ChainService {
         is_multisig: Option<bool>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = self.ctx.core_pool()?;
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2_with_ctx(self.ctx).await?;
 
         let mut account_addresses = Vec::<String>::new();
 
@@ -259,7 +260,7 @@ impl ChainService {
             .collect();
 
         let chains = ChainRepo::get_chain_list(&pool).await?;
-        let res = token_currencies.calculate_chain_assets_list(datas, chains).await?;
+        let res = token_currencies.calculate_chain_assets_list(datas, chains, self.ctx).await?;
 
         Ok(res)
     }

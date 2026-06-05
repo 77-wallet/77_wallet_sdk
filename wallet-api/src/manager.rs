@@ -55,7 +55,8 @@ impl WalletManager {
 
         // 执行TaskQueue迁移
         tracing::info!("Running TaskQueue migration");
-        crate::domain::task_queue::TaskQueueDomain::migrate_task_queue_to_db().await?;
+        crate::domain::task_queue::TaskQueueDomain::migrate_task_queue_to_db_with_ctx(context)
+            .await?;
         tracing::info!("TaskQueue migration completed");
 
         let handles = Arc::new(Handles::new(context.get_client_id()).await?);

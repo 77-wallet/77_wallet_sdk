@@ -88,7 +88,7 @@ impl StackService {
         password: &str,
     ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::error::service::ServiceError>
     {
-        ChainTransDomain::get_key(from, chain_code::TRON, password, signer).await
+        ChainTransDomain::get_key_with_ctx(self.ctx, from, chain_code::TRON, password, signer).await
     }
 
     async fn process_transaction<T, E>(
@@ -591,7 +591,8 @@ impl StackService {
 
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_ctx(
+            self.ctx,
             currency,
             "tron",
             "TRX",
@@ -911,7 +912,8 @@ impl StackService {
         let currency = currency.currency();
 
         // 当前的币价
-        let token_price = TokenCurrencyGetter::get_currency_by_token_key(
+        let token_price = TokenCurrencyGetter::get_currency_by_token_key_with_ctx(
+            self.ctx,
             currency,
             chain_code::TRON,
             "TRX",
@@ -1620,7 +1622,8 @@ impl StackService {
         queue.permission_id = p.permission.id.clone();
 
         // 对多签队列进行签名
-        MultisigQueueDomain::batch_sign_with_permission(&mut queue, &password, &p, &pool).await?;
+        MultisigQueueDomain::batch_sign_with_permission(self.ctx, &mut queue, &password, &p, &pool)
+            .await?;
 
         queue.compute_status(p.permission.threshold as i32);
 
@@ -1629,7 +1632,7 @@ impl StackService {
         let opt = PermissionData { opt_address: signer.address.clone(), users: p.users() };
 
         // 上报后端
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, Some(opt)).await?;
+        MultisigQueueDomain::upload_queue_backend(self.ctx, res.id, &pool, None, Some(opt)).await?;
 
         Ok(rs.tx_hash)
     }
@@ -1665,6 +1668,7 @@ impl StackService {
         );
 
         let res = MultisigQueueDomain::tron_sign_and_create_queue(
+            self.ctx,
             &mut queue,
             &account,
             password,
@@ -1672,7 +1676,7 @@ impl StackService {
         )
         .await?;
 
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, None).await?;
+        MultisigQueueDomain::upload_queue_backend(self.ctx, res.id, &pool, None, None).await?;
         Ok(resp.tx_hash)
     }
 }

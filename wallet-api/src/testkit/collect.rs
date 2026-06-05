@@ -74,7 +74,7 @@ pub async fn upload_collect_tx_exec_receipt_via_worker(
     let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
     let advancer =
         Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
-    let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
+    let worker = SideEffectWorker::new(crate::get_context()?, collect_pool, core_pool, advancer);
     worker.handle(SideEffectCommand::UploadTxExecReceipt(trade_no.to_string())).await
 }
 
@@ -87,7 +87,7 @@ pub async fn upload_collect_service_fee_via_worker(
     let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
     let advancer =
         Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
-    let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
+    let worker = SideEffectWorker::new(crate::get_context()?, collect_pool, core_pool, advancer);
     worker.handle(SideEffectCommand::UploadServiceFee(trade_no.to_string())).await
 }
 
@@ -100,7 +100,7 @@ pub async fn send_resource_result_ack_via_worker(
     let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
     let advancer =
         Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
-    let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
+    let worker = SideEffectWorker::new(crate::get_context()?, collect_pool, core_pool, advancer);
     worker.handle(SideEffectCommand::SendResourceResultAck(resource_trade_no.to_string())).await
 }
 
@@ -113,7 +113,7 @@ pub async fn upload_resource_tx_exec_receipt_via_worker(
     let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
     let advancer =
         Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
-    let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
+    let worker = SideEffectWorker::new(crate::get_context()?, collect_pool, core_pool, advancer);
     worker
         .handle(SideEffectCommand::UploadResourceTxExecReceipt(resource_trade_no.to_string()))
         .await
@@ -138,9 +138,15 @@ pub async fn scan_and_dispatch_collect_tx_exec_receipt_once(
     let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
     let advancer =
         Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx.clone(), Some(diagnose_tx)));
-    let side_effect_worker =
-        Arc::new(SideEffectWorker::new(collect_pool.clone(), core_pool.clone(), advancer.clone()));
+    let ctx = crate::get_context()?;
+    let side_effect_worker = Arc::new(SideEffectWorker::new(
+        ctx,
+        collect_pool.clone(),
+        core_pool.clone(),
+        advancer.clone(),
+    ));
     let shadow_worker = Arc::new(ShadowCollectWorker::new(
+        ctx,
         collect_pool.clone(),
         core_pool,
         Arc::new(AddressLockManager::new()),

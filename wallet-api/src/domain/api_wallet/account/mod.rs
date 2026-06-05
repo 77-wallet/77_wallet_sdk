@@ -802,7 +802,7 @@ impl ApiAccountDomain {
         let code: ChainCode = chain_code.try_into()?;
 
         // 获取节点信息
-        let node = ChainDomain::get_node(chain_code).await?;
+        let node = ChainDomain::get_node_with_ctx(ctx, chain_code).await?;
 
         // 创建链实例
         let instance: wallet_chain_instance::instance::ChainObject = (

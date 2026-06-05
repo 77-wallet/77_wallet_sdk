@@ -136,6 +136,7 @@ pub use worker::{ShadowCollectCommand, ShadowCollectWorker, SideEffectCommand, S
 
 /// Shadow系统初始化
 pub(crate) async fn init(
+    ctx: &'static crate::context::Context,
     api_transaction_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
 ) -> Option<actor::CollectorShadowActorSystem> {
@@ -146,7 +147,7 @@ pub(crate) async fn init(
     }
 
     // 初始化Shadow Actor系统
-    let actor_system = actor::CollectorShadowActorSystem::new(api_transaction_pool, core_pool);
+    let actor_system = actor::CollectorShadowActorSystem::new(ctx, api_transaction_pool, core_pool);
 
     tracing::info!("Collect Shadow System initialized and started");
     Some(actor_system)

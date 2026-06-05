@@ -97,14 +97,15 @@ impl MultisigTransactionService {
 
         let account = MultisigDomain::account_by_address(&req_params.from, true, &pool).await?;
 
-        let assets = ChainTransDomain::assets(
+        let assets = ChainTransDomain::assets_with_ctx(
+            self.ctx,
             &req_params.chain_code,
             &req_params.from,
             req_params.token_key(),
         )
         .await?;
 
-        let main_coin = ChainTransDomain::main_coin(&assets.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin_with_ctx(self.ctx, &assets.chain_code).await?;
 
         let adapter =
             ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &account.chain_code)
@@ -157,7 +158,13 @@ impl MultisigTransactionService {
         let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
-        let assets = ChainTransDomain::assets(&req.chain_code, &req.from, req.token_key()).await?;
+        let assets = ChainTransDomain::assets_with_ctx(
+            self.ctx,
+            &req.chain_code,
+            &req.from,
+            req.token_key(),
+        )
+        .await?;
         let asset_token = assets.token_key().clone();
         tracing::info!(
             msq_step = "assets_loaded",
@@ -184,7 +191,8 @@ impl MultisigTransactionService {
         tracing::info!(msq_step = "multisig_account_validated", account_id = %account.id);
 
         tracing::info!("[测试2391bug] 查询到多签账户信息：{:?}", account);
-        let key = ChainTransDomain::get_key(
+        let key = ChainTransDomain::get_key_with_ctx(
+            self.ctx,
             &account.initiator_addr,
             &account.chain_code,
             password,
@@ -233,8 +241,10 @@ impl MultisigTransactionService {
 
         if queue.chain_code != chain_code::SOLANA {
             // 对多签队列进行签名
-            MultisigQueueDomain::batch_sign_queue(&mut queue, password, &account, &adapter, &pool)
-                .await?;
+            MultisigQueueDomain::batch_sign_queue(
+                self.ctx, &mut queue, password, &account, &adapter, &pool,
+            )
+            .await?;
         }
 
         queue.compute_status(account.threshold);
@@ -251,7 +261,7 @@ impl MultisigTransactionService {
         );
 
         // 上报后端
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, None).await?;
+        MultisigQueueDomain::upload_queue_backend(self.ctx, res.id, &pool, None, None).await?;
         tracing::info!(
             msq_step = "upload_queue_backend_done",
             from = %req.from,
@@ -283,7 +293,9 @@ impl MultisigTransactionService {
         let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
-        let coin = CoinDomain::get_coin_by_token_key(&req.chain_code, req.token_key()).await?;
+        let coin =
+            CoinDomain::get_coin_by_token_key_with_ctx(self.ctx, &req.chain_code, req.token_key())
+                .await?;
         tracing::info!(
             msq_step = "permission_coin_loaded",
             from = %req.from,
@@ -345,8 +357,10 @@ impl MultisigTransactionService {
 
         if queue.chain_code != chain_code::SOLANA {
             // 对多签队列进行签名
-            MultisigQueueDomain::batch_sign_with_permission(&mut queue, password, &p, &pool)
-                .await?;
+            MultisigQueueDomain::batch_sign_with_permission(
+                self.ctx, &mut queue, password, &p, &pool,
+            )
+            .await?;
         }
 
         queue.compute_status(p.permission.threshold as i32);
@@ -365,7 +379,7 @@ impl MultisigTransactionService {
         let opt = PermissionData { opt_address: signer.address.clone(), users: p.users() };
 
         // 上报后端
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, Some(opt)).await?;
+        MultisigQueueDomain::upload_queue_backend(self.ctx, res.id, &pool, None, Some(opt)).await?;
         tracing::info!(
             msq_step = "upload_queue_backend_done",
             from = %req.from,
@@ -495,7 +509,7 @@ impl MultisigTransactionService {
             ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &queue.chain_code)
                 .await?;
 
-        let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin_with_ctx(self.ctx, &queue.chain_code).await?;
 
         let res = adapter
             .sign_fee(&multisig_account, &address, &queue.raw_data, &main_coin.symbol)
@@ -532,7 +546,7 @@ impl MultisigTransactionService {
         MultisigQueueRepo::sync_sign_status(&queue, queue.status, core_pool.clone()).await?;
 
         // 3. 签名的结果发送给后端
-        MultisigQueueDomain::upload_queue_sign(queue_id, pool, signed, status).await
+        MultisigQueueDomain::upload_queue_sign(self.ctx, queue_id, pool, signed, status).await
     }
 
     // 查找需要进行签名的地址
@@ -570,7 +584,12 @@ impl MultisigTransactionService {
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
 
-        let coin = CoinDomain::get_coin_by_token_key(&queue.chain_code, queue.token_key()).await?;
+        let coin = CoinDomain::get_coin_by_token_key_with_ctx(
+            self.ctx,
+            &queue.chain_code,
+            queue.token_key(),
+        )
+        .await?;
 
         // 签名数
         let signs = MultisigQueueRepo::get_signed_list(&core_pool, queue_id).await?;
@@ -579,7 +598,7 @@ impl MultisigTransactionService {
         let instance =
             ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &queue.chain_code)
                 .await?;
-        let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin_with_ctx(self.ctx, &queue.chain_code).await?;
 
         let backend = self.ctx.get_global_sqlite_pool()?;
         let backend_api = self.ctx.get_global_backend_api();
@@ -666,8 +685,14 @@ impl MultisigTransactionService {
                 continue;
             };
 
-            let key =
-                ChainTransDomain::get_key(address, &queue.chain_code, password, &None).await?;
+            let key = ChainTransDomain::get_key_with_ctx(
+                self.ctx,
+                address,
+                &queue.chain_code,
+                password,
+                &None,
+            )
+            .await?;
 
             let rs =
                 instance.sign_multisig_tx(&multisig_account, address, key, &queue.raw_data).await?;
@@ -736,8 +761,14 @@ impl MultisigTransactionService {
                 continue;
             }
 
-            let key =
-                ChainTransDomain::get_key(address, &queue.chain_code, password, &None).await?;
+            let key = ChainTransDomain::get_key_with_ctx(
+                self.ctx,
+                address,
+                &queue.chain_code,
+                password,
+                &None,
+            )
+            .await?;
 
             let res =
                 tron::operations::multisig::TransactionOpt::sign_transaction(&queue.raw_data, key)?;
@@ -782,7 +813,12 @@ impl MultisigTransactionService {
         let signs = MultisigQueueRepo::get_signed_list(&core_pool, queue_id).await?;
         let signs_list = signs.get_order_sign_str();
 
-        let coin = CoinDomain::get_coin_by_token_key(&queue.chain_code, queue.token_key()).await?;
+        let coin = CoinDomain::get_coin_by_token_key_with_ctx(
+            self.ctx,
+            &queue.chain_code,
+            queue.token_key(),
+        )
+        .await?;
 
         let transfer_amount = wallet_utils::unit::convert_to_u256(&queue.value, coin.decimals)?;
 
@@ -1055,8 +1091,12 @@ impl MultisigTransactionService {
             remark: queue.notes,
             raw_data,
         };
-        TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH)
-            .await?;
+        TaskQueueDomain::send_or_to_queue_with_ctx(
+            self.ctx,
+            req,
+            endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH,
+        )
+        .await?;
 
         // if let Err(e) = backend.signed_tran_update_trans_hash(cryptor, &req).await {
         //     tracing::error!("report signed tran update  add to task{}", e);

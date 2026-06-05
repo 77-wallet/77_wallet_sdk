@@ -73,7 +73,8 @@ impl TokenPriceChange {
         let exchange_rate = ExchangeRateService::new(ctx).detail(currency).await?;
 
         let res =
-            TokenCurrencies::calculate_token_price_changes(&self.body, exchange_rate.rate).await?;
+            TokenCurrencies::calculate_token_price_changes(ctx, &self.body, exchange_rate.rate)
+                .await?;
         let data = crate::messaging::notify::event::NotifyEvent::TokenPriceChange(res);
         crate::messaging::notify::FrontendNotifyEvent::new(data).send().await?;
 

@@ -158,7 +158,7 @@ impl AppService {
         fiat: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let config = wallet_database::entities::config::Currency { currency: fiat.to_string() };
-            ConfigDomain::set_currency(self.ctx, Some(config)).await?;
+        ConfigDomain::set_currency(self.ctx, Some(config)).await?;
 
         Ok(())
     }

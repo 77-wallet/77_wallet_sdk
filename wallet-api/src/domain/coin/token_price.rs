@@ -1,4 +1,7 @@
-use crate::response_vo::standard_wallet::account::{BalanceInfo, BalanceStr};
+use crate::{
+    context::Context,
+    response_vo::standard_wallet::account::{BalanceInfo, BalanceStr},
+};
 use wallet_database::{
     entities::asset_token_key::AssetTokenKey,
     repositories::{coin::CoinRepo, exchange_rate::ExchangeRateRepo},
@@ -17,8 +20,25 @@ impl TokenCurrencyGetter {
         symbol: &str,
         token_key: AssetTokenKey,
     ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
+        Self::get_currency_by_token_key_with_ctx(
+            crate::context::get_context()?,
+            currency,
+            chain_code,
+            symbol,
+            token_key,
+        )
+        .await
+    }
+
+    pub async fn get_currency_by_token_key_with_ctx(
+        ctx: &Context,
+        currency: &str,
+        chain_code: &str,
+        symbol: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
         // 获取数据库连接池
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = ctx.core_pool()?;
 
         // 查询代币信息
         let coin = CoinRepo::coin_by_chain_token_key(chain_code, token_key, &pool).await?;
@@ -45,12 +65,30 @@ impl TokenCurrencyGetter {
         amount: f64,
         token_key: AssetTokenKey,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        Self::get_balance_info_by_token_key_with_ctx(
+            crate::context::get_context()?,
+            chain_code,
+            symbol,
+            amount,
+            token_key,
+        )
+        .await
+    }
+
+    pub async fn get_balance_info_by_token_key_with_ctx(
+        ctx: &Context,
+        chain_code: &str,
+        symbol: &str,
+        amount: f64,
+        token_key: AssetTokenKey,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         // 获取当前应用的货币设置
         let currency = Self::get_app_currency().await;
 
         // 获取代币价格信息
         let token_price =
-            Self::get_currency_by_token_key(&currency, chain_code, symbol, token_key).await?;
+            Self::get_currency_by_token_key_with_ctx(ctx, &currency, chain_code, symbol, token_key)
+                .await?;
 
         Ok(BalanceInfo::new(amount, Some(token_price.get_price(&currency)), &currency))
     }
@@ -62,12 +100,29 @@ impl TokenCurrencyGetter {
         amount: &str,
         decimals: u8,
     ) -> Result<BalanceStr, crate::error::service::ServiceError> {
+        Self::get_bal_by_backend_with_ctx(
+            crate::context::get_context()?,
+            chain_code,
+            token_addr,
+            amount,
+            decimals,
+        )
+        .await
+    }
+
+    pub async fn get_bal_by_backend_with_ctx(
+        ctx: &Context,
+        chain_code: &str,
+        token_addr: &str,
+        amount: &str,
+        decimals: u8,
+    ) -> Result<BalanceStr, crate::error::service::ServiceError> {
         // 获取当前应用的货币设置
         let currency = Self::get_app_currency().await;
 
         // let backend = crate::manager::Context::get_global_backend_api()?;
         // let token_price = backend.token_price(chain_code, token_addr).await?;
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = ctx.core_pool()?;
 
         // 查询代币信息
         let token = CoinRepo::coin_by_chain_token_key(
@@ -109,16 +164,15 @@ impl TokenCurrencyGetter {
     /// - currency: 法币符号
     /// - 返回值: (USDT价格, 法币价格, 汇率)
     async fn calculate_price_info(
-        _pool: &wallet_database::CoreDbPool,
+        pool: &wallet_database::CoreDbPool,
         price_str: &str,
         currency: &str,
     ) -> Result<(Option<f64>, Option<f64>, f64), crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
         // 获取汇率（如果不是USDT）
         let rate = if currency.eq_ignore_ascii_case("usdt") {
             1.0 // USDT的汇率为1
         } else {
-            ExchangeRateRepo::exchange_rate(currency, core_pool).await?.rate
+            ExchangeRateRepo::exchange_rate(currency, pool.clone()).await?.rate
         };
 
         // 解析价格

@@ -393,8 +393,10 @@ impl EndpointHandler for SpecialHandler {
             endpoint::LANGUAGE_INIT => {
                 backend.post_req_str::<()>(endpoint, &body).await?;
                 DeviceRepo::language_init(core_pool.clone(), sn).await?;
-                crate::domain::announcement::AnnouncementDomain::pull_announcement(&core_pool)
-                    .await?;
+                crate::domain::announcement::AnnouncementDomain::pull_announcement(
+                    &core_pool, &ctx,
+                )
+                .await?;
             }
             endpoint::ADDRESS_BATCH_INIT => {
                 let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
@@ -493,13 +495,14 @@ impl EndpointHandler for SpecialHandler {
                     )
                     .await?;
                 // 1. 后端 chains → upsert 到本地
-                ChainDomain::init_load_backend_chains(input).await?;
+                ChainDomain::init_load_backend_chains_with_ctx(&ctx, input).await?;
                 // 2. 基于本地 chains → 触发去拉 nodes
-                NodeDomain::init_sync_nodes().await?;
+                NodeDomain::init_sync_nodes_with_ctx(&ctx).await?;
                 // 3. 兜底保证每条链都有 node
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
-                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
+                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(&ctx)
+                    .await?;
             }
             endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
                 let body: HashMap<String, String> =
@@ -522,7 +525,8 @@ impl EndpointHandler for SpecialHandler {
                 NodeDomain::upsert_chain_rpc(&core_pool, input).await?;
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
-                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
+                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(&ctx)
+                    .await?;
             }
             endpoint::old_wallet::OLD_CHAIN_RPC_LIST => {
                 let input = backend
@@ -533,7 +537,8 @@ impl EndpointHandler for SpecialHandler {
                 NodeDomain::upsert_chain_rpc(&core_pool, input).await?;
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
-                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
+                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(&ctx)
+                    .await?;
             }
             endpoint::MQTT_INIT => {
                 // 1.4 version 注释掉,

@@ -208,9 +208,7 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn init_currency(
-        ctx: &Context,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_currency(ctx: &Context) -> Result<(), crate::error::service::ServiceError> {
         Self::init_currency_with_ctx(ctx).await
     }
 
@@ -233,9 +231,7 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn init_language(
-        ctx: &Context,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_language(ctx: &Context) -> Result<(), crate::error::service::ServiceError> {
         Self::init_language_with_ctx(ctx).await
     }
 
@@ -523,29 +519,25 @@ impl ConfigDomain {
 
     pub(crate) async fn get_keystore_kdf_algorithm(
         ctx: &Context,
-    )
-    -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
+    ) -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
         Self::get_keystore_kdf_algorithm_with_ctx(ctx).await
     }
 
     pub(crate) async fn get_wallet_tree_strategy(
         ctx: &Context,
-    )
-    -> Result<wallet_tree::WalletTreeStrategy, crate::error::service::ServiceError> {
+    ) -> Result<wallet_tree::WalletTreeStrategy, crate::error::service::ServiceError> {
         Self::get_wallet_tree_strategy_with_ctx(ctx).await
     }
 
     pub(crate) async fn get_app_version(
         ctx: &Context,
-    ) -> Result<AppVersion, crate::error::service::ServiceError>
-    {
+    ) -> Result<AppVersion, crate::error::service::ServiceError> {
         Self::get_app_version_with_ctx(ctx).await
     }
 
     pub(crate) async fn get_keys_reset_status(
         ctx: &Context,
-    )
-    -> Result<Option<KeysResetStatus>, crate::error::service::ServiceError> {
+    ) -> Result<Option<KeysResetStatus>, crate::error::service::ServiceError> {
         Self::get_keys_reset_status_with_ctx(ctx).await
     }
 }

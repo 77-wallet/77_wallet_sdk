@@ -40,7 +40,7 @@ impl CleanPermission {
         PermissionRepo::delete_all(&core_pool, &self.grantor_addr).await?;
 
         // 更新队列数据
-        PermissionDomain::queue_fail_and_upload(&pool, &self.grantor_addr).await?;
+        PermissionDomain::queue_fail_and_upload(ctx, &pool, &self.grantor_addr).await?;
         Ok(())
     }
 }

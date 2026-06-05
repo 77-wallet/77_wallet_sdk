@@ -114,7 +114,9 @@ impl AccountService {
             .with_context(&format!("WalletRepo::wallet_detail_by_address: {}", wallet_address))?;
 
         // 获取种子
-        let seed = WalletDomain::get_seed(self.ctx, dirs.as_ref(), &wallet.address, wallet_password).await?;
+        let seed =
+            WalletDomain::get_seed(self.ctx, dirs.as_ref(), &wallet.address, wallet_password)
+                .await?;
         // 获取默认链和币
         let default_chain_list = ChainRepo::get_chain_list(&core_pool).await?;
         let default_coins_list = CoinRepo::default_coin_list(&core_pool).await?;
@@ -299,7 +301,7 @@ impl AccountService {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Ok(node) = ChainDomain::get_node(chain).await else {
+            let Ok(node) = ChainDomain::get_node_with_ctx(self.ctx, chain).await else {
                 continue;
             };
             for address_type in address_types {
@@ -485,7 +487,8 @@ impl AccountService {
         // 生成并存储 password_proof
         let sn = self.ctx.get_sn();
         let proof =
-            crate::domain::wallet::WalletDomain::generate_password_proof(self.ctx, new_password).await?;
+            crate::domain::wallet::WalletDomain::generate_password_proof(self.ctx, new_password)
+                .await?;
         DeviceRepo::update_password_proof(pool.clone(), sn, Some(&proof)).await?;
         tracing::info!("password_proof updated");
 
@@ -522,7 +525,7 @@ impl AccountService {
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        let node = ChainDomain::get_node(chain_code).await?;
+        let node = ChainDomain::get_node_with_ctx(self.ctx, chain_code).await?;
 
         let instance = wallet_chain_instance::instance::ChainObject::new(
             chain_code,

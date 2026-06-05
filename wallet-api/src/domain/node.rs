@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
-use crate::infrastructure::task_queue::{
-    backend::{BackendApiTask, BackendApiTaskData},
-    task::Tasks,
+use crate::{
+    context::Context,
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
 };
 use wallet_database::{
     CoreDbPool,
@@ -123,7 +126,13 @@ impl NodeDomain {
     // }
 
     pub(crate) async fn init_sync_nodes() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.core_pool()?;
+        Self::init_sync_nodes_with_ctx(crate::get_context()?).await
+    }
+
+    pub(crate) async fn init_sync_nodes_with_ctx(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes: Vec<_> =
             local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
@@ -141,10 +150,16 @@ impl NodeDomain {
     }
 
     pub async fn init_load_default_nodes() -> Result<(), crate::error::service::ServiceError> {
+        Self::init_load_default_nodes_with_ctx(crate::get_context()?).await
+    }
+
+    pub async fn init_load_default_nodes_with_ctx(
+        ctx: &Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let profile = crate::config::Config::active_feature_profile();
         let node_lists = Self::default_node_lists_for_feature(profile)?;
 
-        let pool = crate::get_context()?.core_pool()?;
+        let pool = ctx.core_pool()?;
         tracing::info!(
             "initializing default nodes profile={}, visible_networks={:?}",
             profile,

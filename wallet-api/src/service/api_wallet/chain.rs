@@ -56,7 +56,7 @@ impl ApiChainService {
 
         let chains = ApiChainRepo::get_chain_list(&pool).await?;
 
-        let res = token_currencies.calculate_api_chain_assets_list(datas, chains).await?;
+        let res = token_currencies.calculate_api_chain_assets_list(datas, chains, self.ctx).await?;
         tracing::info!("[get_chain_assets_list] res: {res:?}");
         Ok(res)
     }
@@ -98,8 +98,9 @@ impl ApiChainService {
         let chains = ApiChainRepo::get_chain_list(&pool).await?;
 
         // 使用原有计算层
-        let calculated =
-            token_currencies.calculate_api_chain_assets_list(filtered_datas, chains).await?;
+        let calculated = token_currencies
+            .calculate_api_chain_assets_list(filtered_datas, chains, self.ctx)
+            .await?;
 
         // 构建分组映射
         let mut group_map: HashMap<(String, String), Vec<ChainAssets>> = HashMap::new();

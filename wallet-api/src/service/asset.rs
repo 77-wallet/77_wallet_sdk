@@ -37,7 +37,7 @@ impl AssetsService {
         &mut self,
         address: &str,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2_with_ctx(self.ctx).await?;
 
         let pool = self.ctx.get_global_sqlite_pool()?;
         let multisig = MultisigDomain::account_by_address(address, true, &pool).await?;
@@ -46,7 +46,7 @@ impl AssetsService {
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let mut data = AssetsRepo::get_coin_assets_in_address(&core_pool, address, Some(1)).await?;
         let account_total_assets =
-            token_currencies.calculate_account_total_assets(&mut data).await?;
+            token_currencies.calculate_account_total_assets(self.ctx, &mut data).await?;
 
         Ok(GetAccountAssetsRes { account_total_assets })
     }
@@ -69,10 +69,10 @@ impl AssetsService {
             .assets_domain
             .get_account_assets_entity(&pool, account_id, wallet_address, chain_codes, Some(false))
             .await?;
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2_with_ctx(self.ctx).await?;
 
         let account_total_assets =
-            token_currencies.calculate_account_total_assets(&mut data).await?;
+            token_currencies.calculate_account_total_assets(self.ctx, &mut data).await?;
 
         Ok(GetAccountAssetsRes { account_total_assets })
     }
@@ -85,7 +85,7 @@ impl AssetsService {
         token_key: AssetTokenKey,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
         let pool = self.ctx.core_pool()?;
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2_with_ctx(self.ctx).await?;
         let address = if let Some(account_id) = account_id {
             let account = AccountRepo::detail_by_wallet_address_and_account_id_and_chain_code(
                 pool.clone(),
@@ -108,7 +108,7 @@ impl AssetsService {
             ),
         )?;
 
-        let balance = token_currencies.calculate_assets_entity(&assets).await?;
+        let balance = token_currencies.calculate_assets_entity(&assets, self.ctx).await?;
         let data: CoinAssets = (balance, assets).into();
 
         Ok(data)
@@ -126,7 +126,7 @@ impl AssetsService {
             Some(account_id),
         )
         .await?;
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2_with_ctx(self.ctx).await?;
 
         let addresses = accounts.into_iter().map(|info| info.address).collect();
 
@@ -134,7 +134,7 @@ impl AssetsService {
             AssetsRepo::get_coin_assets_in_address(&core_pool, addresses, Some(1)).await?;
 
         let account_total_assets =
-            token_currencies.calculate_account_total_assets(&mut data).await?;
+            token_currencies.calculate_account_total_assets(self.ctx, &mut data).await?;
         Ok(GetAccountAssetsRes { account_total_assets })
     }
 
@@ -155,7 +155,7 @@ impl AssetsService {
             .await?;
 
         let mut res = AccountChainAssetList::default();
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2_with_ctx(self.ctx).await?;
 
         // 根据账户地址、网络查询币资产
         for address in account_addresses {
@@ -168,20 +168,24 @@ impl AssetsService {
             )
             .await?;
             for assets in assets_list {
-                let coin =
-                    CoinDomain::get_coin_by_token_key(&assets.chain_code, assets.token_key())
-                        .await?;
+                let coin = CoinDomain::get_coin_by_token_key_with_ctx(
+                    self.ctx,
+                    &assets.chain_code,
+                    assets.token_key(),
+                )
+                .await?;
                 if let Some(existing_asset) = res
                     .iter_mut()
                     .find(|a| a.symbol == assets.symbol && a.is_default && coin.is_default == 1)
                 {
-                    token_currencies.calculate_assets(assets, existing_asset).await?;
+                    token_currencies.calculate_assets(assets, existing_asset, self.ctx).await?;
                     existing_asset
                         .chain_list
                         .entry(coin.chain_code.clone())
                         .or_insert(coin.token_address.as_db_str().to_string());
                 } else {
-                    let balance = token_currencies.calculate_assets_entity(&assets).await?;
+                    let balance =
+                        token_currencies.calculate_assets_entity(&assets, self.ctx).await?;
 
                     let chain_code = if chain_code.is_none()
                         && let Some(chain) =
@@ -414,7 +418,14 @@ impl AssetsService {
 
         let res = self
             .assets_domain
-            .get_local_coin_list(&core_pool, account_addresses, chain_code, keyword, is_multisig)
+            .get_local_coin_list(
+                self.ctx,
+                &core_pool,
+                account_addresses,
+                chain_code,
+                keyword,
+                is_multisig,
+            )
             .await?;
 
         Ok(res)

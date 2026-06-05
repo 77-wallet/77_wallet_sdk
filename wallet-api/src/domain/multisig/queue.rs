@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         self,
         bill::BillDomain,
@@ -73,17 +74,23 @@ impl MultisigQueueDomain {
     }
 
     pub async fn recover_all_uid_queue_data() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
+        Self::recover_all_uid_queue_data_with_ctx(crate::get_context()?).await
+    }
+
+    pub async fn recover_all_uid_queue_data_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.get_global_sqlite_pool()?;
         let uid_list = WalletRepo::uid_list(CoreDbPool::new(pool.clone()))
             .await?
             .into_iter()
             .map(|uid| uid.0)
             .collect::<Vec<String>>();
 
-        let raw_time = Self::get_raw_time(&uid_list).await?;
+        let raw_time = Self::get_raw_time_with_ctx(ctx, &uid_list).await?;
 
         for uid in uid_list {
-            Self::recover_queue_data_with_raw_time(&uid, raw_time.clone()).await?;
+            Self::recover_queue_data_with_raw_time_with_ctx(ctx, &uid, raw_time.clone()).await?;
         }
 
         Ok(())
@@ -92,15 +99,29 @@ impl MultisigQueueDomain {
     pub async fn recover_all_queue_data(
         uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let raw_time = Self::get_raw_time(&[uid.to_string()]).await?;
-        Self::recover_queue_data_with_raw_time(uid, raw_time).await?;
+        Self::recover_all_queue_data_with_ctx(crate::get_context()?, uid).await
+    }
+
+    pub async fn recover_all_queue_data_with_ctx(
+        ctx: &'static Context,
+        uid: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let raw_time = Self::get_raw_time_with_ctx(ctx, &[uid.to_string()]).await?;
+        Self::recover_queue_data_with_raw_time_with_ctx(ctx, uid, raw_time).await?;
         Ok(())
     }
 
     pub(crate) async fn get_raw_time(
         uid_list: &[String],
     ) -> Result<Option<String>, crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
+        Self::get_raw_time_with_ctx(crate::get_context()?, uid_list).await
+    }
+
+    pub(crate) async fn get_raw_time_with_ctx(
+        ctx: &'static Context,
+        uid_list: &[String],
+    ) -> Result<Option<String>, crate::error::service::ServiceError> {
+        let pool = ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let account_ids = MultisigMemberRepo::list_by_uids(&core_pool, uid_list)
             .await?
@@ -120,9 +141,16 @@ impl MultisigQueueDomain {
     }
 
     pub async fn recover_queue_data(uid: &str) -> Result<(), crate::error::service::ServiceError> {
-        let raw_time = Self::get_raw_time(&[uid.to_string()]).await?;
+        Self::recover_queue_data_with_ctx(crate::get_context()?, uid).await
+    }
 
-        Self::recover_queue_data_with_raw_time(uid, raw_time).await?;
+    pub async fn recover_queue_data_with_ctx(
+        ctx: &'static Context,
+        uid: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let raw_time = Self::get_raw_time_with_ctx(ctx, &[uid.to_string()]).await?;
+
+        Self::recover_queue_data_with_raw_time_with_ctx(ctx, uid, raw_time).await?;
 
         Ok(())
     }
@@ -131,8 +159,16 @@ impl MultisigQueueDomain {
         uid: &str,
         raw_time: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend = crate::get_context()?.get_global_backend_api();
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
+        Self::recover_queue_data_with_raw_time_with_ctx(crate::get_context()?, uid, raw_time).await
+    }
+
+    pub(crate) async fn recover_queue_data_with_raw_time_with_ctx(
+        ctx: &'static Context,
+        uid: &str,
+        raw_time: Option<String>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let backend = ctx.get_global_backend_api();
+        let pool = ctx.get_global_sqlite_pool()?;
 
         let req = wallet_transport_backend::request::FindAddressRawDataReq::new_trans(
             Some(uid.to_string()),
@@ -147,7 +183,7 @@ impl MultisigQueueDomain {
                 match MultisigQueueData::from_string(&raw_data) {
                     Ok(r) => {
                         let id = r.queue.id.clone();
-                        if let Err(e) = Self::insert(pool.clone(), r).await {
+                        if let Err(e) = Self::insert_with_ctx(ctx, pool.clone(), r).await {
                             tracing::error!("recover queue data error: {} queue_id = {}", e, id);
                         }
                     }
@@ -164,6 +200,14 @@ impl MultisigQueueDomain {
         pool: DbPool,
         data: MultisigQueueData,
     ) -> Result<(), crate::error::service::ServiceError> {
+        Self::insert_with_ctx(crate::get_context()?, pool, data).await
+    }
+
+    pub async fn insert_with_ctx(
+        ctx: &'static Context,
+        pool: DbPool,
+        data: MultisigQueueData,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let MultisigQueueData { queue, signatures } = data;
         let id = queue.id.clone();
 
@@ -172,7 +216,6 @@ impl MultisigQueueDomain {
 
         let mut report = false;
         if !params.tx_hash.is_empty() && params.status == MultisigQueueStatus::InConfirmation {
-            let ctx = crate::get_context()?;
             let tx = domain::bill::BillDomain::get_onchain_bill(
                 ctx,
                 &params.tx_hash,
@@ -212,7 +255,7 @@ impl MultisigQueueDomain {
         };
 
         if report {
-            Self::update_raw_data(&id, pool.clone()).await?;
+            Self::update_raw_data_with_ctx(ctx, &id, pool.clone()).await?;
         }
 
         Ok(())
@@ -222,7 +265,14 @@ impl MultisigQueueDomain {
     pub async fn sync_queue_status(
         queue_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.get_global_sqlite_pool()?;
+        Self::sync_queue_status_with_ctx(crate::get_context()?, queue_id).await
+    }
+
+    pub async fn sync_queue_status_with_ctx(
+        ctx: &'static Context,
+        queue_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         let queue = MultisigQueueRepo::find_by_id(&core_pool, queue_id).await?;
@@ -237,7 +287,6 @@ impl MultisigQueueDomain {
         }
 
         // 获取链上交易状态
-        let ctx = crate::get_context()?;
         if let Some(rs) =
             BillDomain::get_onchain_bill(ctx, &queue.tx_hash, &queue.chain_code).await?
         {
@@ -250,7 +299,7 @@ impl MultisigQueueDomain {
 
             MultisigQueueRepo::update_status(queue_id, tx_status, &core_pool).await?;
 
-            Self::update_raw_data(queue_id, pool).await?;
+            Self::update_raw_data_with_ctx(ctx, queue_id, pool).await?;
         }
 
         Ok(())
@@ -261,16 +310,25 @@ impl MultisigQueueDomain {
         queue_id: &str,
         pool: DbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
+        Self::update_raw_data_with_ctx(crate::get_context()?, queue_id, pool).await
+    }
+
+    pub async fn update_raw_data_with_ctx(
+        ctx: &'static Context,
+        queue_id: &str,
+        pool: DbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, CoreDbPool::new(pool))
             .await?
             .to_string()?;
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = ctx.get_global_backend_api();
         Ok(backend_api.update_raw_data(queue_id, raw_data).await?)
     }
 
     // 波场交易队列事件、并进行默认签名
     pub async fn tron_sign_and_create_queue(
+        ctx: &'static Context,
         queue: &mut NewMultisigQueueEntity,
         account: &MultisigAccountEntity,
         password: String,
@@ -285,9 +343,8 @@ impl MultisigQueueDomain {
         let sign_num = members.0.len().min(account.threshold as usize);
         for i in 0..sign_num {
             let member = members.0.get(i).unwrap();
-            let ctx = crate::get_context()?;
             let key = crate::domain::account::open_subpk_with_password(
-                &ctx,
+                ctx,
                 &queue.chain_code,
                 &member.address,
                 &password,
@@ -315,6 +372,7 @@ impl MultisigQueueDomain {
 
     // 非solana链对交易队列进行批量签名
     pub async fn batch_sign_queue(
+        ctx: &'static Context,
         queue: &mut NewMultisigQueueEntity,
         password: &str,
         account: &MultisigAccountEntity,
@@ -330,9 +388,14 @@ impl MultisigQueueDomain {
         let sign_num = members.0.len().min(account.threshold as usize);
         for i in 0..sign_num {
             let member = members.0.get(i).unwrap();
-            let key =
-                ChainTransDomain::get_key(&member.address, &queue.chain_code, password, &None)
-                    .await?;
+            let key = ChainTransDomain::get_key_with_ctx(
+                ctx,
+                &member.address,
+                &queue.chain_code,
+                password,
+                &None,
+            )
+            .await?;
 
             let sign_res =
                 adapter.sign_multisig_tx(account, &member.address, key, &queue.raw_data).await?;
@@ -351,6 +414,7 @@ impl MultisigQueueDomain {
 
     // 签名时权限创建所有的签名者(目前仅有tron)
     pub async fn batch_sign_with_permission(
+        ctx: &'static Context,
         queue: &mut NewMultisigQueueEntity,
         password: &str,
         p: &PermissionWithUserEntity,
@@ -379,9 +443,14 @@ impl MultisigQueueDomain {
             .await?
             .is_some()
             {
-                let key =
-                    ChainTransDomain::get_key(&user.address, &queue.chain_code, password, &None)
-                        .await?;
+                let key = ChainTransDomain::get_key_with_ctx(
+                    ctx,
+                    &user.address,
+                    &queue.chain_code,
+                    password,
+                    &None,
+                )
+                .await?;
 
                 let res = TransactionOpt::sign_transaction(&queue.raw_data, key)?;
 
@@ -403,6 +472,7 @@ impl MultisigQueueDomain {
 
     // 队列数据上报到后端
     pub async fn upload_queue_backend(
+        ctx: &'static Context,
         queue_id: String,
         pool: &DbPool,
         backend_params: Option<PermissionAcceptReq>,
@@ -422,8 +492,12 @@ impl MultisigQueueDomain {
         };
 
         let mut tasks = Tasks::new();
-        let task =
-            TaskQueueDomain::send_or_wrap_task(req, endpoint::multisig::SIGNED_TRAN_CREATE).await?;
+        let task = TaskQueueDomain::send_or_wrap_task_with_ctx(
+            ctx,
+            req,
+            endpoint::multisig::SIGNED_TRAN_CREATE,
+        )
+        .await?;
         if let Some(task) = task {
             tasks = tasks.push(task);
         }
@@ -434,9 +508,12 @@ impl MultisigQueueDomain {
         // let mut tasks = task_queue::Tasks::new().push(task);
         // 多签权限的修改单独上报一份权限的数据
         if let Some(req) = backend_params {
-            let task =
-                TaskQueueDomain::send_or_wrap_task(req, endpoint::multisig::PERMISSION_ACCEPT)
-                    .await?;
+            let task = TaskQueueDomain::send_or_wrap_task_with_ctx(
+                ctx,
+                req,
+                endpoint::multisig::PERMISSION_ACCEPT,
+            )
+            .await?;
             if let Some(task) = task {
                 tasks = tasks.push(task);
             }
@@ -452,6 +529,7 @@ impl MultisigQueueDomain {
     }
 
     pub async fn upload_queue_sign(
+        ctx: &'static Context,
         queue_id: &str,
         pool: DbPool,
         signed: Vec<NewSignatureEntity>,
@@ -471,7 +549,12 @@ impl MultisigQueueDomain {
             status: status.to_i8(),
             raw_data,
         };
-        TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_TRAN_ACCEPT).await?;
+        TaskQueueDomain::send_or_to_queue_with_ctx(
+            ctx,
+            req,
+            endpoint::multisig::SIGNED_TRAN_ACCEPT,
+        )
+        .await?;
 
         // let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
         //     endpoint: endpoint::multisig::SIGNED_TRAN_ACCEPT.to_string(),

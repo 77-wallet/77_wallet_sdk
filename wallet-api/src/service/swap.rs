@@ -85,7 +85,7 @@ impl SwapServer {
         token_in: String,
     ) -> Result<DefaultQuoteResp, crate::error::service::ServiceError> {
         let code = ChainCode::try_from(chain_code.as_str())?;
-        let token_addr = CoinDomain::get_stable_coin(code).await?;
+        let token_addr = CoinDomain::get_stable_coin_with_ctx(self.ctx, code).await?;
 
         let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
@@ -143,7 +143,8 @@ impl SwapServer {
         amount_out: U256,
     ) -> Result<(BalanceStr, BalanceStr), crate::error::service::ServiceError> {
         // 查询两次后端
-        let bal_in = TokenCurrencyGetter::get_bal_by_backend(
+        let bal_in = TokenCurrencyGetter::get_bal_by_backend_with_ctx(
+            self.ctx,
             &req.chain_code,
             &req.token_in.token_addr,
             &req.amount_in,
@@ -151,7 +152,8 @@ impl SwapServer {
         )
         .await?;
 
-        let bal_out = TokenCurrencyGetter::get_bal_by_backend(
+        let bal_out = TokenCurrencyGetter::get_bal_by_backend_with_ctx(
+            self.ctx,
             &req.chain_code,
             &req.token_out.token_addr,
             &format_to_string(amount_out, req.token_out.decimals as u8)?,
@@ -374,7 +376,8 @@ impl SwapServer {
             currency.currency().to_string()
         };
 
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_ctx(
+            self.ctx,
             &currency,
             &resp.chain_code,
             &main_coin.symbol,
@@ -550,8 +553,14 @@ impl SwapServer {
             Process::Building,
         ));
         FrontendNotifyEvent::new(data).send().await?;
-        let key =
-            ChainTransDomain::get_key(&req.recipient, &req.chain_code, &password, &None).await?;
+        let key = ChainTransDomain::get_key_with_ctx(
+            self.ctx,
+            &req.recipient,
+            &req.chain_code,
+            &password,
+            &None,
+        )
+        .await?;
 
         // 查询余额是否足够
         let pool = self.ctx.get_global_sqlite_pool()?;
@@ -889,8 +898,14 @@ impl SwapServer {
             ));
         }
 
-        let private_key =
-            ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
+        let private_key = ChainTransDomain::get_key_with_ctx(
+            self.ctx,
+            &req.from,
+            &req.chain_code,
+            &password,
+            &None,
+        )
+        .await?;
 
         // 广播交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
@@ -918,7 +933,8 @@ impl SwapServer {
             &resp.tx_hash.clone(),
             req.get_approve_type(),
         );
-        TaskQueueDomain::send_or_to_queue(backend_req, SWAP_APPROVE_SAVE).await?;
+        TaskQueueDomain::send_or_to_queue_with_ctx(self.ctx, backend_req, SWAP_APPROVE_SAVE)
+            .await?;
 
         // 写入本地交易
         let mut new_bill: NewBillEntity = BillRepo::build_bill_from(req);
@@ -1026,8 +1042,14 @@ impl SwapServer {
         ));
         FrontendNotifyEvent::new(data).send().await?;
 
-        let private_key =
-            ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
+        let private_key = ChainTransDomain::get_key_with_ctx(
+            self.ctx,
+            &req.from,
+            &req.chain_code,
+            &password,
+            &None,
+        )
+        .await?;
         let adapter =
             ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
                 .await?;
@@ -1073,7 +1095,7 @@ impl SwapServer {
             owner_address: req.from.clone(),
             tx_hash: resp.tx_hash.clone(),
         };
-        TaskQueueDomain::send_or_to_queue(backend, SWAP_APPROVE_CANCEL).await?;
+        TaskQueueDomain::send_or_to_queue_with_ctx(self.ctx, backend, SWAP_APPROVE_CANCEL).await?;
         // 写入本地交易
         let mut new_bill: NewBillEntity = BillRepo::build_bill_from(req);
         new_bill.hash = resp.tx_hash.clone();

@@ -1,5 +1,7 @@
-use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
-use crate::context::Context;
+use crate::{
+    context::Context,
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+};
 use wallet_database::{
     CoreDbPool,
     repositories::{announcement::AnnouncementRepo, device::DeviceRepo},

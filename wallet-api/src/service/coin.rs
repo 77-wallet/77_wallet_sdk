@@ -125,7 +125,7 @@ impl CoinService {
         CoinRepo::drop_coin_just_null_token_address(&core_pool).await?;
 
         // 拉所有的币
-        let coins = CoinDomain::fetch_all_coin(&core_pool).await?;
+        let coins = CoinDomain::fetch_all_coin_with_ctx(self.ctx, &core_pool).await?;
 
         let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<CoinData>>();
 
@@ -238,7 +238,7 @@ impl CoinService {
         &self,
         req: &TokenQueryPriceReq,
     ) -> Result<(), crate::error::service::ServiceError> {
-        CoinDomain::query_token_price(req).await
+        CoinDomain::query_token_price_with_ctx(self.ctx, req).await
     }
 
     // 查询价格 顺便更新一次币价·
@@ -290,9 +290,12 @@ impl CoinService {
                     None,
                 )
                 .await?;
-                let data =
-                    TokenCurrencies::calculate_token_price_changes(&token, exchange_rate.rate)
-                        .await?;
+                let data = TokenCurrencies::calculate_token_price_changes(
+                    self.ctx,
+                    &token,
+                    exchange_rate.rate,
+                )
+                .await?;
                 res.push(data);
             }
         }
@@ -309,7 +312,7 @@ impl CoinService {
         crate::error::service::ServiceError,
     > {
         let core_pool = self.ctx.core_pool()?;
-        let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
+        let net = ChainDomain::network_kind_by_chain_code_with_ctx(self.ctx, chain_code).await?;
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
         let coin = CoinRepo::coin_by_chain_token_key_opt(
@@ -398,11 +401,11 @@ impl CoinService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = self.ctx.core_pool()?;
         let account_domain = AccountDomain::new();
-        let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
+        let net = ChainDomain::network_kind_by_chain_code_with_ctx(self.ctx, chain_code).await?;
 
         ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let _ = ChainDomain::get_node(chain_code).await?;
+        let _ = ChainDomain::get_node_with_ctx(self.ctx, chain_code).await?;
 
         let chain_instance =
             ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, chain_code).await?;
@@ -597,7 +600,8 @@ impl CoinService {
         let mut data = Vec::new();
         for val in list {
             let res =
-                TokenCurrencies::calculate_token_price_changes(&val, exchange_rate.rate).await?;
+                TokenCurrencies::calculate_token_price_changes(self.ctx, &val, exchange_rate.rate)
+                    .await?;
             data.push(res);
         }
 

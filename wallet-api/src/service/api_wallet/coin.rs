@@ -107,7 +107,7 @@ impl ApiCoinService {
 
         ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let _ = ChainDomain::get_node(chain_code).await?;
+        let _ = ChainDomain::get_node_with_ctx(self.ctx, chain_code).await?;
 
         let chain_instance =
             ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, chain_code).await?;

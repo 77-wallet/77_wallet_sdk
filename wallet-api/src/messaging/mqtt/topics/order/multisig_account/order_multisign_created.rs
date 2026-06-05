@@ -76,7 +76,8 @@ impl OrderMultiSignCreated {
 
         let core_pool = CoreDbPool::new(pool.clone());
         if MultisigAccountRepo::find_by_id(&core_pool, multisig_account_id).await?.is_none() {
-            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
+            MultisigDomain::recover_multisig_account_by_id_with_ctx(ctx, multisig_account_id)
+                .await?;
         }
 
         // update multisig account data

@@ -65,7 +65,7 @@ impl ApiChainDomain {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Ok(node) = ChainDomain::get_node(chain).await else {
+            let Ok(node) = ChainDomain::get_node_with_ctx(ctx, chain).await else {
                 continue;
             };
 

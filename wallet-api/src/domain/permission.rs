@@ -205,6 +205,7 @@ impl PermissionDomain {
     }
 
     pub async fn queue_fail_and_upload(
+        ctx: &'static crate::context::Context,
         pool: &DbPool,
         grantor_addr: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -212,7 +213,7 @@ impl PermissionDomain {
         let result = MultisigQueueRepo::permission_update_fail(grantor_addr, &core_pool).await?;
 
         for queue in result {
-            MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;
+            MultisigQueueDomain::update_raw_data_with_ctx(ctx, &queue.id, pool.clone()).await?;
         }
         Ok(())
     }

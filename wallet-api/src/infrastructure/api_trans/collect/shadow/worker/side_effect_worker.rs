@@ -151,6 +151,7 @@ impl SideEffectCommand {
 /// 处理所有外部依赖的副作用操作
 #[derive(Clone)]
 pub struct SideEffectWorker {
+    ctx: &'static crate::context::Context,
     /// 数据库连接池
     pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
@@ -200,11 +201,12 @@ impl SideEffectWorker {
 
     /// 创建新的 SideEffect Worker
     pub fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
         advancer: Arc<ShadowAdvancer>,
     ) -> Self {
-        Self { pool, core_pool, advancer }
+        Self { ctx, pool, core_pool, advancer }
     }
 
     /// 从数据库中获取归集交易信息
@@ -295,10 +297,10 @@ impl SideEffectWorker {
         };
 
         // 3. 查询用户提币策略
-        let ctx = crate::context::get_context()?;
+        let ctx = self.ctx;
         let strategy =
             crate::domain::api_wallet::strategy::StrategyDomain::query_withdraw_strategy_with_ctx(
-                &ctx,
+                ctx,
                 &withdraw_wallet.uid,
             )
             .await?;
@@ -420,7 +422,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "Order ACK marked as attempted successfully");
 
         // 获取backend_api
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
 
         // 发送Order ACK
         match backend_api
@@ -532,7 +534,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "Result ACK marked as attempted successfully");
 
         // 获取backend_api
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
 
         // 发送TxRes ACK
         match backend_api
@@ -585,7 +587,7 @@ impl SideEffectWorker {
         }
 
         // 获取backend_api
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
 
         // 发送手续费结果确认 ACK
         match backend_api
@@ -667,7 +669,7 @@ impl SideEffectWorker {
         } else {
             (platform_resource_task_trans_type(&resource_task), platform_resource_result_ack_type())
         };
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(&resource_trade_no, trans_type, ack_type))
             .await
@@ -871,7 +873,7 @@ impl SideEffectWorker {
 
         let trans_type = platform_resource_task_trans_type(&resource_task);
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
@@ -924,7 +926,7 @@ impl SideEffectWorker {
             ));
         }
 
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         backend_api.upload_tx_exec_receipt(&payload).await?;
 
         let affected = ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(
@@ -1008,7 +1010,7 @@ impl SideEffectWorker {
 
         // 获取交易信息
         let req = self.get_collect_entity(&trade_no).await?;
-        let ctx = crate::context::get_context()?;
+        let ctx = self.ctx;
 
         // 幂等保护：检查服务费是否已上传
         // invariant: uploaded_at.is_some() => attempted_at.is_some()
@@ -1179,7 +1181,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "Service fee marked as attempted successfully");
 
         // 获取backend_api
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
 
         // 构建服务费上传请求
         let upload_req = ServiceFeeUploadReq::new(
@@ -1249,7 +1251,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "TxExecReceipt marked as attempted successfully");
 
         // 获取backend_api
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
 
         // 构建交易执行回执上传请求
         let upload_payload = Self::build_tx_exec_receipt_payload(&req, &trade_no).await?;
@@ -1382,10 +1384,10 @@ impl SideEffectWorker {
             "Querying balance for service fee shortfall calculation"
         );
 
-        let ctx = crate::context::get_context()?;
+        let ctx = self.ctx;
         let adapter =
             crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
-                &ctx,
+                ctx,
                 chain_code,
             )
             .await?;
@@ -1412,9 +1414,9 @@ impl SideEffectWorker {
         main_coin: &ApiCoinEntity,
     ) -> Result<(String, AssetTokenKey, u8), ServiceError> {
         if token_addr.is_contract() {
-            let ctx = crate::context::get_context()?;
+            let ctx = self.ctx;
             let token_coin = ApiCoinDomain::get_coin_by_token_key_exact_with_ctx(
-                &ctx,
+                ctx,
                 chain_code,
                 token_addr.clone(),
             )
@@ -1439,10 +1441,10 @@ impl SideEffectWorker {
     ) -> Result<String, ServiceError> {
         info!(from=%from, to=%to, value=%value, chain_code=%chain_code.to_string(), symbol=%symbol, main_symbol=%main_symbol, token_address=%token_key.as_db_str(), source = "side_effect_worker", "Estimating transaction fee");
 
-        let ctx = crate::context::get_context()?;
+        let ctx = self.ctx;
         let adapter =
             crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
-                &ctx,
+                ctx,
                 &chain_code.to_string(),
             )
             .await?;
@@ -1638,6 +1640,7 @@ mod tests {
             .into_api_wallet_db_pool()?;
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = SideEffectWorker::new(
+            crate::get_context().expect("context"),
             pool.clone(),
             wallet_pool,
             Arc::new(ShadowAdvancer::new(pool.clone(), intent_tx, None)),
@@ -2032,6 +2035,7 @@ mod tests {
             wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = SideEffectWorker::new(
+            crate::get_context().expect("context"),
             pool.clone(),
             wallet_pool,
             Arc::new(ShadowAdvancer::new(pool.clone(), intent_tx, None)),

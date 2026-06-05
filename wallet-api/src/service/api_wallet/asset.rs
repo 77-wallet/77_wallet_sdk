@@ -283,13 +283,14 @@ impl ApiAssetsService {
                     .iter_mut()
                     .find(|a| a.symbol == assets.symbol && a.is_default && coin.is_default == 1)
                 {
-                    token_currencies.calculate_api_assets(assets, existing_asset).await?;
+                    token_currencies.calculate_api_assets(assets, existing_asset, self.ctx).await?;
                     existing_asset
                         .chain_list
                         .entry(coin.chain_code.clone())
                         .or_insert(coin.token_address.as_db_str().to_string());
                 } else {
-                    let balance = token_currencies.calculate_api_assets_entity(&assets).await?;
+                    let balance =
+                        token_currencies.calculate_api_assets_entity(&assets, self.ctx).await?;
                     if balance.amount.is_zero() {
                         continue;
                     }
@@ -516,13 +517,14 @@ impl ApiAssetsService {
                     .iter_mut()
                     .find(|a| a.symbol == assets.symbol && a.is_default && coin.is_default == 1)
                 {
-                    token_currencies.calculate_api_assets(assets, existing_asset).await?;
+                    token_currencies.calculate_api_assets(assets, existing_asset, self.ctx).await?;
                     existing_asset
                         .chain_list
                         .entry(coin.chain_code.clone())
                         .or_insert(coin.token_address.as_db_str().to_string());
                 } else {
-                    let balance = token_currencies.calculate_api_assets_entity(&assets).await?;
+                    let balance =
+                        token_currencies.calculate_api_assets_entity(&assets, self.ctx).await?;
 
                     res.push(ApiAccountChainAsset {
                         chain_code: assets.chain_code.clone(),
@@ -625,7 +627,7 @@ impl ApiAssetsService {
             ),
         )?;
 
-        let balance = token_currencies.calculate_api_assets_entity(&assets).await?;
+        let balance = token_currencies.calculate_api_assets_entity(&assets, self.ctx).await?;
         let data: CoinAssets = (balance, assets).into();
         tracing::info!("[api assets detail] data: {data:?}");
         Ok(data)

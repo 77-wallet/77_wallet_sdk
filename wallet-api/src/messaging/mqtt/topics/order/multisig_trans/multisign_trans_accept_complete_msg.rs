@@ -89,7 +89,7 @@ impl MultiSignTransAcceptCompleteMsg {
                 MultisigQueueRepo::sync_sign_status(&queue, queue.status, core_pool.clone())
                     .await?;
 
-                MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;
+                MultisigQueueDomain::update_raw_data_with_ctx(ctx, &queue.id, pool.clone()).await?;
             }
         }
 

@@ -684,7 +684,8 @@ impl AssetCalcActor {
         &mut self,
         assets: &[AssetEntry],
     ) -> Result<(), ServiceError> {
-        let currency = ConfigDomain::get_currency().await?;
+        let ctx = crate::get_context()?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
 
         // 使用标准迭代器替代并行迭代，确保线程安全
         for a in assets {
@@ -799,7 +800,8 @@ impl AssetCalcActor {
             return Ok(());
         }
 
-        let currency = ConfigDomain::get_currency().await?;
+        let ctx = crate::get_context()?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
         let exchange_rates = self.get_exchange_rates().await?;
         let rate_value = exchange_rates.get(&currency).copied().unwrap_or_default();
 
@@ -852,7 +854,8 @@ impl AssetCalcActor {
         price_real: f64,
         decimals: u8,
     ) -> Result<(), ServiceError> {
-        let currency = ConfigDomain::get_currency().await?;
+        let ctx = crate::get_context()?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
 
         // 更新token价格
         let (fiat_price, rate) = {
@@ -1300,7 +1303,8 @@ impl AssetCalcActor {
     async fn refresh_all_caches(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // 分块拉取地址资产，避免大钱包/大账号集合一次性查询后占用过多内存。
         const ADDRESS_CHUNK: usize = 200;
-        let currency = ConfigDomain::get_currency().await?;
+        let ctx = crate::get_context()?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
         debug!("Starting full cache refresh");
 
         // 从状态中获取所有地址和pool

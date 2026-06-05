@@ -153,10 +153,11 @@ pub async fn update_token_price(
     token_address: &Option<String>,
     price_real: f64,
 ) -> Result<(), crate::error::service::ServiceError> {
-    let pool = crate::get_context()?.get_global_sqlite_pool()?;
+    let ctx = crate::get_context()?;
+    let pool = ctx.get_global_sqlite_pool()?;
     let mut token_currencies = TOKEN_CURRENCIES.write().await;
     let id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
-    let currency = ConfigDomain::get_currency().await?;
+    let currency = ConfigDomain::get_currency(ctx).await?;
 
     // 修复汇率计算问题，使用缓存的汇率数据
     let (fiat_price, rate) = {
@@ -287,7 +288,8 @@ async fn process_price_dirty_assets(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // process in chunks to avoid huge IN lists
     const CHUNK_KEYS: usize = 200;
-    let currency = ConfigDomain::get_currency().await?;
+    let ctx = crate::get_context()?;
+    let currency = ConfigDomain::get_currency(ctx).await?;
 
     for chunk in keys.chunks(CHUNK_KEYS) {
         let mut keys = Vec::new();
@@ -333,7 +335,8 @@ async fn process_asset_dirty_assets(
     keys: &[AssetKey],
 ) -> Result<(), Box<dyn std::error::Error>> {
     const CHUNK_SIZE: usize = 200;
-    let currency = ConfigDomain::get_currency().await?;
+    let ctx = crate::get_context()?;
+    let currency = ConfigDomain::get_currency(ctx).await?;
 
     for chunk in keys.chunks(CHUNK_SIZE) {
         let mut keys = Vec::new();

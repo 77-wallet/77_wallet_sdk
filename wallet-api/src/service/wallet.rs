@@ -183,7 +183,8 @@ impl WalletService {
 
         let exports: Vec<Export> = wallet_utils::serde_func::serde_from_str(&buf)?;
         let seed =
-            WalletApplication::get_seed(dirs.as_ref(), wallet_address, wallet_password).await?;
+            WalletApplication::get_seed(self.ctx, dirs.as_ref(), wallet_address, wallet_password)
+                .await?;
 
         let wallet = WalletRepo::wallet_detail_by_address(pool.clone(), wallet_address)
             .await?
@@ -202,7 +203,7 @@ impl WalletService {
             )?;
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(hd_path.get_account_id()?)?;
-            let Ok(node) = ChainDomain::get_node(&data.chain_code).await else {
+            let Ok(node) = ChainDomain::get_node_with_ctx(self.ctx, &data.chain_code).await else {
                 continue;
             };
 
@@ -517,7 +518,7 @@ impl WalletService {
         let dirs = self.ctx.get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
 
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         let phrase = wallet_tree::api::KeystoreApi::load_phrase(
@@ -610,7 +611,7 @@ impl WalletService {
 
         let chains: ChainCodeAndName = chains.into();
 
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2_with_ctx(self.ctx).await?;
         // let service = Service::default();
         let wallet_list = if let Some(wallet_address) = &wallet_address {
             let wallet = WalletRepo::wallet_detail_by_address(pool.clone(), wallet_address)
@@ -633,9 +634,10 @@ impl WalletService {
                 account_id,
             )
             .await?;
-            let mut account_list = token_currencies.calculate_account_infos(list, &chains).await?;
+            let mut account_list =
+                token_currencies.calculate_account_infos(self.ctx, list, &chains).await?;
             // let mut account_cal_list = std::collections::HashMap::new();
-            let mut wallet_assets = BalanceInfo::new_without_amount().await?;
+            let mut wallet_assets = BalanceInfo::new_without_amount(self.ctx).await?;
             for account in account_list.iter_mut() {
                 let mut account_assets_entity = self
                     .assets_domain
@@ -649,7 +651,7 @@ impl WalletService {
                     .await?;
 
                 let account_total_assets = token_currencies
-                    .calculate_account_total_assets(&mut account_assets_entity)
+                    .calculate_account_total_assets(self.ctx, &mut account_assets_entity)
                     .await?;
                 let fiat_value = account_total_assets.fiat_value;
                 let amount = account_total_assets.amount;

@@ -66,7 +66,7 @@ impl OrderMultiSignServiceComplete {
 
         // 不是发起方更重新上报状态
         if account.owner != MultiAccountOwner::Participant.to_i8() {
-            let _r = MultisigDomain::update_raw_data(&multi_account_id, pool).await;
+            let _r = MultisigDomain::update_raw_data_with_ctx(ctx, &multi_account_id, pool).await;
         }
 
         let data =
@@ -101,7 +101,8 @@ impl OrderMultiSignServiceComplete {
         )
         .await?;
         if account.is_none() {
-            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
+            MultisigDomain::recover_multisig_account_by_id_with_ctx(ctx, multisig_account_id)
+                .await?;
 
             account = MultisigAccountRepo::find_by_id(
                 &wallet_database::CoreDbPool::new(pool.clone()),

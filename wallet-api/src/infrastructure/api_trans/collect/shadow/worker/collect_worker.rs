@@ -164,6 +164,7 @@ enum ResourceGateNextStep {
 use crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer;
 
 pub struct ShadowCollectWorker {
+    ctx: &'static crate::context::Context,
     /// 数据库连接池
     collect_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
@@ -462,12 +463,13 @@ impl ShadowCollectWorker {
 
     /// 创建新的 Shadow Collect Worker
     pub fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
         address_locks: Arc<AddressLockManager>,
         advancer: Arc<ShadowAdvancer>,
     ) -> Self {
-        Self { collect_pool: pool, core_pool, address_locks, advancer }
+        Self { ctx, collect_pool: pool, core_pool, address_locks, advancer }
     }
 
     /// 处理单个 Command
@@ -763,7 +765,7 @@ impl ShadowCollectWorker {
             )));
         }
 
-        let handles = crate::context::get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key = private_key_manager
             .get_private_key(&signer.signer_address, &delegation.chain_code)
@@ -957,7 +959,7 @@ impl ShadowCollectWorker {
         origin_trade_no: String,
     ) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(&origin_trade_no).await?;
-        let ctx = crate::context::get_context()?;
+        let ctx = self.ctx;
         if !Self::is_tron_collect(&req.chain_code) {
             return Ok(());
         }
@@ -1015,7 +1017,7 @@ impl ShadowCollectWorker {
         req: &ApiCollectEntity,
         exec_to_addr: &str,
     ) -> Result<ResourceGateSnapshot, ServiceError> {
-        let ctx = crate::context::get_context()?;
+        let ctx = self.ctx;
         // 这里只做“评估快照”：
         // - 估算如果现在 BuildTx，需要多少资源
         // - 读取子账户当前链上资源余额
@@ -1256,7 +1258,7 @@ impl ShadowCollectWorker {
             source = "shadow_worker_v2",
             "Platform resource delegation apply request"
         );
-        let backend_api = crate::get_context()?.get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         let resp = backend_api.apply_resource_delegation(&req).await?;
 
         if resp.is_success() {
@@ -2131,7 +2133,7 @@ impl ShadowCollectWorker {
         }
 
         // 通过Context获取Handles实例，然后获取私钥管理器
-        let handles = crate::context::get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key =
             private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
@@ -2436,10 +2438,13 @@ impl ShadowCollectWorker {
         };
 
         // 2. 查询用户归集策略
-        let strategy = crate::domain::api_wallet::strategy::StrategyDomain::query_collect_strategy(
-            &account.uid,
-        )
-        .await?;
+        let ctx = self.ctx;
+        let strategy =
+            crate::domain::api_wallet::strategy::StrategyDomain::query_collect_strategy_with_ctx(
+                ctx,
+                &account.uid,
+            )
+            .await?;
         info!(trade_no = %req.trade_no, uid = %account.uid, source = "shadow_worker_v2", "Retrieved collect strategy");
 
         // 3. 根据chain_code查询链配置
@@ -2476,7 +2481,7 @@ impl ShadowCollectWorker {
     pub(crate) async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
-        let ctx = crate::context::get_context()?;
+        let ctx = self.ctx;
 
         // 查询主币信息
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
@@ -2636,7 +2641,7 @@ impl ShadowCollectWorker {
         &self,
         req: &ApiCollectEntity,
     ) -> Result<bool, ServiceError> {
-        let ctx = crate::context::get_context()?;
+        let ctx = self.ctx;
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
         let token_key = if req.token_addr.is_contract() {
             req.token_addr.clone()
@@ -2744,6 +2749,7 @@ impl ShadowCollectWorker {
     }
 
     pub(crate) async fn resolve_withdraw_from_addr(
+        ctx: &'static crate::context::Context,
         pool: &ApiWalletDbPool,
         req: &ApiCollectEntity,
     ) -> Result<String, ServiceError> {
@@ -2810,7 +2816,8 @@ impl ShadowCollectWorker {
         };
 
         // 3. 查询用户提币策略
-        let strategy = StrategyDomain::query_withdraw_strategy(&withdraw_wallet.uid).await?;
+        let strategy =
+            StrategyDomain::query_withdraw_strategy_with_ctx(ctx, &withdraw_wallet.uid).await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 获取提现策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
 
         // 4. 根据chain_code查询链配置
@@ -2965,7 +2972,8 @@ impl ShadowCollectWorker {
         tracing::info!(uid=%uid, chain_code=%chain_code, source = "shadow_worker_v2", "collect_tx:send: 查询归集策略");
 
         // 查询策略
-        let strategy = StrategyDomain::query_collect_strategy(uid).await?;
+        let ctx = self.ctx;
+        let strategy = StrategyDomain::query_collect_strategy_with_ctx(ctx, uid).await?;
 
         tracing::info!(uid=%uid, source = "shadow_worker_v2", "collect_tx:send: 获取归集策略成功，包含 {} 条链配置", strategy.chain_configs.len());
 
@@ -2985,7 +2993,7 @@ impl ShadowCollectWorker {
     async fn check_digest(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         info!(trade_no = %req.trade_no, source = "shadow_worker_v2", "Checking transaction digest");
 
-        let sn = crate::get_context()?.get_sn();
+        let sn = self.ctx.get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         // ⚠️ 这里必须用后端给的空字符串的to_addr，不能用查询策略解析的地址
@@ -3692,6 +3700,7 @@ mod tests {
 
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
@@ -3752,6 +3761,7 @@ mod tests {
 
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
@@ -3834,6 +3844,7 @@ mod tests {
 
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
@@ -4025,6 +4036,7 @@ mod tests {
             wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
@@ -4080,6 +4092,7 @@ mod tests {
             wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
@@ -4167,6 +4180,7 @@ mod tests {
             wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
@@ -4261,6 +4275,7 @@ mod tests {
             wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
@@ -4332,6 +4347,7 @@ mod tests {
             wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
@@ -4402,6 +4418,7 @@ mod tests {
             wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
+            crate::get_context().expect("context"),
             collect_pool.clone(),
             wallet_pool,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),

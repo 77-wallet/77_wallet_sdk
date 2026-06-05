@@ -58,7 +58,13 @@ impl TransactionService {
         let adapter =
             ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, chain_code).await?;
 
-        let coin = match CoinDomain::get_coin_by_token_key(chain_code, token_key.clone()).await {
+        let coin = match CoinDomain::get_coin_by_token_key_with_ctx(
+            self.ctx,
+            chain_code,
+            token_key.clone(),
+        )
+        .await
+        {
             Ok(coin) => coin,
             Err(error) => {
                 tracing::warn!(
@@ -125,7 +131,8 @@ impl TransactionService {
             original_balance: balance.to_string(),
         };
 
-        ChainTransDomain::update_balance(
+        ChainTransDomain::update_balance_with_ctx(
+            self.ctx,
             address,
             chain_code,
             &coin.symbol,
@@ -187,7 +194,8 @@ impl TransactionService {
         )
         .await?;
 
-        let private_key = ChainTransDomain::get_key(
+        let private_key = ChainTransDomain::get_key_with_ctx(
+            self.ctx,
             &params.base.from,
             &params.base.chain_code,
             &params.password,
@@ -195,7 +203,9 @@ impl TransactionService {
         )
         .await?;
 
-        let tx_hash = ChainTransDomain::transfer(params, bill_kind, &adapter, private_key).await?;
+        let tx_hash =
+            ChainTransDomain::transfer_with_ctx(self.ctx, params, bill_kind, &adapter, private_key)
+                .await?;
         Ok(TransactionResult { tx_hash })
     }
 
@@ -456,7 +466,12 @@ impl TransactionService {
         // 查询余额
         let balance = adapter.balance(&transaction.owner, token_key.clone()).await?;
 
-        let coin = CoinDomain::get_coin_by_token_key(&transaction.chain_code, token_key).await?;
+        let coin = CoinDomain::get_coin_by_token_key_with_ctx(
+            self.ctx,
+            &transaction.chain_code,
+            token_key,
+        )
+        .await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 

@@ -559,7 +559,8 @@ impl ProcessCollectTx {
         };
 
         // 3. 查询用户归集策略
-        let strategy = StrategyDomain::query_collect_strategy(&wallet.uid).await?;
+        let strategy =
+            StrategyDomain::query_collect_strategy_with_ctx(worker_ctx.ctx, &wallet.uid).await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取归集策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
 
         // 4. 根据chain_code查询链配置
@@ -672,7 +673,9 @@ impl ProcessCollectTx {
         };
 
         // 3. 查询用户提币策略
-        let strategy = StrategyDomain::query_withdraw_strategy(&withdraw_wallet.uid).await?;
+        let strategy =
+            StrategyDomain::query_withdraw_strategy_with_ctx(worker_ctx.ctx, &withdraw_wallet.uid)
+                .await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 获取提现策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
 
         // 4. 根据chain_code查询链配置
@@ -1140,7 +1143,7 @@ impl CheckFee for CollectTxWorkerCtx {
         tracing::info!(uid=%uid, chain_code=%chain_code, "collect_tx:send: 查询归集策略");
 
         // 查询策略
-        let strategy = StrategyDomain::query_collect_strategy(uid).await?;
+        let strategy = StrategyDomain::query_collect_strategy_with_ctx(self.ctx, uid).await?;
 
         tracing::info!(uid=%uid, "collect_tx:send: 获取归集策略成功，包含 {} 条链配置", strategy.chain_configs.len());
 
