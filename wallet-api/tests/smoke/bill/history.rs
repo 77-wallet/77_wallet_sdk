@@ -1,5 +1,6 @@
 use crate::get_manager;
 use anyhow::Result;
+use wallet_database::CoreDbPool;
 
 #[tokio::test]
 #[ignore = "smoke test requires seeded bill data"]
@@ -142,7 +143,7 @@ async fn coin_currency_price() -> Result<()> {
 #[tokio::test]
 #[ignore = "smoke test writes a sample bill into local test data"]
 async fn test_create_bill() -> Result<()> {
-    let _wallet_manager = get_manager().await;
+    let wallet_manager = get_manager().await;
 
     let kind = wallet_database::entities::bill::BillKind::Transfer;
     // 第一次主币
@@ -159,7 +160,8 @@ async fn test_create_bill() -> Result<()> {
     )
     .with_transaction_fee("0.003");
 
-    wallet_api::domain::bill::BillDomain::create_bill(params).await.unwrap();
+    let core_pool = CoreDbPool::new(wallet_api::testkit::mqtt::core_pool(wallet_manager.ctx())?);
+    wallet_api::domain::bill::BillDomain::create_bill(&core_pool, params).await.unwrap();
     Ok(())
 }
 

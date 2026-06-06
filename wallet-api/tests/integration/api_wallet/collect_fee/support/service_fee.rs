@@ -4,7 +4,7 @@ use crate::harness::{
 };
 use chrono::Utc;
 use serde_json::Value;
-use wallet_api::testkit::collect::upload_collect_service_fee_via_worker;
+use wallet_api::{Context, testkit::collect::upload_collect_service_fee_via_worker};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, SqliteContext,
     entities::{
@@ -23,8 +23,7 @@ use wallet_database::{
 use super::{ensure_eth_main_coin, ensure_sol_main_coin, seed_eth_collect_order};
 
 pub(crate) struct ServiceFeeUploadScenario {
-    pub collect_pool: ApiTransactionDbPool,
-    pub core_pool: ApiWalletDbPool,
+    pub ctx: &'static Context,
     pub trade_no: String,
     pub from_addr: String,
     pub to_addr: String,
@@ -81,8 +80,7 @@ pub(crate) async fn given_sol_service_fee_upload_waiting(
     mark_collect_waiting_for_service_fee(&collect_pool, &trade_no, "seed fee-wait row").await;
 
     ServiceFeeUploadScenario {
-        collect_pool,
-        core_pool,
+        ctx: env.ctx(),
         trade_no,
         from_addr: from_addr.to_string(),
         to_addr: to_addr.to_string(),
@@ -119,8 +117,7 @@ pub(crate) async fn given_eth_service_fee_upload_waiting(
     mark_collect_waiting_for_service_fee(&collect_pool, &trade_no, "seed eth fee-wait row").await;
 
     ServiceFeeUploadScenario {
-        collect_pool,
-        core_pool,
+        ctx: env.ctx(),
         trade_no,
         from_addr: from_addr.to_string(),
         to_addr: to_addr.to_string(),
@@ -133,13 +130,9 @@ pub(crate) async fn when_upload_collect_service_fee(
     scenario: &ServiceFeeUploadScenario,
     expect_msg: &str,
 ) {
-    upload_collect_service_fee_via_worker(
-        scenario.collect_pool.clone(),
-        scenario.core_pool.clone(),
-        &scenario.trade_no,
-    )
-    .await
-    .expect(expect_msg);
+    upload_collect_service_fee_via_worker(scenario.ctx, &scenario.trade_no)
+        .await
+        .expect(expect_msg);
 }
 
 pub(crate) fn then_service_fee_upload_payload(env: &WorkerTestEnv, trade_no: &str) -> Value {
