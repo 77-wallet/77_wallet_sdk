@@ -45,15 +45,7 @@ pub struct ChainTransDomain;
 
 impl ChainTransDomain {
     pub async fn assets(
-        chain_code: &str,
-        from: &str,
-        token_key: AssetTokenKey,
-    ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
-        Self::assets_with_ctx(crate::get_context()?, chain_code, from, token_key).await
-    }
-
-    pub async fn assets_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         chain_code: &str,
         from: &str,
         token_key: AssetTokenKey,
@@ -75,14 +67,7 @@ impl ChainTransDomain {
     }
 
     pub async fn account(
-        chain_code: &str,
-        address: &str,
-    ) -> Result<AccountEntity, crate::error::service::ServiceError> {
-        Self::account_with_ctx(crate::get_context()?, chain_code, address).await
-    }
-
-    pub async fn account_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         chain_code: &str,
         address: &str,
     ) -> Result<AccountEntity, crate::error::service::ServiceError> {
@@ -96,25 +81,7 @@ impl ChainTransDomain {
     }
 
     pub async fn update_balance(
-        address: &str,
-        chain_code: &str,
-        refresh_symbol: &str,
-        token_key: AssetTokenKey,
-        balance: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::update_balance_with_ctx(
-            crate::get_context()?,
-            address,
-            chain_code,
-            refresh_symbol,
-            token_key,
-            balance,
-        )
-        .await
-    }
-
-    pub async fn update_balance_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         address: &str,
         chain_code: &str,
         refresh_symbol: &str,
@@ -153,13 +120,7 @@ impl ChainTransDomain {
     }
 
     pub async fn main_coin(
-        chain_code: &str,
-    ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        Self::main_coin_with_ctx(crate::get_context()?, chain_code).await
-    }
-
-    pub async fn main_coin_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         chain_code: &str,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
         let pool = ctx.core_pool()?;
@@ -169,14 +130,7 @@ impl ChainTransDomain {
 
     // btc 验证是否存在未确认的交易
     async fn check_ongoing_bill(
-        from: &str,
-        chain_code: &str,
-    ) -> Result<bool, crate::error::service::ServiceError> {
-        Self::check_ongoing_bill_with_ctx(crate::get_context()?, from, chain_code).await
-    }
-
-    async fn check_ongoing_bill_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         from: &str,
         chain_code: &str,
     ) -> Result<bool, crate::error::service::ServiceError> {
@@ -192,26 +146,14 @@ impl ChainTransDomain {
 
     /// transfer
     pub async fn transfer(
-        mut params: transaction::TransferReq,
-        bill_kind: BillKind,
-        adapter: &TransactionAdapter,
-        private_key: ChainPrivateKey,
-    ) -> Result<String, crate::error::service::ServiceError> {
-        Self::transfer_with_ctx(crate::get_context()?, params, bill_kind, adapter, private_key)
-            .await
-    }
-
-    pub async fn transfer_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         mut params: transaction::TransferReq,
         bill_kind: BillKind,
         adapter: &TransactionAdapter,
         private_key: ChainPrivateKey,
     ) -> Result<String, crate::error::service::ServiceError> {
         //  check ongoing tx
-        if Self::check_ongoing_bill_with_ctx(ctx, &params.base.from, &params.base.chain_code)
-            .await?
-        {
+        if Self::check_ongoing_bill(ctx, &params.base.from, &params.base.chain_code).await? {
             return Err(crate::error::business::BusinessError::Bill(
                 crate::error::business::bill::BillError::ExistsUnConfirmationTx,
             ))?;
@@ -227,7 +169,7 @@ impl ChainTransDomain {
         params.base.with_token(coin.token_address.clone());
         params.base.with_decimals(coin.decimals);
         tracing::info!("transfer params = {:?}", params);
-        let resp = adapter.transfer(&params, private_key).await?;
+        let resp = adapter.transfer(ctx, &params, private_key).await?;
 
         let mut new_bill: NewBillEntity = BillRepo::try_build_bill_from(&params)?;
         new_bill.tx_kind = bill_kind;
@@ -266,7 +208,7 @@ impl ChainTransDomain {
                 endpoint::UPLOAD_PERMISSION_TRANS,
                 &params,
             )?);
-            Tasks::new().push(task).send().await?;
+            Tasks::new().push(task).send_with_ctx(ctx).await?;
 
             new_bill.signer = users;
         }
@@ -512,16 +454,7 @@ impl ChainTransDomain {
 
     // 如果传入了signer 则使用signer的私钥
     pub async fn get_key(
-        from: &str,
-        chain_code: &str,
-        password: &str,
-        signer: &Option<Signer>,
-    ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
-        Self::get_key_with_ctx(crate::get_context()?, from, chain_code, password, signer).await
-    }
-
-    pub async fn get_key_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         from: &str,
         chain_code: &str,
         password: &str,
