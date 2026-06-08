@@ -223,7 +223,7 @@ impl AccountService {
             // )))
             .push(CommonTask::RecoverMultisigAccountData(body))
             .push(BackendApiTask::BackendApi(address_batch_init_task_data))
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
         // for task in address_init_task_data {
         //     Tasks::new()
@@ -389,7 +389,7 @@ impl AccountService {
             wallet_transport_backend::consts::endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
             &req,
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(req)).send_with_ctx(self.ctx).await?;
 
         Ok(())
     }
@@ -438,7 +438,10 @@ impl AccountService {
             }
         }
 
-        Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
+        Tasks::new()
+            .push(BackendApiTask::BackendApi(device_unbind_address_task))
+            .send_with_ctx(self.ctx)
+            .await?;
         let dirs = self.ctx.get_global_dirs();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;

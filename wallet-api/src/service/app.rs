@@ -128,7 +128,7 @@ impl AppService {
             .into());
         };
         let task = DeviceDomain::language_init(&device, language).await?;
-        Tasks::new().push(task).send().await?;
+        Tasks::new().push(task).send_with_ctx(self.ctx).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
         config.set_language(language);
 
@@ -180,7 +180,7 @@ impl AppService {
             wallet_transport_backend::consts::endpoint::DEVICE_UPDATE_APP_ID,
             &req,
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send_with_ctx(self.ctx).await?;
 
         Ok(())
     }
@@ -359,7 +359,7 @@ impl AppService {
         Tasks::new()
             .push(BackendApiTask::BackendApi(app_install_save_data))
             .push(BackendApiTask::BackendApi(keys_reset_data))
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
         // backend.keys_reset(sn).await?;
         Ok(())
@@ -446,7 +446,7 @@ impl AppService {
             wallet_transport_backend::consts::endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS,
             &req,
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send_with_ctx(self.ctx).await?;
 
         Ok(())
     }

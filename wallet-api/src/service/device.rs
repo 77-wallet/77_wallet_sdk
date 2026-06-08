@@ -59,7 +59,10 @@ impl DeviceService {
                 body: wallet_utils::serde_func::serde_to_value(&task_req)?,
             };
 
-            Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(task_data))
+                .send_with_ctx(self.ctx)
+                .await?;
         }
 
         let app_version =
@@ -112,7 +115,7 @@ impl DeviceService {
             }),
         };
 
-        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send_with_ctx(self.ctx).await?;
         Ok(())
     }
 }

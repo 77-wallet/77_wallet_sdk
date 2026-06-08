@@ -161,7 +161,7 @@ impl ChainService {
         Tasks::new()
             .push(CommonTask::QueryCoinPrice(req))
             .push(BackendApiTask::BackendApi(address_init_task_data))
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
 
         Ok(())
