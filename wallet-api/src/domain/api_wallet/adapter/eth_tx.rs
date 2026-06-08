@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -29,7 +30,7 @@ use alloy::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha3::{Digest, Keccak256};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 use wallet_chain_interact::{
     Error, QueryTransactionResult,
     eth::{self, EthChain, FeeSetting, operations::TransferOpt},
@@ -47,26 +48,27 @@ pub(crate) struct EthTx {
     provider: eth::Provider,
     rpc_url_for_log: String,
     rpc_header_for_query: Option<HashMap<String, String>>,
-    backend_api: Arc<wallet_transport_backend::api::BackendApi>,
+    ctx: &'static Context,
 }
 
 impl EthTx {
-    pub(crate) fn new(
+    #[cfg(test)]
+    pub(crate) fn new_for_test(
+        ctx: &'static Context,
         chain_code: ChainCode,
         rpc_url: &str,
         network: NetworkKind,
         header_opt: Option<HashMap<String, String>>,
-        backend_api: Arc<wallet_transport_backend::api::BackendApi>,
     ) -> Result<Self, wallet_chain_interact::Error> {
-        Self::new_with_ctx(chain_code, rpc_url, network, header_opt, backend_api)
+        Self::new_with_ctx(ctx, chain_code, rpc_url, network, header_opt)
     }
 
     pub(crate) fn new_with_ctx(
+        ctx: &'static Context,
         chain_code: ChainCode,
         rpc_url: &str,
         network: NetworkKind,
         header_opt: Option<HashMap<String, String>>,
-        backend_api: Arc<wallet_transport_backend::api::BackendApi>,
     ) -> Result<Self, wallet_chain_interact::Error> {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let rpc_header_for_query = header_opt.clone();
@@ -80,10 +82,9 @@ impl EthTx {
             provider: provider1,
             rpc_url_for_log: rpc_url.to_string(),
             rpc_header_for_query,
-            backend_api,
+            ctx,
         })
     }
-
     fn evm_raw_tx_hash_hex(raw: &[u8]) -> String {
         let digest = Keccak256::digest(raw);
         format!("0x{}", hex::encode(digest))
@@ -311,7 +312,8 @@ impl Oracle for EthTx {
         ctx: &crate::context::Context,
     ) -> Result<GasOracle, ServiceError> {
         let _ctx = ctx;
-        let gas_oracle = self.backend_api.gas_oracle(&self.chain.chain_code.to_string()).await;
+        let gas_oracle =
+            self.ctx.get_global_backend_api().gas_oracle(&self.chain.chain_code.to_string()).await;
         tracing::info!("gas_oracle: {:?}", gas_oracle);
         match gas_oracle {
             Ok(gas_oracle) => Ok(gas_oracle),
@@ -336,7 +338,8 @@ impl Oracle for EthTx {
     }
 
     async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
-        let gas_oracle = self.backend_api.gas_oracle(&self.chain.chain_code.to_string()).await;
+        let gas_oracle =
+            self.ctx.get_global_backend_api().gas_oracle(&self.chain.chain_code.to_string()).await;
         tracing::info!("gas_oracle: {:?}", gas_oracle);
         if let Ok(gas_oracle) = gas_oracle {
             return Ok(gas_oracle);
@@ -566,7 +569,9 @@ impl Tx for EthTx {
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let pool = self.ctx.api_wallet_pool()?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &self.ctx.core_pool()?,
             currency,
             &req.chain_code,
             main_symbol,
@@ -968,7 +973,6 @@ impl Tx for EthTx {
 //             TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
 //                 .await?;
 //
-//         let pool = crate::get_context()?.get_global_sqlite_pool()?;
 //         let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
 //         let multisig_account =
 //             MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;

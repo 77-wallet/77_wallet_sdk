@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -33,14 +34,26 @@ use wallet_chain_interact::{
 };
 use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_transport::{client::RpcClient, types::JsonRpcParams};
+use wallet_utils::unit;
 
 pub(crate) struct SolTx {
     chain: SolanaChain,
     rpc_url_for_log: String,
+    ctx: &'static Context,
 }
 
 impl SolTx {
-    pub fn new(
+    #[cfg(test)]
+    pub fn new_for_test(
+        ctx: &'static Context,
+        rpc_url: &str,
+        header_opt: Option<HashMap<String, String>>,
+    ) -> Result<Self, wallet_chain_interact::Error> {
+        Self::new_with_ctx(ctx, rpc_url, header_opt)
+    }
+
+    pub fn new_with_ctx(
+        ctx: &'static Context,
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
@@ -49,9 +62,8 @@ impl SolTx {
         let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
         let provider = Provider::new(rpc_client)?;
         let sol_chain = SolanaChain::new(provider)?;
-        Ok(Self { chain: sol_chain, rpc_url_for_log: rpc_url.to_string() })
+        Ok(Self { chain: sol_chain, rpc_url_for_log: rpc_url.to_string(), ctx })
     }
-
     pub async fn check_sol_balance(
         &self,
         from: &str,
@@ -651,7 +663,9 @@ impl Tx for SolTx {
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let pool = self.ctx.api_wallet_pool()?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &self.ctx.core_pool()?,
             currency,
             &req.chain_code,
             main_symbol,
@@ -743,7 +757,9 @@ impl Tx for SolTx {
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let pool = self.ctx.api_wallet_pool()?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &self.ctx.core_pool()?,
             currency,
             &req.chain_code,
             main_symbol,
@@ -991,9 +1007,10 @@ mod tests {
         wallet_utils::serde_func::toml_from_str(&content).ok()
     }
 
-    #[test]
-    fn sol_rpc_endpoint_for_log_returns_configured_rpc_url() {
-        let sol_tx = SolTx::new("https://example.invalid", None)
+    #[tokio::test]
+    async fn sol_rpc_endpoint_for_log_returns_configured_rpc_url() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let sol_tx = SolTx::new_for_test(ctx, "https://example.invalid", None)
             .expect("solana client should be creatable without network access");
 
         assert_eq!(sol_tx.rpc_endpoint_for_log().as_deref(), Some("https://example.invalid"));
@@ -1192,12 +1209,7 @@ mod tests {
         wallet_manager.init_api_swap().await.expect("init api swap should succeed");
 
         let header_opt = Some(
-            crate::context::CONTEXT
-                .get()
-                .expect("context should be initialized")
-                .get_rpc_header()
-                .await
-                .expect("rpc header should be available"),
+            wallet_manager.ctx().get_rpc_header().await.expect("rpc header should be available"),
         );
 
         let (token_address, decimals, symbol) = match config.token_mint.as_deref() {
@@ -1210,7 +1222,8 @@ mod tests {
             Some(_) => (AssetTokenKey::Native, 9, "SOL"),
         };
 
-        let sol_tx = SolTx::new(&config.rpc_url, header_opt)
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let sol_tx = SolTx::new_for_test(ctx, &config.rpc_url, header_opt)
             .expect("failed to create Solana client with rpc headers");
         let req = build_transfer_req(
             &config.from,

@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -33,29 +34,30 @@ use wallet_utils::unit;
 
 pub(crate) struct TonTx {
     chain: TonChain,
-    api_wallet_pool: wallet_database::ApiWalletDbPool,
+    ctx: &'static Context,
 }
 
 impl TonTx {
-    pub fn new(
+    #[cfg(test)]
+    pub fn new_for_test(
+        ctx: &'static Context,
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
-        api_wallet_pool: wallet_database::ApiWalletDbPool,
     ) -> Result<Self, wallet_chain_interact::Error> {
-        Self::new_with_ctx(rpc_url, header_opt, api_wallet_pool)
+        Self::new_with_ctx(ctx, rpc_url, header_opt)
     }
 
     pub fn new_with_ctx(
+        ctx: &'static Context,
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
-        api_wallet_pool: wallet_database::ApiWalletDbPool,
     ) -> Result<Self, wallet_chain_interact::Error> {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
         let provider = Provider::new(http_client);
 
         let ton = TonChain::new(provider)?;
-        Ok(Self { chain: ton, api_wallet_pool })
+        Ok(Self { chain: ton, ctx })
     }
 
     pub async fn build_ext_cell(
@@ -76,12 +78,6 @@ impl TonTx {
 
             Ok(arg.build_trans(address_type, provider).await?)
         }
-    }
-}
-
-impl TonTx {
-    fn api_wallet_pool(&self) -> &wallet_database::ApiWalletDbPool {
-        &self.api_wallet_pool
     }
 }
 
@@ -154,7 +150,7 @@ impl Tx for TonTx {
         }
         tracing::info!("transfer ------------------- 12:");
 
-        let pool = self.api_wallet_pool();
+        let pool = self.ctx.api_wallet_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
@@ -221,8 +217,10 @@ impl Tx for TonTx {
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
+        let pool = self.ctx.api_wallet_pool()?;
 
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &self.ctx.core_pool()?,
             currency,
             &req.chain_code,
             main_symbol,
@@ -230,7 +228,7 @@ impl Tx for TonTx {
         )
         .await?;
 
-        let pool = self.api_wallet_pool();
+        let pool = self.ctx.api_wallet_pool()?;
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?
