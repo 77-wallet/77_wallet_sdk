@@ -47,15 +47,8 @@ impl CoinDomain {
         Self {}
     }
 
-    pub async fn get_coin_by_token_key(
-        chain_code: &str,
-        token_key: AssetTokenKey,
-    ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        Self::get_coin_by_token_key_with_ctx(crate::get_context()?, chain_code, token_key).await
-    }
-
     pub async fn get_coin_by_token_key_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         chain_code: &str,
         token_key: AssetTokenKey,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
@@ -65,14 +58,8 @@ impl CoinDomain {
         Ok(coin)
     }
 
-    /// 查询代币汇率
-    pub async fn get_token_currencies_v2()
-    -> Result<TokenCurrencies, crate::error::service::ServiceError> {
-        Self::get_token_currencies_v2_with_ctx(crate::get_context()?).await
-    }
-
     pub async fn get_token_currencies_v2_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
     ) -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let core_pool = ctx.core_pool()?;
         let currency = ConfigDomain::get_currency(ctx).await?;
@@ -193,13 +180,8 @@ impl CoinDomain {
         if network.eq_ignore_ascii_case("testnet") { "testnet" } else { "mainnet" }
     }
 
-    pub async fn sync_default_coins_by_bound_nodes()
-    -> Result<(), crate::error::service::ServiceError> {
-        Self::sync_default_coins_by_bound_nodes_with_ctx(crate::get_context()?).await
-    }
-
     pub async fn sync_default_coins_by_bound_nodes_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = ctx.core_pool()?;
         let chains = ChainRepo::get_chain_list(&core_pool).await?;
@@ -281,15 +263,8 @@ impl CoinDomain {
         Ok(())
     }
 
-    // 每个链的主流 usdt代币合约地址
-    pub async fn get_stable_coin(
-        chain_code: ChainCode,
-    ) -> Result<String, crate::error::service::ServiceError> {
-        Self::get_stable_coin_with_ctx(crate::get_context()?, chain_code).await
-    }
-
     pub async fn get_stable_coin_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         chain_code: ChainCode,
     ) -> Result<String, crate::error::service::ServiceError> {
         let core_pool = ctx.core_pool()?;
@@ -337,14 +312,8 @@ impl CoinDomain {
         }
     }
 
-    pub async fn fetch_all_coin(
-        pool: &CoreDbPool,
-    ) -> Result<Vec<CoinInfo>, crate::error::service::ServiceError> {
-        Self::fetch_all_coin_with_ctx(crate::get_context()?, pool).await
-    }
-
     pub async fn fetch_all_coin_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         pool: &CoreDbPool,
     ) -> Result<Vec<CoinInfo>, crate::error::service::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
@@ -370,14 +339,8 @@ impl CoinDomain {
         Ok(coins)
     }
 
-    pub(crate) async fn query_token_price(
-        req: &TokenQueryPriceReq,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::query_token_price_with_ctx(crate::get_context()?, req).await
-    }
-
     pub(crate) async fn query_token_price_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         req: &TokenQueryPriceReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = ctx.get_global_backend_api();

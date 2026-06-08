@@ -120,7 +120,7 @@ impl AssetsDomain {
 
     pub async fn get_local_coin_list(
         &self,
-        ctx: &Context,
+        ctx: &'static Context,
         core_pool: &CoreDbPool,
         addresses: Vec<String>,
         chain_code: Option<String>,
@@ -213,7 +213,7 @@ impl AssetsDomain {
 
     // 根据钱包地址来同步资产余额( 目前不需要在进行使用 )
     pub async fn sync_assets_by_wallet(
-        ctx: &Context,
+        ctx: &'static Context,
         wallet_address: String,
         account_id: Option<u32>,
         symbol: Vec<String>,
@@ -234,29 +234,29 @@ impl AssetsDomain {
             symbol
         );
 
-        Self::do_async_balance(pool, addr, None, SyncFilter::Symbol(symbol)).await
+        Self::do_async_balance(ctx, pool, addr, None, SyncFilter::Symbol(symbol)).await
     }
 
     pub async fn sync_assets_by_addr_chain(
-        ctx: &Context,
+        ctx: &'static Context,
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> Result<(), ServiceError> {
         let pool = ctx.core_pool()?;
 
-        Self::do_async_balance(pool, addr, chain_code, SyncFilter::Symbol(symbol)).await
+        Self::do_async_balance(ctx, pool, addr, chain_code, SyncFilter::Symbol(symbol)).await
     }
 
     pub async fn sync_assets_by_addr_chain_token(
-        ctx: &Context,
+        ctx: &'static Context,
         addr: Vec<String>,
         chain_code: Option<String>,
         token_address: AssetTokenKey,
     ) -> Result<(), ServiceError> {
         let pool = ctx.core_pool()?;
 
-        Self::do_async_balance(pool, addr, chain_code, SyncFilter::Token(token_address)).await
+        Self::do_async_balance(ctx, pool, addr, chain_code, SyncFilter::Token(token_address)).await
     }
 
     // 从后端同步余额(根据地址-链)
@@ -342,6 +342,7 @@ impl AssetsDomain {
     }
 
     async fn do_async_balance(
+        ctx: &'static Context,
         pool: CoreDbPool,
         addr: Vec<String>,
         chain_code: Option<String>,
@@ -369,7 +370,7 @@ impl AssetsDomain {
         }
         assets = selected_assets;
 
-        let results = ChainBalance::sync_address_balance(assets.as_slice()).await?;
+        let results = ChainBalance::sync_address_balance(ctx, assets.as_slice()).await?;
 
         let mut done = 0;
         for (assets_id, balance) in &results {
@@ -382,7 +383,9 @@ impl AssetsDomain {
             }
         }
         if done > 0 {
-            if let Err(e) = FrontendNotifyEvent::new(NotifyEvent::SyncAssets).send().await {
+            if let Err(e) =
+                FrontendNotifyEvent::new(NotifyEvent::SyncAssets).send_with_ctx(ctx).await
+            {
                 tracing::error!("send error: {}", e);
             }
         }
@@ -423,7 +426,7 @@ impl AssetsDomain {
     // 根据地址和链初始化多签账号里面的资产
     // address :multisig account address ,
     pub async fn init_default_multisig_assets(
-        ctx: &Context,
+        ctx: &'static Context,
         address: String,
         chain_code: String,
     ) -> Result<(), ServiceError> {
@@ -575,6 +578,7 @@ impl From<&[ApiAssetsEntity]> for BalanceTasks {
 
 impl ChainBalance {
     pub(crate) async fn sync_address_balance(
+        ctx: &Context,
         assets: impl Into<BalanceTasks>,
     ) -> Result<Vec<(AssetsId, String)>, crate::error::service::ServiceError> {
         // 限制最大并发数为 10
@@ -583,7 +587,7 @@ impl ChainBalance {
 
         // 并发获取余额并格式化
         let results = stream::iter(tasks.0)
-            .map(|task| Self::fetch_balance(task, sem.clone()))
+            .map(|task| Self::fetch_balance(task, sem.clone(), ctx))
             .buffer_unordered(10)
             .filter_map(|x| async move { x })
             .collect::<Vec<_>>()
@@ -593,12 +597,16 @@ impl ChainBalance {
     }
 
     // 从任务获取余额并返回结果
-    async fn fetch_balance(task: BalanceTask, sem: Arc<Semaphore>) -> Option<(AssetsId, String)> {
+    async fn fetch_balance(
+        task: BalanceTask,
+        sem: Arc<Semaphore>,
+        ctx: &Context,
+    ) -> Option<(AssetsId, String)> {
         // 获取并发许可
         let _permit = sem.acquire().await.ok()?;
 
         // 获取适配器
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&task.chain_code)
+        let adapter = ChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, &task.chain_code)
             .await
             .map_err(|e| {
                 tracing::error!("获取链详情出错: {}，链代码: {}", e, task.chain_code.clone())

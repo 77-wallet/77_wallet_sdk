@@ -153,7 +153,7 @@ where
 
 impl ApiAssetsDomain {
     pub async fn get_api_wallet_assets(
-        ctx: &Context,
+        ctx: &'static Context,
         wallet_address: Option<&str>,
         account_id: Option<u32>,
         chain_code: Option<&str>,
