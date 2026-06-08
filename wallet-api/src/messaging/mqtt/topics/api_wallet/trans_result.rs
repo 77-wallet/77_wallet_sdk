@@ -54,11 +54,6 @@ pub struct AwmOrderTransResMsg {
     block_number: Option<String>,
 }
 
-async fn optional_handles() -> Option<std::sync::Arc<crate::handles::Handles>> {
-    let context = crate::context::CONTEXT.get()?;
-    context.get_global_handles().await.upgrade()
-}
-
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct WithdrawActualFeeUpdate {
     transaction_fee: Option<String>,
@@ -123,7 +118,7 @@ impl AwmOrderTransResMsg {
         );
 
         let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 
@@ -143,7 +138,7 @@ impl AwmOrderTransResMsg {
 
         if self.uid_exists(ctx).await? {
             let api_transaction_pool = ctx.api_transaction_pool()?;
-            self.resource_result(&api_transaction_pool).await?;
+            self.resource_result_with_ctx(&api_transaction_pool, Some(ctx)).await?;
         } else {
             tracing::warn!("AwmCmdRscResMsg uid not found: {}", self.uid);
         }
@@ -154,7 +149,7 @@ impl AwmOrderTransResMsg {
         backend.msg_ack(msg_ack_req).await?;
 
         let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 
@@ -192,13 +187,15 @@ impl AwmOrderTransResMsg {
                 self.transfer_fee(ctx).await?;
             }
             4 => {
-                self.resource_operation_result(&api_transaction_pool).await?;
+                self.resource_operation_result_with_ctx(&api_transaction_pool, Some(ctx)).await?;
             }
             5 => {
-                self.collect_resource_delegation_result(&api_transaction_pool).await?;
+                self.collect_resource_delegation_result_with_ctx(&api_transaction_pool, Some(ctx))
+                    .await?;
             }
             7 => {
-                self.withdraw_resource_delegation_result(&api_transaction_pool).await?;
+                self.withdraw_resource_delegation_result_with_ctx(&api_transaction_pool, Some(ctx))
+                    .await?;
             }
             6 | 8 => {
                 self.resource_reclaim_result(&api_transaction_pool).await?;
@@ -217,9 +214,10 @@ impl AwmOrderTransResMsg {
         Ok(res.is_some())
     }
 
-    async fn resource_result(
+    async fn resource_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         // AWM_CMD_RSC_RES is shared by two local roles. Platform wallets receive
         // real resource task results (CD/CR resource trade numbers), while
@@ -227,9 +225,13 @@ impl AwmOrderTransResMsg {
         // collect/withdraw order number. The handlers below resolve the local
         // fact first instead of trusting only the message trade type.
         match self.trade_type {
-            1 | 7 => self.withdraw_resource_delegation_result(api_transaction_pool).await,
-            2 | 5 => self.collect_resource_delegation_result(api_transaction_pool).await,
-            4 => self.resource_operation_result(api_transaction_pool).await,
+            1 | 7 => {
+                self.withdraw_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+            }
+            2 | 5 => {
+                self.collect_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+            }
+            4 => self.resource_operation_result_with_ctx(api_transaction_pool, ctx).await,
             6 | 8 => self.resource_reclaim_result(api_transaction_pool).await,
             _ => {
                 tracing::warn!(
@@ -242,9 +244,10 @@ impl AwmOrderTransResMsg {
         }
     }
 
-    async fn resource_operation_result(
+    async fn resource_operation_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status { "success" } else { "fail" };
         let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
@@ -259,14 +262,15 @@ impl AwmOrderTransResMsg {
         )
         .await?;
 
-        self.trigger_resource_operation_shadow().await;
+        self.trigger_resource_operation_shadow(ctx).await;
 
         Ok(())
     }
 
-    async fn collect_resource_delegation_result(
+    async fn collect_resource_delegation_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status {
             ApiResourceDelegationResultStatus::Success
@@ -296,7 +300,7 @@ impl AwmOrderTransResMsg {
             .await?;
 
             if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
-                self.trigger_collect_shadow(origin_trade_no).await;
+                self.trigger_collect_shadow(ctx, origin_trade_no).await;
             }
 
             return Ok(());
@@ -361,14 +365,15 @@ impl AwmOrderTransResMsg {
             resource_trade_no = %self.trade_no,
             "Collect resource result persisted; shadow will ACK resource result before advancing"
         );
-        self.trigger_collect_shadow(&collect.trade_no).await;
+        self.trigger_collect_shadow(ctx, &collect.trade_no).await;
 
         Ok(())
     }
 
-    async fn withdraw_resource_delegation_result(
+    async fn withdraw_resource_delegation_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status {
             ApiResourceDelegationResultStatus::Success
@@ -398,7 +403,7 @@ impl AwmOrderTransResMsg {
             .await?;
 
             if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
-                self.trigger_withdraw_shadow(origin_trade_no).await;
+                self.trigger_withdraw_shadow(ctx, origin_trade_no).await;
             }
 
             return Ok(());
@@ -444,13 +449,21 @@ impl AwmOrderTransResMsg {
         )
         .await?;
 
-        self.trigger_withdraw_shadow(&withdraw.trade_no).await;
+        self.trigger_withdraw_shadow(ctx, &withdraw.trade_no).await;
 
         Ok(())
     }
 
-    async fn trigger_collect_shadow(&self, origin_trade_no: &str) {
-        let Some(handles) = optional_handles().await else {
+    async fn trigger_collect_shadow(&self, ctx: Option<&'static Context>, origin_trade_no: &str) {
+        let Some(ctx) = ctx else {
+            tracing::debug!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = %origin_trade_no,
+                "Skip collect shadow trigger: no context passed"
+            );
+            return;
+        };
+        let Some(handles) = optional_handles(ctx).await else {
             tracing::debug!(
                 resource_trade_no = %self.trade_no,
                 origin_trade_no = %origin_trade_no,
@@ -472,8 +485,16 @@ impl AwmOrderTransResMsg {
         }
     }
 
-    async fn trigger_withdraw_shadow(&self, origin_trade_no: &str) {
-        let Some(handles) = optional_handles().await else {
+    async fn trigger_withdraw_shadow(&self, ctx: Option<&'static Context>, origin_trade_no: &str) {
+        let Some(ctx) = ctx else {
+            tracing::debug!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = %origin_trade_no,
+                "Skip withdraw shadow trigger: no context passed"
+            );
+            return;
+        };
+        let Some(handles) = optional_handles(ctx).await else {
             tracing::debug!(
                 resource_trade_no = %self.trade_no,
                 origin_trade_no = %origin_trade_no,
@@ -495,8 +516,15 @@ impl AwmOrderTransResMsg {
         }
     }
 
-    async fn trigger_resource_operation_shadow(&self) {
-        let Some(handles) = optional_handles().await else {
+    async fn trigger_resource_operation_shadow(&self, ctx: Option<&'static Context>) {
+        let Some(ctx) = ctx else {
+            tracing::debug!(
+                resource_trade_no = %self.trade_no,
+                "Skip resource operation shadow trigger: no context passed"
+            );
+            return;
+        };
+        let Some(handles) = optional_handles(ctx).await else {
             tracing::debug!(
                 resource_trade_no = %self.trade_no,
                 "Skip resource operation shadow trigger: global handles are not available"
@@ -650,6 +678,48 @@ impl AwmOrderTransResMsg {
 
         Ok(())
     }
+
+    #[cfg(test)]
+    async fn resource_operation_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.resource_operation_result_with_ctx(api_transaction_pool, ctx).await
+    }
+
+    #[cfg(test)]
+    async fn collect_resource_delegation_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.collect_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+    }
+
+    #[cfg(test)]
+    async fn withdraw_resource_delegation_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.withdraw_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+    }
+
+    #[cfg(test)]
+    async fn resource_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.resource_result_with_ctx(api_transaction_pool, ctx).await
+    }
+}
+
+async fn optional_handles(
+    ctx: &'static Context,
+) -> Option<std::sync::Arc<crate::handles::Handles>> {
+    ctx.get_global_handles().await.upgrade()
 }
 
 #[cfg(test)]
@@ -764,7 +834,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.resource_operation_result(&pool).await?;
+        msg.resource_operation_result(&pool, None).await?;
 
         let got =
             ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_result_msg").await?;
@@ -909,7 +979,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.collect_resource_delegation_result(&pool).await?;
+        msg.collect_resource_delegation_result(&pool, None).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_success").await?;
         assert!(collect.resource_gate_released_at.is_some());
@@ -946,7 +1016,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.collect_resource_delegation_result(&pool).await?;
+        msg.collect_resource_delegation_result(&pool, None).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_fail").await?;
         assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
@@ -1011,7 +1081,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.resource_result(&pool).await?;
+        msg.resource_result(&pool, None).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_origin_result").await?;
         assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
@@ -1096,7 +1166,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.resource_result(&pool).await?;
+        msg.resource_result(&pool, None).await?;
 
         let withdraw = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &pool,
