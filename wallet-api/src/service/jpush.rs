@@ -39,7 +39,9 @@ impl JPushService {
             }
             Err(e) => {
                 tracing::error!("[jpush] serde_from_str error: {}", e);
-                if let Err(e) = FrontendNotifyEvent::send_error("jpush", e.to_string()).await {
+                if let Err(e) =
+                    FrontendNotifyEvent::send_error_with_ctx(self.ctx, "jpush", e.to_string()).await
+                {
                     tracing::error!("send_error error: {}", e);
                 }
             }
@@ -62,8 +64,12 @@ impl JPushService {
                     Ok(data) => data,
                     Err(e) => {
                         tracing::error!("[jpush_multi] serde_from_str error: {}", e);
-                        if let Err(e) =
-                            FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
+                        if let Err(e) = FrontendNotifyEvent::send_error_with_ctx(
+                            self.ctx,
+                            "jpush_multi",
+                            e.to_string(),
+                        )
+                        .await
                         {
                             tracing::error!("send_error error: {}", e);
                         }
@@ -80,8 +86,12 @@ impl JPushService {
                 } else if let Err(e) =
                     crate::messaging::mqtt::handle::exec_payload(payload, self.ctx).await
                 {
-                    if let Err(e) =
-                        FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
+                    if let Err(e) = FrontendNotifyEvent::send_error_with_ctx(
+                        self.ctx,
+                        "jpush_multi",
+                        e.to_string(),
+                    )
+                    .await
                     {
                         tracing::error!("send_error error: {}", e);
                     }

@@ -21,31 +21,49 @@ impl FrontendNotifyEvent {
         FrontendNotifyEvent { event: data.event_name(), data }
     }
 
-    pub(crate) async fn send_debug<T: serde::Serialize>(
+    pub(crate) async fn send_debug_with_ctx<T: serde::Serialize>(
+        ctx: &'static Context,
         message: T,
     ) -> Result<(), crate::error::service::ServiceError> {
         let message = wallet_utils::serde_func::serde_to_value(message)?;
         let data = NotifyEvent::Debug(DebugFront { message });
-        match FrontendNotifyEvent::new(data).send().await {
+        match FrontendNotifyEvent::new(data).send_with_ctx(ctx).await {
             Ok(_) => tracing::debug!("[mqtt] send debug message ok"),
             Err(e) => tracing::error!("[mqtt] send debug message error: {e}"),
         };
         Ok(())
     }
 
-    pub(crate) async fn send_error<T: serde::Serialize>(
+    #[deprecated(note = "pass Context explicitly with send_debug_with_ctx")]
+    pub(crate) async fn send_debug<T: serde::Serialize>(
+        message: T,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::send_debug_with_ctx(crate::get_context()?, message).await
+    }
+
+    pub(crate) async fn send_error_with_ctx<T: serde::Serialize>(
+        ctx: &'static Context,
         event: &str,
         message: T,
     ) -> Result<(), crate::error::service::ServiceError> {
         let message = wallet_utils::serde_func::serde_to_string(&message)?;
         let data = NotifyEvent::Err(ErrFront { event: event.to_string(), message });
-        match FrontendNotifyEvent::new(data).send().await {
+        match FrontendNotifyEvent::new(data).send_with_ctx(ctx).await {
             Ok(_) => tracing::debug!("[mqtt] send err message ok"),
             Err(e) => tracing::error!("[mqtt] send err message error: {e}"),
         };
         Ok(())
     }
 
+    #[deprecated(note = "pass Context explicitly with send_error_with_ctx")]
+    pub(crate) async fn send_error<T: serde::Serialize>(
+        event: &str,
+        message: T,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::send_error_with_ctx(crate::get_context()?, event, message).await
+    }
+
+    #[deprecated(note = "pass Context explicitly with send_with_ctx")]
     pub(crate) async fn send(self) -> Result<(), crate::error::service::ServiceError> {
         self.send_with_ctx(crate::get_context()?).await
     }

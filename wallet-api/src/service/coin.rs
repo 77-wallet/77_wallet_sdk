@@ -535,7 +535,7 @@ impl CoinService {
         Tasks::new()
             .push(BackendApiTask::BackendApi(token_custom_init_task_data))
             .push(task)
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
         Ok(())
     }

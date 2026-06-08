@@ -279,7 +279,7 @@ impl AssetsService {
             }
         }
 
-        Tasks::new().push(CommonTask::QueryCoinPrice(req)).send().await?;
+        Tasks::new().push(CommonTask::QueryCoinPrice(req)).send_with_ctx(self.ctx).await?;
         Ok(())
     }
 

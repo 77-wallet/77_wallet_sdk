@@ -76,7 +76,7 @@ impl PermissionService {
             BillKind::UpdatePermission,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         // 手续拦截
         let resp = args.build_raw_transaction(&self.chain.provider).await?;
@@ -101,7 +101,7 @@ impl PermissionService {
             BillKind::UpdatePermission,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         let key = open_subpk_with_password(self.ctx, chain_code::TRON, from, password).await?;
         let hash = self.chain.exec_transaction_v1(resp, key).await?;
@@ -133,7 +133,7 @@ impl PermissionService {
     ) -> Result<EstimateFeeResp, crate::error::service::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_ctx(
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
             self.ctx,
             currency,
             "tron",
