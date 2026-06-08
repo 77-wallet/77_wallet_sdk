@@ -91,7 +91,8 @@ impl ApiChainDomain {
                     ),
                 )
                     .try_into()?;
-                let (account_address, address_init_req) = ApiAccountDomain::derive_subkey(
+                let (account_address, address_init_req) = ApiAccountDomain::derive_subkey_with_ctx(
+                    ctx,
                     uid,
                     seed,
                     wallet_address,
@@ -209,7 +210,10 @@ impl ApiChainDomain {
                 wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
                 &ChainRpcListReq::new(chain_codes),
             )?;
-            Tasks::new().push(BackendApiTask::BackendApi(chain_rpc_list_req)).send().await?;
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(chain_rpc_list_req))
+                .send_with_ctx(ctx)
+                .await?;
         }
 
         Ok(new_chains)
@@ -261,7 +265,7 @@ impl ApiChainDomain {
             wallet_transport_backend::consts::endpoint::api_wallet::API_WALLET_CHAIN_LIST,
             &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(chain_list_req)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(chain_list_req)).send_with_ctx(ctx).await?;
         Ok(())
     }
 
@@ -280,7 +284,8 @@ impl ApiChainDomain {
             ApiWalletRepo::list(&pool, Some(ApiWalletType::Withdrawal)).await?;
 
         for wallet in withdrawal_wallet_list {
-            ApiAccountDomain::create_withdrawal_account(
+            ApiAccountDomain::create_withdrawal_account_with_ctx(
+                ctx,
                 &wallet.address,
                 chain_list.clone(),
                 "账户",
@@ -392,7 +397,7 @@ impl ApiChainDomain {
         tasks
             .push(CommonTask::QueryCoinPrice(req))
             // .push(BackendApiTask::BackendApi(expand_address_task_data))
-            .send()
+            .send_with_ctx(ctx)
             .await?;
 
         Ok(())

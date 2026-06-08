@@ -119,7 +119,7 @@ impl TaskTrait for InitializationTask {
                 ConfigDomain::init_currency(ctx).await?;
             }
             InitializationTask::RecoverQueueData => {
-                MultisigQueueDomain::recover_all_uid_queue_data().await?;
+                MultisigQueueDomain::recover_all_uid_queue_data_with_ctx(ctx).await?;
             }
             InitializationTask::InitMqtt => {
                 tracing::debug!("init mqtt start");

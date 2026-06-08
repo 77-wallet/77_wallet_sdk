@@ -262,7 +262,8 @@ impl ApiResourceDomain {
 
         let signing_address =
             signer.as_ref().map(|signer| signer.address.as_str()).unwrap_or(&owner_address);
-        let private_key = ApiAccountDomain::get_private_key(signing_address, "tron").await?;
+        let private_key =
+            ApiAccountDomain::get_private_key_with_ctx(ctx, signing_address, "tron").await?;
         let resource_consume =
             BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0).to_json_str()?;
         let sign = wallet_utils::sign::sign_tron(&raw_tx.tx_id, &private_key, None)?;

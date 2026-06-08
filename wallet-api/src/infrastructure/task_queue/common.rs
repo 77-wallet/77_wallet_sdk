@@ -74,10 +74,10 @@ impl TaskTrait for CommonTask {
 
                 // 恢复完成后发送事件给前端
                 let data = NotifyEvent::RecoverComplete;
-                FrontendNotifyEvent::new(data).send().await?;
+                FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
             }
             CommonTask::CreateApiAccountDeferred(data) => {
-                ApiAccountDomain::create_api_account_deferred(data.clone()).await?;
+                ApiAccountDomain::create_api_account_deferred_with_ctx(ctx, data.clone()).await?;
             }
         }
         Ok(())

@@ -64,7 +64,7 @@ impl UnconfirmedMsgCollector {
                                 })
                                 .collect::<Vec<_>>();
 
-                            if let Err(e) = crate::domain::task_queue::TaskQueueDomain::send_msg_confirm(confirms).await {
+                            if let Err(e) = crate::domain::task_queue::TaskQueueDomain::send_msg_confirm_with_ctx(ctx, confirms).await {
                                 tracing::error!("发送确认失败: {:?}", e);
                             }
 
