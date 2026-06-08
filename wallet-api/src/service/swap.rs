@@ -143,7 +143,7 @@ impl SwapServer {
         amount_out: U256,
     ) -> Result<(BalanceStr, BalanceStr), crate::error::service::ServiceError> {
         // 查询两次后端
-        let bal_in = TokenCurrencyGetter::get_bal_by_backend_with_ctx(
+        let bal_in = TokenCurrencyGetter::get_bal_by_backend(
             self.ctx,
             &req.chain_code,
             &req.token_in.token_addr,
@@ -152,7 +152,7 @@ impl SwapServer {
         )
         .await?;
 
-        let bal_out = TokenCurrencyGetter::get_bal_by_backend_with_ctx(
+        let bal_out = TokenCurrencyGetter::get_bal_by_backend(
             self.ctx,
             &req.chain_code,
             &req.token_out.token_addr,
@@ -239,7 +239,7 @@ impl SwapServer {
                         amount: req.amount_in.clone(),
                         chain_code: req.chain_code.clone(),
                     };
-                    adapter.withdraw_fee(params, &main_coin).await?
+                    adapter.withdraw_fee(self.ctx, params, &main_coin).await?
                 }
                 SwapInnerType::Deposit => {
                     tracing::warn!("deposit");
@@ -249,7 +249,7 @@ impl SwapServer {
                         amount: req.amount_in.clone(),
                         chain_code: req.chain_code.clone(),
                     };
-                    adapter.deposit_fee(params, &main_coin).await?
+                    adapter.deposit_fee(self.ctx, params, &main_coin).await?
                 }
                 SwapInnerType::Swap => {
                     return Err(crate::error::service::ServiceError::Parameter(
@@ -376,7 +376,7 @@ impl SwapServer {
             currency.currency().to_string()
         };
 
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_ctx(
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
             self.ctx,
             &currency,
             &resp.chain_code,
@@ -517,6 +517,7 @@ impl SwapServer {
         let backend_api = self.ctx.get_global_backend_api();
         let (amount_out, consumer, content) = adapter
             .swap_quote_with_ctx(
+                self.ctx,
                 req,
                 quote_resp,
                 &main_coin.symbol,
@@ -552,15 +553,10 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::Swap,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
-        let key = ChainTransDomain::get_key_with_ctx(
-            self.ctx,
-            &req.recipient,
-            &req.chain_code,
-            &password,
-            &None,
-        )
-        .await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
+        let key =
+            ChainTransDomain::get_key(self.ctx, &req.recipient, &req.chain_code, &password, &None)
+                .await?;
 
         // 查询余额是否足够
         let pool = self.ctx.get_global_sqlite_pool()?;
@@ -594,7 +590,7 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::Swap,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
         let adapter =
             ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
                 .await?;
@@ -818,7 +814,7 @@ impl SwapServer {
             ));
         }
 
-        let fee = adapter.approve_fee(&req, value, &main_coin.symbol).await?;
+        let fee = adapter.approve_fee(self.ctx, &req, value, &main_coin.symbol).await?;
 
         let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code.clone(), fee);
         Ok(fee_resp)
@@ -844,7 +840,7 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::Approve,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         let adapter =
             ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
@@ -898,21 +894,16 @@ impl SwapServer {
             ));
         }
 
-        let private_key = ChainTransDomain::get_key_with_ctx(
-            self.ctx,
-            &req.from,
-            &req.chain_code,
-            &password,
-            &None,
-        )
-        .await?;
+        let private_key =
+            ChainTransDomain::get_key(self.ctx, &req.from, &req.chain_code, &password, &None)
+                .await?;
 
         // 广播交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
             wallet_database::entities::bill::BillKind::Approve,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         let value = req.get_value(coin.decimals)?;
         let resp = adapter.approve(&req, private_key, value).await?;
@@ -1040,16 +1031,11 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::UnApprove,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
-        let private_key = ChainTransDomain::get_key_with_ctx(
-            self.ctx,
-            &req.from,
-            &req.chain_code,
-            &password,
-            &None,
-        )
-        .await?;
+        let private_key =
+            ChainTransDomain::get_key(self.ctx, &req.from, &req.chain_code, &password, &None)
+                .await?;
         let adapter =
             ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
                 .await?;
@@ -1085,7 +1071,7 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::Approve,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
         let value = alloy::primitives::U256::ZERO;
         let resp = adapter.approve(&req, private_key, value).await?;
 
