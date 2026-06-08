@@ -21,7 +21,7 @@ impl AwmCmdUidUnbindMsg {
         let Self { uid } = self;
         ApiWalletDomain::new(ctx).unbind_uid(uid).await?;
         let data = NotifyEvent::AwmCmdUidUnbind(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
     }

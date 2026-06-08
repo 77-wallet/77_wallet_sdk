@@ -55,7 +55,7 @@ impl AwmCmdFeeResMsg {
         backend.msg_ack(msg_ack_req).await?;
 
         let data = NotifyEvent::AwmCmdFeeRes(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 

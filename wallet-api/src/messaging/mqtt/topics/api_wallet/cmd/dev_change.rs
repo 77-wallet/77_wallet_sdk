@@ -50,7 +50,7 @@ impl AwmCmdDevChangeMsg {
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
         let data = NotifyEvent::AwmCmdDevChange(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 }

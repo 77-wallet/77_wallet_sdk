@@ -29,7 +29,7 @@ impl AwmCmdActiveMsg {
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
         let data = NotifyEvent::AwmCmdActive(self.into());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         // ApiWalletDomain::expand_address(&self.typ, self.index, &self.uid, &self.chain_code).await?;
         tracing::info!("WalletActivationMsg: {:?}", self);
