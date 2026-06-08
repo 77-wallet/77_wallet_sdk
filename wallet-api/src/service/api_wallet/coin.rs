@@ -173,9 +173,13 @@ impl ApiCoinService {
             (decimals, symbol, name)
         };
 
-        let mut account_addresses =
-            ApiAccountDomain::get_addresses(address, account_id, vec![chain_code.to_string()])
-                .await?;
+        let mut account_addresses = ApiAccountDomain::get_addresses_with_ctx(
+            self.ctx,
+            address,
+            account_id,
+            vec![chain_code.to_string()],
+        )
+        .await?;
 
         tracing::debug!("[customize_coin] account_addresses: {:?}", account_addresses);
         let account_addresses =
@@ -229,7 +233,7 @@ impl ApiCoinService {
         Tasks::new()
             .push(BackendApiTask::BackendApi(token_custom_init_task_data))
             .push(task)
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
         Ok(())
     }

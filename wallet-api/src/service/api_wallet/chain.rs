@@ -187,7 +187,6 @@ impl ApiChainService {
 
     pub async fn sync_chains(&self) -> Result<Vec<String>, crate::error::service::ServiceError> {
         ApiChainDomain::sync_chains(self.ctx).await
-        // let backend = crate::get_context()?.get_global_backend_api();
         // let app_version = ConfigDomain::get_app_version().await?;
         // let chain_list = backend.api_wallet_chain_list(&app_version.app_version).await?;
         // ApiChainDomain::upsert_multi_api_chain_than_toggle(chain_list).await

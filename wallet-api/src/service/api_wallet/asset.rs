@@ -255,8 +255,13 @@ impl ApiAssetsService {
         let pool = self.ctx.api_wallet_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
-        let account_addresses =
-            ApiAccountDomain::get_addresses(wallet_address, account_id, chain_codes).await?;
+        let account_addresses = ApiAccountDomain::get_addresses_with_ctx(
+            self.ctx,
+            wallet_address,
+            account_id,
+            chain_codes,
+        )
+        .await?;
 
         let mut res = ApiAccountChainAssetList::default();
         let token_currencies = ApiCoinDomain::get_api_token_currencies(self.ctx).await?;
@@ -349,8 +354,13 @@ impl ApiAssetsService {
         let pool = self.ctx.api_wallet_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
-        let account_addresses =
-            ApiAccountDomain::get_addresses(wallet_address, account_id, chain_codes).await?;
+        let account_addresses = ApiAccountDomain::get_addresses_with_ctx(
+            self.ctx,
+            wallet_address,
+            account_id,
+            chain_codes,
+        )
+        .await?;
 
         let address = account_addresses.into_iter().map(|a| a.address).collect::<Vec<_>>();
 

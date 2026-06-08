@@ -86,7 +86,8 @@ impl ApiAccountService {
             page_size,
             "api_wallet.account.list_api_accounts_v2 requested"
         );
-        ApiAccountDomain::list_api_accounts_v2(
+        ApiAccountDomain::list_api_accounts_v2_with_ctx(
+            self.ctx,
             wallet_address,
             account_id,
             chain_code,
@@ -138,7 +139,8 @@ impl ApiAccountService {
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        ApiAccountDomain::create_api_account(
+        ApiAccountDomain::create_api_account_with_ctx(
+            self.ctx,
             wallet_address,
             chains,
             &indices,
@@ -226,7 +228,8 @@ impl ApiAccountService {
             wallet_utils::address::AccountIndexMap::from_account_id(1)?
         };
 
-        ApiAccountDomain::create_api_account(
+        ApiAccountDomain::create_api_account_with_ctx(
+            self.ctx,
             wallet_address,
             chains,
             &[account_index_map.input_index],
@@ -250,7 +253,7 @@ impl ApiAccountService {
         password: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
         WalletDomain::validate_password_with_context(self.ctx, password).await?;
-        Ok(ApiAccountDomain::get_private_key(address, chain_code).await?)
+        Ok(ApiAccountDomain::get_private_key_with_ctx(self.ctx, address, chain_code).await?)
     }
 
     pub async fn address_used(
@@ -259,7 +262,7 @@ impl ApiAccountService {
         index: i32,
         uid: &str,
     ) -> Result<(), ServiceError> {
-        Ok(ApiAccountDomain::address_used(chain_code, index, uid).await?)
+        Ok(ApiAccountDomain::address_used_with_ctx(self.ctx, chain_code, index, uid).await?)
     }
 
     pub async fn edit_account_name(
@@ -289,7 +292,7 @@ impl ApiAccountService {
             wallet_transport_backend::consts::endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
             &req,
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(req)).send_with_ctx(self.ctx).await?;
 
         Ok(())
     }
@@ -357,7 +360,10 @@ impl ApiAccountService {
             }
         }
 
-        Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
+        Tasks::new()
+            .push(BackendApiTask::BackendApi(device_unbind_address_task))
+            .send_with_ctx(self.ctx)
+            .await?;
 
         Ok(())
     }
