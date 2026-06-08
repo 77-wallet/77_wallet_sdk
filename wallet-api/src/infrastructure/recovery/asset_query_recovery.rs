@@ -14,6 +14,7 @@ use crate::{
 };
 
 pub async fn start_asset_query_worker(
+    ctx: &'static crate::context::Context,
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
     info!("启动资产查询恢复Worker");
@@ -22,13 +23,13 @@ pub async fn start_asset_query_worker(
         crate::infrastructure::system_ready::wait_system_ready().await;
         info!("资产查询恢复Worker检测到系统就绪，开始扫描可恢复任务");
 
-        if let Err(e) = scan_and_dispatch(true, background_task_pool.clone()).await {
+        if let Err(e) = scan_and_dispatch(ctx, true, background_task_pool.clone()).await {
             tracing::error!("资产查询恢复Worker启动扫描失败: {:?}", e);
         }
 
         loop {
             sleep(Duration::from_secs(5)).await;
-            if let Err(e) = scan_and_dispatch(true, background_task_pool.clone()).await {
+            if let Err(e) = scan_and_dispatch(ctx, true, background_task_pool.clone()).await {
                 tracing::error!("资产查询恢复Worker扫描失败: {:?}", e);
             }
         }
@@ -38,13 +39,13 @@ pub async fn start_asset_query_worker(
 }
 
 async fn scan_and_dispatch(
+    ctx: &'static crate::context::Context,
     include_stuck_running: bool,
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
     // 每轮认领上限用于平滑恢复流量，避免恢复线程自身制造请求尖峰。
     let defaults = runtime_defaults::recovery();
-    let context = crate::get_context()?;
-    let api_pool = context.api_wallet_pool()?;
+    let api_pool = ctx.api_wallet_pool()?;
 
     let mut claimed = 0usize;
     loop {
@@ -64,7 +65,7 @@ async fn scan_and_dispatch(
         let background_task_pool = background_task_pool.clone();
         background_task_pool
             .push(async move {
-                process_one(task).await?;
+                process_one(ctx, task).await?;
                 Ok(())
             })
             .await;
@@ -74,11 +75,11 @@ async fn scan_and_dispatch(
 }
 
 async fn process_one(
+    ctx: &'static crate::context::Context,
     task: wallet_database::entities::asset_query_state::AssetQueryStateEntity,
 ) -> Result<(), ServiceError> {
-    let context = crate::get_context()?;
-    let api_pool = context.api_wallet_pool()?;
-    let backend = context.get_global_backend_api();
+    let api_pool = ctx.api_wallet_pool()?;
+    let backend = ctx.get_global_backend_api();
 
     let indices: Vec<i32> = match serde_json::from_str(&task.index_list_json) {
         Ok(v) => v,
@@ -115,7 +116,7 @@ async fn process_one(
         "开始处理资产查询恢复任务"
     );
 
-    match query_and_upsert_assets(&api_pool, backend.as_ref(), &req).await {
+    match query_and_upsert_assets(ctx, &api_pool, backend.as_ref(), &req).await {
         Ok(()) => {
             tracing::info!(
                 uid = %task.uid,

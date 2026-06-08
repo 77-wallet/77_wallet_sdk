@@ -242,7 +242,7 @@ impl InnerEventHandle {
         }
     }
 
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(ctx: &'static crate::context::Context) -> Self {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<InnerEvent>();
         let normal_buffer = Arc::new(EventBuffer::new(LANE_NORMAL));
         let api_high_buffer = Arc::new(EventBuffer::new(LANE_API_HIGH));
@@ -278,18 +278,21 @@ impl InnerEventHandle {
         }
 
         Self::start_sync_loop(
+            ctx,
             Arc::clone(&normal_buffer),
             SyncTarget::Assets,
             NORMAL_SYNC_DELAY_SECS,
             LANE_NORMAL,
         );
         Self::start_sync_loop(
+            ctx,
             Arc::clone(&api_high_buffer),
             SyncTarget::ApiAssets,
             API_HIGH_SYNC_DELAY_SECS,
             LANE_API_HIGH,
         );
         Self::start_sync_loop(
+            ctx,
             Arc::clone(&api_low_buffer),
             SyncTarget::ApiAssets,
             API_LOW_SYNC_DELAY_SECS,
@@ -308,6 +311,7 @@ impl InnerEventHandle {
     }
 
     fn start_sync_loop(
+        ctx: &'static crate::context::Context,
         buffer: Arc<EventBuffer>,
         target: SyncTarget,
         delay_secs: u64,
@@ -361,6 +365,7 @@ impl InnerEventHandle {
 
                         // 首次尝试，retry_count = 0
                         if let Err(e) = Self::sync_assets_once(
+                            ctx,
                             chain_code.clone(),
                             token_address.clone(),
                             addr_list,
@@ -404,6 +409,7 @@ impl InnerEventHandle {
     }
 
     async fn sync_assets_once(
+        ctx: &'static crate::context::Context,
         chain_code: String,
         token_address: AssetTokenKey,
         addr_list: Vec<String>,
@@ -416,7 +422,6 @@ impl InnerEventHandle {
 
         match target {
             SyncTarget::Assets => {
-                let ctx = crate::get_context()?;
                 let chain_code_for_log = chain_code.clone();
                 let token_address_for_log = token_address.clone();
                 let addr_count = addr_list.len();
@@ -471,7 +476,8 @@ impl InnerEventHandle {
                     addr_list
                 );
 
-                let result = ApiAssetsDomain::sync_assets_by_addr_chain_with_retry(
+                let result = ApiAssetsDomain::sync_assets_by_addr_chain_with_retry_with_ctx(
+                    ctx,
                     addr_list_for_call,
                     Some(chain_code),
                     token_address,

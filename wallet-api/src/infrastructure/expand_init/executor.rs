@@ -11,11 +11,6 @@ use wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq;
 /// 4. 记录执行结果
 /// 参数：init_req - INIT请求
 /// 返回：Result<(), ServiceError> - 执行结果
-pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
-    let ctx = crate::context::get_context()?;
-    do_init_with_ctx(ctx, init_req).await
-}
-
 pub async fn do_init_with_ctx(
     ctx: &'static crate::context::Context,
     init_req: ApiAddressInitReq,

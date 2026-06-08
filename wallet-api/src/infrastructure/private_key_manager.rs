@@ -13,7 +13,9 @@ trait PrivateKeyFetcher: Send + Sync {
     -> Result<ChainPrivateKey, ServiceError>;
 }
 
-struct DefaultPrivateKeyFetcher;
+struct DefaultPrivateKeyFetcher {
+    ctx: &'static crate::context::Context,
+}
 
 #[async_trait]
 impl PrivateKeyFetcher for DefaultPrivateKeyFetcher {
@@ -22,7 +24,7 @@ impl PrivateKeyFetcher for DefaultPrivateKeyFetcher {
         address: &str,
         chain_code: &str,
     ) -> Result<ChainPrivateKey, ServiceError> {
-        ApiAccountDomain::get_private_key(address, chain_code).await
+        ApiAccountDomain::get_private_key_with_ctx(self.ctx, address, chain_code).await
     }
 }
 
@@ -158,8 +160,8 @@ pub struct PrivateKeyManager {
 
 impl PrivateKeyManager {
     /// 创建新的私钥管理器实例
-    pub fn start() -> Self {
-        Self::start_with_fetcher(Arc::new(DefaultPrivateKeyFetcher))
+    pub fn start(ctx: &'static crate::context::Context) -> Self {
+        Self::start_with_fetcher(Arc::new(DefaultPrivateKeyFetcher { ctx }))
     }
 
     #[cfg(test)]

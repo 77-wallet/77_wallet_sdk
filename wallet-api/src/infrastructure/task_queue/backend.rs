@@ -45,7 +45,7 @@ impl TaskTrait for BackendApiTask {
         let backend_api = ctx.get_global_backend_api();
         match self {
             BackendApiTask::BackendApi(data) => {
-                BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api)
+                BackendTaskHandle::do_handle(ctx, &data.endpoint, data.body.clone(), backend_api)
                     .await?;
             }
         }

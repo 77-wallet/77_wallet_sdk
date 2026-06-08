@@ -1,7 +1,6 @@
 use wallet_database::repositories::device::DeviceRepo;
 
 use crate::{
-    context::CONTEXT,
     domain::{self, chain::ChainDomain, node::NodeDomain},
     infrastructure::{
         chain_node::chain_node_ensurer::ChainNodeEnsurer,
@@ -13,8 +12,9 @@ use crate::{
     },
 };
 
-pub(crate) async fn init_some_data() -> Result<(), crate::error::service::ServiceError> {
-    let ctx = crate::get_context()?;
+pub(crate) async fn init_some_data(
+    ctx: &'static crate::context::Context,
+) -> Result<(), crate::error::service::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url(ctx).await?;
     let core_pool = ctx.core_pool()?;
     let api_wallet_pool = ctx.api_wallet_pool()?;
@@ -35,7 +35,6 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     // node_service.init_node_info().await?;
 
     // let asset_calc_actor_manager =
-    //     crate::get_context()?.get_global_asset_calc_actor_manager().await?;
     // asset_calc_actor_manager.init_account_cache().await?;
     crate::domain::coin::CoinDomain::init_coins(&core_pool).await?;
     crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx).await?;
@@ -80,7 +79,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
         .push(BackendApiTask::BackendApi(token_query_rates_req))
         .push(BackendApiTask::BackendApi(set_official_website_req))
         .push(BackendApiTask::BackendApi(set_app_install_download_req))
-        .send()
+        .send_with_ctx(ctx)
         .await?;
 
     Ok(())
