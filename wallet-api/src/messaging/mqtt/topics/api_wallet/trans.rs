@@ -191,9 +191,9 @@ impl AwmOrderTransMsg {
         // 根据强约束原则，只使用输入字段原值，不查询数据库
         match self {
             Self::Normal(msg) => match msg.trade_type {
-                1 => msg.withdraw().await?,
-                2 => msg.collect().await?,
-                3 => msg.transfer_fee().await?,
+                1 => msg.withdraw(ctx).await?,
+                2 => msg.collect(ctx).await?,
+                3 => msg.transfer_fee(ctx).await?,
                 _ => {}
             },
             Self::ResourceOperation(msg) => msg.resource_operation(ctx).await?,
@@ -222,9 +222,12 @@ impl AwmOrderTransMsg {
         }
     }
 
-    pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn transfer_fee(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         match self {
-            Self::Normal(msg) => msg.transfer_fee().await,
+            Self::Normal(msg) => msg.transfer_fee(ctx).await,
             _ => Ok(()),
         }
     }
@@ -360,7 +363,10 @@ impl AwmResourceDelegationMsg {
 }
 
 impl AwmOrderTransNormalMsg {
-    pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn transfer_fee(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(
             "开始处理手续费交易, trade_no: {}, from: {}, to: {}, value: {}, chain: {}, token: {}, symbol: {}",
             self.trade_no,
@@ -392,7 +398,6 @@ impl AwmOrderTransNormalMsg {
             trade_type = %req.trade_type,
             "手续费交易请求已构建"
         );
-        let ctx = crate::context::get_context()?;
         let result = ApiFeeDomain::transfer_fee_with_ctx(ctx, &req).await;
 
         match &result {
@@ -407,7 +412,10 @@ impl AwmOrderTransNormalMsg {
         result
     }
 
-    pub(crate) async fn collect(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn collect(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(
             "开始处理归集交易, trade_no: {}, from: {}, to: {}, value: {}, chain: {}, token: {}, symbol: {}",
             self.trade_no,
@@ -441,7 +449,6 @@ impl AwmOrderTransNormalMsg {
             risk_addr = %req.risk_addr,
             "归集交易请求已构建"
         );
-        let ctx = crate::context::get_context()?;
         let result = ApiCollectDomain::collect_v2_with_ctx(ctx, &req).await;
 
         match &result {
@@ -454,7 +461,10 @@ impl AwmOrderTransNormalMsg {
         result
     }
 
-    pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn withdraw(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 验证金额是否需要输入密码
 
         let token_address = AssetTokenKey::from_raw(Some(self.token_address.as_str()));
@@ -474,7 +484,6 @@ impl AwmOrderTransNormalMsg {
             client_id: self.client_id.clone(),
             create_time: self.create_time.clone(),
         };
-        let ctx = crate::context::get_context()?;
         ApiWithdrawDomain::withdraw_with_ctx(ctx, &req).await
     }
 }
@@ -520,7 +529,7 @@ mod tests {
         let trade_no =
             format!("CF_fee_order_regression_{}", wallet_utils::time::now().timestamp_millis());
 
-        let wallet_pool = api_wallet_pool()?;
+        let wallet_pool = api_wallet_pool(manager.ctx)?;
         let seed_enc: Vec<u8> =
             crate::domain::api_wallet::wallet::ApiWalletDomain::encrypt_seed_bundle(
                 "q1111111",
@@ -542,7 +551,7 @@ mod tests {
         )
         .await?;
 
-        let tx_pool = api_transaction_pool()?;
+        let tx_pool = api_transaction_pool(manager.ctx)?;
         ApiCollectRepo::upsert_api_collect(
             &tx_pool,
             &wallet_uid,
@@ -579,7 +588,7 @@ mod tests {
             client_id: None,
         });
 
-        msg.transfer_fee().await?;
+        msg.transfer_fee(manager.ctx).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&tx_pool, &trade_no).await?;
         assert!(
@@ -615,7 +624,7 @@ mod tests {
 
         msg.resource_operation(manager.ctx).await?;
 
-        let tx_pool = api_transaction_pool()?;
+        let tx_pool = api_transaction_pool(manager.ctx)?;
         let got = ApiResourceOperationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
         assert_eq!(got.task_source, ApiResourceOperationTaskSource::Backend);
         assert_eq!(got.operation_type, ApiResourceOperationType::Stake);
