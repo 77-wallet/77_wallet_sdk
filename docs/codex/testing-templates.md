@@ -486,6 +486,81 @@ Smoke rules:
 - Local smoke config must be ignored by git.
 - Smoke does not replace Unit, Component, or Integration coverage.
 
+## Complex Backend Flow Template
+
+Use this shape when one business flow performs several backend calls, such as
+`quote -> build -> broadcast -> ack -> receipt`.
+
+Keep the test body business-readable:
+
+```rust
+#[serial]
+#[tokio::test]
+async fn flow_backend_failure_after_broadcast_keeps_fact_unset_and_retryable() {
+    let scenario = ComplexFlowScenario::new().await;
+    let fixture = ComplexFlowFixture::new("broadcast_fail");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+
+    given.pending_order(&fixture).await;
+    given.backend_script(&fixture)
+        .quote_ok()
+        .build_ok()
+        .broadcast_fails(503, "temporary backend error");
+
+    let result = when.worker_step_runs(&fixture).await;
+
+    then.step_is_retryable(result);
+    then.backend_script_was_followed(&fixture).await;
+    then.broadcast_success_fact_is_not_persisted(&fixture).await;
+    then.scanner_can_retry(&fixture).await;
+}
+```
+
+Keep the script builder in flow-local `support`, not in `tests/harness`, until a
+second flow needs the same vocabulary:
+
+```rust
+pub(super) struct ComplexBackendScript<'a> {
+    scenario: &'a ComplexFlowScenario,
+    fixture: &'a ComplexFlowFixture,
+}
+
+impl ComplexBackendScript<'_> {
+    pub(super) fn quote_ok(self) -> Self {
+        self.scenario.fake_backend.enqueue_quote_ok(&self.fixture.trade_no);
+        self.scenario.fake_backend.expect_call("quote", &self.fixture.trade_no);
+        self
+    }
+
+    pub(super) fn build_ok(self) -> Self {
+        self.scenario.fake_backend.enqueue_build_ok(&self.fixture.trade_no);
+        self.scenario.fake_backend.expect_call("build", &self.fixture.trade_no);
+        self
+    }
+
+    pub(super) fn broadcast_fails(self, status: u16, message: &str) -> Self {
+        self.scenario
+            .fake_backend
+            .enqueue_broadcast_error(&self.fixture.trade_no, status, message);
+        self.scenario
+            .fake_backend
+            .expect_call("broadcast", &self.fixture.trade_no);
+        self
+    }
+}
+```
+
+Fake rules:
+
+- Fake the interface boundary, not a single scenario.
+- Queue configured responses in the same order the flow should call them.
+- Record every backend call and assert the expected calls in `then`.
+- Make unconfigured critical calls fail loudly or surface as explicit test
+  errors.
+- Keep payload decoding, SQL, and recorder details below the scenario facade.
+
 ## Helper Ownership
 
 Use the narrowest owner.

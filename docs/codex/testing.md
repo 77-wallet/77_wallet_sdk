@@ -3,9 +3,14 @@
 ## Purpose
 
 本文件是测试规则摘要，供 Codex 在执行任务时优先读取。
-详细说明见 `docs/codex/testing-strategy.md`。
-可复制测试模板见 `docs/codex/testing-templates.md`。
-Backend fake 边界见 `docs/codex/testing-backend-boundaries.md`。
+它是入口，不是唯一规范。需要细节时按下面顺序继续读：
+
+1. `docs/codex/testing-strategy.md`：完整分层、目录、命令和迭代策略。
+2. `docs/codex/testing-templates.md`：可复制的 test/scenario/support 模板。
+3. `docs/codex/testing-backend-boundaries.md`：backend fake 边界和复杂 flow fake 设计。
+4. `docs/codex/testing-backend-fake-inventory.md`：当前 fake 覆盖状态和迁移优先级。
+5. `docs/codex/bdd-methodology.md`：Given-When-Then 与项目实践的关系。
+6. `docs/codex/assertion-matrices/`：各高风险 flow 的断言账本。
 
 ## Required Rules
 
@@ -27,6 +32,9 @@ Backend fake 边界见 `docs/codex/testing-backend-boundaries.md`。
   Given-When-Then 表达业务场景。简单 flow 可用 `given_*` / `when_*` /
   `then_*`；复杂 flow 优先用 `scenario.given()` / `scenario.when()` /
   `scenario.then()` role API，并断言返回值、DB、外部调用和副作用。
+- 复杂 backend flow：禁止为每个测试场景写一套专用 fake；必须 fake 接口边界，
+  并用响应队列、调用记录、错误/延迟注入和未配置调用可见化来表达场景差异。
+  先看 `testing-backend-boundaries.md`，再从 `testing-templates.md` 复制脚本模板。
 - Smoke/Live：允许真实 backend/真实链路，但必须显式标记并手动运行，默认测试和 CI 主链不运行。
 
 ## Style Rules
