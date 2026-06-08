@@ -354,6 +354,7 @@ impl ApiWalletDomain {
         };
 
         let needed_indices = AwmCmdAddrExpandMsg::get_needed_indices(
+            self.ctx,
             address_allock_type,
             &api_wallet.uid,
             chain_code,
@@ -812,7 +813,7 @@ mod tests {
         },
     };
 
-    use crate::{ApiWalletBackend, context::get_context, dirs::Dirs};
+    use crate::{ApiWalletBackend, dirs::Dirs};
 
     use super::{
         ApiWalletDomain, SEED_ENVELOPE_NONCE_BYTES, SEED_ENVELOPE_SALT_BYTES,
@@ -907,6 +908,7 @@ mod tests {
     struct SeedCacheTestEnv {
         _tempdir: Arc<TempDir>,
         wallet_address: String,
+        context: &'static crate::context::Context,
     }
 
     #[derive(Default)]
@@ -1066,7 +1068,7 @@ oss:
                 .await
                 .expect("init unlock session runtime");
 
-                let core_pool = get_context().expect("context").core_pool().expect("core pool");
+                let core_pool = context.core_pool().expect("core pool");
                 DeviceRepo::upsert(
                     core_pool,
                     CreateDeviceEntity {
@@ -1086,7 +1088,7 @@ oss:
                 .await
                 .expect("upsert device");
 
-                let pool = get_context().expect("context").api_wallet_pool().expect("api pool");
+                let pool = context.api_wallet_pool().expect("api pool");
                 let wallet_uid = "seed-cache-wallet-uid".to_string();
                 let wallet_address = "0x00000000000000000000000000000000000000aa".to_string();
                 let phrase_enc =
@@ -1115,7 +1117,7 @@ oss:
                 .await
                 .expect("upsert wallet");
 
-                SeedCacheTestEnv { _tempdir: Arc::new(tempdir), wallet_address }
+                SeedCacheTestEnv { _tempdir: Arc::new(tempdir), wallet_address, context }
             })
             .await
     }
@@ -1123,8 +1125,9 @@ oss:
     #[tokio::test]
     async fn wallet_unlock_session_rotation_replaces_token() {
         init_test_tracing();
-        let _ = seed_cache_test_env().await;
-        ApiWalletDomain::new(get_context().expect("context"))
+        let env = seed_cache_test_env().await;
+        let context = env.context;
+        ApiWalletDomain::new(context)
             .initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
@@ -1139,7 +1142,7 @@ oss:
         )
         .await;
 
-        ApiWalletDomain::new(get_context().expect("context"))
+        ApiWalletDomain::new(context)
             .rotate_wallet_session_key()
             .await
             .expect("rotate session key");
@@ -1148,28 +1151,27 @@ oss:
         assert!(!after.is_empty());
         assert_ne!(after, before);
 
-        let _ = ApiWalletDomain::new(get_context().expect("context"))
-            .clear_wallet_unlock_session()
-            .await;
+        let _ = ApiWalletDomain::new(context).clear_wallet_unlock_session().await;
     }
 
     #[tokio::test]
     async fn session_key_rotation_rewraps_seed_without_password() {
         init_test_tracing();
         let env = seed_cache_test_env().await;
-        ApiWalletDomain::new(get_context().expect("context"))
+        let context = env.context;
+        ApiWalletDomain::new(context)
             .initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
 
-        let pool = get_context().expect("context").api_wallet_pool().expect("api pool");
+        let pool = context.api_wallet_pool().expect("api pool");
         let before = ApiWalletRepo::find_by_address(&pool, &env.wallet_address)
             .await
             .expect("load wallet before rotation")
             .expect("wallet before rotation")
             .seed;
 
-        ApiWalletDomain::new(get_context().expect("context"))
+        ApiWalletDomain::new(context)
             .rotate_wallet_session_key()
             .await
             .expect("rotate session key");
@@ -1182,15 +1184,13 @@ oss:
 
         assert_ne!(before, after);
 
-        let seed = ApiWalletDomain::new(get_context().expect("context"))
+        let seed = ApiWalletDomain::new(context)
             .get_seed(&env.wallet_address)
             .await
             .expect("decrypt seed after rotation");
         assert_eq!(seed, b"seed-cache-seed");
 
-        let _ = ApiWalletDomain::new(get_context().expect("context"))
-            .clear_wallet_unlock_session()
-            .await;
+        let _ = ApiWalletDomain::new(context).clear_wallet_unlock_session().await;
     }
 
     #[tokio::test]
@@ -1235,19 +1235,17 @@ oss:
     async fn seed_cache_is_not_retained() {
         init_test_tracing();
         let env = seed_cache_test_env().await;
-        ApiWalletDomain::new(get_context().expect("context"))
+        let context = env.context;
+        ApiWalletDomain::new(context)
             .initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
 
-        let seed = ApiWalletDomain::new(get_context().expect("context"))
+        let seed = ApiWalletDomain::new(context)
             .get_seed(&env.wallet_address)
             .await
             .expect("decrypt seed");
         assert_eq!(seed, b"seed-cache-seed");
-        ApiWalletDomain::new(get_context().expect("context"))
-            .clear_wallet_unlock_session()
-            .await
-            .expect("clear password");
+        ApiWalletDomain::new(context).clear_wallet_unlock_session().await.expect("clear password");
     }
 }

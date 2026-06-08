@@ -59,11 +59,6 @@ impl WalletService {
     pub fn new(ctx: &'static Context) -> Self {
         Self { ctx, assets_domain: AssetsDomain::new() }
     }
-
-    fn api_wallet_domain(&self) -> ApiWalletDomain {
-        ApiWalletDomain::new(self.ctx)
-    }
-
     pub(crate) async fn encrypt_password(
         self,
         password: &str,
@@ -123,7 +118,10 @@ impl WalletService {
                 wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
                 &language_req,
             )?;
-            Tasks::new().push(BackendApiTask::BackendApi(language_init_task_data)).send().await?;
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(language_init_task_data))
+                .send_with_ctx(self.ctx)
+                .await?;
         }
 
         Ok(())
@@ -157,7 +155,10 @@ impl WalletService {
                 wallet_transport_backend::consts::endpoint::KEYS_UPDATE_WALLET_NAME,
                 &keys_update_wallet_name,
             )?;
-            Tasks::new().push(BackendApiTask::BackendApi(keys_update_wallet_name)).send().await?;
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(keys_update_wallet_name))
+                .send_with_ctx(self.ctx)
+                .await?;
         }
 
         Ok(())
@@ -266,7 +267,10 @@ impl WalletService {
             wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
             &address_batch_init_task_data,
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(address_init_task_data)).send().await?;
+        Tasks::new()
+            .push(BackendApiTask::BackendApi(address_init_task_data))
+            .send_with_ctx(self.ctx)
+            .await?;
         Ok(crate::response_vo::standard_wallet::wallet::ImportDerivationPathRes { accounts })
     }
 
@@ -354,7 +358,7 @@ impl WalletService {
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
 
         // 检查是否是api钱包
-        if self.api_wallet_domain().check_keys_uid(&uid).await?.is_api_wallet() {
+        if ApiWalletDomain::new(self.ctx).check_keys_uid(&uid).await?.is_api_wallet() {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
             )));
@@ -442,7 +446,7 @@ impl WalletService {
         )?;
         tracing::debug!("Child keystore initialization took: {:?}", child_keystore_start.elapsed());
 
-        Tasks::new().push(CommonTask::QueryCoinPrice(req)).send().await?;
+        Tasks::new().push(CommonTask::QueryCoinPrice(req)).send_with_ctx(self.ctx).await?;
         let core_pool = self.ctx.core_pool()?;
         let sn = self.ctx.get_sn();
         DeviceRepo::update_uid(core_pool, sn, Some(&uid)).await?;
@@ -500,7 +504,7 @@ impl WalletService {
             .push(BackendApiTask::BackendApi(language_init_task_data))
             .push(CommonTask::RecoverMultisigAccountData(recover_data))
             .push(BackendApiTask::BackendApi(address_init_task_data))
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
 
         tracing::debug!("cose time: {}", start.elapsed().as_millis());
@@ -728,7 +732,7 @@ impl WalletService {
                     endpoint::DEVICE_DELETE,
                     &req,
                 )?))
-                .send()
+                .send_with_ctx(self.ctx)
                 .await?;
         };
 
@@ -792,7 +796,7 @@ impl WalletService {
         if rest_standard_uids.is_empty() && rest_api_uids.is_empty() {
             KeystoreApi::remove_verify_file(&dirs.root_dir)?;
             DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;
-            self.api_wallet_domain().clear_wallet_unlock_session().await?;
+            ApiWalletDomain::new(self.ctx).clear_wallet_unlock_session().await?;
         }
 
         let pool = core_pool.clone().into_inner();
@@ -824,7 +828,7 @@ impl WalletService {
                 //     &req,
                 // )?))
                 .push(BackendApiTask::BackendApi(device_unbind_address_task))
-                .send()
+                .send_with_ctx(self.ctx)
                 .await?;
         };
 
@@ -838,7 +842,10 @@ impl WalletService {
         for uid in rest_uids {
             let body = RecoverDataBody::new(&uid);
 
-            Tasks::new().push(CommonTask::RecoverMultisigAccountData(body)).send().await?;
+            Tasks::new()
+                .push(CommonTask::RecoverMultisigAccountData(body))
+                .send_with_ctx(self.ctx)
+                .await?;
         }
         Ok(())
     }
@@ -874,7 +881,7 @@ impl WalletService {
                 endpoint::DEVICE_DELETE,
                 &req,
             )?))
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
 
         Ok(())
@@ -937,14 +944,14 @@ impl WalletService {
         Tasks::new()
             // .push(BackendApiTask::BackendApi(device_delete_task))
             .push(BackendApiTask::BackendApi(reset_task))
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
 
         let dirs = self.ctx.get_global_dirs();
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
-        self.api_wallet_domain().clear_wallet_unlock_session().await?;
+        ApiWalletDomain::new(self.ctx).clear_wallet_unlock_session().await?;
         KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;
 
