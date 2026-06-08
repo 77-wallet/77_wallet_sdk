@@ -9,7 +9,9 @@ async fn init_load_default_nodes_respects_feature_profile() {
     let env = harness::ensure_env().await;
     let core_pool = harness::open_core_pool(&env.db_dir).await;
 
-    NodeDomain::init_load_default_nodes().await.expect("load default nodes");
+    NodeDomain::init_load_default_nodes_with_ctx(env.manager.ctx())
+        .await
+        .expect("load default nodes");
 
     let nodes = NodeRepo::list(&core_pool, None).await.expect("load nodes");
     assert!(!nodes.is_empty());
