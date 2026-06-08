@@ -1,5 +1,6 @@
 use crate::{
-    error::service::ServiceError, infrastructure::api_trans::collect_fee::shadow::ShadowFeeWorker,
+    context::Context, error::service::ServiceError,
+    infrastructure::api_trans::collect_fee::shadow::ShadowFeeWorker,
     request::api_wallet::trans::ApiBaseTransferReq,
 };
 
@@ -8,11 +9,13 @@ use crate::{
 /// Keeping this in `testkit` allows integration tests to exercise the
 /// behavior without embedding test code inside the deprecated fee worker module.
 pub async fn bump_sol_native_transfer_value_for_rent(
+    ctx: &'static Context,
     params: &mut ApiBaseTransferReq,
     symbol: &str,
     trade_no: &str,
 ) -> Result<(), ServiceError> {
-    ShadowFeeWorker::bump_sol_native_transfer_value_for_rent(params, symbol, trade_no).await
+    let ctx: &'static Context = ctx;
+    ShadowFeeWorker::bump_sol_native_transfer_value_for_rent(ctx, params, symbol, trade_no).await
 }
 
 /// Test-facing wrapper for the Solana rent error detector.
@@ -179,7 +182,11 @@ mod tests {
         );
         params.with_token(AssetTokenKey::Native, 9, "SOL");
 
-        bump_sol_native_transfer_value_for_rent(&mut params, "SOL", "T1").await.expect("bump rent");
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+
+        bump_sol_native_transfer_value_for_rent(ctx, &mut params, "SOL", "T1")
+            .await
+            .expect("bump rent");
 
         let bumped = wallet_utils::conversion::decimal_from_str(&params.value).unwrap();
         let original = wallet_utils::conversion::decimal_from_str("0.000015").unwrap();
@@ -198,7 +205,9 @@ mod tests {
         );
         params.with_token(AssetTokenKey::Contract("mint".to_string()), 6, "USDC");
 
-        bump_sol_native_transfer_value_for_rent(&mut params, "USDC", "T2")
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+
+        bump_sol_native_transfer_value_for_rent(ctx, &mut params, "USDC", "T2")
             .await
             .expect("no bump needed");
 

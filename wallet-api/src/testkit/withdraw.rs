@@ -5,9 +5,8 @@
 
 use std::sync::Arc;
 
-use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
-
 use crate::{
+    context::Context,
     error::service::ServiceError,
     infrastructure::api_trans::withdraw::{
         WithdrawChainIntent, WithdrawIntent, WithdrawShadowScanner, WithdrawShadowScannerConfig,
@@ -16,13 +15,12 @@ use crate::{
 };
 
 pub async fn send_resource_result_ack_via_worker(
-    tx_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static Context,
     resource_trade_no: &str,
 ) -> Result<(), ServiceError> {
     let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
     let scanner = Arc::new(WithdrawShadowScanner::new(
-        tx_pool.clone(),
+        ctx,
         WithdrawShadowScannerConfig {
             scan_interval: std::time::Duration::from_secs(60),
             max_items_per_scan: 8,
@@ -30,8 +28,7 @@ pub async fn send_resource_result_ack_via_worker(
         intent_tx,
         None,
     ));
-    let worker =
-        WithdrawShadowSideEffectWorker::new(crate::get_context()?, tx_pool, core_pool, scanner);
+    let worker = WithdrawShadowSideEffectWorker::new(ctx, scanner);
     worker
         .handle(WithdrawShadowSideEffectCommand::SendResourceResultAck(
             resource_trade_no.to_string(),
@@ -40,13 +37,12 @@ pub async fn send_resource_result_ack_via_worker(
 }
 
 pub async fn send_tx_ack_via_worker(
-    tx_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static Context,
     trade_no: &str,
 ) -> Result<(), ServiceError> {
     let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
     let scanner = Arc::new(WithdrawShadowScanner::new(
-        tx_pool.clone(),
+        ctx,
         WithdrawShadowScannerConfig {
             scan_interval: std::time::Duration::from_secs(60),
             max_items_per_scan: 8,
@@ -54,19 +50,17 @@ pub async fn send_tx_ack_via_worker(
         intent_tx,
         None,
     ));
-    let worker =
-        WithdrawShadowSideEffectWorker::new(crate::get_context()?, tx_pool, core_pool, scanner);
+    let worker = WithdrawShadowSideEffectWorker::new(ctx, scanner);
     worker.handle(WithdrawShadowSideEffectCommand::SendTxAck(trade_no.to_string())).await
 }
 
 pub async fn upload_resource_tx_exec_receipt_via_worker(
-    tx_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static Context,
     resource_trade_no: &str,
 ) -> Result<(), ServiceError> {
     let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
     let scanner = Arc::new(WithdrawShadowScanner::new(
-        tx_pool.clone(),
+        ctx,
         WithdrawShadowScannerConfig {
             scan_interval: std::time::Duration::from_secs(60),
             max_items_per_scan: 8,
@@ -74,8 +68,7 @@ pub async fn upload_resource_tx_exec_receipt_via_worker(
         intent_tx,
         None,
     ));
-    let worker =
-        WithdrawShadowSideEffectWorker::new(crate::get_context()?, tx_pool, core_pool, scanner);
+    let worker = WithdrawShadowSideEffectWorker::new(ctx, scanner);
     worker
         .handle(WithdrawShadowSideEffectCommand::UploadResourceTxExecReceipt(
             resource_trade_no.to_string(),
@@ -84,18 +77,18 @@ pub async fn upload_resource_tx_exec_receipt_via_worker(
 }
 
 pub async fn scan_withdraw_intent_labels_once(
-    tx_pool: ApiTransactionDbPool,
+    ctx: &'static Context,
 ) -> Result<Vec<String>, ServiceError> {
-    let intents = scan_withdraw_intent_summaries_once(tx_pool).await?;
+    let intents = scan_withdraw_intent_summaries_once(ctx).await?;
 
     Ok(intents.into_iter().map(|(label, _)| label).collect())
 }
 
 pub async fn scan_withdraw_intent_labels_for_trade_once(
-    tx_pool: ApiTransactionDbPool,
+    ctx: &'static Context,
     trade_no: &str,
 ) -> Result<Vec<String>, ServiceError> {
-    let intents = scan_withdraw_intent_summaries_once(tx_pool).await?;
+    let intents = scan_withdraw_intent_summaries_once(ctx).await?;
 
     Ok(intents
         .into_iter()
@@ -105,11 +98,11 @@ pub async fn scan_withdraw_intent_labels_for_trade_once(
 }
 
 async fn scan_withdraw_intent_summaries_once(
-    tx_pool: ApiTransactionDbPool,
+    ctx: &'static Context,
 ) -> Result<Vec<(String, String)>, ServiceError> {
     let (intent_tx, mut intent_rx) = tokio::sync::mpsc::channel(8);
     let scanner = WithdrawShadowScanner::new(
-        tx_pool,
+        ctx,
         WithdrawShadowScannerConfig {
             scan_interval: std::time::Duration::from_secs(60),
             max_items_per_scan: 8,

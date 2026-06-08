@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use wallet_api::{ApiWalletBackend, dirs::Dirs, manager::WalletManager};
+use wallet_api::{ApiWalletBackend, Context, dirs::Dirs, manager::WalletManager};
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     request::{
@@ -216,6 +216,12 @@ pub(crate) struct WorkerTestEnv {
     pub(crate) backend_url: String,
     pub(crate) db_dir: PathBuf,
     pub(crate) recorder: MockBackendRecorder,
+}
+
+impl WorkerTestEnv {
+    pub(crate) fn ctx(&self) -> &'static Context {
+        self._manager.ctx()
+    }
 }
 
 fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)> {

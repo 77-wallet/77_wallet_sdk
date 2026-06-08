@@ -6,6 +6,7 @@
 pub mod adapter_factory;
 pub mod collect;
 pub mod collect_fee;
+pub mod context;
 pub mod env;
 pub mod mqtt;
 pub mod resource_reclaim;
