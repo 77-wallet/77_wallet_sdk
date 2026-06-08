@@ -28,6 +28,8 @@ pub mod infrastructure;
 
 mod context;
 #[cfg(any(test, feature = "integration-tests"))]
+pub use context::Context;
+#[cfg(any(test, feature = "integration-tests"))]
 pub use context::api_wallet_backend::ApiWalletBackend;
 pub use context::get_context;
 mod data;

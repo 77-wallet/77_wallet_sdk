@@ -959,7 +959,7 @@ impl AssetCalcActor {
             req.insert(chain_code, token_key.as_db_str());
 
             // 查询后端价格
-            if let Err(e) = CoinDomain::query_token_price(&req).await {
+            if let Err(e) = CoinDomain::query_token_price_with_ctx(self.ctx, &req).await {
                 tracing::error!(
                     "Failed to query backend price for: symbol={}, chain_code={}, error: {:?}",
                     symbol,
