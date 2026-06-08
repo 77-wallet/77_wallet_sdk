@@ -4,12 +4,32 @@
 use std::sync::Arc;
 
 use tokio_stream::StreamExt as _;
-use wallet_api::{messaging::notify::FrontendNotifyEvent, testkit::env::get_manager_with_config};
+#[cfg(not(any(feature = "integration-tests", test)))]
+use wallet_api::messaging::notify::FrontendNotifyEvent;
+#[cfg(any(feature = "integration-tests", test))]
+use wallet_api::{
+    messaging::notify::FrontendNotifyEvent,
+    testkit::env::{TestParams, get_manager_with_config},
+};
 
+#[cfg(not(any(feature = "integration-tests", test)))]
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (wallet_manager, _test_params) = get_manager_with_config("client4.toml").await?;
-    let dirs = wallet_api::get_context()?.get_global_dirs();
+    tracing::warn!("client4 example requires feature `integration-tests`");
+    let (_tx, _rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    let _ = _tx;
+    let _ = _rx;
+    Ok(())
+}
+
+#[cfg(any(feature = "integration-tests", test))]
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (wallet_manager, _test_params): (
+        wallet_api::manager::WalletManager,
+        wallet_api::testkit::env::TestParams,
+    ) = get_manager_with_config("client4.toml").await?;
+    let dirs = wallet_manager.ctx().get_global_dirs();
     let _ = wallet_api::xlog::init_log(Some("info"), &"app_code", &dirs, "sn_client4").await;
     tracing::info!("[CLIENT4] init_api_swap");
     wallet_manager.init_api_swap().await?;

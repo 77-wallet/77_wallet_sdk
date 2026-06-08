@@ -8,6 +8,21 @@ use wallet_api::infrastructure::log::{
     init_logger,
     upload_log::UploadLogHandle,
 };
+#[cfg(any(feature = "integration-tests", test))]
+use wallet_api::testkit::env::get_config;
+
+#[cfg(any(feature = "integration-tests", test))]
+fn read_config() -> String {
+    get_config().unwrap()
+}
+
+#[cfg(not(any(feature = "integration-tests", test)))]
+fn read_config() -> String {
+    std::fs::read_to_string(
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("examples/config.yaml"),
+    )
+    .unwrap()
+}
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
@@ -20,8 +35,8 @@ async fn main() {
 
     tokio::spawn(generate_log());
 
-    let config =
-        wallet_api::config::Config::new(&wallet_api::testkit::env::get_config().unwrap()).unwrap();
+    let config_content = read_config();
+    let config = wallet_api::config::Config::new(&config_content).unwrap();
     let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
     println!("bucket_name: {}", config.oss.bucket_name);

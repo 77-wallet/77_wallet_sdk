@@ -2,16 +2,33 @@
 #![allow(unused)]
 
 use tokio_stream::StreamExt as _;
+#[cfg(any(feature = "integration-tests", test))]
+use wallet_api::testkit::env::TestParams;
+#[cfg(any(feature = "integration-tests", test))]
 use wallet_api::{
     dirs::Dirs, messaging::notify::FrontendNotifyEvent, testkit::env::get_manager, xlog,
 };
 
+#[cfg(not(any(feature = "integration-tests", test)))]
+use wallet_api::{dirs::Dirs, messaging::notify::FrontendNotifyEvent, xlog};
+
+#[cfg(not(any(feature = "integration-tests", test)))]
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing::warn!("client2 example requires feature `integration-tests`");
+    let (_tx, _rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    let _ = _tx;
+    let _ = _rx;
+    Ok(())
+}
+
 // create wallet
+#[cfg(any(feature = "integration-tests", test))]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wallet_utils::init_test_log();
-
-    let (wallet_manager, test_params) = get_manager().await.unwrap();
+    let (wallet_manager, test_params): (wallet_api::manager::WalletManager, TestParams) =
+        get_manager().await.unwrap();
     let _c = wallet_manager.set_invite_code(None).await;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();

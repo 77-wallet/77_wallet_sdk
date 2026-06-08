@@ -2,6 +2,8 @@
 #![allow(unused)]
 
 use tokio_stream::StreamExt as _;
+#[cfg(any(feature = "integration-tests", test))]
+use wallet_api::testkit::env::{TestParams, get_manager};
 use wallet_api::{
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
@@ -11,9 +13,17 @@ use wallet_api::{
         },
         transaction::BaseTransferReq,
     },
-    testkit::env::{TestParams, get_manager},
     xlog::init_log,
 };
+#[cfg(not(any(feature = "integration-tests", test)))]
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing::warn!("client3 example requires feature `integration-tests`");
+    let (_tx, _rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    let _ = _tx;
+    let _ = _rx;
+    Ok(())
+}
 use wallet_database::entities::{
     api_wallet::ApiWalletType, api_withdraw::ApiWithdrawStatus, asset_token_key::AssetTokenKey,
 };
@@ -162,6 +172,7 @@ async fn run_tx(wallet_manager: &WalletManager) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
+#[cfg(any(feature = "integration-tests", test))]
 async fn create_wallet(
     wallet_manager: &WalletManager,
     test_params: &TestParams,
@@ -220,6 +231,7 @@ async fn create_wallet(
     Ok(())
 }
 
+#[cfg(any(feature = "integration-tests", test))]
 async fn import_wallet(
     wallet_manager: &WalletManager,
     test_params: &TestParams,
@@ -251,6 +263,7 @@ async fn import_wallet(
     Ok(())
 }
 
+#[cfg(any(feature = "integration-tests", test))]
 async fn run(
     wallet_manager: &WalletManager,
     test_params: &TestParams,
@@ -272,6 +285,7 @@ async fn run(
     Ok(())
 }
 
+#[cfg(any(feature = "integration-tests", test))]
 async fn run_get_withdraw_list(
     wallet_manager: &WalletManager,
     test_params: &TestParams,
@@ -336,6 +350,7 @@ async fn run_get_withdraw_list(
     Ok(())
 }
 
+#[cfg(any(feature = "integration-tests", test))]
 async fn run_transfer(
     wallet_manager: &WalletManager,
     test_params: &TestParams,
@@ -366,9 +381,11 @@ async fn run_transfer(
     Ok(())
 }
 
+#[cfg(any(feature = "integration-tests", test))]
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (wallet_manager, test_params) = get_manager().await?;
+    let (wallet_manager, test_params): (wallet_api::manager::WalletManager, TestParams) =
+        get_manager().await?;
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
     wallet_manager.set_frontend_notify_sender(tx).await?;
@@ -413,7 +430,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     }
     // }
 
-    if !wallet_manager.sync_api_chains().await?.is_empty() {
+    let chains = wallet_manager.sync_api_chains().await?;
+    if !chains.is_empty() {
         wallet_manager.sync_api_wallet_chain_data().await?;
     }
 
