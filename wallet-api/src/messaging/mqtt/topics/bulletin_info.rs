@@ -100,8 +100,8 @@ impl BulletinMsg {
     pub(crate) async fn exec(
         &self,
         _msg_id: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::context::get_context()?;
         self.exec_with_ctx(_msg_id, ctx).await
     }
 
@@ -132,7 +132,7 @@ impl BulletinMsg {
             }
         }
         let data = NotifyEvent::BulletinMsg(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
     }

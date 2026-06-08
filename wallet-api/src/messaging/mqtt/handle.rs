@@ -15,7 +15,7 @@ use crate::{
     infrastructure::task_queue::{
         MqttTask,
         mqtt_api::{ApiMqttStruct, EventType},
-        task::{Tasks, dispatch_task_entities},
+        task::{Tasks, dispatch_task_entities_with_ctx},
     },
     messaging::{
         mqtt::topics::{
@@ -63,7 +63,7 @@ pub async fn exec_incoming_publish(
         Topic::RpcChange => {
             let payload: RpcChange = serde_json::from_slice(&publish.payload)?;
 
-            if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await {
+            if let Err(e) = FrontendNotifyEvent::send_debug_with_ctx(ctx, &payload).await {
                 tracing::error!("[exec_incoming_publish] send debug error: {e}");
             };
 
@@ -81,7 +81,7 @@ pub async fn exec_incoming_publish(
         // | Topic::WalletMerchantTrans 
         => {
             let payload: Message = serde_json::from_slice(&publish.payload)?;
-            if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await {
+            if let Err(e) = FrontendNotifyEvent::send_debug_with_ctx(ctx, &payload).await {
                 tracing::error!("[exec_incoming_publish] send debug error: {e}");
             };
 
@@ -99,7 +99,8 @@ pub async fn exec_incoming_publish(
                             "exec_payload error: {}",
                             e
                         );
-                        if let Err(e) = FrontendNotifyEvent::send_error(&event, e.to_string()).await
+                        if let Err(e) =
+                            FrontendNotifyEvent::send_error_with_ctx(ctx, &event, e.to_string()).await
                         {
                             tracing::error!("send_error error: {}", e);
                         }
@@ -121,7 +122,7 @@ pub async fn exec_incoming_publish(
                             status = %existing.status,
                             "MQTT msg_id already persisted but task not completed; redispatching existing task"
                         );
-                        if let Err(e) = dispatch_task_entities(vec![existing]).await {
+                        if let Err(e) = dispatch_task_entities_with_ctx(ctx, vec![existing]).await {
                             tracing::error!(
                                 msg_id = %payload.msg_id,
                                 biz_type = ?payload.biz_type,
@@ -150,12 +151,13 @@ pub(crate) async fn exec_payload(
 ) -> Result<(), crate::error::service::ServiceError> {
     match payload.biz_type {
         BizType::OrderMultiSignAccept => {
-            exec_task::<OrderMultiSignAccept, _, _>(&payload, MqttTask::OrderMultiSignAccept)
+            exec_task::<OrderMultiSignAccept, _, _>(&payload, ctx, MqttTask::OrderMultiSignAccept)
                 .await?
         }
         BizType::OrderMultiSignAcceptCompleteMsg => {
             exec_task::<OrderMultiSignAcceptCompleteMsg, _, _>(
                 &payload,
+                ctx,
                 MqttTask::OrderMultiSignAcceptCompleteMsg,
             )
             .await?
@@ -163,59 +165,61 @@ pub(crate) async fn exec_payload(
         BizType::OrderMultiSignServiceComplete => {
             exec_task::<OrderMultiSignServiceComplete, _, _>(
                 &payload,
+                ctx,
                 MqttTask::OrderMultiSignServiceComplete,
             )
             .await?
         }
         BizType::OrderMultiSignCancel => {
-            exec_task::<OrderMultiSignCancel, _, _>(&payload, MqttTask::OrderMultiSignCancel)
+            exec_task::<OrderMultiSignCancel, _, _>(&payload, ctx, MqttTask::OrderMultiSignCancel)
                 .await?
         }
         BizType::MultiSignTransAccept => {
-            exec_task::<MultiSignTransAccept, _, _>(&payload, MqttTask::MultiSignTransAccept)
+            exec_task::<MultiSignTransAccept, _, _>(&payload, ctx, MqttTask::MultiSignTransAccept)
                 .await?
         }
         BizType::MultiSignTransAcceptCompleteMsg => {
             exec_task::<MultiSignTransAcceptCompleteMsg, _, _>(
                 &payload,
+                ctx,
                 MqttTask::MultiSignTransAcceptCompleteMsg,
             )
             .await?
         }
         BizType::AcctChange => match payload.wallet_type {
             Some(WalletType::NormalWallet) => {
-                exec_task::<AcctChange, _, _>(&payload, MqttTask::AcctChange).await?
+                exec_task::<AcctChange, _, _>(&payload, ctx, MqttTask::AcctChange).await?
             }
             Some(WalletType::ApiRaw | WalletType::ApiWaw) => {
-                exec_task::<ApiWalletAcctChange, _, _>(&payload, MqttTask::ApiWalletAcctChange)
+                exec_task::<ApiWalletAcctChange, _, _>(&payload, ctx, MqttTask::ApiWalletAcctChange)
                     .await?
             }
             Some(WalletType::NotFound) => todo!(),
             None => (),
         },
         BizType::OrderMultiSignCreated => {
-            exec_task::<OrderMultiSignCreated, _, _>(&payload, MqttTask::OrderMultiSignCreated)
+            exec_task::<OrderMultiSignCreated, _, _>(&payload, ctx, MqttTask::OrderMultiSignCreated)
                 .await?
         }
         BizType::BulletinMsg => {
-            exec_task::<BulletinMsg, _, _>(&payload, MqttTask::BulletinMsg).await?
+            exec_task::<BulletinMsg, _, _>(&payload, ctx, MqttTask::BulletinMsg).await?
         }
         BizType::MultiSignTransCancel => {
-            exec_task::<MultiSignTransCancel, _, _>(&payload, MqttTask::MultiSignTransCancel)
+            exec_task::<MultiSignTransCancel, _, _>(&payload, ctx, MqttTask::MultiSignTransCancel)
                 .await?
         }
         BizType::PermissionAccept => {
-            exec_task::<PermissionAccept, _, _>(&payload, MqttTask::PermissionAccept).await?
+            exec_task::<PermissionAccept, _, _>(&payload, ctx, MqttTask::PermissionAccept).await?
         }
         BizType::MultiSignTransExecute => {
-            exec_task::<MultiSignTransExecute, _, _>(&payload, MqttTask::MultiSignTransExecute)
+            exec_task::<MultiSignTransExecute, _, _>(&payload, ctx, MqttTask::MultiSignTransExecute)
                 .await?
         }
         BizType::OrderMultiSignAllMemberAccepted => {
-            exec_task::<OrderAllConfirmed, _, _>(&payload, MqttTask::OrderAllConfirmed).await?
+            exec_task::<OrderAllConfirmed, _, _>(&payload, ctx, MqttTask::OrderAllConfirmed).await?
         }
         BizType::CleanPermission => {
-            exec_task::<CleanPermission, _, _>(&payload, MqttTask::CleanPermission).await?
+            exec_task::<CleanPermission, _, _>(&payload, ctx, MqttTask::CleanPermission).await?
         }
         // api wallet
         BizType::AwmOrderTrans
@@ -251,7 +255,7 @@ pub(crate) async fn exec_payload(
             api_mqtt_st.data = data;
             let mut payload = payload.clone();
             payload.body = serde_func::serde_to_value(api_mqtt_st)?;
-            exec_task::<ApiMqttStruct, _, _>(&payload, MqttTask::ApiMqttStruct).await?
+            exec_task::<ApiMqttStruct, _, _>(&payload, ctx, MqttTask::ApiMqttStruct).await?
         }
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
@@ -266,6 +270,7 @@ pub(crate) async fn exec_payload(
 
 async fn exec_task<T, F, R>(
     payload: &Message,
+    ctx: &'static crate::context::Context,
     task_ctor: F,
 ) -> Result<(), crate::error::service::ServiceError>
 where
@@ -279,7 +284,7 @@ where
             &payload.msg_id,
             task_ctor(data), // Task::Mqtt(Box::new())
         )
-        .send()
+        .send_with_ctx(ctx)
         .await?;
     Ok(())
 }
@@ -315,7 +320,7 @@ pub async fn exec_incoming_connack(
     }
 
     let data = NotifyEvent::MqttConnected;
-    FrontendNotifyEvent::new(data).send().await?;
+    FrontendNotifyEvent::new(data).send_with_ctx(context).await?;
     Ok(())
 }
 
@@ -393,17 +398,18 @@ async fn exec_verify_api_mqtt_st(
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod tests {
-    use crate::{
-        context::get_context, messaging::mqtt::handle::exec_incoming_publish,
-        testkit::env::get_manager,
-    };
+    use crate::{messaging::mqtt::handle::exec_incoming_publish, testkit::env::get_manager};
+
+    async fn test_ctx() -> anyhow::Result<&'static crate::context::Context> {
+        let (manager, _) = get_manager().await?;
+        Ok(manager.ctx)
+    }
 
     #[tokio::test]
     async fn test_multi_signature_transfer_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -461,8 +467,7 @@ mod tests {
     async fn test_multi_signature_transfer_receive_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -520,8 +525,7 @@ mod tests {
     async fn test_multi_signature_transfer_to_partner_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -580,8 +584,7 @@ mod tests {
     {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -639,8 +642,7 @@ mod tests {
     async fn test_common_transfer_to_multi_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -698,8 +700,7 @@ mod tests {
     async fn test_common_transfer_to_multi_receive_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -757,8 +758,7 @@ mod tests {
     async fn test_common_transfer_to_common_token_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -814,8 +814,7 @@ mod tests {
     async fn test_common_transfer_to_common_fees_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -871,8 +870,7 @@ mod tests {
     async fn test_eth() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -927,8 +925,7 @@ mod tests {
     async fn test_eth2() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -986,8 +983,7 @@ mod tests {
     async fn test_eth3() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -1045,8 +1041,7 @@ mod tests {
     async fn test_eth4() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -1104,8 +1099,7 @@ mod tests {
     async fn test_acct_change_bug() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -1160,8 +1154,7 @@ mod tests {
     async fn test_acct_exec() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
-        let ctx = get_context()?;
+        let ctx = test_ctx().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;

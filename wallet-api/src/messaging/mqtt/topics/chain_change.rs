@@ -27,7 +27,7 @@ impl ChainChange {
             .await?;
         let data = ChainChangeFrontend { has_new_chain, chains: self.0.to_vec() };
         let data = NotifyEvent::ChainChange(data);
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
     }

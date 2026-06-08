@@ -26,7 +26,6 @@ impl TokenPriceChange {
 
         tracing::info!("TokenPriceChange: {:?}", self);
         // let asset_calc_actor_manager =
-        //     crate::get_context()?.get_global_asset_calc_actor_manager().await?;
         // asset_calc_actor_manager
         //     .update_price(
         //         symbol,
@@ -76,7 +75,7 @@ impl TokenPriceChange {
             TokenCurrencies::calculate_token_price_changes(ctx, &self.body, exchange_rate.rate)
                 .await?;
         let data = crate::messaging::notify::event::NotifyEvent::TokenPriceChange(res);
-        crate::messaging::notify::FrontendNotifyEvent::new(data).send().await?;
+        crate::messaging::notify::FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
     }
