@@ -355,8 +355,11 @@ impl MultisigAccountService {
         let pool = self.ctx.core_pool()?;
 
         // 同步部署中多签账号的状态
-        let _r =
-            domain::multisig::MultisigDomain::sync_multisig_status(pool.clone().into_inner()).await;
+        let _r = domain::multisig::MultisigDomain::sync_multisig_status(
+            self.ctx,
+            pool.clone().into_inner(),
+        )
+        .await;
 
         let mut res =
             wallet_database::repositories::multisig_account::MultisigAccountRepo::account_list(
@@ -686,7 +689,7 @@ impl MultisigAccountService {
             endpoint: endpoint::multisig::SIGNED_ORDER_SAVE_RAW_DATA.to_string(),
             body,
         });
-        Tasks::new().push(task).send().await?;
+        Tasks::new().push(task).send_with_ctx(self.ctx).await?;
 
         Ok(())
     }
@@ -762,7 +765,7 @@ impl MultisigAccountService {
                 signer: None,
             };
 
-            let private_key = ChainTransDomain::get_key_with_ctx(
+            let private_key = ChainTransDomain::get_key(
                 self.ctx,
                 &params.base.from,
                 &params.base.chain_code,
@@ -771,7 +774,7 @@ impl MultisigAccountService {
             )
             .await?;
 
-            ChainTransDomain::transfer_with_ctx(
+            ChainTransDomain::transfer(
                 self.ctx,
                 params,
                 BillKind::ServiceCharge,
@@ -803,7 +806,7 @@ impl MultisigAccountService {
             endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_RECHARGE_HASH.to_string(),
             body: serde_func::serde_to_value(&req)?,
         });
-        Tasks::new().push(task).send().await?;
+        Tasks::new().push(task).send_with_ctx(self.ctx).await?;
 
         let status = if amount.free != 0.0 {
             MultisigAccountPayStatus::PaidPending
@@ -836,7 +839,7 @@ impl MultisigAccountService {
 
         // 2. 不是btc的创建一个部署的bill
         if account.chain_code != chain_code::BTC {
-            let main_coin = domain::chain::transaction::ChainTransDomain::main_coin_with_ctx(
+            let main_coin = domain::chain::transaction::ChainTransDomain::main_coin(
                 self.ctx,
                 &account.chain_code,
             )
@@ -876,7 +879,7 @@ impl MultisigAccountService {
             endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_SIGNED_HASH.to_string(),
             body: serde_func::serde_to_value(&req)?,
         });
-        Tasks::new().push(task).send().await?;
+        Tasks::new().push(task).send_with_ctx(self.ctx).await?;
 
         Ok(hash)
     }
@@ -889,11 +892,9 @@ impl MultisigAccountService {
 
         let account = MultisigDomain::account_by_id(account_id, pool.clone()).await?;
 
-        let main_coin = domain::chain::transaction::ChainTransDomain::main_coin_with_ctx(
-            self.ctx,
-            &account.chain_code,
-        )
-        .await?;
+        let main_coin =
+            domain::chain::transaction::ChainTransDomain::main_coin(self.ctx, &account.chain_code)
+                .await?;
 
         let adapter =
             ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &account.chain_code)
@@ -904,7 +905,13 @@ impl MultisigAccountService {
 
         let backend = self.ctx.get_global_backend_api();
         let fee = adapter
-            .deploy_multisig_fee_with_ctx(&account, member, &main_coin.symbol, backend.as_ref())
+            .deploy_multisig_fee_with_ctx(
+                self.ctx,
+                &account,
+                member,
+                &main_coin.symbol,
+                backend.as_ref(),
+            )
             .await?;
 
         let fee_resp =

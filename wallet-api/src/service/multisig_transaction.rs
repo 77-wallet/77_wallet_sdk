@@ -97,7 +97,7 @@ impl MultisigTransactionService {
 
         let account = MultisigDomain::account_by_address(&req_params.from, true, &pool).await?;
 
-        let assets = ChainTransDomain::assets_with_ctx(
+        let assets = ChainTransDomain::assets(
             self.ctx,
             &req_params.chain_code,
             &req_params.from,
@@ -105,7 +105,7 @@ impl MultisigTransactionService {
         )
         .await?;
 
-        let main_coin = ChainTransDomain::main_coin_with_ctx(self.ctx, &assets.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin(self.ctx, &assets.chain_code).await?;
 
         let adapter =
             ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &account.chain_code)
@@ -114,6 +114,7 @@ impl MultisigTransactionService {
 
         let res = adapter
             .build_multisig_fee(
+                self.ctx,
                 &req_params,
                 &account,
                 assets.decimals,
@@ -158,13 +159,8 @@ impl MultisigTransactionService {
         let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
-        let assets = ChainTransDomain::assets_with_ctx(
-            self.ctx,
-            &req.chain_code,
-            &req.from,
-            req.token_key(),
-        )
-        .await?;
+        let assets =
+            ChainTransDomain::assets(self.ctx, &req.chain_code, &req.from, req.token_key()).await?;
         let asset_token = assets.token_key().clone();
         tracing::info!(
             msq_step = "assets_loaded",
@@ -191,7 +187,7 @@ impl MultisigTransactionService {
         tracing::info!(msq_step = "multisig_account_validated", account_id = %account.id);
 
         tracing::info!("[测试2391bug] 查询到多签账户信息：{:?}", account);
-        let key = ChainTransDomain::get_key_with_ctx(
+        let key = ChainTransDomain::get_key(
             self.ctx,
             &account.initiator_addr,
             &account.chain_code,
@@ -450,7 +446,7 @@ impl MultisigTransactionService {
             });
         }
 
-        task.send().await?;
+        task.send_with_ctx(self.ctx).await?;
 
         let result = Pagination {
             page: lists.page,
@@ -509,10 +505,10 @@ impl MultisigTransactionService {
             ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &queue.chain_code)
                 .await?;
 
-        let main_coin = ChainTransDomain::main_coin_with_ctx(self.ctx, &queue.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin(self.ctx, &queue.chain_code).await?;
 
         let res = adapter
-            .sign_fee(&multisig_account, &address, &queue.raw_data, &main_coin.symbol)
+            .sign_fee(self.ctx, &multisig_account, &address, &queue.raw_data, &main_coin.symbol)
             .await?;
 
         let fee_resp =
@@ -598,12 +594,13 @@ impl MultisigTransactionService {
         let instance =
             ChainAdapterFactory::get_multisig_adapter_with_ctx(&self.ctx, &queue.chain_code)
                 .await?;
-        let main_coin = ChainTransDomain::main_coin_with_ctx(self.ctx, &queue.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin(self.ctx, &queue.chain_code).await?;
 
         let backend = self.ctx.get_global_sqlite_pool()?;
         let backend_api = self.ctx.get_global_backend_api();
         let fee = instance
             .estimate_fee_with_ctx(
+                self.ctx,
                 &queue,
                 &coin,
                 backend_api.as_ref(),
@@ -685,14 +682,9 @@ impl MultisigTransactionService {
                 continue;
             };
 
-            let key = ChainTransDomain::get_key_with_ctx(
-                self.ctx,
-                address,
-                &queue.chain_code,
-                password,
-                &None,
-            )
-            .await?;
+            let key =
+                ChainTransDomain::get_key(self.ctx, address, &queue.chain_code, password, &None)
+                    .await?;
 
             let rs =
                 instance.sign_multisig_tx(&multisig_account, address, key, &queue.raw_data).await?;
@@ -761,14 +753,9 @@ impl MultisigTransactionService {
                 continue;
             }
 
-            let key = ChainTransDomain::get_key_with_ctx(
-                self.ctx,
-                address,
-                &queue.chain_code,
-                password,
-                &None,
-            )
-            .await?;
+            let key =
+                ChainTransDomain::get_key(self.ctx, address, &queue.chain_code, password, &None)
+                    .await?;
 
             let res =
                 tron::operations::multisig::TransactionOpt::sign_transaction(&queue.raw_data, key)?;
