@@ -21,7 +21,7 @@ pub(crate) struct ResourceDelegationSigner {
 }
 
 pub(crate) async fn resolve_resource_delegation_signer(
-    ctx: Option<&Context>,
+    ctx: &Context,
     delegation: &ApiResourceDelegationEntity,
 ) -> Result<ResourceDelegationSigner, ServiceError> {
     match delegation.delegation_mode {
@@ -60,26 +60,10 @@ pub(crate) fn new_tron_undelegate_args(
 }
 
 async fn resolve_authorized_resource_signer(
-    ctx: Option<&Context>,
+    ctx: &Context,
     delegation: &ApiResourceDelegationEntity,
 ) -> Result<ResourceDelegationSigner, ServiceError> {
-    let permission_id = delegation
-        .permission_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            ServiceError::Parameter(format!(
-                "authorized resource delegation missing permissionId: trade_no={}",
-                delegation.resource_trade_no
-            ))
-        })?;
-
-    let Some(ctx) = ctx else {
-        return Err(ServiceError::Parameter(
-            "authorized resource delegation requires context".to_string(),
-        ));
-    };
+    let permission_id = authorized_resource_permission_id(delegation)?;
 
     let core_pool = CoreDbPool::new(ctx.get_global_sqlite_pool()?);
     let permission = find_authorized_permission_with_recovery(
@@ -136,6 +120,19 @@ async fn resolve_authorized_resource_signer(
         "authorized resource signer not found: owner={}, permissionId={}",
         delegation.owner_address, permission_id
     )))
+}
+
+fn authorized_resource_permission_id(
+    delegation: &ApiResourceDelegationEntity,
+) -> Result<&str, ServiceError> {
+    delegation.permission_id.as_deref().map(str::trim).filter(|value| !value.is_empty()).ok_or_else(
+        || {
+            ServiceError::Parameter(format!(
+                "authorized resource delegation missing permissionId: trade_no={}",
+                delegation.resource_trade_no
+            ))
+        },
+    )
 }
 
 async fn recover_api_wallet_authorized_permission_from_chain(
@@ -325,10 +322,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn authorized_resource_signer_requires_permission_id_before_context_lookup() {
-        let err = resolve_resource_delegation_signer(None, &base_delegation())
-            .await
+    #[test]
+    fn authorized_resource_permission_id_requires_permission_id_without_context() {
+        let err = super::authorized_resource_permission_id(&base_delegation())
             .expect_err("missing permissionId should fail");
 
         assert!(err.to_string().contains("missing permissionId"));

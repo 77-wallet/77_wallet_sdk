@@ -1775,7 +1775,7 @@ impl ShadowWithdrawWorker {
             &delegation.chain_code,
         )
         .await;
-        let signer = resolve_resource_delegation_signer(Some(self.ctx), delegation).await?;
+        let signer = resolve_resource_delegation_signer(self.ctx, delegation).await?;
 
         let raw = match delegation.operation_type {
             ApiResourceDelegationOperationType::Delegate => {

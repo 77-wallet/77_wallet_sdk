@@ -921,7 +921,7 @@ impl PlatformResourceReclaimWorker {
             &delegation.chain_code,
         )
         .await;
-        let signer = resolve_resource_delegation_signer(Some(self.ctx), delegation).await?;
+        let signer = resolve_resource_delegation_signer(self.ctx, delegation).await?;
 
         let args = new_tron_undelegate_args(
             &delegation.owner_address,
