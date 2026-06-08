@@ -11,18 +11,14 @@ use crate::{
 use wallet_database::entities::asset_token_key::AssetTokenKey;
 
 impl WalletManager {
-    fn assets_service(&self) -> ReturnType<AssetsService> {
-        Ok(AssetsService::new(self.ctx))
-    }
-
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
-        self.assets_service()?
+        AssetsService::new(self.ctx)
             .add_coin_v2(&req.wallet_address, Some(req.account_id), req.chain_list, None)
             .await
     }
 
     pub async fn add_regular_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
-        self.assets_service()?
+        AssetsService::new(self.ctx)
             .add_coin_v2(&req.wallet_address, Some(req.account_id), req.chain_list, Some(false))
             .await
     }
@@ -31,7 +27,9 @@ impl WalletManager {
         &self,
         req: crate::request::coin::AddMultisigCoinReq,
     ) -> ReturnType<()> {
-        self.assets_service()?.add_coin_v2(&req.address, None, req.chain_list, Some(true)).await
+        AssetsService::new(self.ctx)
+            .add_coin_v2(&req.address, None, req.chain_list, Some(true))
+            .await
     }
 
     pub async fn get_assets(
@@ -43,7 +41,7 @@ impl WalletManager {
         token_address: Option<String>,
     ) -> ReturnType<CoinAssets> {
         let token_key = AssetTokenKey::from_raw(token_address.as_deref());
-        self.assets_service()?.detail(address, account_id, chain_code, token_key).await
+        AssetsService::new(self.ctx).detail(address, account_id, chain_code, token_key).await
     }
 
     pub async fn remove_coin(
@@ -52,7 +50,7 @@ impl WalletManager {
         account_id: u32,
         chain_list: ChainList,
     ) -> ReturnType<()> {
-        self.assets_service()?
+        AssetsService::new(self.ctx)
             .remove_coin_v2(wallet_address, Some(account_id), chain_list, None)
             .await
     }
@@ -62,7 +60,7 @@ impl WalletManager {
         address: &str,
         chain_list: ChainList,
     ) -> ReturnType<()> {
-        self.assets_service()?.remove_coin_v2(address, None, chain_list, Some(false)).await
+        AssetsService::new(self.ctx).remove_coin_v2(address, None, chain_list, Some(false)).await
     }
 
     pub async fn remove_multisig_coin(
@@ -70,7 +68,7 @@ impl WalletManager {
         address: &str,
         chain_list: ChainList,
     ) -> ReturnType<()> {
-        self.assets_service()?.remove_coin_v2(address, None, chain_list, Some(true)).await
+        AssetsService::new(self.ctx).remove_coin_v2(address, None, chain_list, Some(true)).await
     }
 
     /// 获取普通账户已添加的币列表
@@ -82,7 +80,7 @@ impl WalletManager {
         keyword: Option<&str>,
         is_multisig: Option<bool>,
     ) -> ReturnType<CoinInfoList> {
-        self.assets_service()?
+        AssetsService::new(self.ctx)
             .get_coin_list(address, account_id, chain_code, keyword, is_multisig)
             .await
     }
@@ -92,7 +90,7 @@ impl WalletManager {
         account_id: u32,
         wallet_address: Option<&str>,
     ) -> ReturnType<GetAccountAssetsRes> {
-        self.assets_service()?.get_all_account_assets(account_id, wallet_address).await
+        AssetsService::new(self.ctx).get_all_account_assets(account_id, wallet_address).await
     }
 
     /// 获取普通账户总资产
@@ -102,7 +100,9 @@ impl WalletManager {
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> ReturnType<GetAccountAssetsRes> {
-        self.assets_service()?.get_account_assets(account_id, wallet_address, chain_code).await
+        AssetsService::new(self.ctx)
+            .get_account_assets(account_id, wallet_address, chain_code)
+            .await
     }
 
     /// 获取多签账户总资产
@@ -110,7 +110,7 @@ impl WalletManager {
         &self,
         address: &str,
     ) -> ReturnType<GetAccountAssetsRes> {
-        self.assets_service()?.get_multisig_account_assets(address).await
+        AssetsService::new(self.ctx).get_multisig_account_assets(address).await
     }
 
     pub async fn get_assets_list_v2(
@@ -120,7 +120,7 @@ impl WalletManager {
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> ReturnType<AccountChainAssetList> {
-        self.assets_service()?
+        AssetsService::new(self.ctx)
             .get_account_chain_assets_v2(address, account_id, chain_code, is_multisig)
             .await
     }
@@ -132,7 +132,7 @@ impl WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        self.assets_service()?.sync_assets_by_addr(vec![addr], chain_code, symbol).await
+        AssetsService::new(self.ctx).sync_assets_by_addr(vec![addr], chain_code, symbol).await
     }
 
     // 根据资产地址、链以及符号来同步余额(直接重链上同步余额)。
@@ -142,7 +142,7 @@ impl WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        self.assets_service()?.sync_assets_by_addr(vec![addr], chain_code, symbol).await
+        AssetsService::new(self.ctx).sync_assets_by_addr(vec![addr], chain_code, symbol).await
     }
 
     // 根据钱包去同步资产
@@ -152,7 +152,9 @@ impl WalletManager {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        self.assets_service()?.sync_assets_by_wallet_chain(wallet_address, account_id, symbol).await
+        AssetsService::new(self.ctx)
+            .sync_assets_by_wallet_chain(wallet_address, account_id, symbol)
+            .await
     }
 }
 

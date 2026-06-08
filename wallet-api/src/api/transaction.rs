@@ -20,10 +20,6 @@ use wallet_database::{
 };
 
 impl WalletManager {
-    fn transaction_service(&self) -> ReturnType<TransactionService> {
-        Ok(TransactionService::new(self.ctx))
-    }
-
     // 本币的余额
     pub async fn chain_balance(
         &self,
@@ -32,7 +28,7 @@ impl WalletManager {
         symbol: &str,
         token_address: Option<String>,
     ) -> ReturnType<Balance> {
-        self.transaction_service()?
+        TransactionService::new(self.ctx)
             .chain_balance(
                 address,
                 chain_code,
@@ -47,16 +43,16 @@ impl WalletManager {
         &self,
         req: transaction::BaseTransferReq,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        self.transaction_service()?.transaction_fee(req).await
+        TransactionService::new(self.ctx).transaction_fee(req).await
     }
 
     /// tokenAddress前端必须传
     pub async fn transfer(&self, req: transaction::TransferReq) -> ReturnType<TransactionResult> {
-        self.transaction_service()?.transfer(req, BillKind::Transfer).await
+        TransactionService::new(self.ctx).transfer(req, BillKind::Transfer).await
     }
 
     pub async fn bill_detail(&self, tx_hash: &str, owner: &str) -> ReturnType<BillDetailVo> {
-        self.transaction_service()?.bill_detail(tx_hash, owner).await
+        TransactionService::new(self.ctx).bill_detail(tx_hash, owner).await
     }
 
     pub async fn list_by_hashs(
@@ -64,7 +60,7 @@ impl WalletManager {
         owner: String,
         hashs: Vec<String>,
     ) -> ReturnType<Vec<BillEntity>> {
-        self.transaction_service()?.list_by_hashs(owner, hashs).await
+        TransactionService::new(self.ctx).list_by_hashs(owner, hashs).await
     }
 
     pub async fn bill_lists(
@@ -110,12 +106,14 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<RecentBillListVo>> {
-        self.transaction_service()?.recent_bill(&token, &addr, &chain_code, page, page_size).await
+        TransactionService::new(self.ctx)
+            .recent_bill(&token, &addr, &chain_code, page, page_size)
+            .await
     }
 
     // 单笔查询交易并处理
     pub async fn query_tx_result(&self, req: Vec<String>) -> ReturnType<Vec<BillEntity>> {
-        self.transaction_service()?.query_tx_result(req).await
+        TransactionService::new(self.ctx).query_tx_result(req).await
     }
 
     pub async fn sync_bill(&self, chain_code: String, address: String) -> ReturnType<()> {

@@ -4,20 +4,16 @@ use crate::{
 };
 
 impl WalletManager {
-    fn wallet_service(&self) -> ReturnType<WalletService> {
-        Ok(WalletService::new(self.ctx))
-    }
-
     pub async fn encrypt_password(&self, password: &str) -> ReturnType<String> {
-        self.wallet_service()?.encrypt_password(password).await
+        WalletService::new(self.ctx).encrypt_password(password).await
     }
 
     pub async fn validate_password(&self, encrypted_password: &str) -> ReturnType<()> {
-        self.wallet_service()?.validate_password(encrypted_password).await
+        WalletService::new(self.ctx).validate_password(encrypted_password).await
     }
 
     pub async fn switch_wallet(&self, wallet_address: &str) -> ReturnType<()> {
-        self.wallet_service()?.switch_wallet(wallet_address).await
+        WalletService::new(self.ctx).switch_wallet(wallet_address).await
     }
 
     pub async fn edit_wallet_name(
@@ -25,19 +21,19 @@ impl WalletManager {
         wallet_name: &str,
         wallet_address: &str,
     ) -> ReturnType<()> {
-        self.wallet_service()?.edit_wallet_name(wallet_name, wallet_address).await
+        WalletService::new(self.ctx).edit_wallet_name(wallet_name, wallet_address).await
     }
 
     pub async fn logic_reset(&self) -> ReturnType<()> {
-        self.wallet_service()?.logic_reset().await
+        WalletService::new(self.ctx).logic_reset().await
     }
 
     pub async fn physical_reset(&self) -> ReturnType<()> {
-        self.wallet_service()?.physical_reset().await
+        WalletService::new(self.ctx).physical_reset().await
     }
 
     pub async fn create_wallet(&self, req: CreateWalletReq) -> ReturnType<CreateWalletRes> {
-        self.wallet_service()?
+        WalletService::new(self.ctx)
             .create_wallet(
                 req.language_code,
                 &req.phrase,
@@ -56,7 +52,7 @@ impl WalletManager {
         wallet_address: &str,
         password: &str,
     ) -> ReturnType<crate::response_vo::standard_wallet::wallet::GetPhraseRes> {
-        self.wallet_service()?.get_phrase(wallet_address, password).await
+        WalletService::new(self.ctx).get_phrase(wallet_address, password).await
     }
 
     pub async fn import_derivation_path(
@@ -67,7 +63,7 @@ impl WalletManager {
         account_name: &str,
         is_default_name: bool,
     ) -> ReturnType<crate::response_vo::standard_wallet::wallet::ImportDerivationPathRes> {
-        self.wallet_service()?
+        WalletService::new(self.ctx)
             .import_derivation_path(
                 path,
                 wallet_address,
@@ -82,7 +78,7 @@ impl WalletManager {
         &self,
         wallet_address: &str,
     ) -> ReturnType<crate::response_vo::standard_wallet::wallet::ExportDerivationPathRes> {
-        self.wallet_service()?.export_derivation_path(wallet_address).await
+        WalletService::new(self.ctx).export_derivation_path(wallet_address).await
     }
 
     pub async fn get_wallet_list(
@@ -91,23 +87,23 @@ impl WalletManager {
         chain_code: Option<String>,
         account_id: Option<u32>,
     ) -> ReturnType<Vec<crate::response_vo::standard_wallet::wallet::WalletInfo>> {
-        self.wallet_service()?.get_wallet_list(wallet_address, chain_code, account_id).await
+        WalletService::new(self.ctx).get_wallet_list(wallet_address, chain_code, account_id).await
     }
 
     pub async fn logic_delete_wallet(&self, address: &str) -> ReturnType<()> {
-        self.wallet_service()?.logic_delete(address).await
+        WalletService::new(self.ctx).logic_delete(address).await
     }
 
     pub async fn physical_delete_wallet(&self, address: &str) -> ReturnType<()> {
-        self.wallet_service()?.physical_delete(address).await
+        WalletService::new(self.ctx).physical_delete(address).await
     }
 
     pub async fn recover_multisig_data(&self, wallet_address: &str) -> ReturnType<()> {
-        self.wallet_service()?.recover_multisig_data(wallet_address).await
+        WalletService::new(self.ctx).recover_multisig_data(wallet_address).await
     }
 
     pub async fn upgrade_algorithm(&self, password: &str) -> ReturnType<()> {
-        self.wallet_service()?.upgrade_algorithm(password).await
+        WalletService::new(self.ctx).upgrade_algorithm(password).await
     }
 }
 
@@ -189,7 +185,7 @@ mod test {
     #[tokio::test]
     async fn test_recover_uid_multisig_data() -> Result<()> {
         wallet_utils::init_test_log();
-        let (_, _) = get_manager().await?;
+        let (manager, _) = get_manager().await?;
 
         // 前端的uid
         let uid = "c25bcbb0cbe65b55d579bfd84840fabc28a12841042e5cd6fb4331aaa6769df3";
@@ -197,8 +193,12 @@ mod test {
         let address = None;
         let start_time = std::time::Instant::now();
 
-        let res =
-            crate::domain::multisig::MultisigDomain::recover_uid_multisig_data(uid, address).await;
+        let res = crate::domain::multisig::MultisigDomain::recover_uid_multisig_data_with_ctx(
+            manager.ctx,
+            uid,
+            address,
+        )
+        .await;
         let elapsed_time = start_time.elapsed();
         tracing::info!("test_recover_multisig_data elapsed time: {:?}", elapsed_time);
         tracing::info!("res: {res:?}");
@@ -209,10 +209,14 @@ mod test {
     #[tokio::test]
     async fn test_recover_queue_data() -> Result<()> {
         wallet_utils::init_test_log();
-        let (_, _) = get_manager().await?;
+        let (manager, _) = get_manager().await?;
 
         let uid = "12259658eb700431e804ea831c4dc78294a7a4c466453aafdef05aa518352562";
-        let res = crate::domain::multisig::MultisigQueueDomain::recover_queue_data(uid).await;
+        let res = crate::domain::multisig::MultisigQueueDomain::recover_queue_data_with_ctx(
+            manager.ctx,
+            uid,
+        )
+        .await;
         tracing::info!("res: {res:?}");
 
         Ok(())

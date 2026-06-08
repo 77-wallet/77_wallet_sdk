@@ -13,45 +13,41 @@ use wallet_transport_backend::response_vo::app::{
 };
 
 impl WalletManager {
-    fn app_service(&self) -> ReturnType<AppService> {
-        Ok(AppService::new(self.ctx))
-    }
-
     pub async fn app_install(&self, sn: &str, device_type: &str, channel: &str) -> ReturnType<()> {
-        self.app_service()?.app_install_save(sn, device_type, channel).await
+        AppService::new(self.ctx).app_install_save(sn, device_type, channel).await
     }
 
     // app版本检测接口
     pub async fn check_version(&self, r#type: &str) -> ReturnType<AppVersionRes> {
-        self.app_service()?.check_version(r#type).await
+        AppService::new(self.ctx).check_version(r#type).await
     }
 
     pub async fn set_currency(&self, fiat: &str) -> ReturnType<()> {
-        self.app_service()?.set_fiat(fiat).await
+        AppService::new(self.ctx).set_fiat(fiat).await
     }
 
     pub async fn set_language(&self, language: &str) -> ReturnType<()> {
-        self.app_service()?.language_init(language).await
+        AppService::new(self.ctx).language_init(language).await
     }
 
     pub async fn set_app_id(&self, app_id: &str) -> ReturnType<()> {
-        self.app_service()?.set_app_id(app_id).await
+        AppService::new(self.ctx).set_app_id(app_id).await
     }
 
     pub async fn get_fiat(&self) -> ReturnType<GetFiatRes> {
-        self.app_service()?.get_fiat().await
+        AppService::new(self.ctx).get_fiat().await
     }
 
     pub async fn get_official_website(&self) -> ReturnType<GetOfficialWebsiteRes> {
-        self.app_service()?.get_official_website().await
+        AppService::new(self.ctx).get_official_website().await
     }
 
     pub async fn get_config(&self) -> ReturnType<GetConfigRes> {
-        self.app_service()?.get_config().await
+        AppService::new(self.ctx).get_config().await
     }
 
     pub async fn get_unread_status(&self) -> ReturnType<UnreadCount> {
-        self.app_service()?.get_unread_status().await
+        AppService::new(self.ctx).get_unread_status().await
     }
 
     /// Platform Energy Subsidy Switch Configuration
@@ -65,23 +61,23 @@ impl WalletManager {
         &self,
         req: Vec<crate::request::app::UploadLogFileReq>,
     ) -> ReturnType<()> {
-        self.app_service()?.upload_log_file(req).await
+        AppService::new(self.ctx).upload_log_file(req).await
     }
 
     pub async fn mqtt_subscribe(&self, topics: Vec<String>, qos: Option<u8>) -> ReturnType<()> {
-        self.app_service()?.mqtt_subscribe(topics, qos).await
+        AppService::new(self.ctx).mqtt_subscribe(topics, qos).await
     }
 
     pub async fn mqtt_unsubscribe(&self, topics: Vec<String>) -> ReturnType<()> {
-        self.app_service()?.mqtt_unsubscribe_unsubscribe(topics).await
+        AppService::new(self.ctx).mqtt_unsubscribe_unsubscribe(topics).await
     }
 
     pub async fn get_configs(&self) -> ReturnType<Vec<ConfigEntity>> {
-        self.app_service()?.get_configs().await
+        AppService::new(self.ctx).get_configs().await
     }
 
     pub async fn set_config(&self, key: String, value: String) -> ReturnType<ConfigEntity> {
-        self.app_service()?.set_config(key, value).await
+        AppService::new(self.ctx).set_config(key, value).await
     }
 
     pub async fn set_min_value_config(
@@ -90,41 +86,41 @@ impl WalletManager {
         amount: f64,
         switch: bool,
     ) -> ReturnType<MinValueSwitchConfig> {
-        self.app_service()?.set_min_value_config(symbol, amount, switch).await
+        AppService::new(self.ctx).set_min_value_config(symbol, amount, switch).await
     }
 
     pub async fn get_min_value_config(
         &self,
         symbol: String,
     ) -> ReturnType<Option<MinValueSwitchConfig>> {
-        self.app_service()?.get_min_value_config(symbol).await
+        AppService::new(self.ctx).get_min_value_config(symbol).await
     }
 
     // app 自己请求后端
     pub async fn request(&self, endpoint: String, body: String) -> ReturnType<serde_json::Value> {
-        self.app_service()?.request_backend(&endpoint, body).await
+        AppService::new(self.ctx).request_backend(&endpoint, body).await
     }
 
     // 全局的msg
     pub async fn global_msg(&self) -> ReturnType<GlobalMsg> {
-        self.app_service()?.global_msg().await
+        AppService::new(self.ctx).global_msg().await
     }
 
     /// 设置邀请码
     pub async fn set_invite_code(&self, invite_code: Option<String>) -> ReturnType<()> {
-        self.app_service()?.set_invite_code(invite_code).await
+        AppService::new(self.ctx).set_invite_code(invite_code).await
     }
 
     pub async fn backend_config(&self) -> ReturnType<std::collections::HashMap<String, String>> {
-        self.app_service()?.backend_config().await
+        AppService::new(self.ctx).backend_config().await
     }
 
     pub async fn set_wallet_type(&self, wallet_type: ApiWalletType) -> ReturnType<()> {
-        self.app_service()?.set_wallet_type(wallet_type).await
+        AppService::new(self.ctx).set_wallet_type(wallet_type).await
     }
 
     pub async fn get_current_wallet_type(&self) -> ReturnType<ApiWalletType> {
-        self.app_service()?.get_current_wallet_type().await
+        AppService::new(self.ctx).get_current_wallet_type().await
     }
 }
 

@@ -5,10 +5,6 @@ use crate::{
 use wallet_transport_backend::response_vo::coin::{CoinMarketValue, TokenHistoryPrices};
 
 impl WalletManager {
-    fn coin_service(&self) -> ReturnType<CoinService> {
-        Ok(CoinService::new(self.ctx))
-    }
-
     pub async fn get_hot_coin_list(
         &self,
         wallet_address: &str,
@@ -22,7 +18,7 @@ impl WalletManager {
             crate::response_vo::standard_wallet::coin::CoinInfo,
         >,
     > {
-        self.coin_service()?
+        CoinService::new(self.ctx)
             .get_hot_coin_list(
                 wallet_address,
                 Some(account_id),
@@ -47,20 +43,20 @@ impl WalletManager {
             crate::response_vo::standard_wallet::coin::CoinInfo,
         >,
     > {
-        self.coin_service()?
+        CoinService::new(self.ctx)
             .get_hot_coin_list(address, None, chain_code, keyword, Some(true), page, page_size)
             .await
     }
 
     pub async fn pull_hot_coins(&self) -> ReturnType<()> {
-        self.coin_service()?.pull_hot_coins().await
+        CoinService::new(self.ctx).pull_hot_coins().await
     }
 
     pub async fn get_token_price(
         &self,
         symbols: Vec<String>,
     ) -> ReturnType<Vec<TokenPriceChangeRes>> {
-        self.coin_service()?.get_token_price(symbols).await
+        CoinService::new(self.ctx).get_token_price(symbols).await
     }
 
     pub async fn query_token_info(
@@ -68,7 +64,7 @@ impl WalletManager {
         chain_code: &str,
         token_address: &str,
     ) -> ReturnType<crate::response_vo::standard_wallet::coin::TokenInfo> {
-        self.coin_service()?.query_token_info(chain_code, token_address.to_string()).await
+        CoinService::new(self.ctx).query_token_info(chain_code, token_address.to_string()).await
     }
     pub async fn customize_coin(
         &self,
@@ -78,7 +74,7 @@ impl WalletManager {
         token_address: &str,
         protocol: Option<String>,
     ) -> ReturnType<()> {
-        self.coin_service()?
+        CoinService::new(self.ctx)
             .customize_coin(
                 address,
                 account_id,
@@ -97,7 +93,7 @@ impl WalletManager {
         token_address: &str,
         protocol: Option<String>,
     ) -> ReturnType<()> {
-        self.coin_service()?
+        CoinService::new(self.ctx)
             .customize_coin(address, None, chain_code, token_address.to_string(), protocol, true)
             .await
     }
@@ -106,14 +102,14 @@ impl WalletManager {
         &self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> ReturnType<TokenHistoryPrices> {
-        self.coin_service()?.query_history_price(req).await
+        CoinService::new(self.ctx).query_history_price(req).await
     }
 
     pub async fn coin_market_value(
         &self,
         req: std::collections::HashMap<String, String>,
     ) -> ReturnType<CoinMarketValue> {
-        self.coin_service()?.market_value(req).await
+        CoinService::new(self.ctx).market_value(req).await
     }
 
     pub async fn query_popular_by_page(
@@ -137,7 +133,7 @@ impl WalletManager {
             page_size,
         };
 
-        self.coin_service()?.query_popular_by_page(req).await
+        CoinService::new(self.ctx).query_popular_by_page(req).await
     }
 }
 

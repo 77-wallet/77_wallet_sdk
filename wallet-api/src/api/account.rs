@@ -12,17 +12,12 @@ use crate::{
 use wallet_database::entities::account::AccountEntity;
 
 impl WalletManager {
-    fn account_service(&self) -> ReturnType<AccountService> {
-        Ok(AccountService::new(self.ctx))
-    }
-
     pub async fn switch_account(&self, wallet_address: &str, account_id: u32) -> ReturnType<()> {
-        self.account_service()?.switch_account(wallet_address, account_id).await
+        AccountService::new(self.ctx).switch_account(wallet_address, account_id).await
     }
 
     pub async fn create_account(&self, req: CreateAccountReq) -> ReturnType<()> {
-        self.account_service()
-            .with_context("create_account")?
+        AccountService::new(self.ctx)
             .create_account(
                 &req.wallet_address,
                 &req.root_password,
@@ -42,12 +37,12 @@ impl WalletManager {
         wallet_address: &str,
         name: &str,
     ) -> ReturnType<()> {
-        self.account_service()?.edit_account_name(account_id, wallet_address, name).await
+        AccountService::new(self.ctx).edit_account_name(account_id, wallet_address, name).await
     }
 
     #[allow(dead_code)]
     pub(crate) async fn account_detail(&self, address: &str) -> ReturnType<Option<AccountEntity>> {
-        self.account_service()?.account_details(address).await
+        AccountService::new(self.ctx).account_details(address).await
     }
 
     pub async fn get_account_list(
@@ -55,7 +50,7 @@ impl WalletManager {
         wallet_address: Option<&str>,
         account_id: Option<u32>,
     ) -> ReturnType<Vec<AccountEntity>> {
-        self.account_service()?.get_account_list(wallet_address, account_id).await
+        AccountService::new(self.ctx).get_account_list(wallet_address, account_id).await
     }
 
     pub async fn get_account_derivation_path(
@@ -63,7 +58,7 @@ impl WalletManager {
         wallet_address: &str,
         index: u32,
     ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
-        self.account_service()?.get_account_derivation_path(wallet_address, index).await
+        AccountService::new(self.ctx).get_account_derivation_path(wallet_address, index).await
     }
 
     pub async fn list_derived_addresses(
@@ -73,7 +68,9 @@ impl WalletManager {
         password: &str,
         all: bool,
     ) -> ReturnType<Vec<DerivedAddressesList>> {
-        self.account_service()?.list_derived_addresses(wallet_address, index, password, all).await
+        AccountService::new(self.ctx)
+            .list_derived_addresses(wallet_address, index, password, all)
+            .await
     }
 
     pub async fn current_chain_address(
@@ -82,7 +79,7 @@ impl WalletManager {
         account_id: u32,
         chain_code: String,
     ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
-        self.account_service()?.current_chain_address(address, account_id, &chain_code).await
+        AccountService::new(self.ctx).current_chain_address(address, account_id, &chain_code).await
     }
 
     pub async fn current_account(
@@ -90,7 +87,7 @@ impl WalletManager {
         wallet_address: String,
         account_id: i32,
     ) -> ReturnType<Vec<CurrentAccountInfo>> {
-        self.account_service()?.current_accounts(&wallet_address, account_id).await
+        AccountService::new(self.ctx).current_accounts(&wallet_address, account_id).await
     }
 
     // /// Recovers a subkey associated with a given wallet name and address.
@@ -123,11 +120,13 @@ impl WalletManager {
         wallet_address: &str,
         account_id: u32,
     ) -> ReturnType<GetAccountPrivateKeyRes> {
-        self.account_service()?.get_account_private_key(password, wallet_address, account_id).await
+        AccountService::new(self.ctx)
+            .get_account_private_key(password, wallet_address, account_id)
+            .await
     }
 
     pub async fn set_all_password(&self, old_password: &str, new_password: &str) -> ReturnType<()> {
-        self.account_service()?.set_all_password(old_password, new_password).await
+        AccountService::new(self.ctx).set_all_password(old_password, new_password).await
     }
 
     pub async fn physical_delete_account(
@@ -136,7 +135,9 @@ impl WalletManager {
         account_id: u32,
         password: &str,
     ) -> ReturnType<()> {
-        self.account_service()?.physical_delete_account(wallet_address, account_id, password).await
+        AccountService::new(self.ctx)
+            .physical_delete_account(wallet_address, account_id, password)
+            .await
     }
 }
 
