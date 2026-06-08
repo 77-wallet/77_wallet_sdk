@@ -1,5 +1,8 @@
 use anyhow::Result;
-use wallet_api::testkit::mqtt::{api_wallet_pool, core_pool};
+use wallet_api::{
+    Context,
+    testkit::mqtt::{api_wallet_pool, core_pool},
+};
 use wallet_database::{
     dao::{
         assets::{AssetsDao, CreateAssetsVo},
@@ -17,8 +20,8 @@ use wallet_database::{
 
 use super::fixtures::AcctChangeFixture;
 
-pub(crate) async fn ensure_sol_chain_active() -> Result<()> {
-    let pool = api_wallet_pool()?;
+pub(crate) async fn ensure_sol_chain_active(ctx: &'static Context) -> Result<()> {
+    let pool = api_wallet_pool(ctx)?;
     ApiChainRepo::add(
         &pool,
         ApiChainCreateVo::new(
@@ -33,8 +36,8 @@ pub(crate) async fn ensure_sol_chain_active() -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn ensure_eth_chain_active() -> Result<()> {
-    let pool = core_pool()?;
+pub(crate) async fn ensure_eth_chain_active(ctx: &'static Context) -> Result<()> {
+    let pool = core_pool(ctx)?;
     let chain = ChainCreateVo::new(
         "Ethereum",
         "eth",
@@ -46,8 +49,11 @@ pub(crate) async fn ensure_eth_chain_active() -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn seed_api_wallet_sol_usdc_asset(fixture: &AcctChangeFixture) -> Result<()> {
-    let api_pool = api_wallet_pool()?;
+pub(crate) async fn seed_api_wallet_sol_usdc_asset(
+    ctx: &'static Context,
+    fixture: &AcctChangeFixture,
+) -> Result<()> {
+    let api_pool = api_wallet_pool(ctx)?;
     let now = wallet_utils::time::now();
 
     let coin = ApiCoinData::new(
@@ -79,8 +85,11 @@ pub(crate) async fn seed_api_wallet_sol_usdc_asset(fixture: &AcctChangeFixture) 
     Ok(())
 }
 
-pub(crate) async fn seed_normal_eth_usdt_asset(fixture: &AcctChangeFixture) -> Result<()> {
-    let pool = core_pool()?;
+pub(crate) async fn seed_normal_eth_usdt_asset(
+    ctx: &'static Context,
+    fixture: &AcctChangeFixture,
+) -> Result<()> {
+    let pool = core_pool(ctx)?;
     let asset = CreateAssetsVo::new(
         AssetsId::new(&fixture.address, &fixture.chain_code, Some(fixture.token.clone()).into()),
         "USDT",
@@ -104,8 +113,11 @@ pub(crate) async fn seed_normal_eth_usdt_asset(fixture: &AcctChangeFixture) -> R
     Ok(())
 }
 
-pub(crate) async fn seed_normal_eth_native_asset(fixture: &AcctChangeFixture) -> Result<()> {
-    let pool = core_pool()?;
+pub(crate) async fn seed_normal_eth_native_asset(
+    ctx: &'static Context,
+    fixture: &AcctChangeFixture,
+) -> Result<()> {
+    let pool = core_pool(ctx)?;
     let asset = CreateAssetsVo::new(
         AssetsId::new(&fixture.address, &fixture.chain_code, Some(String::new()).into()),
         "ETH",
@@ -130,10 +142,11 @@ pub(crate) async fn seed_normal_eth_native_asset(fixture: &AcctChangeFixture) ->
 }
 
 pub(crate) async fn assert_api_wallet_asset_symbol(
+    ctx: &'static Context,
     fixture: &AcctChangeFixture,
     expected_symbol: &str,
 ) -> Result<()> {
-    let api_pool = api_wallet_pool()?;
+    let api_pool = api_wallet_pool(ctx)?;
     let saved = ApiAssetsRepo::find_by_id(
         &api_pool,
         &AssetsId::new(&fixture.address, &fixture.chain_code, Some(fixture.token.clone()).into()),
@@ -146,10 +159,11 @@ pub(crate) async fn assert_api_wallet_asset_symbol(
 }
 
 pub(crate) async fn assert_normal_wallet_asset_symbol(
+    ctx: &'static Context,
     fixture: &AcctChangeFixture,
     expected_symbol: &str,
 ) -> Result<()> {
-    let pool = core_pool()?;
+    let pool = core_pool(ctx)?;
     let saved = AssetsDao::get_by_addr_token(
         pool.as_ref(),
         &fixture.chain_code,

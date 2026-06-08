@@ -1,9 +1,9 @@
 use anyhow::Result;
-use wallet_api::testkit::mqtt::task_pool;
+use wallet_api::{Context, testkit::mqtt::task_pool};
 use wallet_database::repositories::task_queue::TaskQueueRepo;
 
-pub(crate) async fn wait_task_done(msg_id: &str) -> Result<u8> {
-    let task_pool = task_pool()?;
+pub(crate) async fn wait_task_done(ctx: &'static Context, msg_id: &str) -> Result<u8> {
+    let task_pool = task_pool(ctx)?;
     for _ in 0..80 {
         if let Some(task) = TaskQueueRepo::task_detail(&task_pool, msg_id).await? {
             if task.status == 2 || task.status == 3 {

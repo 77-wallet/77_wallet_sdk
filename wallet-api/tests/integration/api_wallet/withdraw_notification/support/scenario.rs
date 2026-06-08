@@ -10,7 +10,7 @@ use wallet_api::{
     },
 };
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool,
     entities::{
         api_wallet::ApiWalletType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -19,7 +19,7 @@ use wallet_database::{
 
 use crate::harness::{
     AssertRole, CountRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, WorkerTestEnv,
-    ensure_worker_env, open_api_wallet_pool,
+    ensure_worker_env,
 };
 
 use super::{
@@ -37,7 +37,6 @@ use super::{
 pub(crate) struct WithdrawNotificationScenario {
     env: &'static WorkerTestEnv,
     tx_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
 }
 
 impl WithdrawNotificationScenario {
@@ -46,9 +45,8 @@ impl WithdrawNotificationScenario {
         env.recorder.reset();
 
         let tx_pool = open_transaction_pool(&env.db_dir).await;
-        let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-        Self { env, tx_pool, core_pool }
+        Self { env, tx_pool }
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -206,12 +204,7 @@ impl WithdrawNotificationWhen for WhenRole<'_, WithdrawNotificationScenario> {
     }
 
     async fn tx_ack_is_sent(&self, order: &WithdrawOrderFixture) -> Result<(), ServiceError> {
-        send_withdraw_tx_ack_via_worker(
-            self.scenario().tx_pool.clone(),
-            self.scenario().core_pool.clone(),
-            &order.trade_no,
-        )
-        .await
+        send_withdraw_tx_ack_via_worker(self.scenario().env.ctx(), &order.trade_no).await
     }
 }
 
@@ -323,7 +316,7 @@ impl WithdrawNotificationLoad for LoadRole<'_, WithdrawNotificationScenario> {
     }
 
     async fn withdraw_intent_labels(&self, trade_no: &str) -> Vec<String> {
-        scan_withdraw_intent_labels_for_trade_once(self.scenario().tx_pool.clone(), trade_no)
+        scan_withdraw_intent_labels_for_trade_once(self.scenario().env.ctx(), trade_no)
             .await
             .expect("scan withdraw intents")
     }

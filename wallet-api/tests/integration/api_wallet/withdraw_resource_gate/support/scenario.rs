@@ -4,7 +4,7 @@ use wallet_api::testkit::withdraw::{
     upload_resource_tx_exec_receipt_via_worker as upload_withdraw_resource_tx_exec_receipt_via_worker,
 };
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool,
     entities::{
         api_resource_gate::ApiResourceGateResult, api_trade_type::ApiTradeType,
         api_withdraw::ApiWithdrawEntity,
@@ -14,7 +14,7 @@ use wallet_database::{
 
 use crate::harness::{
     AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, ensure_worker_env,
-    open_api_wallet_pool, worker::WorkerTestEnv,
+    worker::WorkerTestEnv,
 };
 
 use super::{
@@ -29,7 +29,6 @@ use super::{
 pub(crate) struct WithdrawResourceGateScenario {
     env: &'static WorkerTestEnv,
     tx_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
 }
 
 impl WithdrawResourceGateScenario {
@@ -38,9 +37,8 @@ impl WithdrawResourceGateScenario {
         env.recorder.reset();
 
         let tx_pool = open_transaction_pool(env).await;
-        let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-        Self { env, tx_pool, core_pool }
+        Self { env, tx_pool }
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -192,8 +190,7 @@ pub(crate) trait WithdrawResourceGateWhen {
 impl WithdrawResourceGateWhen for WhenRole<'_, WithdrawResourceGateScenario> {
     async fn resource_result_ack_is_sent(&self, fixture: &WithdrawResourceGateFixture) {
         send_withdraw_resource_result_ack_via_worker(
-            self.scenario().tx_pool.clone(),
-            self.scenario().core_pool.clone(),
+            self.scenario().env.ctx(),
             &fixture.resource_trade_no,
         )
         .await
@@ -202,8 +199,7 @@ impl WithdrawResourceGateWhen for WhenRole<'_, WithdrawResourceGateScenario> {
 
     async fn resource_receipt_upload_is_sent(&self, fixture: &WithdrawResourceGateFixture) {
         upload_withdraw_resource_tx_exec_receipt_via_worker(
-            self.scenario().tx_pool.clone(),
-            self.scenario().core_pool.clone(),
+            self.scenario().env.ctx(),
             &fixture.resource_trade_no,
         )
         .await
@@ -319,7 +315,7 @@ impl WithdrawResourceGateLoad for LoadRole<'_, WithdrawResourceGateScenario> {
     }
 
     async fn withdraw_intent_labels(&self, trade_no: &str) -> Vec<String> {
-        scan_withdraw_intent_labels_for_trade_once(self.scenario().tx_pool.clone(), trade_no)
+        scan_withdraw_intent_labels_for_trade_once(self.scenario().env.ctx(), trade_no)
             .await
             .expect("scan withdraw labels")
     }
