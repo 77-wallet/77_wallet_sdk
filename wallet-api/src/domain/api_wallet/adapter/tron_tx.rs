@@ -58,6 +58,37 @@ impl TronTx {
         transaction_fee <= 0 || balance >= transaction_fee
     }
 
+    fn log_tron_token_resource_estimate(owner_address: &str, consumer: &ResourceConsumer) {
+        let energy = consumer.energy.as_ref();
+        let energy_limit = energy.map_or(0, |item| item.limit);
+        let energy_required = energy.map_or(0, |item| item.consumer);
+        let energy_price = energy.map_or(0, |item| item.price);
+        let energy_shortfall = consumer.need_extra_energy();
+        let energy_fee_sun = energy.map_or(0, |item| item.fee());
+        let bandwidth_shortfall = consumer.need_extra_bandwidth();
+        let bandwidth_fee_sun = consumer.bandwidth.fee();
+
+        tracing::info!(
+            owner_address,
+            transaction_fee_sun = consumer.transaction_fee_i64(),
+            transaction_fee_trx = %consumer.transaction_fee(),
+            energy_limit,
+            energy_required,
+            energy_price,
+            energy_shortfall,
+            energy_fee_sun,
+            energy_covered = consumer.act_energy(),
+            bandwidth_limit = consumer.bandwidth.limit,
+            bandwidth_required = consumer.bandwidth.consumer,
+            bandwidth_price = consumer.bandwidth.price,
+            bandwidth_shortfall,
+            bandwidth_fee_sun,
+            bandwidth_covered = consumer.act_bandwidth(),
+            extra_fee_sun = consumer.extra_fee,
+            "transfer ---------------- 12.2"
+        );
+    }
+
     fn is_empty_tx_query_payload(err_msg: &str) -> bool {
         err_msg.contains("missing field `Error`")
             || err_msg.contains("value = {}")
@@ -317,23 +348,24 @@ impl Tx for TronTx {
             }
             tracing::info!("transfer ---------------- 12");
 
-            let account = provider.account_info(&transfer_params.owner_address).await?;
-            tracing::info!("transfer ---------------- 13");
-
             // constant contract to fee
             let constant = transfer_params.constant_contract(self.chain.get_provider()).await?;
+            tracing::info!("transfer ---------------- 12.1");
             let consumer =
                 provider.contract_fee(constant, 1, &transfer_params.owner_address).await?;
 
             // TRON token transfer can be fully covered by delegated resources.
             // A zero-TRX sender is valid when the simulated fee is already zero.
-            if !Self::has_enough_main_balance_for_token_fee(
-                account.balance,
-                consumer.transaction_fee_i64(),
-            ) {
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
-                ))?;
+            let transaction_fee = consumer.transaction_fee_i64();
+            Self::log_tron_token_resource_estimate(&transfer_params.owner_address, &consumer);
+            if transaction_fee > 0 {
+                let account = provider.account_info(&transfer_params.owner_address).await?;
+                tracing::info!("transfer ---------------- 13");
+                if !Self::has_enough_main_balance_for_token_fee(account.balance, transaction_fee) {
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                    ))?;
+                }
             }
 
             // 需要实际消耗的资源
@@ -341,9 +373,12 @@ impl Tx for TronTx {
             let energy_used = consumer.act_energy() as u64;
 
             let fee = consumer.transaction_fee();
-            transfer_params.set_fee_limit(consumer);
-
             let bill_consumer = BillResourceConsume::new_tron(net_used, energy_used);
+            // fee_limit controls the contract invocation energy cap. Even when
+            // delegated resources make transaction_fee zero, TRC20 transfers
+            // still need a high enough fee_limit or the chain can fail with a
+            // tiny curInvokeEnergyLimit.
+            transfer_params.set_fee_limit(consumer);
             let tx_hash = self.chain.exec_transaction(transfer_params, private_key).await?;
 
             let mut resp = TransferResp::new(tx_hash, fee);
@@ -454,24 +489,22 @@ impl Tx for TronTx {
             }
             tracing::info!("transfer ---------------- 12");
 
-            let account = provider.account_info(&transfer_params.owner_address).await?;
-            // 主币是否有钱(可能账号未被初始化)
-            if account.balance <= 0 {
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
-                ))?;
-            }
-            tracing::info!("transfer ---------------- 13");
-
             // constant contract to fee
             let constant = transfer_params.constant_contract(self.chain.get_provider()).await?;
+            tracing::info!("transfer ---------------- 12.1");
             let consumer =
                 provider.contract_fee(constant, 1, &transfer_params.owner_address).await?;
 
-            if account.balance < consumer.transaction_fee_i64() {
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
-                ))?;
+            let transaction_fee = consumer.transaction_fee_i64();
+            Self::log_tron_token_resource_estimate(&transfer_params.owner_address, &consumer);
+            if transaction_fee > 0 {
+                let account = provider.account_info(&transfer_params.owner_address).await?;
+                tracing::info!("transfer ---------------- 13");
+                if !Self::has_enough_main_balance_for_token_fee(account.balance, transaction_fee) {
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                    ))?;
+                }
             }
 
             // 需要实际消耗的资源
@@ -479,10 +512,14 @@ impl Tx for TronTx {
             let energy_used = consumer.act_energy() as u64;
 
             let fee = consumer.transaction_fee();
-            transfer_params.set_fee_limit(consumer);
-
             let bill_consumer = BillResourceConsume::new_tron(net_used, energy_used);
+            // fee_limit controls the contract invocation energy cap. Even when
+            // delegated resources make transaction_fee zero, TRC20 transfers
+            // still need a high enough fee_limit or the chain can fail with a
+            // tiny curInvokeEnergyLimit.
+            transfer_params.set_fee_limit(consumer);
             let mut raw = transfer_params.build_raw_transaction(&self.chain.get_provider()).await?;
+            tracing::info!("transfer ---------------- 14");
 
             let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
             raw.signature.push(sign);

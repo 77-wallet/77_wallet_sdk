@@ -1429,6 +1429,16 @@ impl ShadowCollectWorker {
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_recover_inner(&trade_no).await {
             error!(trade_no = %trade_no, error = %err, source = "shadow_worker_v2", "Recover inner failed, handling error");
+            if Self::is_recovered_tx_terminal_chain_failure(&err) {
+                info!(
+                    trade_no = %trade_no,
+                    error = %err,
+                    source = "shadow_worker_v2",
+                    "Recovered tx has confirmed on-chain failure; marking collect failed"
+                );
+                self.handle_collect_tx_failed(&trade_no, err).await?;
+                return Ok(());
+            }
             // 注意：recover 失败不写失败事实
             // recover 失败 = 不知道链上发生了什么，而不是"交易失败"
             // 因此不调用 handle_collect_tx_failed，让 Scanner 在下一次扫描时重新尝试
@@ -3132,6 +3142,10 @@ impl ShadowCollectWorker {
                 Err(err)
             }
         }
+    }
+
+    fn is_recovered_tx_terminal_chain_failure(err: &ServiceError) -> bool {
+        format!("{err}").contains("broadcasted tx failed")
     }
 
     /// 处理归集交易失败

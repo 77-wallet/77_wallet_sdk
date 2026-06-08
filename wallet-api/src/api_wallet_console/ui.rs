@@ -223,7 +223,7 @@ fn draw_observe_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                     }
                     if ui.button("Copy addresses").clicked() {
                         ui.output_mut(|output| {
-                            output.copied_text = app.account_addresses_only.clone()
+                            output.copied_text = limited_account_addresses_text(app)
                         });
                     }
                 });
@@ -490,14 +490,24 @@ fn draw_subwallet_comma_copy_controls(app: &mut ApiWalletConsoleApp, ui: &mut eg
         }
     });
     ui.label(
-        RichText::new("Copies loaded subwallet account addresses as address1,address2,address3")
+        RichText::new(
+            "from/count also limit Copy addresses; comma copy outputs address1,address2,address3",
+        )
             .color(Color32::from_rgb(105, 118, 132)),
     );
 }
 
+fn copy_start_account_id(app: &ApiWalletConsoleApp) -> u32 {
+    app.comma_copy_start_account_id.trim().parse::<u32>().unwrap_or(1)
+}
+
+fn copy_count(app: &ApiWalletConsoleApp) -> usize {
+    app.comma_copy_count.trim().parse::<usize>().unwrap_or(10)
+}
+
 fn subwallet_comma_addresses(app: &ApiWalletConsoleApp) -> String {
-    let start = app.comma_copy_start_account_id.trim().parse::<u32>().unwrap_or(1);
-    let count = app.comma_copy_count.trim().parse::<usize>().unwrap_or(10);
+    let start = copy_start_account_id(app);
+    let count = copy_count(app);
     let Some(subwallet) = app.api_wallet_rows.iter().find(|wallet| wallet.role == "subwallet")
     else {
         return String::new();
@@ -510,6 +520,37 @@ fn subwallet_comma_addresses(app: &ApiWalletConsoleApp) -> String {
         .collect::<Vec<_>>();
     rows.sort_by_key(|row| row.account_id);
     rows.into_iter().take(count).map(|row| row.address.as_str()).collect::<Vec<_>>().join(",")
+}
+
+fn limited_account_addresses_text(app: &ApiWalletConsoleApp) -> String {
+    let start = copy_start_account_id(app);
+    let count = copy_count(app);
+    let mut rows = app
+        .account_address_rows
+        .iter()
+        .filter(|row| row.account_id >= start)
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        left.wallet_address
+            .cmp(&right.wallet_address)
+            .then(left.account_id.cmp(&right.account_id))
+    });
+    rows.into_iter().take(count).map(|row| row.address.as_str()).collect::<Vec<_>>().join("\n")
+}
+
+fn limited_account_addresses_for_wallet_text(
+    app: &ApiWalletConsoleApp,
+    wallet_address: &str,
+) -> String {
+    let start = copy_start_account_id(app);
+    let count = copy_count(app);
+    let mut rows = app
+        .account_address_rows
+        .iter()
+        .filter(|row| row.wallet_address == wallet_address && row.account_id >= start)
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|row| row.account_id);
+    rows.into_iter().take(count).map(|row| row.address.as_str()).collect::<Vec<_>>().join("\n")
 }
 
 fn draw_withdraw_order_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
@@ -1002,11 +1043,8 @@ fn draw_account_address_table_for_wallet(
                 }
                 if ui.button("Copy addresses").clicked() {
                     ui.output_mut(|output| {
-                        output.copied_text = rows
-                            .iter()
-                            .map(|row| row.address.as_str())
-                            .collect::<Vec<_>>()
-                            .join("\n")
+                        output.copied_text =
+                            limited_account_addresses_for_wallet_text(app, wallet.address.as_str())
                     });
                 }
             });
