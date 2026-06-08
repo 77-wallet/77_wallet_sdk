@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use tokio::sync::mpsc;
-use wallet_api::infrastructure::api_trans::{
-    AddressLockManager, ShadowAdvancer, ShadowCollectWorker,
+use wallet_api::{
+    Context,
+    infrastructure::api_trans::{AddressLockManager, ShadowAdvancer, ShadowCollectWorker},
 };
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
@@ -34,14 +35,11 @@ pub(crate) async fn ensure_sol_main_coin(pool: &ApiWalletDbPool) {
     ApiCoinRepo::upsert_multi_coin(pool, vec![coin]).await.expect("seed sol main coin");
 }
 
-pub(crate) fn build_shadow_collect_worker_from_pools(
-    collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
-) -> ShadowCollectWorker {
+pub(crate) fn build_shadow_collect_worker_from_pools(ctx: &'static Context) -> ShadowCollectWorker {
     let (intent_tx, _intent_rx) = mpsc::channel(1);
-    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, None));
+    let advancer = Arc::new(ShadowAdvancer::new(ctx, intent_tx, None));
 
-    ShadowCollectWorker::new(collect_pool, core_pool, Arc::new(AddressLockManager::new()), advancer)
+    ShadowCollectWorker::new(ctx, Arc::new(AddressLockManager::new()), advancer)
 }
 
 pub(crate) async fn seed_tron_collect(

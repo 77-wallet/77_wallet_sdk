@@ -13,7 +13,7 @@ pub(crate) struct CollectRecoveryFixture {
 impl CollectRecoveryFixture {
     pub(crate) fn blockhash_rebuild() -> Self {
         Self {
-            trade_no: "T_collect_blockhash_rebuild_refresh".to_string(),
+            trade_no: format!("T_collect_blockhash_rebuild_refresh_{}", next_unique_id()),
             tx_hash: "old-hash".to_string(),
         }
     }
