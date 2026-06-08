@@ -131,7 +131,7 @@ impl TransactionService {
             original_balance: balance.to_string(),
         };
 
-        ChainTransDomain::update_balance_with_ctx(
+        ChainTransDomain::update_balance(
             self.ctx,
             address,
             chain_code,
@@ -175,7 +175,12 @@ impl TransactionService {
                 .await?;
         let backend_api = self.ctx.get_global_backend_api();
         let fee = adapter
-            .estimate_fee_with_ctx(params, main_coin.symbol.as_str(), backend_api.as_ref())
+            .estimate_fee_with_ctx(
+                self.ctx,
+                params,
+                main_coin.symbol.as_str(),
+                backend_api.as_ref(),
+            )
             .await?;
 
         let fee_resp =
@@ -194,7 +199,7 @@ impl TransactionService {
         )
         .await?;
 
-        let private_key = ChainTransDomain::get_key_with_ctx(
+        let private_key = ChainTransDomain::get_key(
             self.ctx,
             &params.base.from,
             &params.base.chain_code,
@@ -204,8 +209,7 @@ impl TransactionService {
         .await?;
 
         let tx_hash =
-            ChainTransDomain::transfer_with_ctx(self.ctx, params, bill_kind, &adapter, private_key)
-                .await?;
+            ChainTransDomain::transfer(self.ctx, params, bill_kind, &adapter, private_key).await?;
         Ok(TransactionResult { tx_hash })
     }
 

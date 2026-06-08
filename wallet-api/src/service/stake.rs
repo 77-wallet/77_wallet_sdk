@@ -88,7 +88,7 @@ impl StackService {
         password: &str,
     ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::error::service::ServiceError>
     {
-        ChainTransDomain::get_key_with_ctx(self.ctx, from, chain_code::TRON, password, signer).await
+        ChainTransDomain::get_key(self.ctx, from, chain_code::TRON, password, signer).await
     }
 
     async fn process_transaction<T, E>(
@@ -110,7 +110,7 @@ impl StackService {
             bill_kind,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         let key = self.get_key(from, signer, password).await?;
 
@@ -133,7 +133,7 @@ impl StackService {
             bill_kind,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         let hash = self.chain.exec_transaction_v1(resp, key).await?;
 
@@ -186,7 +186,7 @@ impl StackService {
                     endpoint::UPLOAD_PERMISSION_TRANS,
                     &params,
                 )?))
-                .send()
+                .send_with_ctx(self.ctx)
                 .await;
             entity.signer = users;
         }
@@ -214,7 +214,7 @@ impl StackService {
                 (i + 1) as i64,
                 Process::Building,
             ));
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
             let res = item.build_raw_transaction(&self.chain.provider).await?;
 
@@ -261,7 +261,7 @@ impl StackService {
                 (i + 1) as i64,
                 Process::Broadcast,
             ));
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
             let result = self.chain.exec_transaction_v1(item.raw_data, key.clone()).await;
             match result {
@@ -591,7 +591,7 @@ impl StackService {
 
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_ctx(
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
             self.ctx,
             currency,
             "tron",
@@ -912,7 +912,7 @@ impl StackService {
         let currency = currency.currency();
 
         // 当前的币价
-        let token_price = TokenCurrencyGetter::get_currency_by_token_key_with_ctx(
+        let token_price = TokenCurrencyGetter::get_currency_by_token_key(
             self.ctx,
             currency,
             chain_code::TRON,

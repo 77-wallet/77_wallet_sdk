@@ -139,7 +139,7 @@ impl BillService {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token = domain::coin::TokenCurrencyGetter::get_currency_by_token_key_with_ctx(
+        let token = domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
             self.ctx,
             currency,
             &chain_code,
