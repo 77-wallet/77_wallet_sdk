@@ -551,18 +551,13 @@ async fn record_fact(
     _job_id: &str,
     batch_id: &str,
     job_kind: JobKind,
-) {
+) -> Result<(), crate::error::service::ServiceError> {
     match job_kind {
         JobKind::Notify => {
             // 对于Notify任务，记录expand_complete_at事实字段
-            if let Ok(pool) = ctx.api_wallet_pool() {
-                // 记录事实：expand_complete已成功执行
-                if let Err(e) =
-                    ExpandBatchRepo::update_expand_complete_at_if_null(&pool, batch_id).await
-                {
-                    tracing::error!(error = %e, batch_id = %batch_id, "failed to update expand_complete_at");
-                }
-            }
+            let pool = ctx.api_wallet_pool()?;
+            // 记录事实：expand_complete已成功执行
+            ExpandBatchRepo::update_expand_complete_at_if_null(&pool, batch_id).await?;
         }
         JobKind::Create | JobKind::Init => {
             // 对于Create/Init任务，不直接写local_complete_at事实
@@ -570,6 +565,7 @@ async fn record_fact(
             // 这保证了事实写入的单一责任，便于调试和维护
         }
     }
+    Ok(())
 }
 
 /// 发送HintScan事件通知Scanner检查状态
@@ -602,7 +598,9 @@ async fn handle_execution_result(
                     );
 
                     // 1. 记录事实
-                    record_fact(ctx, job_id, batch_id, job_kind).await;
+                    if let Err(error) = record_fact(ctx, job_id, batch_id, job_kind).await {
+                        tracing::error!(%error, batch_id = %batch_id, "failed to record expand address fact");
+                    }
 
                     // 2. 仅为Notify任务发送HintScan事件（只有Notify会立即写入DB事实）
                     if let JobKind::Notify = job_kind {

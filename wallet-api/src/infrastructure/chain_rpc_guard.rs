@@ -1,3 +1,4 @@
+use crate::context::Context;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::{
@@ -150,8 +151,7 @@ fn is_guarded_host(host: &str) -> bool {
     GUARDED_HOSTS.contains(host)
 }
 
-async fn fetch_chain_rpc_host(chain_code: &str) -> Option<String> {
-    let ctx = crate::context::CONTEXT.get()?;
+async fn fetch_chain_rpc_host(chain_code: &str, ctx: &Context) -> Option<String> {
     let core_pool = ctx.core_pool().ok()?;
     let api_pool = ctx.api_wallet_pool().ok()?;
 
@@ -162,7 +162,7 @@ async fn fetch_chain_rpc_host(chain_code: &str) -> Option<String> {
     host_from_rpc_url(&chain_with_node.rpc_url)
 }
 
-async fn guarded_host_for_chain_code(chain_code: &str) -> Option<String> {
+async fn guarded_host_for_chain_code(chain_code: &str, ctx: &Context) -> Option<String> {
     let now = RpcCircuitBreaker::now_ms();
     if let Some(entry) = CHAIN_HOST_CACHE.get(chain_code) {
         if now.saturating_sub(entry.fetched_at_ms) <= CHAIN_HOST_CACHE_TTL.as_millis() as u64 {
@@ -170,7 +170,7 @@ async fn guarded_host_for_chain_code(chain_code: &str) -> Option<String> {
         }
     }
 
-    let host = fetch_chain_rpc_host(chain_code).await;
+    let host = fetch_chain_rpc_host(chain_code, ctx).await;
     CHAIN_HOST_CACHE.insert(
         chain_code.to_string(),
         ChainHostCacheEntry { host: host.clone(), fetched_at_ms: now },
@@ -178,8 +178,11 @@ async fn guarded_host_for_chain_code(chain_code: &str) -> Option<String> {
     host.filter(|h| is_guarded_host(h))
 }
 
-pub async fn breaker_open_for_chain_code(chain_code: &str) -> Option<(String, Duration)> {
-    let host = guarded_host_for_chain_code(chain_code).await?;
+pub async fn breaker_open_for_chain_code_with_ctx(
+    ctx: &Context,
+    chain_code: &str,
+) -> Option<(String, Duration)> {
+    let host = guarded_host_for_chain_code(chain_code, ctx).await?;
     let breaker = breaker_for_host(&host);
     if breaker.is_open() {
         let remaining = breaker.remaining().unwrap_or(Duration::from_secs(0));
@@ -189,8 +192,11 @@ pub async fn breaker_open_for_chain_code(chain_code: &str) -> Option<(String, Du
     }
 }
 
-pub async fn acquire_if_guarded(chain_code: &str) -> Option<OwnedSemaphorePermit> {
-    let _host = guarded_host_for_chain_code(chain_code).await?;
+pub async fn acquire_if_guarded_with_ctx(
+    ctx: &Context,
+    chain_code: &str,
+) -> Option<OwnedSemaphorePermit> {
+    let _host = guarded_host_for_chain_code(chain_code, ctx).await?;
     let sem = shared_chain_rpc_semaphore();
     match sem.acquire_owned().await {
         Ok(p) => Some(p),
@@ -201,8 +207,8 @@ pub async fn acquire_if_guarded(chain_code: &str) -> Option<OwnedSemaphorePermit
     }
 }
 
-pub async fn record_success_for_chain_code(chain_code: &str) {
-    let Some(host) = guarded_host_for_chain_code(chain_code).await else { return };
+pub async fn record_success_for_chain_code_with_ctx(ctx: &Context, chain_code: &str) {
+    let Some(host) = guarded_host_for_chain_code(chain_code, ctx).await else { return };
     breaker_for_host(&host).record_success();
 }
 

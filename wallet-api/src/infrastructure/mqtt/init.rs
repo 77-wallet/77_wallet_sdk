@@ -42,7 +42,8 @@ impl ProcessMqttHandle {
         let (client, event_loop) = MqttClientBuilder::new(&url, user_property.clone()).build()?;
         let client = Arc::new(client);
 
-        let mut ev = ProcessMqttEventLoop::new(user_property.clone(), shutdown_rx1, tx, event_loop);
+        let mut ev =
+            ProcessMqttEventLoop::new(user_property.clone(), shutdown_rx1, tx, event_loop, ctx);
         let ev_handle = tokio::spawn(async move { ev.handle_eventloop().await });
         let mut e = ProcessMqttEvent::new(user_property, shutdown_rx2, rx, client.clone(), ctx);
         let e_handle = tokio::spawn(async move { e.exec_event().await });
@@ -110,6 +111,7 @@ struct ProcessMqttEventLoop {
     shutdown_rx: broadcast::Receiver<()>,
     tx: UnboundedSender<rumqttc::v5::Event>,
     event_loop: EventLoop,
+    ctx: &'static crate::context::Context,
 }
 
 impl ProcessMqttEventLoop {
@@ -118,8 +120,9 @@ impl ProcessMqttEventLoop {
         shutdown_rx: broadcast::Receiver<()>,
         tx: UnboundedSender<rumqttc::v5::Event>,
         event_loop: EventLoop,
+        ctx: &'static crate::context::Context,
     ) -> Self {
-        Self { user_property, shutdown_rx, tx, event_loop }
+        Self { user_property, shutdown_rx, tx, event_loop, ctx }
     }
 
     async fn handle_eventloop(&mut self) {
@@ -144,7 +147,7 @@ impl ProcessMqttEventLoop {
                             let data = NotifyEvent::ConnectionError(ConnectionErrorFrontend {
                                 message: err.to_string(),
                             });
-                            match FrontendNotifyEvent::new(data).send().await {
+                            match FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await {
                                 Ok(_) => tracing::debug!("[mqtt] sender send ok"),
                                 Err(e) => tracing::error!("[mqtt] sender send error: {e}"),
                             };
@@ -230,13 +233,13 @@ impl ProcessMqttEvent {
             }
             Packet::PingResp(_) => {
                 let data = NotifyEvent::KeepAlive;
-                if let Err(e) = FrontendNotifyEvent::new(data).send().await {
+                if let Err(e) = FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await {
                     tracing::error!("[exec_incoming] send error: {e}");
                 }
             }
             Packet::Disconnect(_) => {
                 let data = NotifyEvent::MqttDisconnected;
-                FrontendNotifyEvent::new(data).send().await?;
+                FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
             }
             _ => {}
         }

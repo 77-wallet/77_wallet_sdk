@@ -1,7 +1,6 @@
 // planner.rs
-use wallet_database::{
-    ApiWalletDbPool,
-    entities::{address_query_state::AddressQueryStatus, expand_batch::ExpandBatchStatus},
+use wallet_database::entities::{
+    address_query_state::AddressQueryStatus, expand_batch::ExpandBatchStatus,
 };
 
 use crate::{
@@ -45,13 +44,13 @@ use wallet_database::repositories::api_wallet::{
 /// - 事件驱动提高响应性，定时兜底保证可靠性
 #[derive(Clone)]
 pub struct ExpandPlanner {
-    core_pool: ApiWalletDbPool,
+    ctx: &'static crate::context::Context,
     event_tx: Option<ExpandEventSender>,
 }
 
 impl ExpandPlanner {
-    pub fn new(core_pool: ApiWalletDbPool, event_tx: Option<ExpandEventSender>) -> Self {
-        Self { core_pool, event_tx }
+    pub fn new(ctx: &'static crate::context::Context, event_tx: Option<ExpandEventSender>) -> Self {
+        Self { ctx, event_tx }
     }
 
     /// 🔒 显式门控函数：can_plan - 明确真值表，不可被绕过
@@ -122,9 +121,10 @@ impl ExpandPlanner {
     pub async fn plan_all_batches(&self) -> Result<(), ServiceError> {
         tracing::debug!("ExpandPlanner: planning all batches");
 
+        let pool = self.ctx.api_wallet_pool()?;
         // 获取所有Pending状态的批次
         let pending_batches =
-            ExpandBatchRepo::get_by_status(&self.core_pool, ExpandBatchStatus::Pending).await?;
+            ExpandBatchRepo::get_by_status(&pool, ExpandBatchStatus::Pending).await?;
 
         for batch in pending_batches {
             tracing::debug!(batch_id = %batch.batch_id, status = ?batch.status, "ExpandPlanner: processing pending batch");
@@ -141,8 +141,9 @@ impl ExpandPlanner {
     pub async fn plan_batch(&self, batch_id: &str) -> Result<(), ServiceError> {
         tracing::info!(batch_id = %batch_id, "ExpandPlanner: planning batch items");
 
+        let pool = self.ctx.api_wallet_pool()?;
         // 获取批次信息，确保状态为Pending
-        let batch = ExpandBatchRepo::get_batch(&self.core_pool, batch_id).await?;
+        let batch = ExpandBatchRepo::get_batch(&pool, batch_id).await?;
 
         if let Some(batch) = batch {
             // 检查Batch状态是否为Pending
@@ -154,12 +155,9 @@ impl ExpandPlanner {
             // 检查地址查询是否完成
             // 🔒 核心约束：扩容边界冻结必须晚于地址查询完成
             // 🔒 含义：Batch可以提前创建，但不能提前Running
-            let query_state = AddressQueryStateRepo::get_by_uid_and_chain(
-                &self.core_pool,
-                &batch.uid,
-                &batch.chain_code,
-            )
-            .await?;
+            let query_state =
+                AddressQueryStateRepo::get_by_uid_and_chain(&pool, &batch.uid, &batch.chain_code)
+                    .await?;
 
             // 🔒 显式门控函数：can_plan - 明确真值表，不可被绕过
             // 🔒 这是把"设计真值表"变成"代码护城河"
@@ -172,7 +170,7 @@ impl ExpandPlanner {
             // 使用CAS将Batch状态从Pending转为Running，确保只有一个Planner实例能成功
             // 🔒 核心语义：Planner是唯一不可逆决策者，只有赢CAS的实例才能看到世界
             // 🔒 顺序重要性：CAS之前不能读世界，否则会破坏冻结点语义
-            let won = ExpandBatchRepo::mark_running_if_pending(&self.core_pool, batch_id).await?;
+            let won = ExpandBatchRepo::mark_running_if_pending(&pool, batch_id).await?;
             if !won {
                 tracing::info!(batch_id = %batch_id, "ExpandPlanner: batch already processed by another instance");
                 return Ok(());
@@ -180,14 +178,14 @@ impl ExpandPlanner {
 
             // 🔒 补充修订A：CAS成功后立刻再读一次Batch，确保状态正确
             // 🔒 这是抗未来修改的重要保障，防止CAS后Batch状态被意外修改
-            let updated_batch = ExpandBatchRepo::get_batch(&self.core_pool, batch_id).await?;
+            let updated_batch = ExpandBatchRepo::get_batch(&pool, batch_id).await?;
             if let Some(updated_batch) = updated_batch {
                 // 🔒 系统级不变量：Planner必须只创建一次items，batch_item_count必须为0
                 // 🔒 这是invariant violation，不是业务分支
                 // 🔒 确保在release模式下也能检测到invariant violation
                 // 🔒 明确这是不可恢复的错误，必须返回错误而不是悄悄处理
                 let batch_item_count =
-                    ExpandBatchItemRepo::count_by_batch_id(&self.core_pool, batch_id).await?;
+                    ExpandBatchItemRepo::count_by_batch_id(&pool, batch_id).await?;
                 if batch_item_count != 0 {
                     tracing::error!(
                         batch_id = %batch_id,
@@ -206,7 +204,8 @@ impl ExpandPlanner {
                 // 🔒 一次性创建所有items，确保扩容数量符合用户期望
                 // 🔒 Item创建时直接为Creating状态，不再有Pending状态的Item
                 // 🔒 只在address_query_state为Done或None时执行，确保边界稳定
-                let indices = ApiAccountDomain::calculate_indices_for_expansion(
+                let indices = ApiAccountDomain::calculate_indices_for_expansion_with_ctx(
+                    self.ctx,
                     &updated_batch.uid,
                     &updated_batch.chain_code,
                     batch_id,
@@ -216,7 +215,7 @@ impl ExpandPlanner {
 
                 // 只有赢CAS的实例才能创建Item
                 ExpandBatchItemRepo::batch_create_items(
-                    &self.core_pool,
+                    &pool,
                     &updated_batch.uid,
                     batch_id,
                     &updated_batch.chain_code,

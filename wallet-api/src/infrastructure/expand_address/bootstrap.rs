@@ -42,18 +42,10 @@ impl ExpandBootstrap {
         tracing::info!("开始恢复未完成的地址扩展完成操作");
 
         let pool = ctx.api_wallet_pool()?;
-        let backend = ctx.get_global_backend_api();
-
         let done = ExpandBatchRepo::get_all_done_but_not_notified(&pool).await?;
 
         for batch in done {
-            ExpandService::expand_complete_with_ctx(
-                &batch.uid,
-                &batch.batch_id,
-                &pool,
-                backend.as_ref(),
-            )
-            .await?;
+            ExpandService::expand_complete_with_ctx(ctx, &batch.uid, &batch.batch_id).await?;
             ExpandBatchRepo::done_to_notified_if_match(&pool, &batch.batch_id).await?;
         }
         Ok(())
@@ -63,9 +55,6 @@ impl ExpandBootstrap {
     /// 每30秒执行一次扫描
     pub async fn start_scanner(ctx: &'static crate::context::Context) -> Result<(), ServiceError> {
         tracing::info!("开始启动ExpandScanner作为唯一核心驱动");
-
-        let pool = ctx.api_wallet_pool()?;
-        // pool已经是Arc<SqlitePool>类型，不需要再次包装
 
         // 创建事件通道
         // bounded channel to prevent unbounded memory growth
@@ -78,7 +67,7 @@ impl ExpandBootstrap {
         // 创建并启动Scanner
         // 扫描间隔：6秒
         // 单轮扫描上限：5000个items
-        let scanner = ExpandScanner::new(ctx, pool, Duration::from_secs(6), 20000, Some(event_rx));
+        let scanner = ExpandScanner::new(ctx, Duration::from_secs(6), 20000, Some(event_rx));
 
         // 在后台启动扫描器
         tokio::spawn(async move {

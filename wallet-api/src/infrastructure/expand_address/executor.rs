@@ -84,8 +84,8 @@ impl ExpandExecutor {
         tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "ExpandExecutor: executing create account");
 
         // 执行实际的账户创建操作
-        let pool = self.ctx.api_wallet_pool()?;
-        match ExpandService::create_account_with_ctx(uid, chain, indices, batch_id, &pool).await {
+        match ExpandService::create_account_with_ctx(self.ctx, uid, chain, indices, batch_id).await
+        {
             Ok(_) => {
                 tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "ExpandExecutor: create account succeeded");
                 Ok(ExecOutcome::Success)
@@ -261,10 +261,7 @@ impl ExpandExecutor {
         tracing::info!(uid=%uid, batch_id=%batch_id, "ExpandExecutor: executing notify expand complete");
 
         // 执行实际的通知操作
-        let pool = self.ctx.api_wallet_pool()?;
-        let backend = self.ctx.get_global_backend_api();
-        match ExpandService::expand_complete_with_ctx(uid, batch_id, &pool, backend.as_ref()).await
-        {
+        match ExpandService::expand_complete_with_ctx(self.ctx, uid, batch_id).await {
             Ok(_) => Ok(ExecOutcome::Success),
             Err(e) => {
                 tracing::error!(error = %e, uid=%uid, batch_id=%batch_id, "expand complete notify failed");
