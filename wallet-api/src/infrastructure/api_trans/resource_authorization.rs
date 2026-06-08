@@ -9,7 +9,7 @@ use wallet_database::{
 };
 
 use crate::{
-    domain::chain::adapter::ChainAdapterFactory, error::service::ServiceError,
+    context::Context, domain::chain::adapter::ChainAdapterFactory, error::service::ServiceError,
     messaging::mqtt::topics::NewPermissionUser,
 };
 use wallet_types::constant::chain_code;
@@ -21,6 +21,7 @@ pub(crate) struct ResourceDelegationSigner {
 }
 
 pub(crate) async fn resolve_resource_delegation_signer(
+    ctx: Option<&Context>,
     delegation: &ApiResourceDelegationEntity,
 ) -> Result<ResourceDelegationSigner, ServiceError> {
     match delegation.delegation_mode {
@@ -29,7 +30,7 @@ pub(crate) async fn resolve_resource_delegation_signer(
             permission_id: None,
         }),
         ApiResourceDelegationMode::AuthorizedAddress => {
-            resolve_authorized_resource_signer(delegation).await
+            resolve_authorized_resource_signer(ctx, delegation).await
         }
     }
 }
@@ -59,6 +60,7 @@ pub(crate) fn new_tron_undelegate_args(
 }
 
 async fn resolve_authorized_resource_signer(
+    ctx: Option<&Context>,
     delegation: &ApiResourceDelegationEntity,
 ) -> Result<ResourceDelegationSigner, ServiceError> {
     let permission_id = delegation
@@ -73,7 +75,12 @@ async fn resolve_authorized_resource_signer(
             ))
         })?;
 
-    let ctx = crate::context::get_context()?;
+    let Some(ctx) = ctx else {
+        return Err(ServiceError::Parameter(
+            "authorized resource delegation requires context".to_string(),
+        ));
+    };
+
     let core_pool = CoreDbPool::new(ctx.get_global_sqlite_pool()?);
     let permission = find_authorized_permission_with_recovery(
         &core_pool,
@@ -82,6 +89,7 @@ async fn resolve_authorized_resource_signer(
         || async {
             let pool = ctx.get_global_sqlite_pool()?;
             recover_api_wallet_authorized_permission_from_chain(
+                ctx,
                 &pool,
                 &delegation.owner_address,
                 permission_id,
@@ -131,6 +139,7 @@ async fn resolve_authorized_resource_signer(
 }
 
 async fn recover_api_wallet_authorized_permission_from_chain(
+    ctx: &Context,
     pool: &DbPool,
     owner_address: &str,
     permission_id: &str,
@@ -142,7 +151,7 @@ async fn recover_api_wallet_authorized_permission_from_chain(
         ))
     })?;
 
-    let chain = ChainAdapterFactory::get_tron_adapter().await?;
+    let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
     let account = chain.account_info(owner_address).await?;
     let Some(active_permission) = account
         .active_permission
@@ -158,7 +167,7 @@ async fn recover_api_wallet_authorized_permission_from_chain(
     };
 
     let permission_with_user = NewPermissionUser::try_from((active_permission, owner_address))?;
-    let api_wallet_pool = crate::context::get_context()?.api_wallet_pool()?;
+    let api_wallet_pool = ctx.api_wallet_pool()?;
     let mut users = Vec::with_capacity(permission_with_user.users.len());
     let mut has_local_api_signer = false;
     for mut user in permission_with_user.users {
@@ -318,7 +327,7 @@ mod tests {
 
     #[tokio::test]
     async fn authorized_resource_signer_requires_permission_id_before_context_lookup() {
-        let err = resolve_resource_delegation_signer(&base_delegation())
+        let err = resolve_resource_delegation_signer(None, &base_delegation())
             .await
             .expect_err("missing permissionId should fail");
 

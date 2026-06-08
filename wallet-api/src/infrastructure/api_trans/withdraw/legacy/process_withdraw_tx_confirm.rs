@@ -26,6 +26,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 #[derive(Clone)]
 struct WithdrawConfirmWorkerCtx {
     pool: ApiTransactionDbPool,
+    backend_api: std::sync::Arc<wallet_transport_backend::api::BackendApi>,
     trade_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
@@ -60,12 +61,14 @@ pub(super) struct ProcessWithdrawTxConfirmReport {
 
 impl ProcessWithdrawTxConfirmReport {
     pub(super) fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxConfirmReportCommand>,
     ) -> Self {
         let worker_ctx = WithdrawConfirmWorkerCtx {
             pool,
+            backend_api: ctx.get_global_backend_api(),
             trade_locks: Arc::new(DashMap::new()),
             address_locks: Arc::new(DashMap::new()),
             global_sem: Arc::new(Semaphore::new(10)),
@@ -133,7 +136,12 @@ impl ProcessWithdrawTxConfirmReport {
                     let _address_guard = address_lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_withdraw_single_tx_confirm_report(ctx.pool.clone(), req).await;
+                    Self::process_withdraw_single_tx_confirm_report(
+                        ctx.pool.clone(),
+                        req,
+                        ctx.backend_api.clone(),
+                    )
+                    .await;
                 }
                 Err(err) => {
                     tracing::warn!(trade_no=%trade_no, "[提现确认] 获取提现交易确认报告失败: {}", err);
@@ -172,7 +180,12 @@ impl ProcessWithdrawTxConfirmReport {
                     let _address_guard = address_lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_withdraw_single_tx_confirm_report(ctx.pool.clone(), req).await
+                    Self::process_withdraw_single_tx_confirm_report(
+                        ctx.pool.clone(),
+                        req,
+                        ctx.backend_api.clone(),
+                    )
+                    .await
                 });
             }
         });
@@ -181,6 +194,7 @@ impl ProcessWithdrawTxConfirmReport {
     async fn process_withdraw_single_tx_confirm_report(
         pool: ApiTransactionDbPool,
         req: ApiWithdrawEntity,
+        backend_api: std::sync::Arc<wallet_transport_backend::api::BackendApi>,
     ) {
         tracing::info!(trade_no=%req.trade_no,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
         let now = chrono::Utc::now();
@@ -218,17 +232,6 @@ impl ProcessWithdrawTxConfirmReport {
             return;
         }
 
-        let backend_api = match crate::get_context() {
-            Ok(ctx) => ctx.get_global_backend_api(),
-            Err(err) => {
-                tracing::error!(
-                    trade_no=%req.trade_no,
-                    "[提现确认] 获取全局 context 失败: {}",
-                    err
-                );
-                return;
-            }
-        };
         tracing::info!(trade_no=%req.trade_no, "[提现确认] 准备调用后端API发送 Result ACK");
 
         match backend_api

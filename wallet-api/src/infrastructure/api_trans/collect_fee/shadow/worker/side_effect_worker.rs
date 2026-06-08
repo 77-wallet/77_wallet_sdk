@@ -3,14 +3,14 @@
 use std::sync::Arc;
 
 use tracing::{error, info, warn};
-use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool, repositories::api_wallet::fee::ApiFeeRepo,
-};
+use wallet_database::{ApiTransactionDbPool, repositories::api_wallet::fee::ApiFeeRepo};
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransType,
 };
 
-use crate::infrastructure::api_trans::collect_fee::shadow::ShadowScanner;
+use crate::{
+    error::service::ServiceError, infrastructure::api_trans::collect_fee::shadow::ShadowScanner,
+};
 
 /// SideEffectCommand 命令
 #[derive(Debug, Clone)]
@@ -60,20 +60,13 @@ impl SideEffectCommand {
 #[derive(Clone)]
 pub struct SideEffectWorker {
     ctx: &'static crate::context::Context,
-    pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
 }
 
 impl SideEffectWorker {
-    pub fn new(
-        ctx: &'static crate::context::Context,
-        pool: ApiTransactionDbPool,
-        core_pool: ApiWalletDbPool,
-        scanner: Arc<ShadowScanner>,
-    ) -> Self {
-        Self { ctx, pool, core_pool, scanner }
+    pub fn new(ctx: &'static crate::context::Context, scanner: Arc<ShadowScanner>) -> Self {
+        Self { ctx, scanner }
     }
 
     /// 处理命令
@@ -97,7 +90,10 @@ impl SideEffectWorker {
         })
         .await
         {
-            Ok(_) => {}
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                error!(trade_no = %trade_no_clone, %error, "SideEffectWorker command failed");
+            }
             Err(_) => {
                 error!(trade_no = %trade_no_clone, "SideEffectWorker timeout after 30 seconds");
             }
@@ -110,29 +106,21 @@ impl SideEffectWorker {
     /// Requires:
     /// - raw_tx IS NOT NULL
     /// - tx_ack_sent_at IS NULL
-    async fn send_order_ack(&self, trade_no: &str) {
+    async fn send_order_ack(&self, trade_no: &str) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, "Sending order ACK");
+        let pool = self.ctx.api_transaction_pool()?;
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
-        let fee = match ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await {
-            Ok(fee) => fee,
-            Err(e) => {
-                error!(trade_no = %trade_no, error = %e, "Failed to get API fee by trade no");
-                return;
-            }
-        };
+        let fee = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await?;
 
         if fee.tx_ack_sent_at.is_some() {
             warn!(trade_no = %trade_no, "Tx ACK skipped: already sent");
-            return;
+            return Ok(());
         }
 
         // 标记交易 ACK 尝试
         info!(trade_no = %trade_no, "Marking tx ACK as attempted");
-        if let Err(e) = ApiFeeRepo::mark_tx_ack_attempted(&self.pool, trade_no).await {
-            error!(trade_no = %trade_no, error = %e, "Failed to mark tx ACK attempted");
-            return;
-        }
+        ApiFeeRepo::mark_tx_ack_attempted(&pool, trade_no).await?;
         info!(trade_no = %trade_no, "Tx ACK marked as attempted successfully");
 
         // 发送交易 ACK 逻辑
@@ -144,7 +132,7 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, "Tx ACK sent successfully");
                 // 成功路径：标记交易 ACK 已发送
-                if let Err(e) = ApiFeeRepo::set_tx_ack_sent(&self.pool, trade_no).await {
+                if let Err(e) = ApiFeeRepo::set_tx_ack_sent(&pool, trade_no).await {
                     error!(trade_no = %trade_no, error = %e, "Failed to mark tx ACK sent");
                 } else {
                     // 直接调用 try_advance 进行点对点唤醒
@@ -158,6 +146,8 @@ impl SideEffectWorker {
         }
 
         info!(trade_no = %trade_no, "Tx ACK processing completed");
+
+        Ok(())
     }
 
     /// 发送交易结果 ACK
@@ -166,30 +156,25 @@ impl SideEffectWorker {
     /// Requires:
     /// - tx_hash IS NOT NULL
     /// - tx_res_ack_sent_at IS NULL
-    async fn send_tx_res_ack(&self, trade_no: &str) {
+    async fn send_tx_res_ack(&self, trade_no: &str) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, "Sending tx res ACK");
+        let pool = self.ctx.api_transaction_pool()?;
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
-        let fee = match ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await {
-            Ok(fee) => fee,
-            Err(e) => {
-                error!(trade_no = %trade_no, error = %e, "Failed to get API fee by trade no");
-                return;
-            }
-        };
+        let fee = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await?;
 
         // 检查是否允许发送结果 ACK
         // - tx_hash 必须已存在
         // - 尚未发送过结果 ACK
         if fee.tx_hash.is_none() {
             warn!(trade_no = %trade_no, "Tx res ACK skipped: tx_hash not exists");
-            return;
+            return Ok(());
         }
 
         // ✅ 强顺序屏障：TX_RES ACK 只能在已收到并持久化 AWM_ORDER_TRANS_RES 后发送
         if fee.tx_res_received_at.is_none() {
             warn!(trade_no = %trade_no, "Tx res ACK skipped: tx_res not received");
-            return;
+            return Ok(());
         }
 
         if fee.tx_res_ack_sent_at.is_some() {
@@ -199,7 +184,7 @@ impl SideEffectWorker {
                     trade_no = %trade_no,
                     "Tx res ACK already sent but fee not finished; repairing finished_at"
                 );
-                match ApiFeeRepo::mark_chain_finished(&self.pool, trade_no).await {
+                match ApiFeeRepo::mark_chain_finished(&pool, trade_no).await {
                     Ok(_) => self.scanner.try_advance(&trade_no).await,
                     Err(e) => error!(
                         trade_no = %trade_no,
@@ -215,7 +200,7 @@ impl SideEffectWorker {
             }
 
             warn!(trade_no = %trade_no, "Tx res ACK skipped: already sent");
-            return;
+            return Ok(());
         }
 
         if fee.transaction_time.is_none() {
@@ -223,14 +208,14 @@ impl SideEffectWorker {
                 trade_no = %trade_no,
                 "Transaction time is NULL; cannot send tx res ACK"
             );
-            return;
+            return Ok(());
         }
 
         // 标记交易结果 ACK 尝试
         info!(trade_no = %trade_no, "Marking tx res ACK as attempted");
-        if let Err(e) = ApiFeeRepo::mark_tx_res_ack_attempted(&self.pool, trade_no).await {
+        if let Err(e) = ApiFeeRepo::mark_tx_res_ack_attempted(&pool, trade_no).await {
             error!(trade_no = %trade_no, error = %e, "Failed to mark tx res ACK attempted");
-            return;
+            return Ok(());
         }
         info!(trade_no = %trade_no, "Tx res ACK marked as attempted successfully");
 
@@ -244,8 +229,7 @@ impl SideEffectWorker {
                 info!(trade_no = %trade_no, "Tx res ACK sent successfully");
                 // 成功路径：标记交易结果 ACK 已发送并标记链上终态（原子操作）
                 if let Err(e) =
-                    ApiFeeRepo::set_tx_res_ack_sent_and_mark_chain_finished(&self.pool, trade_no)
-                        .await
+                    ApiFeeRepo::set_tx_res_ack_sent_and_mark_chain_finished(&pool, trade_no).await
                 {
                     error!(trade_no = %trade_no, error = %e, "Failed to mark tx res ACK sent and chain finished");
                 } else {
@@ -260,6 +244,8 @@ impl SideEffectWorker {
         }
 
         info!(trade_no = %trade_no, "Tx res ACK processing completed");
+
+        Ok(())
     }
 
     /// 上传交易执行回执
@@ -268,21 +254,16 @@ impl SideEffectWorker {
     /// Requires:
     /// - transaction_time IS NOT NULL
     /// - tx_exec_receipt_uploaded_at IS NULL
-    async fn upload_tx_exec_receipt(&self, trade_no: &str) {
+    async fn upload_tx_exec_receipt(&self, trade_no: &str) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, "Uploading tx exec receipt");
+        let pool = self.ctx.api_transaction_pool()?;
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
-        let fee = match ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await {
-            Ok(fee) => fee,
-            Err(e) => {
-                error!(trade_no = %trade_no, error = %e, "Failed to get API fee by trade no");
-                return;
-            }
-        };
+        let fee = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await?;
 
         if fee.tx_exec_receipt_uploaded_at.is_some() {
             warn!(trade_no = %trade_no, "Tx exec receipt upload skipped: already uploaded");
-            return;
+            return Ok(());
         }
 
         // 构建交易执行回执上传请求
@@ -296,7 +277,7 @@ impl SideEffectWorker {
                     err_code_present = %fee.err_code.is_some(),
                     "Tx exec receipt still pending, skip upload"
                 );
-                return;
+                return Ok(());
             }
         };
         info!(trade_no = %trade_no, "Built tx exec receipt upload payload");
@@ -314,15 +295,12 @@ impl SideEffectWorker {
                 tx_hash_is_empty = %fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
                 "Skip UploadTxExecReceipt: blocked_by_missing_tx_hash (success payload requires non-empty tx_hash)"
             );
-            return;
+            return Ok(());
         }
 
         // 标记交易执行回执上传尝试
         info!(trade_no = %trade_no, "Marking tx exec receipt as attempted");
-        if let Err(e) = ApiFeeRepo::mark_tx_exec_receipt_attempted(&self.pool, trade_no).await {
-            error!(trade_no = %trade_no, error = %e, "Failed to mark tx exec receipt attempted");
-            return;
-        }
+        ApiFeeRepo::mark_tx_exec_receipt_attempted(&pool, trade_no).await?;
         info!(trade_no = %trade_no, "Tx exec receipt marked as attempted successfully");
 
         // 获取backend_api
@@ -333,9 +311,7 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, "Tx exec receipt uploaded successfully");
                 // 成功路径：标记交易执行回执已上传
-                if let Err(e) =
-                    ApiFeeRepo::mark_tx_exec_receipt_uploaded(&self.pool, trade_no).await
-                {
+                if let Err(e) = ApiFeeRepo::mark_tx_exec_receipt_uploaded(&pool, trade_no).await {
                     error!(trade_no = %trade_no, error = %e, "Failed to mark tx exec receipt uploaded");
                 } else {
                     // 标记交易终态：所有必要的副作用已完成
@@ -345,8 +321,7 @@ impl SideEffectWorker {
                         && fee.err_code.is_some()
                     {
                         info!(trade_no = %trade_no, source = "side_effect_worker", "Marking fee as finished");
-                        if let Err(e) = ApiFeeRepo::mark_chain_finished(&self.pool, trade_no).await
-                        {
+                        if let Err(e) = ApiFeeRepo::mark_chain_finished(&pool, trade_no).await {
                             error!(trade_no = %trade_no, error = %e, "Failed to mark fee as finished");
                         } else {
                             info!(trade_no = %trade_no, source = "side_effect_worker", "Fee marked as finished successfully");
@@ -363,6 +338,8 @@ impl SideEffectWorker {
         }
 
         info!(trade_no = %trade_no, "Tx exec receipt processing completed");
+
+        Ok(())
     }
 
     /// 构建交易执行回执上传请求

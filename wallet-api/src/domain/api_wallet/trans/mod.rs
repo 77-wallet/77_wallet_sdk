@@ -376,7 +376,7 @@ impl ApiTransDomain {
     }
 
     pub(crate) async fn refresh_rpc_auth_and_prepare_retry(
-        ctx: &Context,
+        ctx: &'static Context,
         chain_code: &str,
         op: &str,
         rpc: Option<&str>,
@@ -434,18 +434,18 @@ impl ApiTransDomain {
         Ok(())
     }
 
-    /// transfer（兼容旧签名）
+    // transfer（显式上下文签名）
     pub async fn transfer(
+        ctx: &'static Context,
         params: ApiTransferReq,
         preloaded_private_key: Option<ChainPrivateKey>,
     ) -> Result<TransferResp, ServiceError> {
-        let ctx = crate::context::get_context()?;
-        Self::transfer_with_ctx(&ctx, params, preloaded_private_key).await
+        Self::transfer_with_ctx(ctx, params, preloaded_private_key).await
     }
 
     /// transfer（显式上下文签名）
     pub async fn transfer_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         params: ApiTransferReq,
         preloaded_private_key: Option<ChainPrivateKey>,
     ) -> Result<TransferResp, ServiceError> {
@@ -462,8 +462,12 @@ impl ApiTransDomain {
         let private_key = match preloaded_private_key {
             Some(pk) => pk,
             None => {
-                ApiAccountDomain::get_private_key(&params.base.from, &params.base.chain_code)
-                    .await?
+                ApiAccountDomain::get_private_key_with_ctx(
+                    ctx,
+                    &params.base.from,
+                    &params.base.chain_code,
+                )
+                .await?
             }
         };
         tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
@@ -507,15 +511,15 @@ impl ApiTransDomain {
     /// - 不处理Recover逻辑
     /// - 不负责从链上恢复交易状态
     pub async fn build_transfer_raw(
+        ctx: &'static Context,
         params: ApiTransferReq,
         preloaded_private_key: Option<ChainPrivateKey>,
     ) -> Result<(String, RawTx, String), ServiceError> {
-        let ctx = crate::context::get_context()?;
-        Self::build_transfer_raw_with_ctx(&ctx, params, preloaded_private_key).await
+        Self::build_transfer_raw_with_ctx(ctx, params, preloaded_private_key).await
     }
 
     pub async fn build_transfer_raw_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         params: ApiTransferReq,
         preloaded_private_key: Option<ChainPrivateKey>,
     ) -> Result<(String, RawTx, String), ServiceError> {
@@ -532,8 +536,12 @@ impl ApiTransDomain {
         let private_key = match preloaded_private_key {
             Some(pk) => pk,
             None => {
-                ApiAccountDomain::get_private_key(&params.base.from, &params.base.chain_code)
-                    .await?
+                ApiAccountDomain::get_private_key_with_ctx(
+                    ctx,
+                    &params.base.from,
+                    &params.base.chain_code,
+                )
+                .await?
             }
         };
         tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
@@ -581,12 +589,12 @@ impl ApiTransDomain {
     /// broadcast_transfer 在网络异常时返回 Ok(None)，
     /// 由 scanner / recover 决定最终状态。
     pub async fn broadcast_transfer(
+        ctx: &'static Context,
         chain_code: &str,
         raw: RawTx,
         expected_tx_hash: Option<&str>,
     ) -> Result<Option<TransferResp>, ServiceError> {
-        let ctx = crate::context::get_context()?;
-        Self::broadcast_transfer_with_ctx(&ctx, chain_code, raw, expected_tx_hash).await
+        Self::broadcast_transfer_with_ctx(ctx, chain_code, raw, expected_tx_hash).await
     }
 
     /// ⚠️ 注意：
@@ -594,7 +602,7 @@ impl ApiTransDomain {
     /// broadcast_transfer 在网络异常时返回 Ok(None)，
     /// 由 scanner / recover 决定最终状态。
     pub async fn broadcast_transfer_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         chain_code: &str,
         raw: RawTx,
         expected_tx_hash: Option<&str>,
@@ -613,7 +621,7 @@ impl ApiTransDomain {
         }
 
         if let Some((host, remaining)) =
-            chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
+            chain_rpc_guard::breaker_open_for_chain_code_with_ctx(ctx, chain_code).await
         {
             if let Some(tx_hash) = tx_hash_hint.as_deref() {
                 tracing::warn!(
@@ -834,7 +842,10 @@ impl ApiTransDomain {
                                 Some(*delay_ms),
                                 "hit",
                             );
-                            chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+                            chain_rpc_guard::record_success_for_chain_code_with_ctx(
+                                ctx, chain_code,
+                            )
+                            .await;
                             if auth_retry_attempted {
                                 tracing::info!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", "auth retry succeeded");
                             }
@@ -863,7 +874,10 @@ impl ApiTransDomain {
                                     visibility_kind = %visibility_kind,
                                     "broadcast visibility check hit"
                                 );
-                                chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+                                chain_rpc_guard::record_success_for_chain_code_with_ctx(
+                                    ctx, chain_code,
+                                )
+                                .await;
                                 if auth_retry_attempted {
                                     tracing::info!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", "auth retry succeeded");
                                 }
@@ -926,7 +940,7 @@ impl ApiTransDomain {
                 return Ok(None);
             }
 
-            chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+            chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code).await;
             if auth_retry_attempted {
                 tracing::info!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", "auth retry succeeded");
             }
@@ -934,13 +948,16 @@ impl ApiTransDomain {
         }
     }
 
-    pub async fn nonce(from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
-        let ctx = crate::context::get_context()?;
-        Self::nonce_with_ctx(&ctx, from_addr, chain_code).await
+    pub async fn nonce(
+        ctx: &'static Context,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<u64, ServiceError> {
+        Self::nonce_with_ctx(ctx, from_addr, chain_code).await
     }
 
     pub async fn nonce_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<u64, ServiceError> {
@@ -1031,6 +1048,7 @@ impl ApiTransDomain {
     /// Err(_)          -> 已确认不可能成功，可推进失败
     /// Ok(None)        -> 不确定态（RPC/网络/索引问题），等待 scanner/recover
     pub async fn process_recovered_tx(
+        ctx: &'static Context,
         chain_code: &str,
         from_addr: &str,
         tx_hash: &str,
@@ -1038,7 +1056,6 @@ impl ApiTransDomain {
         nonce: i64,
         transaction_fee: &str,
     ) -> Result<Option<TransferResp>, ServiceError> {
-        let ctx = crate::context::get_context()?;
         Self::process_recovered_tx_with_ctx(
             &ctx,
             chain_code,
@@ -1051,7 +1068,7 @@ impl ApiTransDomain {
     }
 
     pub async fn process_recovered_tx_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         chain_code: &str,
         from_addr: &str,
         tx_hash: &str,
@@ -1062,7 +1079,7 @@ impl ApiTransDomain {
         tracing::info!(tx_hash=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
         if let Some((host, remaining)) =
-            chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
+            chain_rpc_guard::breaker_open_for_chain_code_with_ctx(ctx, chain_code).await
         {
             tracing::warn!(
                 chain_code = %chain_code,
@@ -1129,7 +1146,8 @@ impl ApiTransDomain {
 
                     if is_success {
                         tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
-                        chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+                        chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code)
+                            .await;
                         // 直接标记成功
                         let mut mock_resp = TransferResp {
                             tx_hash: tx_hash.to_string(),

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use tracing::{error, info, warn};
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool,
     entities::api_fee::{ApiFeeEntity, ErrCode},
     repositories::api_wallet::fee::ApiFeeRepo,
 };
@@ -25,7 +25,7 @@ use crate::{
     },
     infrastructure::{
         api_trans::collect_fee::{legacy::AddressLockManager, shadow::ShadowScanner},
-        nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
+        nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -72,8 +72,6 @@ pub enum ShadowFeeCommand {
 /// - chain_rpc_guard 作为 RPC 压力阀
 pub struct ShadowFeeWorker {
     ctx: &'static crate::context::Context,
-    pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
     address_locks: Arc<AddressLockManager>,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
@@ -211,14 +209,11 @@ impl ShadowFeeWorker {
 
     pub fn new(
         ctx: &'static crate::context::Context,
-        pool: ApiTransactionDbPool,
-        core_pool: ApiWalletDbPool,
         address_locks: Arc<AddressLockManager>,
         scanner: Arc<ShadowScanner>,
     ) -> Self {
-        Self { ctx, pool, core_pool, address_locks, scanner }
+        Self { ctx, address_locks, scanner }
     }
-
     /// 处理命令
     pub async fn handle(&self, command: ShadowFeeCommand) -> Result<(), ServiceError> {
         match command {
@@ -313,8 +308,11 @@ impl ShadowFeeWorker {
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
+        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &req.chain_code,
+        )
+        .await;
         if _chain_rpc_guard.is_some() {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
         }
@@ -342,7 +340,7 @@ impl ShadowFeeWorker {
 
                         if existing_tx_hash.is_none() {
                             let rows_affected = ApiFeeRepo::backfill_tx_hash_if_missing(
-                                &self.pool,
+                                &self.ctx.api_transaction_pool()?,
                                 &fresh_req.trade_no,
                                 &tx_resp.tx_hash,
                                 "shadow_fee_worker",
@@ -403,7 +401,7 @@ impl ShadowFeeWorker {
                             })?
                             .to_rfc3339();
                     let rows_affected = ApiFeeRepo::confirm_onchain_transaction_fact_with_recover(
-                        &self.pool,
+                        &self.ctx.api_transaction_pool()?,
                         &fresh_req.trade_no,
                         &tx_resp.tx_hash,
                         &transaction_time,
@@ -443,7 +441,7 @@ impl ShadowFeeWorker {
                             "Detected expired tron raw_tx during recover; invalidating stale tx facts"
                         );
                         let rows = ApiFeeRepo::invalidate_raw_tx(
-                            &self.pool,
+                            &self.ctx.api_transaction_pool()?,
                             &req.trade_no,
                             None,
                             None,
@@ -466,10 +464,12 @@ impl ShadowFeeWorker {
                 }
 
                 let now = Utc::now();
-                let rows_affected =
-                    ApiFeeRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected = ApiFeeRepo::mark_broadcast_uncertain_attempt(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_fee_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -501,7 +501,7 @@ impl ShadowFeeWorker {
                         "EVM uncertain timeout reached; running nonce reconcile"
                     );
 
-                    let nonce_engine = get_nonce_engine();
+                    let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
                     nonce_engine.trigger_reconcile_with_reason(
                         &refreshed.from_addr,
                         &refreshed.chain_code,
@@ -509,7 +509,7 @@ impl ShadowFeeWorker {
                         true,
                     );
                     let _ = ApiFeeRepo::mark_broadcast_uncertain_reconciled(
-                        &self.pool,
+                        &self.ctx.api_transaction_pool()?,
                         &refreshed.trade_no,
                     )
                     .await
@@ -528,7 +528,7 @@ impl ShadowFeeWorker {
                         "EVM uncertain reconcile decision"
                     );
                     let rows = ApiFeeRepo::invalidate_raw_tx(
-                        &self.pool,
+                        &self.ctx.api_transaction_pool()?,
                         &refreshed.trade_no,
                         None,
                         None,
@@ -538,7 +538,7 @@ impl ShadowFeeWorker {
                     .map_err(|e| ServiceError::Database(e.into()))?;
                     if rows > 0 {
                         let _ = ApiFeeRepo::mark_broadcast_uncertain_rebroadcast_attempted(
-                            &self.pool,
+                            &self.ctx.api_transaction_pool()?,
                             &refreshed.trade_no,
                         )
                         .await
@@ -560,7 +560,7 @@ impl ShadowFeeWorker {
                 );
 
                 let rows_affected = ApiFeeRepo::update_api_fee_status_and_err(
-                    &self.pool,
+                    &self.ctx.api_transaction_pool()?,
                     &refreshed.trade_no,
                     wallet_database::entities::api_fee::ApiFeeStatus::SendingTxFailed,
                     Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE as u32,
@@ -592,10 +592,13 @@ impl ShadowFeeWorker {
                     source = "shadow_fee_worker",
                     "Tron tx missing from confirmed and pending pools beyond timeout; rebroadcasting"
                 );
-                let rows =
-                    ApiFeeRepo::invalidate_raw_tx_for_rebroadcast(&self.pool, &req.trade_no, None)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows = ApiFeeRepo::invalidate_raw_tx_for_rebroadcast(
+                    &self.ctx.api_transaction_pool()?,
+                    &req.trade_no,
+                    None,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 if rows > 0 {
                     self.scanner.try_advance(&req.trade_no).await;
                 }
@@ -662,7 +665,8 @@ impl ShadowFeeWorker {
         // 🔓 锁在这里已经释放
 
         // 先占位 build slot，防止同一 trade_no 在构建期间被重复推进。
-        let build_slot_rows = ApiFeeRepo::update_building_at(&self.pool, trade_no).await?;
+        let build_slot_rows =
+            ApiFeeRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no).await?;
         if build_slot_rows == 0 {
             info!(
                 trade_no = %trade_no,
@@ -674,8 +678,11 @@ impl ShadowFeeWorker {
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&fee.chain_code).await;
+        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &fee.chain_code,
+        )
+        .await;
         if _chain_rpc_guard.is_some() {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
         }
@@ -694,6 +701,7 @@ impl ShadowFeeWorker {
 
         // 10. 构建交易
         let (tx_hash, raw_tx, fee_str) = ApiTransDomain::build_transfer_raw(
+            &self.ctx,
             transfer_req,
             Some(private_key), // 私钥管理
         )
@@ -709,7 +717,7 @@ impl ShadowFeeWorker {
             // 11. 立即将tx_hash、raw_tx和nonce存储到数据库
             let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
             let rows_affected = ApiFeeRepo::update_after_build(
-                &self.pool,
+                &self.ctx.api_transaction_pool()?,
                 &fee.trade_no,
                 &tx_hash,
                 &raw_tx_str,
@@ -803,8 +811,11 @@ impl ShadowFeeWorker {
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&fee.chain_code).await;
+        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &fee.chain_code,
+        )
+        .await;
         if _chain_rpc_guard.is_some() {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
         }
@@ -815,9 +826,13 @@ impl ShadowFeeWorker {
 
         // 7. 广播交易
         info!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Starting to broadcast transaction");
-        let tx_resp =
-            ApiTransDomain::broadcast_transfer(&fee.chain_code, raw_tx, fee.tx_hash.as_deref())
-                .await?;
+        let tx_resp = ApiTransDomain::broadcast_transfer(
+            &self.ctx,
+            &fee.chain_code,
+            raw_tx,
+            fee.tx_hash.as_deref(),
+        )
+        .await?;
 
         match tx_resp {
             Some(tx) => {
@@ -853,10 +868,12 @@ impl ShadowFeeWorker {
                         "0".to_string()
                     };
 
-                    let rows_affected =
-                        ApiFeeRepo::mark_broadcast_executed(&self.pool, &fee.trade_no)
-                            .await
-                            .map_err(|e| ServiceError::Database(e.into()))?;
+                    let rows_affected = ApiFeeRepo::mark_broadcast_executed(
+                        &self.ctx.api_transaction_pool()?,
+                        &fee.trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
 
                     // 显式处理幂等情况：广播已被其他并发/恢复执行
                     if rows_affected == 0 {
@@ -880,10 +897,12 @@ impl ShadowFeeWorker {
                     return Ok(());
                 }
                 let had_uncertain_since = fee.broadcast_uncertain_since_at.is_some();
-                let rows_affected =
-                    ApiFeeRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected = ApiFeeRepo::mark_broadcast_uncertain_attempt(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_fee_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -907,9 +926,10 @@ impl ShadowFeeWorker {
         &self,
         trade_no: &str,
     ) -> Result<wallet_database::entities::api_fee::ApiFeeEntity, ServiceError> {
-        let entity = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
+        let entity =
+            ApiFeeRepo::get_api_fee_by_trade_no(&self.ctx.api_transaction_pool()?, trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
         Ok(entity)
     }
 
@@ -953,10 +973,10 @@ impl ShadowFeeWorker {
                 // ⚠️ INVARIANT:
                 // This method MUST guarantee DB-level atomic CAS for nonce allocation.
                 // Any refactor breaking this invariant will cause nonce duplication.
-                use crate::infrastructure::nonce::nonce_engine::get_nonce_engine;
+                use crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx;
 
-                let nonce_engine = get_nonce_engine();
-                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code, &self.pool).await?;
+                let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
+                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
                 info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce using NonceEngine");
                 Ok(nonce as u64)
             }
@@ -992,6 +1012,7 @@ impl ShadowFeeWorker {
     ) -> Result<ApiTransferReq, ServiceError> {
         info!(trade_no=%req.trade_no, chain_code=%req.chain_code, symbol=%req.symbol, "[手续费归集] 获取代币信息");
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            self.ctx,
             &req.chain_code,
             req.token_addr.clone().into(),
         )
@@ -1013,8 +1034,13 @@ impl ShadowFeeWorker {
         if req.chain_code.eq_ignore_ascii_case(ChainCode::Solana.to_string().as_str())
             && coin.token_address.is_native()
         {
-            Self::bump_sol_native_transfer_value_for_rent(&mut params, &coin.symbol, &req.trade_no)
-                .await?;
+            Self::bump_sol_native_transfer_value_for_rent(
+                self.ctx,
+                &mut params,
+                &coin.symbol,
+                &req.trade_no,
+            )
+            .await?;
         }
 
         info!(trade_no=%req.trade_no, "[手续费归集] 获取钱包解锁态");
@@ -1025,11 +1051,14 @@ impl ShadowFeeWorker {
     }
 
     pub(crate) async fn bump_sol_native_transfer_value_for_rent(
+        ctx: &'static crate::context::Context,
         params: &mut ApiBaseTransferReq,
         symbol: &str,
         trade_no: &str,
     ) -> Result<(), ServiceError> {
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&params.chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, &params.chain_code)
+                .await?;
         match adapter.estimate_fee(params.clone(), symbol).await {
             Ok(_) => Ok(()),
             Err(err) if Self::is_solana_recipient_rent_error(&err) => {
@@ -1067,6 +1096,7 @@ impl ShadowFeeWorker {
         info!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Processing recovered tx");
 
         match ApiTransDomain::process_recovered_tx(
+            &self.ctx,
             &fee.chain_code,
             &fee.from_addr,
             tx_hash,
@@ -1120,7 +1150,7 @@ impl ShadowFeeWorker {
         // BuildTx 失败只需要释放 build slot，让 scanner 后续重试。
         // 这里不写失败事实，避免把可重试的构建失败误记成终态失败。
         if fee.raw_tx.is_none() {
-            let rows_affected = ApiFeeRepo::clear_building_at(&self.pool, trade_no)
+            let rows_affected = ApiFeeRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to clear build slot for BuildTx failure");
@@ -1146,7 +1176,7 @@ impl ShadowFeeWorker {
             && fee.tx_hash.is_some()
             && fee.last_broadcast_at.is_none()
         {
-            let rows_affected = ApiFeeRepo::invalidate_raw_tx(&self.pool, trade_no, None, None, None)
+            let rows_affected = ApiFeeRepo::invalidate_raw_tx(&self.ctx.api_transaction_pool()?, trade_no, None, None, None)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to invalidate raw_tx for sol blockhash rebuild");
@@ -1171,7 +1201,7 @@ impl ShadowFeeWorker {
             && fee.raw_tx.is_some()
             && fee.tx_hash.is_some()
         {
-            let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.pool, trade_no)
+            let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to mark broadcast executed for duplicate broadcast");
@@ -1201,14 +1231,15 @@ impl ShadowFeeWorker {
                 "Detected EVM nonce too low on broadcast, treat as idempotent success"
             );
 
-            let nonce_engine = crate::infrastructure::nonce::nonce_engine::get_nonce_engine();
+            let nonce_engine =
+                crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?;
             if let Err(e) =
                 nonce_engine.handle_nonce_error(&fee.from_addr, &fee.chain_code, &error_msg).await
             {
                 warn!(trade_no = %trade_no, error = %e, source = "shadow_fee_worker", "Nonce self-heal failed");
             }
 
-            let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.pool, trade_no)
+            let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to mark broadcast executed for nonce too low broadcast conflict");
@@ -1229,7 +1260,8 @@ impl ShadowFeeWorker {
         if ApiTransDomain::is_nonce_too_low_error(&err) {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
 
-            let nonce_engine = crate::infrastructure::nonce::nonce_engine::get_nonce_engine();
+            let nonce_engine =
+                crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?;
             if let Err(e) =
                 nonce_engine.handle_nonce_error(&fee.from_addr, &fee.chain_code, &error_msg).await
             {
@@ -1237,7 +1269,7 @@ impl ShadowFeeWorker {
             }
 
             let rows_affected = ApiFeeRepo::update_api_fee_status_and_err(
-                &self.pool,
+                &self.ctx.api_transaction_pool()?,
                 trade_no,
                 wallet_database::entities::api_fee::ApiFeeStatus::SendingTxFailed,
                 ErrCode::SDKInternalError as u32, // 使用通用错误码
@@ -1271,7 +1303,7 @@ impl ShadowFeeWorker {
                 };
 
                 let rows_affected = ApiFeeRepo::update_api_fee_status_and_err(
-                    &self.pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                     wallet_database::entities::api_fee::ApiFeeStatus::SendingTxFailed,
                     err_code as u32, // err_code - 根据错误类型设置
@@ -1303,7 +1335,7 @@ impl ShadowFeeWorker {
     }
 
     async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
-        let rows_affected = ApiFeeRepo::clear_building_at(&self.pool, trade_no)
+        let rows_affected = ApiFeeRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
             .await
             .map_err(|db_err: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to clear build slot after BuildTx early exit");
@@ -1325,16 +1357,62 @@ impl ShadowFeeWorker {
 mod tests {
     use super::ShadowFeeWorker;
     use crate::{
+        config::Config,
         domain::api_wallet::adapter::tx::RawTx,
         error::{service::ServiceError, system::SystemError},
     };
-    use std::sync::Arc;
+    use std::{fs, path::PathBuf, sync::Arc};
     use tempfile::tempdir;
     use tokio::sync::mpsc;
     use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
     use wallet_database::{
         ApiWalletDbPool, SqliteContext, repositories::api_wallet::fee::ApiFeeRepo,
     };
+
+    async fn test_ctx() -> &'static crate::context::Context {
+        static CTX: tokio::sync::OnceCell<&'static crate::context::Context> =
+            tokio::sync::OnceCell::const_new();
+        *CTX.get_or_init(|| async {
+            let config = Config::new(
+                r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#,
+            )
+            .expect("parse test config");
+
+            let mut dir = PathBuf::from(std::env::temp_dir());
+            dir.push("wallet-api-shadow-fee-worker-tests");
+            fs::create_dir_all(&dir).expect("ensure temp dir");
+
+            let dirs = crate::dirs::Dirs::new(&dir.to_string_lossy()).expect("create dirs");
+            crate::context::init_context(
+                "wallet_api_shadow_fee_test_sn",
+                "unittest",
+                dirs,
+                None,
+                config,
+            )
+            .await
+            .expect("init test context")
+        })
+        .await
+    }
 
     fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
         let raw = RawTransactionParams {
@@ -1384,36 +1462,22 @@ mod tests {
 
     #[tokio::test]
     async fn clear_build_slot_after_claim_releases_building_at() {
-        let dir = tempdir().expect("tempdir");
-        let dir_path = dir.path().to_string_lossy().to_string();
-
-        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
-            .await
-            .expect("init api_transaction.db");
-        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let scanner =
             Arc::new(crate::infrastructure::api_trans::collect_fee::shadow::ShadowScanner::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 crate::infrastructure::api_trans::collect_fee::shadow::ScannerConfig::default(),
                 intent_tx,
                 None,
             ));
         let worker = ShadowFeeWorker::new(
-            crate::get_context().expect("context"),
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(
                 crate::infrastructure::api_trans::collect_fee::legacy::AddressLockManager::new(),
             ),
             scanner,
         );
+        let collect_pool = test_ctx().await.api_transaction_pool().expect("transaction pool");
 
         let trade_no = "F_clear_build_slot_after_claim";
         ApiFeeRepo::upsert_api_fee(

@@ -225,7 +225,7 @@ impl FeeShadowActorSystem {
 
         // 创建共享的 Scanner 实例
         let scanner = Arc::new(ShadowScanner::new(
-            api_transaction_pool.clone(),
+            ctx,
             ScannerConfig::default(),
             intent_tx.clone(),
             Some(diagnose_tx.clone()),
@@ -241,21 +241,10 @@ impl FeeShadowActorSystem {
         // 创建AddressLockManager
         let address_locks = Arc::new(AddressLockManager::new());
         // 创建ShadowFeeWorker
-        let shadow_worker = Arc::new(ShadowFeeWorker::new(
-            ctx,
-            api_transaction_pool.clone(),
-            core_pool.clone(),
-            address_locks,
-            scanner.clone(),
-        ));
+        let shadow_worker = Arc::new(ShadowFeeWorker::new(ctx, address_locks, scanner.clone()));
 
         // 初始化SideEffect Worker
-        let side_effect_worker = Arc::new(SideEffectWorker::new(
-            ctx,
-            api_transaction_pool.clone(),
-            core_pool.clone(),
-            scanner.clone(),
-        ));
+        let side_effect_worker = Arc::new(SideEffectWorker::new(ctx, scanner.clone()));
 
         // 创建Dispatcher Actor
         let dispatcher_actor = FeeShadowDispatcherActor::new(

@@ -24,6 +24,7 @@ struct CollectConfirmWorkerCtx {
     pool: ApiTransactionDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
+    ctx: &'static crate::context::Context,
 }
 
 impl CollectConfirmWorkerCtx {
@@ -48,6 +49,7 @@ pub(super) struct ProcessCollectTxConfirmReport {
 
 impl ProcessCollectTxConfirmReport {
     pub(super) fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxConfirmReportCommand>,
@@ -56,6 +58,7 @@ impl ProcessCollectTxConfirmReport {
             pool,
             address_locks: Arc::new(DashMap::new()),
             global_sem: Arc::new(Semaphore::new(64)),
+            ctx,
         };
 
         Self { shutdown_rx, report_rx, worker_ctx }
@@ -131,7 +134,8 @@ impl ProcessCollectTxConfirmReport {
             let _guard = lock.lock().await;
             let _permit = ctx.global_sem.acquire().await.unwrap();
 
-            Self::process_collect_single_tx_confirm_report(ctx.pool.clone(), req, false).await
+            Self::process_collect_single_tx_confirm_report(ctx.pool.clone(), req, false, ctx.ctx)
+                .await
         });
     }
 
@@ -163,8 +167,13 @@ impl ProcessCollectTxConfirmReport {
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_collect_single_tx_confirm_report(ctx.pool.clone(), req, true)
-                        .await
+                    Self::process_collect_single_tx_confirm_report(
+                        ctx.pool.clone(),
+                        req,
+                        true,
+                        ctx.ctx,
+                    )
+                    .await
                 });
             }
         });
@@ -174,6 +183,7 @@ impl ProcessCollectTxConfirmReport {
         pool: ApiTransactionDbPool,
         req: ApiCollectEntity,
         check_retry_time: bool,
+        ctx: &'static crate::context::Context,
     ) {
         tracing::info!(trade_no=%req.trade_no, status=%req.status, "[归集交易确认] 开始处理单条归集交易确认报告");
 
@@ -206,14 +216,7 @@ impl ProcessCollectTxConfirmReport {
             return;
         }
 
-        let Some(backend_api) = crate::get_context().ok().map(|ctx| ctx.get_global_backend_api())
-        else {
-            tracing::warn!(
-                trade_no=%req.trade_no,
-                "获取全局上下文失败，跳过归集交易确认 ACK 上报"
-            );
-            return;
-        };
+        let backend_api = ctx.get_global_backend_api();
         tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 准备调用后端API发送交易事件确认");
 
         // 检查 TxRes ACK 是否已发送

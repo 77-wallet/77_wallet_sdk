@@ -23,6 +23,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 #[derive(Clone)]
 struct FeeTxWorkerCtx {
     pool: ApiTransactionDbPool,
+    backend_api: std::sync::Arc<wallet_transport_backend::api::BackendApi>,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
 }
@@ -55,12 +56,14 @@ pub(super) struct ProcessFeeTxReport {
 
 impl ProcessFeeTxReport {
     pub(super) fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
     ) -> Self {
         let worker_ctx = FeeTxWorkerCtx {
             pool: pool.clone(),
+            backend_api: ctx.get_global_backend_api(),
             address_locks: Arc::new(DashMap::new()),
             global_sem: Arc::new(Semaphore::new(64)),
         };
@@ -129,7 +132,8 @@ impl ProcessFeeTxReport {
             let _guard = lock.lock().await;
             let _permit = ctx.global_sem.acquire().await.unwrap();
             // 直接调用时不检查重试时间
-            Self::process_fee_single_tx_report(ctx.pool, api_fee, false).await
+            Self::process_fee_single_tx_report(ctx.pool, api_fee, false, ctx.backend_api.clone())
+                .await
         });
     }
 
@@ -171,7 +175,13 @@ impl ProcessFeeTxReport {
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
                     // 定时检查时需要检查重试时间
-                    Self::process_fee_single_tx_report(ctx.pool.clone(), req, true).await
+                    Self::process_fee_single_tx_report(
+                        ctx.pool.clone(),
+                        req,
+                        true,
+                        ctx.backend_api.clone(),
+                    )
+                    .await
                 });
             }
         });
@@ -182,6 +192,7 @@ impl ProcessFeeTxReport {
         pool: ApiTransactionDbPool,
         req: ApiFeeEntity,
         check_retry_time: bool,
+        backend_api: std::sync::Arc<wallet_transport_backend::api::BackendApi>,
     ) {
         tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 处理单个手续费交易报告，当前状态: {:?}", req.status);
 
@@ -256,13 +267,6 @@ impl ProcessFeeTxReport {
         };
 
         tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 调用后端API上传交易执行报告");
-        let backend_api = match crate::get_context() {
-            Ok(ctx) => ctx.get_global_backend_api(),
-            Err(err) => {
-                tracing::error!(trade_no=%req.trade_no, "[手续费归集报告] 获取全局 context 失败: {}", err);
-                return;
-            }
-        };
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 None,

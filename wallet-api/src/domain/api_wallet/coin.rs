@@ -55,11 +55,11 @@ static BACKFILL_RUNNING: AtomicBool = AtomicBool::new(false);
 impl ApiCoinDomain {
     #[deprecated(note = "use get_coin_by_token_key_exact_with_ctx")]
     pub async fn get_coin_by_token_key_exact(
+        ctx: &'static Context,
         chain_code: &str,
         token_key: AssetTokenKey,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
-        let ctx = crate::context::get_context()?;
-        Self::get_coin_by_token_key_exact_with_ctx(&ctx, chain_code, token_key).await
+        Self::get_coin_by_token_key_exact_with_ctx(ctx, chain_code, token_key).await
     }
 
     fn active_chain_codes(coins: &[ApiCoinEntity]) -> HashSet<String> {

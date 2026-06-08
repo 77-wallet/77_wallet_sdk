@@ -261,6 +261,7 @@
 /// `resource_ready` / `need_platform_delegate` are persisted result facts.
 /// BuildTx may only proceed after `resource_gate_released_at`.
 /// ============================================================================
+use std::fmt;
 use std::time::{Duration, Instant};
 
 use tracing::{error, trace, warn};
@@ -272,11 +273,14 @@ use super::{
     predicate::evaluate_point,
     stage::{ADVANCEMENT_ORDER, AdvancementPoint},
 };
-use crate::infrastructure::api_trans::{
-    shadow_rpc_policy,
-    withdraw::diagnose::{
-        DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage,
-        maybe_log_stuck,
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::{
+        shadow_rpc_policy,
+        withdraw::diagnose::{
+            DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage,
+            maybe_log_stuck,
+        },
     },
 };
 
@@ -454,23 +458,29 @@ impl Default for ScannerConfig {
 ///
 ///
 /// 只生成推进意图，不直接执行状态推进
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct ShadowScanner {
-    pool: ApiTransactionDbPool,
+    ctx: &'static crate::context::Context,
     /// Scanner配置
     pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<WithdrawIntent>,
     diagnose_tx: Option<DiagnoseEventSender>,
 }
 
+impl fmt::Debug for ShadowScanner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ShadowScanner").finish()
+    }
+}
+
 impl ShadowScanner {
     pub fn new(
-        pool: ApiTransactionDbPool,
+        ctx: &'static crate::context::Context,
         config: ScannerConfig,
         intent_tx: tokio::sync::mpsc::Sender<WithdrawIntent>,
         diagnose_tx: Option<DiagnoseEventSender>,
     ) -> Self {
-        Self { pool, config, intent_tx, diagnose_tx }
+        Self { ctx, config, intent_tx, diagnose_tx }
     }
 
     /// 执行一轮扫描
@@ -481,32 +491,27 @@ impl ShadowScanner {
         // Resource result ACK is the backend-visible closure for a platform
         // delegation result. Prefer it before main-chain stages so a resource
         // result cannot be followed by BuildTx/Broadcast before TX_RSC_RES ACK.
-        self.scan_need_resource_result_ack().await;
-
-        // 手续费预估是审计展示用旁路快照，不参与主链路强顺序推进。
-        self.scan_need_fee_estimate().await;
-
-        // 执行扫描逻辑：基于事实驱动
-        // 推荐顺序：
-        // - 正向推进（Build / Broadcast）
-        // - 事实补齐（Recover / Receipt）
-        // - 结果确认（ResAck）
-        // 1. 发送交易 ACK
-        // 2. 构建交易
-        // 3. 广播交易
-        // 4. 恢复交易
-        // 5. 上传交易执行回执
-        // 6. 发送结果 ACK
-        self.scan_need_tx_ack().await;
-        self.scan_need_resource_gate().await;
-        self.scan_can_build().await;
-        self.scan_can_broadcast().await;
-        self.scan_need_recover().await;
-        self.scan_need_tx_exec_receipt_upload().await;
-        self.scan_confirmed_need_tx_res_ack().await;
-        self.scan_need_resource_task_ack().await;
-        self.scan_can_resource_delegation_execute().await;
-        self.scan_need_resource_tx_exec_receipt_upload().await;
+        for (stage, result) in [
+            ("need_resource_result_ack", self.scan_need_resource_result_ack().await),
+            ("need_fee_estimate", self.scan_need_fee_estimate().await),
+            ("need_tx_ack", self.scan_need_tx_ack().await),
+            ("need_resource_gate", self.scan_need_resource_gate().await),
+            ("can_build", self.scan_can_build().await),
+            ("can_broadcast", self.scan_can_broadcast().await),
+            ("need_recover", self.scan_need_recover().await),
+            ("need_tx_exec_receipt_upload", self.scan_need_tx_exec_receipt_upload().await),
+            ("confirmed_need_tx_res_ack", self.scan_confirmed_need_tx_res_ack().await),
+            ("need_resource_task_ack", self.scan_need_resource_task_ack().await),
+            ("can_resource_delegation_execute", self.scan_can_resource_delegation_execute().await),
+            (
+                "need_resource_tx_exec_receipt_upload",
+                self.scan_need_resource_tx_exec_receipt_upload().await,
+            ),
+        ] {
+            if let Err(error) = result {
+                error!(stage, %error, "Withdraw shadow scan stage failed");
+            }
+        }
 
         trace!("Withdraw shadow scan round completed in {:?}", start.elapsed());
     }
@@ -519,24 +524,21 @@ impl ShadowScanner {
     /// - 未构建、未上链、未终止、无错误
     ///
     /// 该 intent 只补审计展示快照，不推进 BuildTx/ResourceGate。
-    async fn scan_need_fee_estimate(&self) {
+    async fn scan_need_fee_estimate(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw fee estimate records");
 
-        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_fee_estimate(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_fee_estimate(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan withdraw fee estimate records");
-                return;
-            }
-        };
+        ).await?;
 
         for record in records {
             let intent = WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(record.trade_no));
             self.dispatch_intent(intent);
         }
+
+        Ok(())
     }
 
     /// 扫描需要发送交易 ACK 的交易
@@ -547,20 +549,17 @@ impl ShadowScanner {
     /// - err_code IS NULL
     ///
     /// SQL must be equivalent to need_tx_ack()
-    async fn scan_need_tx_ack(&self) {
+    async fn scan_need_tx_ack(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning need tx ack records");
 
         // 查询DB中需要发送交易 ACK 的记录
-        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_tx_ack(
-            &self.pool,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan need tx ack records");
-                return;
-            }
-        };
+        let records =
+            wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_tx_ack(
+                &pool,
+                self.config.max_items_per_scan,
+            )
+            .await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -572,43 +571,37 @@ impl ShadowScanner {
                 WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(record.trade_no));
             self.dispatch_intent(intent);
         }
+
+        Ok(())
     }
 
-    async fn scan_need_resource_gate(&self) {
+    async fn scan_need_resource_gate(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource gate records");
 
-        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_resource_gate(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_resource_gate(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan withdraw resource gate records");
-                return;
-            }
-        };
+        ).await?;
 
         for record in records {
             let intent =
                 WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(record.trade_no));
             self.dispatch_intent(intent);
         }
+
+        Ok(())
     }
 
-    async fn scan_need_resource_result_ack(&self) {
+    async fn scan_need_resource_result_ack(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource result ACK records");
 
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
+            &pool,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan withdraw resource result ACK records");
-                return;
-            }
-        };
+        ).await?;
 
         for record in records {
             let intent = WithdrawIntent::SideEffect(
@@ -616,22 +609,19 @@ impl ShadowScanner {
             );
             self.dispatch_intent(intent);
         }
+
+        Ok(())
     }
 
-    async fn scan_need_resource_task_ack(&self) {
+    async fn scan_need_resource_task_ack(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource task ACK records");
 
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type(
+            &pool,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan withdraw resource task ACK records");
-                return;
-            }
-        };
+        ).await?;
 
         for record in records {
             let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceTaskAck(
@@ -639,30 +629,30 @@ impl ShadowScanner {
             ));
             self.dispatch_intent(intent);
         }
+
+        Ok(())
     }
 
-    async fn scan_can_resource_delegation_execute(&self) {
+    async fn scan_can_resource_delegation_execute(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning executable withdraw resource delegation records");
 
         self.scan_can_withdraw_platform_delegate().await;
+
+        Ok(())
     }
 
-    async fn scan_can_withdraw_platform_delegate(&self) {
+    async fn scan_can_withdraw_platform_delegate(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning executable withdraw platform delegate records");
 
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+            &pool,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
             wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform,
             wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan executable withdraw platform delegate records");
-                return;
-            }
-        };
+        ).await?;
 
         for record in records {
             let intent = WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(
@@ -670,22 +660,19 @@ impl ShadowScanner {
             ));
             self.dispatch_intent(intent);
         }
+
+        Ok(())
     }
 
-    async fn scan_need_resource_tx_exec_receipt_upload(&self) {
+    async fn scan_need_resource_tx_exec_receipt_upload(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource tx exec receipt upload records");
 
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
+            &pool,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan withdraw resource tx exec receipt upload records");
-                return;
-            }
-        };
+        ).await?;
 
         for record in records {
             let intent = WithdrawIntent::SideEffect(
@@ -693,6 +680,8 @@ impl ShadowScanner {
             );
             self.dispatch_intent(intent);
         }
+
+        Ok(())
     }
 
     /// 扫描"允许构建 raw_tx"的交易
@@ -702,20 +691,17 @@ impl ShadowScanner {
     /// - need_service_fee != true        // 不需要服务费补充
     ///
     /// SQL must be equivalent to can_build()
-    async fn scan_can_build(&self) {
+    async fn scan_can_build(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
 
         // 查询DB中可构建的记录
-        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_can_build(
-            &self.pool,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan can build records");
-                return;
-            }
-        };
+        let records =
+            wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_can_build(
+                &pool,
+                self.config.max_items_per_scan,
+            )
+            .await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -726,6 +712,8 @@ impl ShadowScanner {
             let intent = WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(record.trade_no));
             self.dispatch_intent(intent);
         }
+
+        Ok(())
     }
 
     /// 扫描"允许广播"的交易
@@ -736,20 +724,15 @@ impl ShadowScanner {
     /// - finished_at IS NULL
     ///
     /// SQL must be equivalent to can_broadcast()
-    async fn scan_can_broadcast(&self) {
+    async fn scan_can_broadcast(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning can broadcast records");
 
         // 查询DB中可广播的记录
-        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_can_broadcast(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_can_broadcast(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan can broadcast records");
-                return;
-            }
-        };
+        ).await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -761,7 +744,8 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
+                    self.ctx,
                     &record.chain_code,
                 )
                 .await
@@ -791,6 +775,8 @@ impl ShadowScanner {
                 );
             }
         }
+
+        Ok(())
     }
 
     /// 扫描需要发送结果确认 ACK 的交易
@@ -801,20 +787,15 @@ impl ShadowScanner {
     /// - finished_at IS NULL
     ///
     /// SQL must be equivalent to need_tx_res_ack()
-    async fn scan_confirmed_need_tx_res_ack(&self) {
+    async fn scan_confirmed_need_tx_res_ack(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need tx res ACK records");
 
         // 查询DB中已确认但未发送TxRes ACK的记录
-        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_confirmed_need_tx_res_ack(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_confirmed_need_tx_res_ack(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan confirmed need tx res ACK records");
-                return;
-            }
-        };
+        ).await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -826,6 +807,8 @@ impl ShadowScanner {
                 WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(record.trade_no));
             self.dispatch_intent(intent);
         }
+
+        Ok(())
     }
 
     /// 扫描需要上传交易执行回执的交易
@@ -834,20 +817,15 @@ impl ShadowScanner {
     /// - tx_exec_receipt_uploaded_at IS NULL
     /// - finished_at IS NULL
     /// - scanner 仅对满足 need_tx_exec_receipt_upload() 的记录生成派发意图
-    async fn scan_need_tx_exec_receipt_upload(&self) {
+    async fn scan_need_tx_exec_receipt_upload(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
 
         // 查询DB中需要上传交易执行回执的记录
-        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_tx_exec_receipt_upload(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_tx_exec_receipt_upload(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan need tx exec receipt upload records");
-                return;
-            }
-        };
+        ).await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -878,6 +856,8 @@ impl ShadowScanner {
             skipped = %skipped_count,
             "Found need tx exec receipt upload records"
         );
+
+        Ok(())
     }
 
     /// 扫描需要恢复交易的记录
@@ -892,20 +872,15 @@ impl ShadowScanner {
     /// It MUST exist even if try_advance already handles point-to-point wakeup.
     ///
     /// SQL must be equivalent to need_recover()
-    async fn scan_need_recover(&self) {
+    async fn scan_need_recover(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning need recover records");
 
         // 查询DB中需要恢复的记录
-        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_recover(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_recover(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan need recover records");
-                return;
-            }
-        };
+        ).await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -917,7 +892,8 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
+                    self.ctx,
                     &record.chain_code,
                 )
                 .await
@@ -947,6 +923,8 @@ impl ShadowScanner {
                 );
             }
         }
+
+        Ok(())
     }
 
     /// 分发推进意图
@@ -1013,20 +991,21 @@ impl ShadowScanner {
     /// 3. 找到第一个满足条件的推进点，生成对应意图
     /// 4. 发送意图并返回
     pub async fn try_advance(&self, trade_no: &str) {
+        if let Err(error) = self.try_advance_result(trade_no).await {
+            error!(trade_no = %trade_no, %error, "Withdraw try_advance failed");
+        }
+    }
+
+    async fn try_advance_result(&self, trade_no: &str) -> Result<(), ServiceError> {
         trace!(trade_no = %trade_no, "Try advancing withdraw transaction");
+        let pool = self.ctx.api_transaction_pool()?;
 
         // 查询最新的DB状态
-        let withdraw = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &self.pool,
+        let withdraw = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
             trade_no,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw,
-        ).await {
-            Ok(withdraw) => withdraw,
-            Err(e) => {
-                error!(trade_no = %trade_no, error = %e, "Failed to get api withdraw by trade_no");
-                return;
-            }
-        };
+        ).await?;
 
         // ============================================================================
         // ARCHITECTURE VIOLATION DETECTION — 只报警不阻断
@@ -1067,7 +1046,7 @@ impl ShadowScanner {
                 self.dispatch_intent(WithdrawIntent::SideEffect(
                     WithdrawSideEffectIntent::SendResourceResultAck(resource_trade_no),
                 ));
-                return;
+                return Ok(());
             }
             Ok(None) => {}
             Err(e) => {
@@ -1076,7 +1055,7 @@ impl ShadowScanner {
                     error = %e,
                     "Failed to check pending withdraw resource result ACK"
                 );
-                return;
+                return Ok(());
             }
         }
 
@@ -1090,7 +1069,7 @@ impl ShadowScanner {
                 );
                 self.dispatch_intent(intent);
             }
-            return;
+            return Ok(());
         }
 
         // 按照 ADVANCEMENT_ORDER 顺序检查可推进点
@@ -1108,7 +1087,7 @@ impl ShadowScanner {
                         trade_no.to_string(),
                     ));
                     self.dispatch_intent(intent);
-                    return;
+                    return Ok(());
                 }
                 AdvancementPoint::NeedResourceGate => {
                     trace!(trade_no = %trade_no, "Need to evaluate resource gate");
@@ -1116,18 +1095,21 @@ impl ShadowScanner {
                         trade_no.to_string(),
                     ));
                     self.dispatch_intent(intent);
-                    return;
+                    return Ok(());
                 }
                 AdvancementPoint::CanBuild => {
                     trace!(trade_no = %trade_no, "Can build transaction");
                     let intent =
                         WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no.to_string()));
                     self.dispatch_intent(intent);
-                    return;
+                    return Ok(());
                 }
                 AdvancementPoint::CanBroadcast => {
-                    if let Some((host, remaining)) =
-                        shadow_rpc_policy::breaker_open_for_chain_code(&withdraw.chain_code).await
+                    if let Some((host, remaining)) = shadow_rpc_policy::breaker_open_for_chain_code(
+                        self.ctx,
+                        &withdraw.chain_code,
+                    )
+                    .await
                     {
                         trace!(
                             trade_no = %trade_no,
@@ -1148,18 +1130,21 @@ impl ShadowScanner {
                                 "try_advance_skip_because_breaker_open: withdraw broadcast skipped"
                             );
                         }
-                        return;
+                        return Ok(());
                     }
                     trace!(trade_no = %trade_no, "Can broadcast transaction");
                     let intent = WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(
                         trade_no.to_string(),
                     ));
                     self.dispatch_intent(intent);
-                    return;
+                    return Ok(());
                 }
                 AdvancementPoint::NeedRecover => {
-                    if let Some((host, remaining)) =
-                        shadow_rpc_policy::breaker_open_for_chain_code(&withdraw.chain_code).await
+                    if let Some((host, remaining)) = shadow_rpc_policy::breaker_open_for_chain_code(
+                        self.ctx,
+                        &withdraw.chain_code,
+                    )
+                    .await
                     {
                         trace!(
                             trade_no = %trade_no,
@@ -1180,7 +1165,7 @@ impl ShadowScanner {
                                 "try_advance_skip_because_breaker_open: withdraw recover skipped"
                             );
                         }
-                        return;
+                        return Ok(());
                     }
                     if !shadow_rpc_policy::allow_recover_dispatch(&format!("withdraw:{trade_no}")) {
                         trace!(
@@ -1188,13 +1173,13 @@ impl ShadowScanner {
                             cooldown = ?shadow_rpc_policy::recover_cooldown(),
                             "recover_skip_because_cooldown: withdraw recover skipped"
                         );
-                        return;
+                        return Ok(());
                     }
                     trace!(trade_no = %trade_no, "Need to recover transaction");
                     let intent =
                         WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no.to_string()));
                     self.dispatch_intent(intent);
-                    return;
+                    return Ok(());
                 }
                 AdvancementPoint::NeedTxExecReceiptUpload => {
                     trace!(trade_no = %trade_no, "Need to upload tx exec receipt");
@@ -1202,7 +1187,7 @@ impl ShadowScanner {
                         WithdrawSideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
                     );
                     self.dispatch_intent(intent);
-                    return;
+                    return Ok(());
                 }
                 AdvancementPoint::NeedTxResAck => {
                     trace!(trade_no = %trade_no, "Need to send tx res ACK");
@@ -1210,7 +1195,7 @@ impl ShadowScanner {
                         WithdrawSideEffectIntent::SendTxResAck(trade_no.to_string()),
                     );
                     self.dispatch_intent(intent);
-                    return;
+                    return Ok(());
                 }
                 AdvancementPoint::FullyBlocked => {}
             }
@@ -1224,14 +1209,16 @@ impl ShadowScanner {
             DiagnoseSource::ManualAdvance,
             DiagnoseStage::Unknown,
         );
+        Ok(())
     }
 
     async fn pending_resource_result_ack_trade_no(
         &self,
         origin_trade_no: &str,
-    ) -> Result<Option<String>, wallet_database::Error> {
+    ) -> Result<Option<String>, crate::error::service::ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
         Ok(wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::find_pending_result_ack_by_origin(
-            &self.pool,
+            &pool,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
             origin_trade_no,
         )
@@ -1246,7 +1233,6 @@ mod tests {
     use chrono::Utc;
     use tokio::sync::mpsc;
     use wallet_database::{
-        SqliteContext,
         entities::{
             api_resource_delegation::{
                 ApiResourceDelegationResultStatus, NewApiResourceDelegation,
@@ -1259,6 +1245,10 @@ mod tests {
             resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
         },
     };
+
+    async fn test_ctx() -> &'static crate::context::Context {
+        crate::testkit::context::api_trans_test_ctx().await
+    }
 
     fn base_withdraw(trade_no: &str) -> ApiWithdrawEntity {
         ApiWithdrawEntity {
@@ -1350,13 +1340,10 @@ mod tests {
     #[tokio::test]
     async fn try_advance_prioritizes_withdraw_resource_result_ack_before_build()
     -> anyhow::Result<()> {
-        let dir = tempfile::tempdir()?;
-        let db_root = dir.path().to_string_lossy().to_string();
-        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
-            .await?
-            .into_transaction_db_pool()?;
+        let ctx = test_ctx().await;
+        let pool = ctx.api_transaction_pool()?;
         let (intent_tx, mut intent_rx) = mpsc::channel(100);
-        let scanner = ShadowScanner::new(pool.clone(), ScannerConfig::default(), intent_tx, None);
+        let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -1429,13 +1416,10 @@ mod tests {
 
     #[tokio::test]
     async fn withdraw_fee_estimate_snapshot_scan_dispatches_before_audit() -> anyhow::Result<()> {
-        let dir = tempfile::tempdir()?;
-        let db_root = dir.path().to_string_lossy().to_string();
-        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
-            .await?
-            .into_transaction_db_pool()?;
+        let ctx = test_ctx().await;
+        let pool = ctx.api_transaction_pool()?;
         let (intent_tx, mut intent_rx) = mpsc::channel(100);
-        let scanner = ShadowScanner::new(pool.clone(), ScannerConfig::default(), intent_tx, None);
+        let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,

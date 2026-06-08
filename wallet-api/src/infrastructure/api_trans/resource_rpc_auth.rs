@@ -7,29 +7,12 @@ pub(crate) fn should_retry_after_rpc_auth_error(err: &ServiceError) -> bool {
 }
 
 pub(crate) async fn refresh_and_prepare_retry(
-    ctx: &Context,
+    ctx: &'static Context,
     chain_code: &str,
     operation: &'static str,
     resource_trade_no: &str,
     err: &ServiceError,
 ) -> Result<(), ServiceError> {
-    ApiTransDomain::refresh_rpc_auth_and_prepare_retry(
-        ctx,
-        chain_code,
-        operation,
-        Some(resource_trade_no),
-        err,
-    )
-    .await
-}
-
-pub(crate) async fn refresh_and_prepare_retry_global(
-    chain_code: &str,
-    operation: &'static str,
-    resource_trade_no: &str,
-    err: &ServiceError,
-) -> Result<(), ServiceError> {
-    let ctx = crate::get_context()?;
     ApiTransDomain::refresh_rpc_auth_and_prepare_retry(
         ctx,
         chain_code,

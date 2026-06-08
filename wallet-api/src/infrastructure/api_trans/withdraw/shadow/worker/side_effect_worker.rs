@@ -49,8 +49,6 @@ enum ResourceGateReleaseOutcome {
 #[derive(Clone)]
 pub struct SideEffectWorker {
     ctx: &'static crate::context::Context,
-    pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
 }
@@ -65,45 +63,34 @@ impl SideEffectWorker {
         }
     }
 
-    async fn schedule_resource_result_ack_retry(&self, resource_trade_no: &str, retry_count: i64) {
+    async fn schedule_resource_result_ack_retry(
+        &self,
+        resource_trade_no: &str,
+        retry_count: i64,
+    ) -> Result<(), ServiceError> {
         let wait_secs = Self::resource_result_ack_retry_wait_secs(retry_count);
         let next_retry_at = (chrono::Utc::now() + chrono::Duration::seconds(wait_secs))
             .format("%Y-%m-%dT%H:%M:%SZ")
             .to_string();
-        match ApiResourceDelegationRepo::mark_result_ack_retry_wait(
-            &self.pool,
+        let pool = self.ctx.api_transaction_pool()?;
+        let affected = ApiResourceDelegationRepo::mark_result_ack_retry_wait(
+            &pool,
             resource_trade_no,
             &next_retry_at,
         )
-        .await
-        {
-            Ok(affected) => {
-                info!(
-                    resource_trade_no = %resource_trade_no,
-                    wait_secs = wait_secs,
-                    affected = affected,
-                    "Resource result ACK retry scheduled"
-                );
-            }
-            Err(schedule_err) => {
-                error!(
-                    resource_trade_no = %resource_trade_no,
-                    error = %schedule_err,
-                    "Failed to schedule resource result ACK retry"
-                );
-            }
-        }
+        .await?;
+        info!(
+            resource_trade_no = %resource_trade_no,
+            wait_secs = wait_secs,
+            affected = affected,
+            "Resource result ACK retry scheduled"
+        );
+        Ok(())
     }
 
-    pub fn new(
-        ctx: &'static crate::context::Context,
-        pool: ApiTransactionDbPool,
-        core_pool: ApiWalletDbPool,
-        scanner: Arc<ShadowScanner>,
-    ) -> Self {
-        Self { ctx, pool, core_pool, scanner }
+    pub fn new(ctx: &'static crate::context::Context, scanner: Arc<ShadowScanner>) -> Self {
+        Self { ctx, scanner }
     }
-
     /// 处理命令
     pub async fn handle(&self, command: super::SideEffectCommand) -> Result<(), ServiceError> {
         // 提取 trade_no 用于日志
@@ -157,7 +144,7 @@ impl SideEffectWorker {
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let withdraw = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &self.pool,
+            &self.ctx.api_transaction_pool()?,
             &trade_no,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw,
         )
@@ -196,9 +183,10 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Tx ACK sent successfully");
                 // 成功路径：标记交易 ACK 已发送
-                let rows_affected = ApiWithdrawRepo::mark_tx_ack_sent(&self.pool, &trade_no)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected =
+                    ApiWithdrawRepo::mark_tx_ack_sent(&self.ctx.api_transaction_pool()?, &trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
 
                 // 显式处理幂等情况：ACK 已被其他并发执行
                 if rows_affected == 0 {
@@ -223,7 +211,7 @@ impl SideEffectWorker {
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let withdraw = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &self.pool,
+            &self.ctx.api_transaction_pool()?,
             &trade_no,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw,
         )
@@ -262,7 +250,7 @@ impl SideEffectWorker {
                     source = "side_effect_worker",
                     "Tx res ACK already sent but withdraw not finished; repairing finished_at"
                 );
-                ApiWithdrawRepo::mark_chain_finished(&self.pool, &trade_no)
+                ApiWithdrawRepo::mark_chain_finished(&self.ctx.api_transaction_pool()?, &trade_no)
                     .await
                     .map_err(|e| ServiceError::Database(e.into()))?;
                 self.scanner.try_advance(&trade_no).await;
@@ -303,10 +291,12 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Tx res ACK sent successfully");
                 // 成功路径：标记交易结果 ACK 已发送
-                let rows_affected =
-                    ApiWithdrawRepo::mark_tx_res_ack_sent_and_chain_finished(&self.pool, &trade_no)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected = ApiWithdrawRepo::mark_tx_res_ack_sent_and_chain_finished(
+                    &self.ctx.api_transaction_pool()?,
+                    &trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
 
                 // 显式处理幂等情况：ACK 已被其他并发执行
                 if rows_affected == 0 {
@@ -329,10 +319,12 @@ impl SideEffectWorker {
         &self,
         resource_trade_no: String,
     ) -> Result<(), ServiceError> {
-        let resource_task =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+        let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
 
         if resource_task.result_ack_sent_at.is_some() || resource_task.result_received_at.is_none()
         {
@@ -363,15 +355,25 @@ impl SideEffectWorker {
             .trans_event_ack(&TransEventAckReq::new(&resource_trade_no, trans_type, ack_type))
             .await
         {
-            self.schedule_resource_result_ack_retry(&resource_trade_no, resource_task.retry_count)
-                .await;
+            if let Err(schedule_err) = self
+                .schedule_resource_result_ack_retry(&resource_trade_no, resource_task.retry_count)
+                .await
+            {
+                error!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %schedule_err,
+                    "Failed to schedule resource result ACK retry"
+                );
+            }
             return Err(e.into());
         }
 
-        let affected =
-            ApiResourceDelegationRepo::mark_result_ack_sent(&self.pool, &resource_trade_no)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+        let affected = ApiResourceDelegationRepo::mark_result_ack_sent(
+            &self.ctx.api_transaction_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         if affected == 0 {
             warn!(resource_trade_no = %resource_trade_no, "Resource result ACK marked 0 rows");
         }
@@ -388,10 +390,12 @@ impl SideEffectWorker {
         &self,
         resource_trade_no: String,
     ) -> Result<(), ServiceError> {
-        let resource_task =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+        let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
 
         if resource_task.task_ack_sent_at.is_some() {
             return Ok(());
@@ -406,10 +410,12 @@ impl SideEffectWorker {
             ))
             .await?;
 
-        let affected =
-            ApiResourceDelegationRepo::mark_task_ack_sent(&self.pool, &resource_trade_no)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+        let affected = ApiResourceDelegationRepo::mark_task_ack_sent(
+            &self.ctx.api_transaction_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         if affected == 0 {
             warn!(resource_trade_no = %resource_trade_no, "Resource task ACK marked 0 rows");
         }
@@ -420,10 +426,12 @@ impl SideEffectWorker {
         &self,
         resource_trade_no: String,
     ) -> Result<(), ServiceError> {
-        let resource_task =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+        let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
 
         if resource_task.tx_exec_receipt_uploaded_at.is_some() {
             return Ok(());
@@ -441,7 +449,7 @@ impl SideEffectWorker {
         let backend = self.ctx.get_global_backend_api();
         backend.upload_tx_exec_receipt(&payload).await?;
         let affected = ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(
-            &self.pool,
+            &self.ctx.api_transaction_pool()?,
             &resource_trade_no,
         )
         .await
@@ -500,7 +508,7 @@ impl SideEffectWorker {
         };
 
         let withdraw = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &self.pool,
+            &self.ctx.api_transaction_pool()?,
             origin_trade_no,
             ApiTradeType::Withdraw,
         )
@@ -512,9 +520,13 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        ApiWithdrawRepo::mark_resource_released(&self.pool, origin_trade_no, release_result)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
+        ApiWithdrawRepo::mark_resource_released(
+            &self.ctx.api_transaction_pool()?,
+            origin_trade_no,
+            release_result,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         self.scanner.try_advance(origin_trade_no).await;
         Ok(())
     }
@@ -559,7 +571,7 @@ impl SideEffectWorker {
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let withdraw = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &self.pool,
+            &self.ctx.api_transaction_pool()?,
             &trade_no,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw,
         )
@@ -608,8 +620,11 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Tx exec receipt uploaded successfully");
                 // 成功路径：标记交易执行回执已上传
-                if let Err(e) =
-                    ApiWithdrawRepo::mark_tx_exec_receipt_uploaded(&self.pool, &trade_no).await
+                if let Err(e) = ApiWithdrawRepo::mark_tx_exec_receipt_uploaded(
+                    &self.ctx.api_transaction_pool()?,
+                    &trade_no,
+                )
+                .await
                 {
                     error!(trade_no = %trade_no, error = %e, source = "side_effect_worker", "Failed to mark tx exec receipt uploaded");
                 } else {
@@ -621,8 +636,11 @@ impl SideEffectWorker {
                         && (withdraw.chain_failed_at.is_some() || withdraw.err_code.is_some())
                     {
                         info!(trade_no = %trade_no, source = "side_effect_worker", "Marking withdraw as finished");
-                        if let Err(e) =
-                            ApiWithdrawRepo::mark_chain_finished(&self.pool, &trade_no).await
+                        if let Err(e) = ApiWithdrawRepo::mark_chain_finished(
+                            &self.ctx.api_transaction_pool()?,
+                            &trade_no,
+                        )
+                        .await
                         {
                             error!(trade_no = %trade_no, error = %e, source = "side_effect_worker", "Failed to mark withdraw as finished");
                         } else {
@@ -717,9 +735,11 @@ fn tx_exec_receipt_upload_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::api_wallet_backend::ApiWalletBackend;
+    use async_trait::async_trait;
     use chrono::Utc;
-    use std::sync::Arc;
-    use tokio::sync::mpsc;
+    use std::{fs, path::PathBuf, sync::Arc};
+    use tokio::sync::{OnceCell, mpsc};
     use wallet_database::{
         SqliteContext,
         entities::{
@@ -732,6 +752,158 @@ mod tests {
             resource_delegation::ApiResourceDelegationRepo, withdraw::ApiWithdrawRepo,
         },
     };
+    use wallet_transport_backend::{
+        request::{
+            DeviceDeleteReq, KeysInitReq,
+            api_wallet::{
+                address::ExpandAddressCompleteReq,
+                swap::{ApiInitSwapReq, ApiInitSwapResponse},
+                wallet::{
+                    AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+                },
+            },
+        },
+        response_vo::api_wallet::wallet::{
+            AppIdUidUsageRes as ApiWalletAppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes,
+            QueryWalletActivationInfoResp, UidStatus,
+        },
+    };
+
+    #[derive(Default)]
+    struct NoopApiWalletBackend;
+
+    #[async_trait]
+    impl ApiWalletBackend for NoopApiWalletBackend {
+        async fn wallet_bind_appid(
+            &self,
+            _: BindAppIdReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn init_api_wallet(
+            &self,
+            _: AppIdImportReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn old_keys_init(
+            &self,
+            _: KeysInitReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn appid_import(
+            &self,
+            _: AppIdImportReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn appid_import_recharge_wallet(
+            &self,
+            _: AppIdImportRechargeWalletReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn keys_uid_check(
+            &self,
+            _: &str,
+        ) -> Result<KeysUidCheckRes, crate::error::service::ServiceError> {
+            Ok(KeysUidCheckRes { uid: String::new(), status: UidStatus::NormalWallet })
+        }
+        async fn query_uid_bind_info(
+            &self,
+            _: &str,
+        ) -> Result<QueryUidBindInfoRes, crate::error::service::ServiceError> {
+            Ok(QueryUidBindInfoRes {
+                app_id: String::new(),
+                org_id: String::new(),
+                bind_status: false,
+                sn: String::new(),
+            })
+        }
+        async fn query_wallet_activation_info(
+            &self,
+            _: &str,
+        ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
+            Ok(QueryWalletActivationInfoResp(vec![]))
+        }
+        async fn appid_uid_usage(
+            &self,
+            _: AppIdUidUsageReq,
+        ) -> Result<ApiWalletAppIdUidUsageRes, crate::error::service::ServiceError> {
+            Ok(ApiWalletAppIdUidUsageRes { used: false })
+        }
+        async fn expand_address_complete(
+            &self,
+            _: ExpandAddressCompleteReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn appid_withdrawal_wallet_change(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn init_swap(
+            &self,
+            _: &ApiInitSwapReq,
+        ) -> Result<ApiInitSwapResponse, crate::error::service::ServiceError> {
+            Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+        }
+        async fn device_delete(
+            &self,
+            _: &DeviceDeleteReq,
+        ) -> Result<Option<()>, crate::error::service::ServiceError> {
+            Ok(None)
+        }
+    }
+
+    async fn test_ctx() -> &'static crate::context::Context {
+        static CTX: tokio::sync::OnceCell<&'static crate::context::Context> =
+            tokio::sync::OnceCell::const_new();
+        *CTX.get_or_init(|| async {
+            let config = crate::config::Config::new(
+                r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#,
+            )
+            .expect("parse test config");
+
+            let mut dir = PathBuf::from(std::env::temp_dir());
+            dir.push("wallet-api-shadow-withdraw-side-effect-tests");
+            fs::create_dir_all(&dir).expect("ensure temp dir");
+            let dirs = crate::dirs::Dirs::new(&dir.to_string_lossy()).expect("create dirs");
+            crate::context::init_context_with_api_wallet_backend(
+                "wallet_api_shadow_withdraw_side_effect_sn",
+                "unittest",
+                dirs,
+                None,
+                config,
+                Arc::new(NoopApiWalletBackend::default()),
+            )
+            .await
+            .expect("init test context")
+        })
+        .await
+    }
 
     #[test]
     fn withdraw_resource_result_ack_retry_wait_uses_bounded_backoff() {
@@ -850,17 +1022,12 @@ mod tests {
             SqliteContext::new(&db_root, Some("api_wallet.db")).await?.into_api_wallet_db_pool()?;
         let (intent_tx, _intent_rx) = mpsc::channel(8);
         let scanner = Arc::new(ShadowScanner::new(
-            tx_pool.clone(),
+            test_ctx().await,
             crate::infrastructure::api_trans::withdraw::shadow::scanner::ScannerConfig::default(),
             intent_tx,
             None,
         ));
-        let worker = SideEffectWorker::new(
-            crate::get_context().expect("context"),
-            tx_pool.clone(),
-            core_pool,
-            scanner,
-        );
+        let worker = SideEffectWorker::new(test_ctx().await, scanner);
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &tx_pool,

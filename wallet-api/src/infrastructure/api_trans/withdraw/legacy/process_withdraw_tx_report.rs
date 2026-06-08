@@ -88,6 +88,7 @@ struct WithdrawTxWorkerCtx {
     pool: ApiTransactionDbPool,
     address_locks: AddressLockManager,
     global_sem: Arc<Semaphore>,
+    backend_api: Arc<wallet_transport_backend::api::BackendApi>,
 }
 
 impl WithdrawTxWorkerCtx {
@@ -107,6 +108,7 @@ pub(super) struct ProcessWithdrawTxReport {
 
 impl ProcessWithdrawTxReport {
     pub(super) fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxReportCommand>,
@@ -115,6 +117,7 @@ impl ProcessWithdrawTxReport {
             pool: pool.clone(),
             address_locks: AddressLockManager::new(),
             global_sem: Arc::new(Semaphore::new(64)),
+            backend_api: ctx.get_global_backend_api(),
         };
 
         Self { shutdown_rx, report_rx, worker_ctx }
@@ -186,7 +189,7 @@ impl ProcessWithdrawTxReport {
             let _global_permit = ctx.global_sem.acquire().await.unwrap();
 
             // 直接调用时不检查重试时间
-            Self::process_single_tx_report(ctx.pool, req, false).await
+            Self::process_single_tx_report(ctx.pool, ctx.backend_api.clone(), req, false).await
         });
     }
 
@@ -224,7 +227,13 @@ impl ProcessWithdrawTxReport {
                     };
                     let _global_permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_single_tx_report(ctx.pool.clone(), req, true).await
+                    Self::process_single_tx_report(
+                        ctx.pool.clone(),
+                        ctx.backend_api.clone(),
+                        req,
+                        true,
+                    )
+                    .await
                 });
             }
         });
@@ -233,6 +242,7 @@ impl ProcessWithdrawTxReport {
     /// 静态方法：处理单个交易报告
     async fn process_single_tx_report(
         pool: ApiTransactionDbPool,
+        backend_api: Arc<wallet_transport_backend::api::BackendApi>,
         req: ApiWithdrawEntity,
         check_retry_time: bool,
     ) {
@@ -273,13 +283,6 @@ impl ProcessWithdrawTxReport {
             (TransStatus::Success, "".to_string(), None)
         };
 
-        let backend_api = match crate::get_context() {
-            Ok(ctx) => ctx.get_global_backend_api(),
-            Err(err) => {
-                tracing::error!(trade_no=%req.trade_no, "[提币交易报告] 获取全局 context 失败: {}", err);
-                return;
-            }
-        };
         tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 准备调用后端API上传执行结果");
 
         // 创建请求对象

@@ -401,6 +401,7 @@ impl ProcessWithdrawTx {
 
             // 使用通用的交易恢复逻辑
             match ApiTransDomain::process_recovered_tx(
+                &worker_ctx.ctx,
                 &req.chain_code,
                 &req.from_addr,
                 tx_hash,
@@ -457,6 +458,7 @@ impl ProcessWithdrawTx {
 
                 // 第一步：构建raw_tx
                 let (tx_hash, raw_tx, fee) = match ApiTransDomain::build_transfer_raw(
+                    &worker_ctx.ctx,
                     transfer_req,
                     None,
                 )
@@ -507,6 +509,7 @@ impl ProcessWithdrawTx {
 
                 // 第三步：广播交易
                 let tx_resp = ApiTransDomain::broadcast_transfer(
+                    &worker_ctx.ctx,
                     &req.chain_code,
                     raw_tx,
                     Some(tx_hash.as_str()),
@@ -566,6 +569,7 @@ impl ProcessWithdrawTx {
     }
 
     async fn get_eth_nonce(
+        worker_ctx: &WithdrawTxWorkerCtx,
         pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
@@ -579,7 +583,7 @@ impl ProcessWithdrawTx {
             }
             Err(_) => {
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "withdraw_tx:send: 本地缓存未找到nonce，从链上获取");
-                let nonce = ApiTransDomain::nonce(from_addr, chain_code).await?;
+                let nonce = ApiTransDomain::nonce(&worker_ctx.ctx, from_addr, chain_code).await?;
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "withdraw_tx:send: 从链上获取nonce: {}", nonce);
                 Ok(nonce as i64)
             }
@@ -594,8 +598,9 @@ impl ProcessWithdrawTx {
 
         // 获取币种信息
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            worker_ctx.ctx,
             &req.chain_code,
-            req.token_addr.clone().into(),
+            req.token_addr.clone(),
         )
         .await?;
         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
@@ -626,6 +631,7 @@ impl ProcessWithdrawTx {
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
                 Self::get_eth_nonce(
+                    &worker_ctx,
                     &worker_ctx.api_transaction_pool,
                     &req.from_addr,
                     &req.chain_code,
@@ -634,6 +640,7 @@ impl ProcessWithdrawTx {
             }
             ChainCode::BnbSmartChain => {
                 Self::get_eth_nonce(
+                    &worker_ctx,
                     &worker_ctx.api_transaction_pool,
                     &req.from_addr,
                     &req.chain_code,
@@ -668,7 +675,7 @@ impl ProcessWithdrawTx {
             to_addr: req.to_addr.to_string(),
             value: req.value.to_string(),
         });
-        _ = FrontendNotifyEvent::new(data).send().await;
+        _ = FrontendNotifyEvent::new(data).send_with_ctx(worker_ctx.ctx).await;
 
         let resource_consume = tx.resource_consume().unwrap_or_else(|_| "".to_string());
         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 交易资源消耗: {}, 手续费: {}", resource_consume, tx.fee);
@@ -743,7 +750,7 @@ impl ProcessWithdrawTx {
             to_addr: req.to_addr.to_string(),
             value: req.value.to_string(),
         });
-        _ = FrontendNotifyEvent::new(data).send().await;
+        _ = FrontendNotifyEvent::new(data).send_with_ctx(worker_ctx.ctx).await;
         // 更新交易状态,发送失败
         let res = ApiWithdrawRepo::update_api_withdraw_status_and_err(
             &worker_ctx.api_transaction_pool,

@@ -298,6 +298,7 @@ impl ProcessCollectTx {
 
             // 使用通用的交易恢复逻辑
             match ApiTransDomain::process_recovered_tx(
+                &worker_ctx.ctx,
                 &req.chain_code,
                 &req.from_addr,
                 tx_hash,
@@ -385,13 +386,14 @@ impl ProcessCollectTx {
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 开始发送归集交易, nonce={}", nonce);
 
                 // 通过Context获取Handles实例，然后获取私钥管理器
-                let handles = crate::context::get_context()?.get_handles_arc().await?;
+                let handles = worker_ctx.ctx.get_handles_arc().await?;
                 let private_key_manager = handles.get_global_private_key_manager();
                 let private_key =
                     private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 从私钥管理器获取私钥");
                 // 将私钥字符串转换为ChainPrivateKey类型
                 let (tx_hash, raw_tx, fee) = match ApiTransDomain::build_transfer_raw(
+                    &worker_ctx.ctx,
                     transfer_req,
                     Some(private_key),
                 )
@@ -444,6 +446,7 @@ impl ProcessCollectTx {
                 // Step 3: 广播交易
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 开始广播交易");
                 let tx_resp = ApiTransDomain::broadcast_transfer(
+                    &worker_ctx.ctx,
                     &req.chain_code,
                     raw_tx,
                     Some(tx_hash.as_str()),
@@ -490,6 +493,7 @@ impl ProcessCollectTx {
     }
 
     async fn get_eth_nonce(
+        worker_ctx: &CollectTxWorkerCtx,
         pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
@@ -503,7 +507,7 @@ impl ProcessCollectTx {
             }
             Err(_) => {
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 本地缓存未找到nonce，从链上获取");
-                let nonce = ApiTransDomain::nonce(from_addr, chain_code).await?;
+                let nonce = ApiTransDomain::nonce(&worker_ctx.ctx, from_addr, chain_code).await?;
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 从链上获取nonce: {}", nonce);
                 Ok(nonce as i64)
             }
@@ -714,8 +718,9 @@ impl ProcessCollectTx {
 
         // 获取币种信息
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            worker_ctx.ctx,
             &req.chain_code,
-            req.token_addr.clone().into(),
+            req.token_addr.clone(),
         )
         .await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
@@ -746,6 +751,7 @@ impl ProcessCollectTx {
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
                 Self::get_eth_nonce(
+                    &worker_ctx,
                     &worker_ctx.api_transaction_pool,
                     &req.from_addr,
                     &req.chain_code,
@@ -754,6 +760,7 @@ impl ProcessCollectTx {
             }
             ChainCode::BnbSmartChain => {
                 Self::get_eth_nonce(
+                    &worker_ctx,
                     &worker_ctx.api_transaction_pool,
                     &req.from_addr,
                     &req.chain_code,
@@ -913,18 +920,19 @@ impl CheckFee for CollectTxWorkerCtx {
     async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
-        let ctx = crate::context::get_context()?;
-
         // 查询主币信息
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
-        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(self.ctx, &req.chain_code).await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 主币信息: 币种={}, 小数位数={}", main_coin.symbol, main_coin.decimals);
 
         // 确定代币信息
         let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                    .await?;
+            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?;
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 代币信息: 币种={}, 代币地址={:?}, 小数位数={}", 
                 token_coin.symbol, token_coin.token_address, token_coin.decimals);
             (token_coin.symbol, token_coin.token_address, token_coin.decimals)
@@ -1010,7 +1018,7 @@ impl CheckFee for CollectTxWorkerCtx {
                 };
             // 上传手续费记录
             let exec_from_addr = ProcessCollectTx::resolve_withdraw_from_addr(self, &req).await?;
-            let backend_api = crate::get_context()?.get_global_backend_api();
+            let backend_api = self.ctx.get_global_backend_api();
             let upload_req = ServiceFeeUploadReq::new(
                 &req.trade_no,
                 &req.chain_code,
@@ -1054,8 +1062,11 @@ impl CheckFee for CollectTxWorkerCtx {
         tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_key.as_db_str(),
             "collect_tx:send: 查询余额");
 
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx,
+            &chain_code.to_string(),
+        )
+        .await?;
         let balance = adapter.balance_token_key(&owner_address, token_key.clone()).await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
@@ -1082,8 +1093,11 @@ impl CheckFee for CollectTxWorkerCtx {
             "collect_tx:send: 估算交易手续费开始");
 
         let adapter_start = std::time::Instant::now();
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx,
+            &chain_code.to_string(),
+        )
+        .await?;
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%adapter_start.elapsed().as_millis(), "collect_tx:send: 获取适配器完成");
 
         let params_start = std::time::Instant::now();

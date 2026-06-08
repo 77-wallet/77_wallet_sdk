@@ -39,14 +39,15 @@ pub(crate) struct ProcessFeeTxHandle {
 }
 
 impl ProcessFeeTxHandle {
-    pub(crate) async fn new() -> Result<Self, crate::error::service::ServiceError> {
+    pub(crate) async fn new_with_ctx(
+        ctx: &'static crate::context::Context,
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let (shutdown_tx, _) = broadcast::channel(1);
         let shutdown_rx1 = shutdown_tx.subscribe();
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();
 
         // 获取 collect 数据库连接池
-        let ctx = crate::context::get_context()?;
         let api_wallet_pool = ctx.api_wallet_pool()?;
         let api_transaction_pool = ctx.api_transaction_pool()?;
 
@@ -74,13 +75,14 @@ impl ProcessFeeTxHandle {
 
         // 上报交易
         let _tx_report =
-            ProcessFeeTxReport::new(api_transaction_pool.clone(), shutdown_rx2, report_rx);
+            ProcessFeeTxReport::new(ctx, api_transaction_pool.clone(), shutdown_rx2, report_rx);
         // 注释掉自动启动，旧工作者不再运行
         // let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
 
         // 上报已经确认交易
         let (confirm_report_tx, confirm_report_rx) = mpsc::channel(1);
         let _tx_confirm_report = ProcessFeeTxConfirmReport::new(
+            ctx,
             api_transaction_pool.clone(),
             shutdown_rx3,
             confirm_report_rx,

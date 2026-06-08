@@ -292,18 +292,15 @@ impl CollectorShadowActorSystem {
 
         // 创建共享的 Scanner 实例
         let scanner = Arc::new(ShadowScanner::new(
-            api_transaction_pool.clone(),
+            ctx,
             scanner_config.clone(),
             intent_tx.clone(),
             Some(diagnose_tx.clone()),
         ));
 
         // 创建共享的 Advancer 实例
-        let advancer = Arc::new(ShadowAdvancer::new(
-            api_transaction_pool.clone(),
-            intent_tx.clone(),
-            Some(diagnose_tx.clone()),
-        ));
+        let advancer =
+            Arc::new(ShadowAdvancer::new(ctx, intent_tx.clone(), Some(diagnose_tx.clone())));
 
         let dispatcher_config = DispatcherConfig::default();
         let funds_pool_ref = api_transaction_pool.as_ref();
@@ -601,21 +598,11 @@ impl CollectorShadowActorSystem {
         // 创建AddressLockManager
         let address_locks = Arc::new(AddressLockManager::new());
         // 创建ShadowCollectWorker
-        let shadow_worker = Arc::new(ShadowCollectWorker::new(
-            ctx,
-            api_transaction_pool.clone(),
-            core_pool.clone(),
-            address_locks,
-            advancer.clone(),
-        ));
+        let shadow_worker =
+            Arc::new(ShadowCollectWorker::new(ctx, address_locks, advancer.clone()));
 
         // 初始化SideEffect Worker
-        let side_effect_worker = Arc::new(SideEffectWorker::new(
-            ctx,
-            api_transaction_pool.clone(),
-            core_pool.clone(),
-            advancer.clone(),
-        ));
+        let side_effect_worker = Arc::new(SideEffectWorker::new(ctx, advancer.clone()));
 
         // 启动时执行一次 warm single scan
         let scanner_clone = scanner.clone();

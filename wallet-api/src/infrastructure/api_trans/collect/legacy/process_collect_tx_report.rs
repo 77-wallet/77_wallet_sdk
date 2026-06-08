@@ -29,6 +29,7 @@ struct CollectTxWorkerCtx {
     pool: ApiTransactionDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
+    ctx: &'static crate::context::Context,
 }
 
 impl CollectTxWorkerCtx {
@@ -53,6 +54,7 @@ pub(super) struct ProcessCollectTxReport {
 
 impl ProcessCollectTxReport {
     pub(super) fn new(
+        ctx: &'static crate::context::Context,
         pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxReportCommand>,
@@ -61,6 +63,7 @@ impl ProcessCollectTxReport {
             pool,
             address_locks: Arc::new(DashMap::new()),
             global_sem: Arc::new(Semaphore::new(64)),
+            ctx,
         };
 
         Self { shutdown_rx, report_rx, worker_ctx }
@@ -127,7 +130,7 @@ impl ProcessCollectTxReport {
             let _permit = ctx.global_sem.acquire().await.unwrap();
 
             // 直接调用时不检查重试时间
-            Self::process_single_tx_report(ctx.pool, req, false).await
+            Self::process_single_tx_report(ctx.pool, req, false, ctx.ctx).await
         });
     }
 
@@ -160,7 +163,7 @@ impl ProcessCollectTxReport {
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_single_tx_report(ctx.pool.clone(), req, true).await
+                    Self::process_single_tx_report(ctx.pool.clone(), req, true, ctx.ctx).await
                 });
             }
         });
@@ -171,6 +174,7 @@ impl ProcessCollectTxReport {
         pool: ApiTransactionDbPool,
         req: ApiCollectEntity,
         check_retry_time: bool,
+        ctx: &'static crate::context::Context,
     ) {
         let worker_type = if check_retry_time { "batch" } else { "single" };
         tracing::info!(trade_no=%req.trade_no, status=%req.status, worker_type=%worker_type, post_tx_count=%req.post_tx_count, "[归集交易报告] 开始处理单条归集交易报告");
@@ -207,14 +211,7 @@ impl ProcessCollectTxReport {
             (TransStatus::Success, "".to_string())
         };
 
-        let Some(backend_api) = crate::get_context().ok().map(|ctx| ctx.get_global_backend_api())
-        else {
-            tracing::warn!(
-                trade_no=%req.trade_no,
-                "获取全局上下文失败，跳过归集交易报告上报"
-            );
-            return;
-        };
+        let backend_api = ctx.get_global_backend_api();
         tracing::info!(
             trade_no=%req.trade_no,
             worker_type=%worker_type,

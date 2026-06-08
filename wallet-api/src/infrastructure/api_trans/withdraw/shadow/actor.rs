@@ -225,7 +225,7 @@ impl WithdrawShadowActorSystem {
 
         // 创建共享的 Scanner 实例
         let scanner = Arc::new(ShadowScanner::new(
-            api_withdraw_pool.clone(),
+            ctx,
             ScannerConfig::default(),
             intent_tx.clone(),
             Some(diagnose_tx.clone()),
@@ -238,20 +238,10 @@ impl WithdrawShadowActorSystem {
         }));
 
         // 初始化Shadow Worker
-        let shadow_worker = Arc::new(ShadowWithdrawWorker::new(
-            ctx,
-            api_withdraw_pool.clone(),
-            core_pool.clone(),
-            scanner.clone(),
-        ));
+        let shadow_worker = Arc::new(ShadowWithdrawWorker::new(ctx, scanner.clone()));
 
         // 初始化SideEffect Worker
-        let side_effect_worker = Arc::new(SideEffectWorker::new(
-            ctx,
-            api_withdraw_pool.clone(),
-            core_pool.clone(),
-            scanner.clone(),
-        ));
+        let side_effect_worker = Arc::new(SideEffectWorker::new(ctx, scanner.clone()));
 
         // 启动时执行一次 warm single scan
         let scanner_clone = scanner.clone();

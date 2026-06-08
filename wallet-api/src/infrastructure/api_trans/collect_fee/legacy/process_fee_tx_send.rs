@@ -276,6 +276,7 @@ impl ProcessFeeTx {
 
             // 使用通用的交易恢复逻辑
             match ApiTransDomain::process_recovered_tx(
+                &worker_ctx.ctx,
                 &req.chain_code,
                 &req.from_addr,
                 tx_hash,
@@ -335,6 +336,7 @@ impl ProcessFeeTx {
 
                 // 第一步：构建raw_tx
                 let (tx_hash, raw_tx, fee) = match ApiTransDomain::build_transfer_raw(
+                    &worker_ctx.ctx,
                     transfer_req,
                     Some(private_key),
                 )
@@ -383,6 +385,7 @@ impl ProcessFeeTx {
 
                 // 第三步：广播交易
                 let tx_resp = ApiTransDomain::broadcast_transfer(
+                    &worker_ctx.ctx,
                     &req.chain_code,
                     raw_tx,
                     Some(tx_hash.as_str()),
@@ -443,7 +446,7 @@ impl ProcessFeeTx {
             }
             Err(_) => {
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "[手续费归集] 从数据库获取nonce失败，尝试从链上获取");
-                let nonce = ApiTransDomain::nonce(from_addr, chain_code).await?;
+                let nonce = ApiTransDomain::nonce(&worker_ctx.ctx, from_addr, chain_code).await?;
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, nonce=%nonce, "[手续费归集] 从链上获取nonce成功");
                 Ok(nonce as i64)
             }
@@ -456,8 +459,9 @@ impl ProcessFeeTx {
     ) -> Result<ApiTransferReq, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, chain_code=%req.chain_code, symbol=%req.symbol, "[手续费归集] 获取代币信息");
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            worker_ctx.ctx,
             &req.chain_code,
-            req.token_addr.clone().into(),
+            req.token_addr.clone(),
         )
         .await?;
         tracing::info!(trade_no=%req.trade_no, token_address=?coin.token_address, decimals=%coin.decimals, "[手续费归集] 代币信息获取成功");
