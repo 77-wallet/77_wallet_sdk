@@ -57,10 +57,10 @@ impl ChainAdapterFactory {
     }
 
     pub async fn get_multisig_adapter(
+        ctx: &Context,
         chain_code: &str,
     ) -> Result<MultisigAdapter, crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
-        Self::get_multisig_adapter_with_ctx(&ctx, chain_code).await
+        Self::get_multisig_adapter_with_ctx(ctx, chain_code).await
     }
 
     pub async fn get_multisig_adapter_with_ctx(
@@ -78,10 +78,10 @@ impl ChainAdapterFactory {
     }
 
     pub async fn get_transaction_adapter(
+        ctx: &Context,
         chain_code: &str,
     ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
-        Self::get_transaction_adapter_with_ctx(&ctx, chain_code).await
+        Self::get_transaction_adapter_with_ctx(ctx, chain_code).await
     }
 
     pub async fn get_transaction_adapter_with_ctx(
@@ -99,9 +99,10 @@ impl ChainAdapterFactory {
         Ok(TransactionAdapter::new(chain, &node.rpc_url, header_opt, network)?)
     }
 
-    pub async fn get_tron_adapter() -> Result<TronChain, crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
-        Self::get_tron_adapter_with_ctx(&ctx).await
+    pub async fn get_tron_adapter(
+        ctx: &Context,
+    ) -> Result<TronChain, crate::error::service::ServiceError> {
+        Self::get_tron_adapter_with_ctx(ctx).await
     }
 
     pub async fn get_tron_adapter_with_ctx(
@@ -120,12 +121,12 @@ impl ChainAdapterFactory {
     }
 
     pub async fn get_node_transaction_adapter(
+        ctx: &Context,
         chain_code: &str,
         rpc_url: &str,
         network: &str,
     ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
-        let ctx = crate::get_context()?;
-        Self::get_node_transaction_adapter_with_ctx(&ctx, chain_code, rpc_url, network).await
+        Self::get_node_transaction_adapter_with_ctx(ctx, chain_code, rpc_url, network).await
     }
 
     pub async fn get_node_transaction_adapter_with_ctx(

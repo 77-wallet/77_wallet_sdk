@@ -12,14 +12,6 @@ use wallet_transport_backend::request::api_wallet::strategy::{
 pub(crate) struct StrategyDomain {}
 
 impl StrategyDomain {
-    #[deprecated(note = "use query_collect_strategy_with_ctx")]
-    pub async fn query_collect_strategy(
-        uid: &str,
-    ) -> Result<Strategy, crate::error::service::ServiceError> {
-        let ctx = crate::context::get_context()?;
-        Self::query_collect_strategy_with_ctx(&ctx, uid).await
-    }
-
     pub async fn query_collect_strategy_with_ctx(
         ctx: &Context,
         uid: &str,
@@ -195,14 +187,6 @@ impl StrategyDomain {
         }
 
         Ok(())
-    }
-
-    #[deprecated(note = "use query_withdraw_strategy_with_ctx")]
-    pub async fn query_withdraw_strategy(
-        uid: &str,
-    ) -> Result<Strategy, crate::error::service::ServiceError> {
-        let ctx = crate::context::get_context()?;
-        Self::query_withdraw_strategy_with_ctx(&ctx, uid).await
     }
 
     pub async fn query_withdraw_strategy_with_ctx(
