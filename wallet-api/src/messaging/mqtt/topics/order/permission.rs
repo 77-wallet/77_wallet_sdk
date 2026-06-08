@@ -114,7 +114,7 @@ impl PermissionAccept {
         _msg_id: &str,
         ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
         let _ = _msg_id;
         let pool = ctx.get_global_sqlite_pool()?;
         let account = chain.account_info(&self.grantor_addr).await?;
@@ -296,13 +296,13 @@ mod test {
     #[tokio::test]
     async fn new_permission() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
-        let (_, _) = get_manager().await?;
+        let (manager, _) = get_manager().await?;
 
         let str = r#"{"grantorAddr":"TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR","current":{"originalUser":["TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1"],"newUser":[],"name":"修改权限","type":"delete","activeId":0,"operations":""}}"#;
 
         let change = serde_json::from_str::<PermissionAccept>(&str).unwrap();
 
-        let res = change.exec("1", crate::get_context()?).await;
+        let res = change.exec("1", manager.ctx).await;
         println!("{:?}", res);
         Ok(())
     }

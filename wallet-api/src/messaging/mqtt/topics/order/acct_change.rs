@@ -381,25 +381,26 @@ mod test {
 
     use crate::{messaging::mqtt::topics::AcctChange, testkit::env::get_manager};
 
-    async fn init_manager() {
+    async fn init_manager() -> crate::manager::WalletManager {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await.unwrap();
+        let (manager, _) = get_manager().await.unwrap();
+        manager
     }
 
     // 普通账交易
     #[tokio::test]
     async fn acct_change() -> anyhow::Result<()> {
-        init_manager().await;
+        let manager = init_manager().await;
 
         let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":0,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<AcctChange>(&change).unwrap();
-        let _res = change.exec("2", crate::get_context()?).await.unwrap();
+        let _res = change.exec("2", manager.ctx).await.unwrap();
 
         let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":1,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<AcctChange>(&change).unwrap();
 
-        let _res = change.exec("1", crate::get_context()?).await.unwrap();
+        let _res = change.exec("1", manager.ctx).await.unwrap();
         Ok(())
     }
 }

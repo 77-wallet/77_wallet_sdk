@@ -68,12 +68,12 @@ mod test {
     async fn acct_change() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
+        let (manager, _) = get_manager().await?;
 
         let str1 = r#"{"withdrawId":"236618098902437888"}"#;
         let changet = serde_json::from_str::<MultiSignTransCancel>(&str1).unwrap();
 
-        let res = changet.exec("1", crate::get_context()?).await;
+        let res = changet.exec("1", manager.ctx).await;
         println!("{:?}", res);
         Ok(())
     }

@@ -71,12 +71,12 @@ mod test {
     #[tokio::test]
     async fn test_() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
-        let (_, _) = get_manager().await.unwrap();
+        let (manager, _) = get_manager().await.unwrap();
 
         let raw = r#"{"multisigAccountId": "256890128948137984"}"#;
         let res = serde_json::from_str::<OrderMultiSignCancel>(&raw).unwrap();
 
-        let _c = res.exec("x", crate::get_context()?).await?;
+        let _c = res.exec("x", manager.ctx).await?;
         Ok(())
     }
 }

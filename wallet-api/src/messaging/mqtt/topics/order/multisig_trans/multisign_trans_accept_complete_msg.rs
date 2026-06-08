@@ -140,9 +140,9 @@ mod test {
         "#;
         let res = serde_json::from_str::<MultiSignTransAcceptCompleteMsg>(&raw).unwrap();
 
-        let (_, _) = get_manager().await.unwrap();
+        let (manager, _) = get_manager().await.unwrap();
 
-        res.exec("x", crate::get_context()?).await?;
+        res.exec("x", manager.ctx).await?;
         Ok(())
     }
 }
