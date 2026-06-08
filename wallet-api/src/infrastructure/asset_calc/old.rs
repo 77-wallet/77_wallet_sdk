@@ -15,6 +15,7 @@ use wallet_database::repositories::{
     exchange_rate::ExchangeRateRepo,
 };
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
+use crate::context::Context;
 
 use crate::{
     domain::app::config::ConfigDomain,
@@ -118,8 +119,10 @@ async fn get_exchange_rates(
     Ok(rates)
 }
 
-pub async fn init_account_cache() -> Result<(), crate::error::service::ServiceError> {
-    let pool = crate::get_context()?.get_global_sqlite_pool()?;
+pub async fn init_account_cache(
+    ctx: &'static Context,
+) -> Result<(), crate::error::service::ServiceError> {
+    let pool = ctx.get_global_sqlite_pool()?;
     let wallet_map = ApiAccountRepo::account_to_wallet(&pool).await?;
     let account_list = ApiAccountRepo::list(&pool).await?;
 
@@ -148,12 +151,12 @@ pub async fn add_account_to_cache(address: &str, account_id: u32, wallet: &str) 
 }
 
 pub async fn update_token_price(
+    ctx: &'static Context,
     symbol: &str,
     chain_code: &str,
     token_address: &Option<String>,
     price_real: f64,
 ) -> Result<(), crate::error::service::ServiceError> {
-    let ctx = crate::get_context()?;
     let pool = ctx.get_global_sqlite_pool()?;
     let mut token_currencies = TOKEN_CURRENCIES.write().await;
     let id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
@@ -214,8 +217,8 @@ pub fn on_asset_update(wallet_address: &str, address: &str, chain_code: &str, to
     ASSET_DIRTY_SET.insert(k);
 }
 
-pub async fn init_assets() -> Result<(), crate::error::service::ServiceError> {
-    let pool = crate::get_context()?.get_global_sqlite_pool()?;
+pub async fn init_assets(ctx: &'static Context) -> Result<(), crate::error::service::ServiceError> {
+    let pool = ctx.get_global_sqlite_pool()?;
     let list = ApiAssetsRepo::list(&pool, vec![], None).await?;
     let wallet_list = ApiAccountRepo::account_wallet_mapping(&pool, None).await?;
     list.into_iter().for_each(|asset| {
@@ -235,9 +238,10 @@ pub async fn init_assets() -> Result<(), crate::error::service::ServiceError> {
 /// Start the periodic batch recalculation background task.
 /// interval_ms: how often to run the batch recalculation (e.g. 500 or 1000)
 pub fn start_batch_recalculator(
+    ctx: &'static Context,
     interval_ms: u64,
 ) -> Result<(), crate::error::service::ServiceError> {
-    let pool = crate::get_context()?.get_global_sqlite_pool()?;
+    let pool = ctx.get_global_sqlite_pool()?;
     tokio::spawn(async move {
         let interval = Duration::from_millis(interval_ms);
         loop {
@@ -267,13 +271,13 @@ pub fn start_batch_recalculator(
             }
 
             if !price_keys.is_empty() {
-                if let Err(e) = process_price_dirty_assets(&pool, &price_keys).await {
+                if let Err(e) = process_price_dirty_assets(ctx, &pool, &price_keys).await {
                     tracing::error!("process_price_dirty_assets error: {:?}", e);
                 }
             }
 
             if !asset_keys.is_empty() {
-                if let Err(e) = process_asset_dirty_assets(&pool, &asset_keys).await {
+                if let Err(e) = process_asset_dirty_assets(ctx, &pool, &asset_keys).await {
                     tracing::error!("process_asset_dirty_assets error: {:?}", e);
                 }
             }
@@ -283,12 +287,12 @@ pub fn start_batch_recalculator(
 }
 
 async fn process_price_dirty_assets(
+    ctx: &'static Context,
     pool: &Arc<SqlitePool>,
     keys: &[TokenCurrencyId],
 ) -> Result<(), Box<dyn std::error::Error>> {
     // process in chunks to avoid huge IN lists
     const CHUNK_KEYS: usize = 200;
-    let ctx = crate::get_context()?;
     let currency = ConfigDomain::get_currency(ctx).await?;
 
     for chunk in keys.chunks(CHUNK_KEYS) {
@@ -331,11 +335,11 @@ async fn process_price_dirty_assets(
 
 /// Handle asset dirty IDs
 async fn process_asset_dirty_assets(
+    ctx: &'static Context,
     pool: &Arc<SqlitePool>,
     keys: &[AssetKey],
 ) -> Result<(), Box<dyn std::error::Error>> {
     const CHUNK_SIZE: usize = 200;
-    let ctx = crate::get_context()?;
     let currency = ConfigDomain::get_currency(ctx).await?;
 
     for chunk in keys.chunks(CHUNK_SIZE) {

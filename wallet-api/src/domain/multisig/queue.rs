@@ -73,10 +73,6 @@ impl MultisigQueueDomain {
         Ok(())
     }
 
-    pub async fn recover_all_uid_queue_data() -> Result<(), crate::error::service::ServiceError> {
-        Self::recover_all_uid_queue_data_with_ctx(crate::get_context()?).await
-    }
-
     pub async fn recover_all_uid_queue_data_with_ctx(
         ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -96,12 +92,6 @@ impl MultisigQueueDomain {
         Ok(())
     }
 
-    pub async fn recover_all_queue_data(
-        uid: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::recover_all_queue_data_with_ctx(crate::get_context()?, uid).await
-    }
-
     pub async fn recover_all_queue_data_with_ctx(
         ctx: &'static Context,
         uid: &str,
@@ -109,12 +99,6 @@ impl MultisigQueueDomain {
         let raw_time = Self::get_raw_time_with_ctx(ctx, &[uid.to_string()]).await?;
         Self::recover_queue_data_with_raw_time_with_ctx(ctx, uid, raw_time).await?;
         Ok(())
-    }
-
-    pub(crate) async fn get_raw_time(
-        uid_list: &[String],
-    ) -> Result<Option<String>, crate::error::service::ServiceError> {
-        Self::get_raw_time_with_ctx(crate::get_context()?, uid_list).await
     }
 
     pub(crate) async fn get_raw_time_with_ctx(
@@ -140,10 +124,6 @@ impl MultisigQueueDomain {
         Ok(raw_time)
     }
 
-    pub async fn recover_queue_data(uid: &str) -> Result<(), crate::error::service::ServiceError> {
-        Self::recover_queue_data_with_ctx(crate::get_context()?, uid).await
-    }
-
     pub async fn recover_queue_data_with_ctx(
         ctx: &'static Context,
         uid: &str,
@@ -153,13 +133,6 @@ impl MultisigQueueDomain {
         Self::recover_queue_data_with_raw_time_with_ctx(ctx, uid, raw_time).await?;
 
         Ok(())
-    }
-
-    pub(crate) async fn recover_queue_data_with_raw_time(
-        uid: &str,
-        raw_time: Option<String>,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::recover_queue_data_with_raw_time_with_ctx(crate::get_context()?, uid, raw_time).await
     }
 
     pub(crate) async fn recover_queue_data_with_raw_time_with_ctx(
@@ -194,13 +167,6 @@ impl MultisigQueueDomain {
             }
         }
         Ok(())
-    }
-
-    pub async fn insert(
-        pool: DbPool,
-        data: MultisigQueueData,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::insert_with_ctx(crate::get_context()?, pool, data).await
     }
 
     pub async fn insert_with_ctx(
@@ -262,12 +228,6 @@ impl MultisigQueueDomain {
     }
 
     // For transactions in the confirmation queue, periodically query the transaction results.
-    pub async fn sync_queue_status(
-        queue_id: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::sync_queue_status_with_ctx(crate::get_context()?, queue_id).await
-    }
-
     pub async fn sync_queue_status_with_ctx(
         ctx: &'static Context,
         queue_id: &str,
@@ -306,13 +266,6 @@ impl MultisigQueueDomain {
     }
 
     // Report the successful transaction queue back to the backend to update the raw data.
-    pub async fn update_raw_data(
-        queue_id: &str,
-        pool: DbPool,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::update_raw_data_with_ctx(crate::get_context()?, queue_id, pool).await
-    }
-
     pub async fn update_raw_data_with_ctx(
         ctx: &'static Context,
         queue_id: &str,
@@ -388,14 +341,9 @@ impl MultisigQueueDomain {
         let sign_num = members.0.len().min(account.threshold as usize);
         for i in 0..sign_num {
             let member = members.0.get(i).unwrap();
-            let key = ChainTransDomain::get_key_with_ctx(
-                ctx,
-                &member.address,
-                &queue.chain_code,
-                password,
-                &None,
-            )
-            .await?;
+            let key =
+                ChainTransDomain::get_key(ctx, &member.address, &queue.chain_code, password, &None)
+                    .await?;
 
             let sign_res =
                 adapter.sign_multisig_tx(account, &member.address, key, &queue.raw_data).await?;
@@ -443,7 +391,7 @@ impl MultisigQueueDomain {
             .await?
             .is_some()
             {
-                let key = ChainTransDomain::get_key_with_ctx(
+                let key = ChainTransDomain::get_key(
                     ctx,
                     &user.address,
                     &queue.chain_code,
@@ -523,7 +471,7 @@ impl MultisigQueueDomain {
             // tasks = tasks.push(task);
         }
 
-        tasks.send().await?;
+        tasks.send_with_ctx(ctx).await?;
 
         Ok(())
     }

@@ -53,13 +53,6 @@ impl MultisigDomain {
         Ok(())
     }
 
-    pub(crate) async fn recover_multisig_account_by_id(
-        multisig_account_id: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::recover_multisig_account_by_id_with_ctx(crate::get_context()?, multisig_account_id)
-            .await
-    }
-
     pub(crate) async fn recover_multisig_account_by_id_with_ctx(
         ctx: &'static Context,
         multisig_account_id: &str,
@@ -69,16 +62,6 @@ impl MultisigDomain {
     }
 
     // 供前端使用的目前先不使用
-    pub(crate) async fn _recover_multisig_account_and_queue_data(
-        wallet_address: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::_recover_multisig_account_and_queue_data_with_ctx(
-            crate::get_context()?,
-            wallet_address,
-        )
-        .await
-    }
-
     pub(crate) async fn _recover_multisig_account_and_queue_data_with_ctx(
         ctx: &'static Context,
         wallet_address: &str,
@@ -96,12 +79,6 @@ impl MultisigDomain {
         MultisigQueueDomain::recover_all_queue_data_with_ctx(ctx, &wallet.uid).await?;
 
         Ok(())
-    }
-
-    pub(crate) async fn recover_multisig_data_by_id(
-        multisig_account_id: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::recover_multisig_data_by_id_with_ctx(crate::get_context()?, multisig_account_id).await
     }
 
     pub(crate) async fn recover_multisig_data_by_id_with_ctx(
@@ -126,18 +103,6 @@ impl MultisigDomain {
         Ok(())
     }
 
-    pub(crate) async fn recover_uid_multisig_data(
-        uid: &str,
-        filter_multisig_account_address: Option<String>,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::recover_uid_multisig_data_with_ctx(
-            crate::get_context()?,
-            uid,
-            filter_multisig_account_address,
-        )
-        .await
-    }
-
     pub(crate) async fn recover_uid_multisig_data_with_ctx(
         ctx: &'static Context,
         uid: &str,
@@ -159,23 +124,6 @@ impl MultisigDomain {
         )
         .await?;
         Ok(())
-    }
-
-    // 恢复多签账号数据
-    pub(crate) async fn recover_multisig_data(
-        uid: Option<String>,
-        uid_list: &std::collections::HashSet<String>,
-        business_id: Option<String>,
-        filter_multisig_account_address: Option<String>,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::recover_multisig_data_with_ctx(
-            crate::get_context()?,
-            uid,
-            uid_list,
-            business_id,
-            filter_multisig_account_address,
-        )
-        .await
     }
 
     pub(crate) async fn recover_multisig_data_with_ctx(
@@ -239,7 +187,7 @@ impl MultisigDomain {
             && data.account.status != MultisigAccountStatus::OnChain.to_i8()
             && data.account.status != MultisigAccountStatus::OnChainFail.to_i8()
         {
-            Self::handel_deploy_status(&mut data.account, false).await?;
+            Self::handel_deploy_status(ctx, &mut data.account, false).await?;
             flag = true;
         }
 
@@ -248,12 +196,12 @@ impl MultisigDomain {
             && data.account.pay_status != MultisigAccountPayStatus::Paid.to_i8()
             && data.account.pay_status != MultisigAccountPayStatus::PaidFail.to_i8()
         {
-            Self::handle_pay_status(&mut data.account, false).await?;
+            Self::handle_pay_status(ctx, &mut data.account, false).await?;
             flag = true;
         }
 
         let account_id = data.account.id.clone();
-        let owner = Self::insert(pool.clone(), data, uid_list).await?;
+        let owner = Self::insert(ctx, pool.clone(), data, uid_list).await?;
 
         if flag && owner != MultiAccountOwner::Participant {
             Self::update_raw_data_with_ctx(ctx, &account_id, pool.clone()).await?;
@@ -263,10 +211,12 @@ impl MultisigDomain {
     }
 
     pub async fn handel_deploy_status(
+        ctx: &'static Context,
         data: &mut MultisigAccountEntity,
         check_expiration: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&data.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, &data.chain_code).await?;
 
         // solana 多签账号来判断是否完成,其余链根据hash来判断
         match data.chain_code.as_str() {
@@ -298,6 +248,7 @@ impl MultisigDomain {
 
     // 同步部署中多签账号的状态
     pub async fn sync_multisig_status(
+        ctx: &'static Context,
         pool: DbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
@@ -308,13 +259,13 @@ impl MultisigDomain {
             let pay_status_up = account.pay_status;
 
             if account.status == MultisigAccountStatus::OnChianPending.to_i8() {
-                if let Err(e) = Self::handel_deploy_status(account, true).await {
+                if let Err(e) = Self::handel_deploy_status(ctx, account, true).await {
                     tracing::error!("Multisig status sync faild {}", e);
                 }
             }
 
             if account.pay_status == MultisigAccountPayStatus::PaidPending.to_i8() {
-                if let Err(e) = Self::handle_pay_status(account, true).await {
+                if let Err(e) = Self::handle_pay_status(ctx, account, true).await {
                     tracing::error!("Multisig pay status sync faild {}", e);
                 }
             }
@@ -338,6 +289,7 @@ impl MultisigDomain {
 
     // 多签支付状态
     pub async fn handle_pay_status(
+        ctx: &'static Context,
         data: &mut MultisigAccountEntity,
         check_expiration: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -347,7 +299,8 @@ impl MultisigDomain {
         }
 
         if !data.fee_chain.is_empty() && !data.fee_hash.is_empty() {
-            let adapter = ChainAdapterFactory::get_transaction_adapter(&data.fee_chain).await?;
+            let adapter =
+                ChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, &data.fee_chain).await?;
             if let Some(tx_result) = adapter.query_tx_res(&data.fee_hash).await? {
                 data.pay_status = if tx_result.status == 2 {
                     MultisigAccountPayStatus::Paid.to_i8()
@@ -362,6 +315,7 @@ impl MultisigDomain {
     }
 
     pub async fn insert(
+        ctx: &'static Context,
         pool: std::sync::Arc<Pool<Sqlite>>,
         data: MultisigAccountData,
         uid_list: &std::collections::HashSet<String>,
@@ -414,7 +368,6 @@ impl MultisigDomain {
         if pay_status == MultisigAccountPayStatus::Paid && status == MultisigAccountStatus::OnChain
         {
             let core_pool = CoreDbPool::new(pool.clone());
-            let ctx = crate::get_context()?;
             // 初始化多签资产
             domain::assets::AssetsDomain::init_default_multisig_assets(
                 ctx,
@@ -550,13 +503,6 @@ impl MultisigDomain {
     }
 
     // Report the successful multisig account back to the backend to update the raw data.
-    pub async fn update_raw_data(
-        account_id: &str,
-        pool: DbPool,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::update_raw_data_with_ctx(crate::get_context()?, account_id, pool).await
-    }
-
     pub async fn update_raw_data_with_ctx(
         ctx: &'static Context,
         account_id: &str,
@@ -635,15 +581,6 @@ impl MultisigDomain {
         Ok(accounts)
     }
 
-    #[allow(dead_code)]
-    pub(crate) async fn unbind_deleted_account_multisig_relations(
-        deleted: &[wallet_database::entities::account::AccountEntity],
-        sn: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::unbind_deleted_account_multisig_relations_with_ctx(crate::get_context()?, deleted, sn)
-            .await
-    }
-
     pub(crate) async fn unbind_deleted_account_multisig_relations_with_ctx(
         ctx: &'static Context,
         deleted: &[wallet_database::entities::account::AccountEntity],
@@ -691,15 +628,8 @@ impl MultisigDomain {
             .await?;
 
         let device_unbind_address_task = BackendApiTask::BackendApi(device_unbind_address_task);
-        Tasks::new().push(device_unbind_address_task).send().await?;
+        Tasks::new().push(device_unbind_address_task).send_with_ctx(ctx).await?;
         Ok(())
-    }
-
-    pub(crate) async fn check_multisig_account_exists(
-        multisig_account_id: &str,
-    ) -> Result<Option<MultisigAccountEntity>, crate::error::service::ServiceError> {
-        Self::check_multisig_account_exists_with_ctx(crate::get_context()?, multisig_account_id)
-            .await
     }
 
     pub(crate) async fn check_multisig_account_exists_with_ctx(
