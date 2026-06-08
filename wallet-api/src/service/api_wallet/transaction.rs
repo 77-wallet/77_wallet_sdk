@@ -9,7 +9,7 @@ use crate::{
         wallet::WalletDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    infrastructure::nonce::nonce_engine::get_nonce_engine,
+    infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx,
     request::api_wallet::{
         trans::{ApiBaseTransferReq, ApiTransferReq},
         transfer::ApiTransferExReq,
@@ -70,9 +70,8 @@ impl ApiTransService {
     }
 
     async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
-        let nonce_engine = get_nonce_engine();
-        let nonce = nonce_engine.allocate_nonce(from_addr, chain_code, &pool).await?;
+        let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
+        let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
         Ok(nonce as i64)
     }
 
@@ -97,11 +96,13 @@ impl ApiTransService {
     ) -> Result<TransactionResult, ServiceError> {
         WalletDomain::validate_password_with_context(self.ctx, &params.password).await?;
 
-        let private_key = crate::domain::api_wallet::account::ApiAccountDomain::get_private_key(
-            &params.base.from,
-            &params.base.chain_code,
-        )
-        .await?;
+        let private_key =
+            crate::domain::api_wallet::account::ApiAccountDomain::get_private_key_with_ctx(
+                self.ctx,
+                &params.base.from,
+                &params.base.chain_code,
+            )
+            .await?;
         self.transfer_with_private_key(params, private_key).await
     }
 
@@ -111,9 +112,10 @@ impl ApiTransService {
         private_key: ChainPrivateKey,
     ) -> Result<TransactionResult, ServiceError> {
         let from_addr = params.base.from.clone();
-        let _gate = crate::infrastructure::nonce::nonce_engine::get_nonce_engine()
-            .acquire_transfer_gate(&from_addr, &params.base.chain_code)
-            .await;
+        let _gate =
+            crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?
+                .acquire_transfer_gate(&from_addr, &params.base.chain_code)
+                .await;
 
         let pool = self.ctx.api_wallet_pool()?;
         let api_transaction_pool = self.ctx.api_transaction_pool()?;
