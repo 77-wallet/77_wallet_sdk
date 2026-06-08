@@ -127,7 +127,7 @@ impl ApiWalletAcctChange {
         // send acct_change to frontend
         let change_frontend = AcctChangeFrontend::from(self);
         let data = NotifyEvent::ApiWalletAcctChange(change_frontend);
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 
@@ -1260,7 +1260,8 @@ impl ApiWalletAcctChange {
             return Ok(());
         }
 
-        let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let chain_instance =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code).await?;
         let backend_api = ctx.get_global_backend_api();
         let coins_finds = backend_api.fetch_all_api_tokens(None, None).await?;
         tracing::error!(
@@ -1466,25 +1467,26 @@ mod test {
         testkit::env::get_manager,
     };
 
-    async fn init_manager() {
+    async fn init_manager() -> crate::manager::WalletManager {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await.unwrap();
+        let (manager, _) = get_manager().await.unwrap();
+        manager
     }
 
     // 普通账交易
     #[tokio::test]
     async fn acct_change() -> anyhow::Result<()> {
-        init_manager().await;
+        let manager = init_manager().await;
 
         let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":0,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<ApiWalletAcctChange>(&change).unwrap();
-        let _res = change.exec(crate::get_context()?, "2").await.unwrap();
+        let _res = change.exec(manager.ctx, "2").await.unwrap();
 
         let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":1,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<ApiWalletAcctChange>(&change).unwrap();
 
-        let _res = change.exec(crate::get_context()?, "1").await.unwrap();
+        let _res = change.exec(manager.ctx, "1").await.unwrap();
         Ok(())
     }
 }
