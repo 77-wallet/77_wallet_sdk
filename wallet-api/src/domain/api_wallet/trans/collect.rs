@@ -24,7 +24,7 @@ fn is_row_not_found_db_error(err: &wallet_database::Error) -> bool {
 
 impl ApiCollectDomain {
     pub(crate) async fn collect_v2_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         req: &ApiCollectReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = Instant::now();
@@ -102,7 +102,7 @@ impl ApiCollectDomain {
         });
         tracing::info!(trade_no=%req.trade_no, "发送前端通知");
         let notify_time = Instant::now();
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         tracing::info!(trade_no=%req.trade_no, "前端通知发送成功, 耗时: {:?}", notify_time.elapsed());
 
         // 注意：在 v2 架构下，不再需要显式提交交易

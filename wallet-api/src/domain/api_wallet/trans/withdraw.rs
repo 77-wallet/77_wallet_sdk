@@ -43,7 +43,7 @@ impl ApiWithdrawDomain {
     }
 
     pub(crate) async fn withdraw_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         req: &ApiWithdrawReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         // 获取数据库连接
@@ -107,7 +107,7 @@ impl ApiWithdrawDomain {
             to_addr: req.to.to_string(),
             value: req.value.to_string(),
         });
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         if req.audit == 1 {
             Self::sign_withdrawal_order(ctx, &req.trade_no).await?;
@@ -140,7 +140,7 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn sign_withdrawal_order(
-        ctx: &Context,
+        ctx: &'static Context,
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.api_transaction_pool()?;
@@ -166,7 +166,7 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn reject_withdrawal_order(
-        ctx: &Context,
+        ctx: &'static Context,
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.api_transaction_pool()?;
@@ -198,7 +198,7 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn confirm_tx(
-        ctx: &Context,
+        ctx: &'static Context,
         trade_no: &str,
         status: bool,
     ) -> Result<(), ServiceError> {
@@ -250,7 +250,7 @@ impl ApiWithdrawDomain {
                 to_addr: outcome.tx.to_addr.to_string(),
                 value: outcome.tx.value.to_string(),
             });
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         }
 
         Ok(())

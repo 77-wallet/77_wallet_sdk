@@ -23,7 +23,7 @@ pub struct ApiFeeDomain {}
 
 impl ApiFeeDomain {
     pub(crate) async fn transfer_fee_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         req: &ApiTransferFeeReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = Instant::now();
@@ -85,7 +85,7 @@ impl ApiFeeDomain {
                 to_addr: req.to.to_string(),
                 value: req.value.to_string(),
             });
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
             tracing::info!(trade_no=%req.trade_no, "前端通知发送成功, 耗时: {:?}", notify_time.elapsed());
         } else {
             tracing::warn!(trade_no=%req.trade_no, "fee tx found, 交易记录已存在");
@@ -113,7 +113,7 @@ impl ApiFeeDomain {
     }
 
     pub async fn confirm_tx(
-        ctx: &Context,
+        ctx: &'static Context,
         trade_no: &str,
         status: bool,
     ) -> Result<(), ServiceError> {
