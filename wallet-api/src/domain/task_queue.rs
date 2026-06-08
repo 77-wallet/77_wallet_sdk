@@ -11,13 +11,8 @@ use wallet_transport_backend::request::SendMsgConfirm;
 pub(crate) struct TaskQueueDomain;
 
 impl TaskQueueDomain {
-    /// 执行TaskQueue从core_db到task_db的迁移（幂等 & 可重复执行）
-    pub async fn migrate_task_queue_to_db() -> Result<(), crate::error::service::ServiceError> {
-        Self::migrate_task_queue_to_db_with_ctx(crate::get_context()?).await
-    }
-
     pub async fn migrate_task_queue_to_db_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = ctx.core_pool()?;
         let task_pool = ctx.task_pool()?;
@@ -106,14 +101,8 @@ impl TaskQueueDomain {
         Ok(())
     }
 
-    pub async fn send_msg_confirm(
-        ids: Vec<SendMsgConfirm>,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::send_msg_confirm_with_ctx(crate::get_context()?, ids).await
-    }
-
     pub async fn send_msg_confirm_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
         ids: Vec<SendMsgConfirm>,
     ) -> Result<(), crate::error::service::ServiceError> {
         if !ids.is_empty() {
@@ -129,16 +118,8 @@ impl TaskQueueDomain {
         Ok(())
     }
 
-    // send a request to backend if failed wrap to task
-    pub async fn send_or_wrap_task<T: serde::Serialize + std::fmt::Debug>(
-        req: T,
-        endpoint: &str,
-    ) -> Result<Option<BackendApiTask>, crate::error::service::ServiceError> {
-        Self::send_or_wrap_task_with_ctx(crate::get_context()?, req, endpoint).await
-    }
-
     pub async fn send_or_wrap_task_with_ctx<T: serde::Serialize + std::fmt::Debug>(
-        ctx: &Context,
+        ctx: &'static Context,
         req: T,
         endpoint: &str,
     ) -> Result<Option<BackendApiTask>, crate::error::service::ServiceError> {
@@ -155,23 +136,15 @@ impl TaskQueueDomain {
         Ok(None)
     }
 
-    // 发送任务,如果失败放入到队列中去
-    pub async fn send_or_to_queue<T: serde::Serialize + std::fmt::Debug>(
-        req: T,
-        endpoint: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Self::send_or_to_queue_with_ctx(crate::get_context()?, req, endpoint).await
-    }
-
     pub async fn send_or_to_queue_with_ctx<T: serde::Serialize + std::fmt::Debug>(
-        ctx: &Context,
+        ctx: &'static Context,
         req: T,
         endpoint: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let task = Self::send_or_wrap_task_with_ctx(ctx, req, endpoint).await?;
 
         if let Some(task) = task {
-            Tasks::new().push(task).send().await?;
+            Tasks::new().push(task).send_with_ctx(ctx).await?;
         }
 
         Ok(())

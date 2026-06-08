@@ -12,7 +12,7 @@ pub struct AnnouncementDomain;
 impl AnnouncementDomain {
     pub async fn pull_announcement(
         pool: &CoreDbPool,
-        ctx: &Context,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let list = AnnouncementRepo::list(pool).await?;
 
@@ -57,7 +57,7 @@ impl AnnouncementDomain {
         AnnouncementRepo::update_existing(pool, input).await?;
 
         let data = NotifyEvent::FetchBulletinMsg;
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 }

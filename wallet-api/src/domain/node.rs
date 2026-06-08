@@ -114,7 +114,6 @@ impl NodeDomain {
     //         &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
     //     )?;
     //
-    //     let backend_api = crate::get_context()?.get_global_backend_api();
     //
     //     let backend_chains = backend_api
     //         .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
@@ -125,12 +124,8 @@ impl NodeDomain {
     //     Ok(backend_chains)
     // }
 
-    pub(crate) async fn init_sync_nodes() -> Result<(), crate::error::service::ServiceError> {
-        Self::init_sync_nodes_with_ctx(crate::get_context()?).await
-    }
-
     pub(crate) async fn init_sync_nodes_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.core_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
@@ -143,18 +138,14 @@ impl NodeDomain {
                 wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
                 &ChainRpcListReq::new(chain_codes),
             )?;
-            Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
+            Tasks::new().push(BackendApiTask::BackendApi(req)).send_with_ctx(ctx).await?;
         }
 
         Ok(())
     }
 
-    pub async fn init_load_default_nodes() -> Result<(), crate::error::service::ServiceError> {
-        Self::init_load_default_nodes_with_ctx(crate::get_context()?).await
-    }
-
     pub async fn init_load_default_nodes_with_ctx(
-        ctx: &Context,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let profile = crate::config::Config::active_feature_profile();
         let node_lists = Self::default_node_lists_for_feature(profile)?;
