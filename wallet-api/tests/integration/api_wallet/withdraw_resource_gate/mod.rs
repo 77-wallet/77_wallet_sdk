@@ -43,6 +43,25 @@ async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
 
 #[serial]
 #[tokio::test]
+async fn withdraw_failed_original_order_resource_result_ack_bypasses_gate() {
+    let scenario = WithdrawResourceGateScenario::new().await;
+    let fixture = WithdrawResourceGateFixture::original_order_result_case("W_RSC_ORIGIN_FAIL");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+
+    given.blocked_withdraw(&fixture).await;
+    given.failed_original_order_resource_result(&fixture).await;
+    then.withdraw_cannot_build(&fixture).await;
+
+    when.resource_result_ack_is_sent(&fixture).await;
+
+    then.origin_withdraw_gate_is_released_by_failed_bypass(&fixture).await;
+    then.withdraw_can_build(&fixture).await;
+}
+
+#[serial]
+#[tokio::test]
 async fn withdraw_failed_resource_bypass_reopens_withdraw_build_flow() {
     let scenario = WithdrawResourceGateScenario::new().await;
     let fixture = WithdrawResourceGateFixture::origin_gate_case("W_RSC_FAIL");
