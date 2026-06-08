@@ -18,8 +18,10 @@ mod clippy_config {
     fn _clippy_config() {}
 }
 pub mod api;
+pub mod api_wallet_console;
 pub mod app_state;
 pub mod application;
+pub mod batch_transfer;
 pub mod config;
 pub(crate) mod default_data;
 pub mod domain;

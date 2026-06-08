@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::time::Duration;
-use tokio::{task::JoinSet, time::sleep};
 use wallet_api::{
+    batch_transfer::{BatchTransferConfig, collect_target_addresses, run_batch_transfer},
     request::api_wallet::{trans::ApiBaseTransferReq, transfer::ApiTransferExReq},
     testkit::env::get_manager,
 };
@@ -146,16 +145,9 @@ async fn api_transfer_to_subaccounts_live_smoke() -> Result<()> {
         .list_api_wallet_account(sub_wallet_addr, None, Some(chain_code.to_string()), 0, 500)
         .await?;
 
-    let transfer_targets = subaccounts
-        .data
+    let transfer_targets = collect_target_addresses(subaccounts.data, chain_code)
         .into_iter()
-        .filter_map(|account| {
-            account
-                .chain
-                .into_iter()
-                .find(|chain| chain.chain_code == chain_code)
-                .map(|chain| chain.address)
-        })
+        .filter(|addr| addr != from_address)
         .collect::<Vec<_>>();
 
     tracing::info!(
@@ -165,70 +157,24 @@ async fn api_transfer_to_subaccounts_live_smoke() -> Result<()> {
         REQUEST_START_INTERVAL_MS
     );
 
-    let mut join_set = JoinSet::new();
-    let mut submitted = 0usize;
-    let mut success = 0usize;
-    let mut failed = 0usize;
-
-    while submitted < transfer_targets.len() || !join_set.is_empty() {
-        while submitted < transfer_targets.len() && join_set.len() < MAX_IN_FLIGHT {
-            let to_address = transfer_targets[submitted].clone();
-            submitted += 1;
-
-            let wallet_manager = wallet_manager.clone();
-            let from_address = from_address.to_string();
-            let chain_code = chain_code.to_string();
-            let value = value.to_string();
-            let symbol = symbol.to_string();
-            let password = WALLET_PASSWORD.to_string();
-
-            join_set.spawn(async move {
-                tracing::info!(
-                    "Transferring {} {} from {} to {}",
-                    value,
-                    symbol,
-                    from_address,
-                    to_address
-                );
-
-                let mut base =
-                    ApiBaseTransferReq::new(&from_address, &to_address, &value, &chain_code);
-                base.with_token(None, 6, &symbol);
-                let req =
-                    ApiTransferExReq { base, password, fee_setting: "".to_string(), signer: None };
-
-                let res = wallet_manager.api_transfer(req).await;
-                (to_address, res)
-            });
-
-            if submitted < transfer_targets.len() {
-                sleep(Duration::from_millis(REQUEST_START_INTERVAL_MS)).await;
-            }
-        }
-
-        if let Some(joined) = join_set.join_next().await {
-            match joined {
-                Ok((to_address, res)) => {
-                    if res.is_ok() {
-                        success += 1;
-                    } else {
-                        failed += 1;
-                    }
-                    tracing::info!("Transfer to {} res: {res:?}", to_address);
-                }
-                Err(err) => {
-                    failed += 1;
-                    tracing::error!("transfer task join error: {err:?}");
-                }
-            }
-        }
-    }
-
+    let config = BatchTransferConfig {
+        chain_code: chain_code.to_string(),
+        from_address: from_address.to_string(),
+        to_addresses: transfer_targets,
+        value: value.to_string(),
+        token_symbol: symbol.to_string(),
+        token_decimals: 6,
+        max_in_flight: MAX_IN_FLIGHT,
+        start_interval_ms: REQUEST_START_INTERVAL_MS,
+        password: WALLET_PASSWORD.to_string(),
+        fee_setting: "".to_string(),
+    };
+    let summary = run_batch_transfer(wallet_manager, &config).await?;
     tracing::info!(
         "Transfer summary: total={}, success={}, failed={}",
-        transfer_targets.len(),
-        success,
-        failed
+        summary.total,
+        summary.success,
+        summary.failed
     );
 
     Ok(())

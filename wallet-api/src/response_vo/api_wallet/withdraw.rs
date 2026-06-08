@@ -24,23 +24,17 @@ pub struct ApiWithdrawOrderVo {
     pub audit_rejected_at: Option<chrono::DateTime<chrono::Utc>>,
     pub err_msg: Option<String>,
     pub tx_hash: Option<String>,
-    /// 实际链上手续费，TRON 对应后台回传的 nativeFee。
-    pub transaction_fee: String,
     /// 实际上链区块高度，TRON 对应后台回传的 blockNumber。
     pub block_height: Option<String>,
-    /// 实际消耗的 Bandwidth，拆自 resource_consume，便于前端直接展示。
-    pub bandwidth_consume: Option<u64>,
-    /// 实际消耗的 Energy，拆自 resource_consume，便于前端直接展示。
-    pub energy_consume: Option<u64>,
-    /// 审核前预估手续费，用于交易未上链前展示。
-    pub estimated_transaction_fee: Option<String>,
-    /// 预估资源消耗原始 JSON，保留给旧客户端和排查链路使用。
-    pub estimated_resource_consume: Option<String>,
-    /// 预估 Bandwidth，拆自 estimated_resource_consume。
-    pub estimated_bandwidth_consume: Option<u64>,
-    /// 预估 Energy，拆自 estimated_resource_consume。
-    pub estimated_energy_consume: Option<u64>,
-    pub fee_estimated_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// 页面展示手续费：实际手续费优先，未产生实际结果时兜底预估手续费。
+    #[serde(rename = "transactionFee")]
+    pub transaction_fee_display: String,
+    /// 页面展示 Bandwidth：实际消耗优先，未上链时兜底预估值。
+    #[serde(rename = "bandwidthConsume")]
+    pub bandwidth_consume_display: Option<u64>,
+    /// 页面展示 Energy：实际消耗优先，未上链时兜底预估值。
+    #[serde(rename = "energyConsume")]
+    pub energy_consume_display: Option<u64>,
     /// 申请时间，派生自 created_at
     pub apply_time: chrono::DateTime<chrono::Utc>,
     /// 签名时间，派生自 audit_passed_at ?? audit_rejected_at
@@ -63,6 +57,14 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
+        let has_actual_fee_result = has_actual_fee_result(&entity);
+        let transaction_fee_display = fee_display(
+            &entity.transaction_fee,
+            entity.estimated_transaction_fee.as_deref(),
+            has_actual_fee_result,
+        );
+        let bandwidth_consume_display = actual_resource.bandwidth.or(estimated_resource.bandwidth);
+        let energy_consume_display = actual_resource.energy.or(estimated_resource.energy);
         Self {
             trade_no: entity.trade_no,
             name: entity.name,
@@ -80,15 +82,10 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
             audit_rejected_at: entity.audit_rejected_at,
             err_msg: entity.err_msg,
             tx_hash: entity.tx_hash,
-            transaction_fee: entity.transaction_fee,
             block_height: entity.block_height,
-            bandwidth_consume: actual_resource.bandwidth,
-            energy_consume: actual_resource.energy,
-            estimated_transaction_fee: entity.estimated_transaction_fee,
-            estimated_resource_consume: entity.estimated_resource_consume,
-            estimated_bandwidth_consume: estimated_resource.bandwidth,
-            estimated_energy_consume: estimated_resource.energy,
-            fee_estimated_at: entity.fee_estimated_at,
+            transaction_fee_display,
+            bandwidth_consume_display,
+            energy_consume_display,
             apply_time: entity.created_at,
             sign_time,
             failure_reason_display,
@@ -123,23 +120,17 @@ pub struct ApiWithdrawOrderDetailVo {
     pub err_code: Option<ErrCode>,
     pub err_msg: Option<String>,
     pub notes: Option<String>,
-    /// 实际链上手续费，TRON 对应后台回传的 nativeFee。
-    pub transaction_fee: String,
     /// 实际上链区块高度，TRON 对应后台回传的 blockNumber。
     pub block_height: Option<String>,
-    /// 实际消耗的 Bandwidth，拆自 resource_consume，便于前端直接展示。
-    pub bandwidth_consume: Option<u64>,
-    /// 实际消耗的 Energy，拆自 resource_consume，便于前端直接展示。
-    pub energy_consume: Option<u64>,
-    /// 审核前预估手续费，用于交易未上链前展示。
-    pub estimated_transaction_fee: Option<String>,
-    /// 预估资源消耗原始 JSON，保留给旧客户端和排查链路使用。
-    pub estimated_resource_consume: Option<String>,
-    /// 预估 Bandwidth，拆自 estimated_resource_consume。
-    pub estimated_bandwidth_consume: Option<u64>,
-    /// 预估 Energy，拆自 estimated_resource_consume。
-    pub estimated_energy_consume: Option<u64>,
-    pub fee_estimated_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// 页面展示手续费：实际手续费优先，未产生实际结果时兜底预估手续费。
+    #[serde(rename = "transactionFee")]
+    pub transaction_fee_display: String,
+    /// 页面展示 Bandwidth：实际消耗优先，未上链时兜底预估值。
+    #[serde(rename = "bandwidthConsume")]
+    pub bandwidth_consume_display: Option<u64>,
+    /// 页面展示 Energy：实际消耗优先，未上链时兜底预估值。
+    #[serde(rename = "energyConsume")]
+    pub energy_consume_display: Option<u64>,
     /// 申请时间，派生自 created_at
     pub apply_time: chrono::DateTime<chrono::Utc>,
     /// 签名时间，派生自 audit_passed_at ?? audit_rejected_at
@@ -161,6 +152,14 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
         let actual_resource = resource_consume_display(Some(&entity.resource_consume));
         let estimated_resource =
             resource_consume_display(entity.estimated_resource_consume.as_deref());
+        let has_actual_fee_result = has_actual_fee_result(&entity);
+        let transaction_fee_display = fee_display(
+            &entity.transaction_fee,
+            entity.estimated_transaction_fee.as_deref(),
+            has_actual_fee_result,
+        );
+        let bandwidth_consume_display = actual_resource.bandwidth.or(estimated_resource.bandwidth);
+        let energy_consume_display = actual_resource.energy.or(estimated_resource.energy);
         Self {
             trade_no: entity.trade_no,
             name: entity.name,
@@ -182,15 +181,10 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
             err_code: entity.err_code,
             err_msg: entity.err_msg,
             notes: entity.notes,
-            transaction_fee: entity.transaction_fee,
             block_height: entity.block_height,
-            bandwidth_consume: actual_resource.bandwidth,
-            energy_consume: actual_resource.energy,
-            estimated_transaction_fee: entity.estimated_transaction_fee,
-            estimated_resource_consume: entity.estimated_resource_consume,
-            estimated_bandwidth_consume: estimated_resource.bandwidth,
-            estimated_energy_consume: estimated_resource.energy,
-            fee_estimated_at: entity.fee_estimated_at,
+            transaction_fee_display,
+            bandwidth_consume_display,
+            energy_consume_display,
             apply_time: entity.created_at,
             sign_time,
             failure_reason_display,
@@ -222,6 +216,29 @@ fn resource_consume_display(raw: Option<&str>) -> ResourceConsumeDisplay {
 
 fn first_u64(value: &serde_json::Value, keys: &[&str]) -> Option<u64> {
     keys.iter().find_map(|key| value.get(*key).and_then(serde_json::Value::as_u64))
+}
+
+fn fee_display(actual: &str, estimated: Option<&str>, has_actual_result: bool) -> String {
+    let actual = actual.trim();
+    if !actual.is_empty() && (has_actual_result || !is_zero_decimal(actual)) {
+        return actual.to_string();
+    }
+
+    estimated
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| actual.to_string())
+}
+
+fn is_zero_decimal(value: &str) -> bool {
+    value.parse::<f64>().is_ok_and(|number| number == 0.0)
+}
+
+fn has_actual_fee_result(entity: &ApiWithdrawEntity) -> bool {
+    entity.transaction_time.is_some()
+        || entity.block_height.as_deref().is_some_and(|value| !value.trim().is_empty())
+        || entity.tx_hash.as_deref().is_some_and(|value| !value.trim().is_empty())
 }
 
 fn failure_reason_display(
