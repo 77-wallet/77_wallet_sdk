@@ -20,8 +20,9 @@ use crate::harness::{
 use super::{
     assertions::assert_event_ack_payload_exists,
     db::{
-        mark_withdraw_blocked, open_transaction_pool, seed_failed_resource_delegation,
-        seed_resource_delegation_ready_for_ack, seed_successful_resource_delegation, seed_withdraw,
+        mark_withdraw_blocked, open_transaction_pool, seed_failed_original_order_resource_result,
+        seed_failed_resource_delegation, seed_resource_delegation_ready_for_ack,
+        seed_successful_resource_delegation, seed_withdraw,
     },
     fixtures::WithdrawResourceGateFixture,
 };
@@ -64,6 +65,8 @@ pub(crate) trait WithdrawResourceGateGiven {
 
     async fn failed_withdraw_resource_delegation(&self, fixture: &WithdrawResourceGateFixture);
 
+    async fn failed_original_order_resource_result(&self, fixture: &WithdrawResourceGateFixture);
+
     async fn resource_delegation_without_origin_trade(&self, fixture: &WithdrawResourceGateFixture);
 
     async fn collect_origin_resource_delegation(&self, fixture: &WithdrawResourceGateFixture);
@@ -87,6 +90,10 @@ impl WithdrawResourceGateGiven for GivenRole<'_, WithdrawResourceGateScenario> {
         self.scenario().seed().failed_withdraw_resource_delegation(fixture).await;
     }
 
+    async fn failed_original_order_resource_result(&self, fixture: &WithdrawResourceGateFixture) {
+        self.scenario().seed().failed_original_order_resource_result(fixture).await;
+    }
+
     async fn resource_delegation_without_origin_trade(
         &self,
         fixture: &WithdrawResourceGateFixture,
@@ -108,6 +115,8 @@ trait WithdrawResourceGateSeed {
     async fn successful_withdraw_resource_delegation(&self, fixture: &WithdrawResourceGateFixture);
 
     async fn failed_withdraw_resource_delegation(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn failed_original_order_resource_result(&self, fixture: &WithdrawResourceGateFixture);
 
     async fn resource_delegation_without_origin_trade(&self, fixture: &WithdrawResourceGateFixture);
 
@@ -153,6 +162,11 @@ impl WithdrawResourceGateSeed for SeedRole<'_, WithdrawResourceGateScenario> {
             &fixture.resource_trade_no,
         )
         .await;
+    }
+
+    async fn failed_original_order_resource_result(&self, fixture: &WithdrawResourceGateFixture) {
+        seed_failed_original_order_resource_result(&self.scenario().tx_pool, &fixture.trade_no)
+            .await;
     }
 
     async fn resource_delegation_without_origin_trade(

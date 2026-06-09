@@ -3,13 +3,23 @@
 //! `tests/harness` owns the external test environment. `testkit` exposes
 //! intentional test-only entrypoints into internal wallet-api workflows.
 
-pub mod adapter_factory;
-pub mod collect;
-pub mod collect_fee;
-pub mod context;
 pub mod env;
+
+#[cfg(any(test, feature = "integration-tests"))]
+pub mod adapter_factory;
+#[cfg(any(test, feature = "integration-tests"))]
+pub mod collect;
+#[cfg(any(test, feature = "integration-tests"))]
+pub mod collect_fee;
+#[cfg(any(test, feature = "integration-tests"))]
+pub mod context;
+#[cfg(any(test, feature = "integration-tests"))]
 pub mod mqtt;
+#[cfg(any(test, feature = "integration-tests"))]
 pub mod resource_reclaim;
+#[cfg(any(test, feature = "integration-tests"))]
 pub mod seed;
+#[cfg(any(test, feature = "integration-tests"))]
 pub mod sol_transaction;
+#[cfg(any(test, feature = "integration-tests"))]
 pub mod withdraw;

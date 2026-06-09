@@ -42,7 +42,6 @@ pub mod messaging;
 pub mod request;
 pub mod response_vo;
 pub mod service;
-#[cfg(any(test, feature = "integration-tests"))]
 pub mod testkit;
 
 pub mod handles;

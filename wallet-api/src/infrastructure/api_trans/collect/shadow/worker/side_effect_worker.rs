@@ -663,27 +663,7 @@ impl SideEffectWorker {
             .await
         {
             Ok(_) => {
-                let affected = ApiResourceDelegationRepo::mark_result_ack_sent(
-                    &self.ctx.api_transaction_pool()?,
-                    &resource_trade_no,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                if affected == 0 {
-                    warn!(resource_trade_no = %resource_trade_no, "Resource result ACK marked 0 rows");
-                }
-                self.project_resource_task_outcome_to_collect_gate(
-                    &resource_task,
-                    ResourceGateReleaseOutcome::Success(
-                        ApiResourceGateResult::ResourceDelegationSuccess,
-                    ),
-                )
-                .await?;
-                if is_original_order_resource_result_fact(&resource_task) {
-                    if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
-                        self.advancer.try_advance(origin_trade_no).await;
-                    }
-                }
+                self.mark_resource_result_ack_and_project_collect_gate(&resource_task).await?;
                 info!(resource_trade_no = %resource_trade_no, "Resource result ACK sent successfully");
             }
             Err(e) => {
@@ -708,16 +688,76 @@ impl SideEffectWorker {
         Ok(())
     }
 
+    async fn mark_resource_result_ack_and_project_collect_gate(
+        &self,
+        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+    ) -> Result<(), ServiceError> {
+        let release = Self::collect_gate_release_from_resource_result(resource_task);
+        let ack_rows = ApiCollectRepo::mark_resource_result_ack_sent_and_release_gate(
+            &self.ctx.api_transaction_pool()?,
+            &resource_task.resource_trade_no,
+            release.as_ref().map(|(origin_trade_no, _)| origin_trade_no.as_str()),
+            release.as_ref().map(|(_, release_result)| *release_result),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if ack_rows == 0 {
+            warn!(
+                resource_trade_no = %resource_task.resource_trade_no,
+                "Resource result ACK marked 0 rows"
+            );
+        } else if let Some((origin_trade_no, _)) = release {
+            self.advancer.try_advance(&origin_trade_no).await;
+        }
+
+        Ok(())
+    }
+
+    fn collect_gate_release_from_resource_result(
+        resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
+    ) -> Option<(String, ApiResourceGateResult)> {
+        if resource_task.origin_trade_type != Some(ApiTradeType::Collect as i64) {
+            return None;
+        }
+
+        let origin_trade_no = resource_task.origin_trade_no.clone()?;
+        let release_result = if is_original_order_resource_result_fact(resource_task) {
+            match resource_task.result_status {
+                Some(ApiResourceDelegationResultStatus::Success) => {
+                    ApiResourceGateResult::ResourceDelegationSuccess
+                }
+                Some(ApiResourceDelegationResultStatus::Fail) => {
+                    ApiResourceGateResult::ResourceDelegationFailedBypass
+                }
+                None => return None,
+            }
+        } else if resource_task.err_code.is_none()
+            && matches!(resource_task.tx_status.as_deref(), Some("success"))
+        {
+            ApiResourceGateResult::ResourceDelegationSuccess
+        } else if resource_task.err_code.is_some()
+            || matches!(resource_task.tx_status.as_deref(), Some("fail"))
+        {
+            ApiResourceGateResult::ResourceDelegationFailedBypass
+        } else {
+            return None;
+        };
+
+        Some((origin_trade_no, release_result))
+    }
+
     /// Project a resource delegation terminal outcome back into the origin
     /// collect gate.
     ///
     /// Important boundary:
-    /// - success release is driven by `SendResourceResultAck`
-    /// - failure bypass is driven by `UploadResourceTxExecReceipt`, but only
-    ///   after failure facts are already persisted on the resource task
+    /// - result ACK releases success and failure facts that already arrived
+    ///   through backend result notification
+    /// - receipt upload remains a stable failure fallback when no backend
+    ///   result notification is available
     ///
-    /// So `UploadResourceTxExecReceipt` is only the stable failure closure
-    /// hook; uploading a success receipt does not mean "failed_bypass".
+    /// So `UploadResourceTxExecReceipt` is only a fallback closure hook;
+    /// uploading a success receipt does not mean "failed_bypass".
     async fn project_resource_task_outcome_to_collect_gate(
         &self,
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,

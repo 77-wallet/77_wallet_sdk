@@ -15,4 +15,9 @@ impl WithdrawResourceGateFixture {
         let trade_no = format!("{prefix}_{}", next_unique_id());
         Self { resource_trade_no: format!("DL_W_{trade_no}"), trade_no }
     }
+
+    pub(crate) fn original_order_result_case(prefix: &str) -> Self {
+        let trade_no = format!("{prefix}_{}", next_unique_id());
+        Self { resource_trade_no: trade_no.clone(), trade_no }
+    }
 }

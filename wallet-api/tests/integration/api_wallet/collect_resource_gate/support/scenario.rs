@@ -206,6 +206,11 @@ pub(crate) trait CollectResourceGateThen {
         fixture: &CollectResourceGateFixture,
     );
 
+    async fn origin_collect_gate_is_released_by_failed_bypass(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    );
+
     async fn origin_collect_gate_is_not_released(&self, fixture: &CollectResourceGateFixture);
 
     async fn collect_can_build(&self, fixture: &CollectResourceGateFixture);
@@ -225,6 +230,17 @@ impl CollectResourceGateThen for ThenRole<'_, CollectResourceGateScenario> {
         self.scenario().assert().origin_collect_gate_is_released(
             &collect,
             ApiResourceGateResult::ResourceDelegationSuccess,
+        );
+    }
+
+    async fn origin_collect_gate_is_released_by_failed_bypass(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    ) {
+        let collect = self.scenario().load().collect(&fixture.trade_no).await;
+        self.scenario().assert().origin_collect_gate_is_released(
+            &collect,
+            ApiResourceGateResult::ResourceDelegationFailedBypass,
         );
     }
 

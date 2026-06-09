@@ -1,6 +1,7 @@
 use wallet_database::{
     ApiTransactionDbPool, SqliteContext,
     entities::{
+        api_resource_delegation::ApiResourceDelegationResultStatus,
         api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
         api_trade_type::ApiTradeType,
         api_withdraw::ApiWithdrawStatus,
@@ -100,6 +101,36 @@ pub(crate) async fn seed_resource_delegation_ready_for_ack(
     .execute(pool.as_ref())
     .await
     .expect("seed withdraw delegation row for result ack");
+}
+
+pub(crate) async fn seed_failed_original_order_resource_result(
+    pool: &ApiTransactionDbPool,
+    trade_no: &str,
+) {
+    sqlx::query(
+        r#"
+        INSERT INTO api_resource_delegation (
+            uid, source, operation_type, origin_trade_no, origin_trade_type,
+            resource_trade_no, chain_code, owner_address, receiver_address,
+            resource_type, native_amount, amount, status,
+            result_status, result_received_at, result_payload,
+            created_at, updated_at
+        ) VALUES (
+            'uid', 1, 1, ?, 1,
+            ?, 'tron', 'owner', 'receiver',
+            1, '2', '32000', 3,
+            ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":false}',
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        )
+        "#,
+    )
+    .bind(trade_no)
+    .bind(trade_no)
+    .bind(ApiResourceDelegationResultStatus::Fail as i64)
+    .execute(pool.as_ref())
+    .await
+    .expect("seed failed original-order withdraw resource result");
 }
 
 pub(crate) async fn seed_successful_resource_delegation(
