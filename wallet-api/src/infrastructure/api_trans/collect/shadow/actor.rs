@@ -19,13 +19,16 @@ lazy_static::lazy_static! {
 use dashmap::DashMap;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
-use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
+use wallet_database::ApiTransactionDbPool;
 
-use crate::infrastructure::api_trans::collect::{
-    legacy::AddressLockManager,
-    shadow::{
-        dispatcher::ShadowDispatcher,
-        worker::{ShadowCollectWorker, SideEffectWorker},
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::collect::{
+        legacy::AddressLockManager,
+        shadow::{
+            dispatcher::ShadowDispatcher,
+            worker::{ShadowCollectWorker, SideEffectWorker},
+        },
     },
 };
 
@@ -272,11 +275,10 @@ pub struct CollectorShadowActorSystem {
 }
 
 impl CollectorShadowActorSystem {
-    pub fn new(
-        ctx: &'static crate::context::Context,
-        api_transaction_pool: ApiTransactionDbPool,
-        core_pool: ApiWalletDbPool,
-    ) -> Self {
+    pub fn new(ctx: &'static crate::context::Context) -> Result<Self, ServiceError> {
+        let api_transaction_pool = ctx.api_transaction_pool()?;
+        let core_pool = ctx.api_wallet_pool()?;
+
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();
@@ -651,7 +653,7 @@ impl CollectorShadowActorSystem {
             }
         });
 
-        Self {
+        Ok(Self {
             shutdown_tx,
             dispatcher_message_tx,
             scanner_handle,
@@ -661,7 +663,7 @@ impl CollectorShadowActorSystem {
             intent_tx,
             scanner,
             advancer,
-        }
+        })
     }
 
     /// 停止Shadow系统

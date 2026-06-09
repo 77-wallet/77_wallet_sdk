@@ -25,8 +25,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct WithdrawConfirmWorkerCtx {
-    pool: ApiTransactionDbPool,
-    backend_api: std::sync::Arc<wallet_transport_backend::api::BackendApi>,
+    ctx: &'static crate::context::Context,
     trade_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
@@ -62,13 +61,11 @@ pub(super) struct ProcessWithdrawTxConfirmReport {
 impl ProcessWithdrawTxConfirmReport {
     pub(super) fn new(
         ctx: &'static crate::context::Context,
-        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxConfirmReportCommand>,
     ) -> Self {
         let worker_ctx = WithdrawConfirmWorkerCtx {
-            pool,
-            backend_api: ctx.get_global_backend_api(),
+            ctx,
             trade_locks: Arc::new(DashMap::new()),
             address_locks: Arc::new(DashMap::new()),
             global_sem: Arc::new(Semaphore::new(10)),
@@ -119,8 +116,15 @@ impl ProcessWithdrawTxConfirmReport {
 
         tracing::info!(trade_no=%trade_no, "[提现确认] 根据交易编号处理单个提现交易确认报告");
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "[提现确认] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             match ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
-                &ctx.pool,
+                &pool,
                 &trade_no,
                 &[ApiWithdrawStatus::Failure, ApiWithdrawStatus::Success],
             )
@@ -136,12 +140,7 @@ impl ProcessWithdrawTxConfirmReport {
                     let _address_guard = address_lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_withdraw_single_tx_confirm_report(
-                        ctx.pool.clone(),
-                        req,
-                        ctx.backend_api.clone(),
-                    )
-                    .await;
+                    Self::process_withdraw_single_tx_confirm_report(req, ctx.ctx).await;
                 }
                 Err(err) => {
                     tracing::warn!(trade_no=%trade_no, "[提现确认] 获取提现交易确认报告失败: {}", err);
@@ -156,8 +155,15 @@ impl ProcessWithdrawTxConfirmReport {
         tracing::info!("[提现确认] 批量处理提现交易确认报告");
 
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!("[提现确认] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let res = ApiWithdrawRepo::list_api_withdraw_with_status(
-                &ctx.pool,
+                &pool,
                 vec![ApiWithdrawStatus::Failure, ApiWithdrawStatus::Success],
                 0,
                 1000,
@@ -180,21 +186,15 @@ impl ProcessWithdrawTxConfirmReport {
                     let _address_guard = address_lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_withdraw_single_tx_confirm_report(
-                        ctx.pool.clone(),
-                        req,
-                        ctx.backend_api.clone(),
-                    )
-                    .await
+                    Self::process_withdraw_single_tx_confirm_report(req, ctx.ctx).await
                 });
             }
         });
     }
 
     async fn process_withdraw_single_tx_confirm_report(
-        pool: ApiTransactionDbPool,
         req: ApiWithdrawEntity,
-        backend_api: std::sync::Arc<wallet_transport_backend::api::BackendApi>,
+        ctx: &'static crate::context::Context,
     ) {
         tracing::info!(trade_no=%req.trade_no,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
         let now = chrono::Utc::now();
@@ -218,6 +218,13 @@ impl ProcessWithdrawTxConfirmReport {
         }
 
         // 添加幂等性检查，防止重复发送 Result ACK
+        let pool = match ctx.api_transaction_pool() {
+            Ok(pool) => pool,
+            Err(err) => {
+                tracing::warn!(trade_no=%req.trade_no, "[提现确认] 获取交易数据库连接池失败: {}", err);
+                return;
+            }
+        };
         let (_, result_ack_sent_at) =
             ApiWithdrawRepo::get_ack_times(&pool, &req.trade_no).await.unwrap_or((None, None));
         if result_ack_sent_at.is_some() {
@@ -234,6 +241,7 @@ impl ProcessWithdrawTxConfirmReport {
 
         tracing::info!(trade_no=%req.trade_no, "[提现确认] 准备调用后端API发送 Result ACK");
 
+        let backend_api = ctx.get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &req.trade_no,

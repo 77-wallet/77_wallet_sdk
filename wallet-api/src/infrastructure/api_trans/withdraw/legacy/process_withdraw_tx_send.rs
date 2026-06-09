@@ -156,7 +156,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool,
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
@@ -209,8 +209,6 @@ impl AddressLockManager {
 // 2. global semaphore
 #[derive(Clone)]
 struct WithdrawTxWorkerCtx {
-    core_pool: ApiWalletDbPool,
-    api_transaction_pool: ApiTransactionDbPool,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
     processing_trade: Arc<DashSet<String>>,
@@ -245,15 +243,11 @@ pub(super) struct ProcessWithdrawTx {
 impl ProcessWithdrawTx {
     pub(super) fn new(
         ctx: &'static Context,
-        core_pool: ApiWalletDbPool,
-        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessWithdrawTxCommand>,
         report_tx: mpsc::Sender<ProcessWithdrawTxReportCommand>,
     ) -> Self {
         let worker_ctx = WithdrawTxWorkerCtx {
-            core_pool: core_pool.clone(),
-            api_transaction_pool: pool.clone(),
             address_locks: Arc::new(AddressLockManager::new()),
             global_sem: Arc::new(Semaphore::new(32)), // 与 collect 模块保持一致
             processing_trade: Arc::new(DashSet::new()),
@@ -310,8 +304,15 @@ impl ProcessWithdrawTx {
         let trade_no = trade_no.to_string();
 
         tokio::spawn(async move {
+            let api_transaction_pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "withdraw_tx:send: 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let req = match ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
-                &ctx.api_transaction_pool,
+                &api_transaction_pool,
                 &trade_no,
                 &[ApiWithdrawStatus::AuditPass],
             )
@@ -350,8 +351,15 @@ impl ProcessWithdrawTx {
 
         tokio::spawn(async move {
             let _batch_guard = permit;
+            let api_transaction_pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!("withdraw_tx:send: 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let res = ApiWithdrawRepo::list_api_withdraw_with_status(
-                &ctx.api_transaction_pool,
+                &api_transaction_pool,
                 vec![ApiWithdrawStatus::AuditPass],
                 0,
                 1000,
@@ -485,8 +493,9 @@ impl ProcessWithdrawTx {
 
                 // 第二步：将raw_tx、nonce和tx_hash落盘到数据库
                 let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
+                let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
                 let update_res = ApiWithdrawRepo::update_after_build(
-                    &worker_ctx.api_transaction_pool,
+                    &api_transaction_pool,
                     &req.trade_no,
                     &tx_hash,
                     &raw_tx_str,
@@ -570,11 +579,11 @@ impl ProcessWithdrawTx {
 
     async fn get_eth_nonce(
         worker_ctx: &WithdrawTxWorkerCtx,
-        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, ServiceError> {
         tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "withdraw_tx:send: 获取以太坊nonce");
+        let pool = worker_ctx.ctx.api_transaction_pool()?;
         match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
             Ok(nonce) => {
                 let next_nonce = nonce + 1;
@@ -630,22 +639,10 @@ impl ProcessWithdrawTx {
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
-                Self::get_eth_nonce(
-                    &worker_ctx,
-                    &worker_ctx.api_transaction_pool,
-                    &req.from_addr,
-                    &req.chain_code,
-                )
-                .await?
+                Self::get_eth_nonce(&worker_ctx, &req.from_addr, &req.chain_code).await?
             }
             ChainCode::BnbSmartChain => {
-                Self::get_eth_nonce(
-                    &worker_ctx,
-                    &worker_ctx.api_transaction_pool,
-                    &req.from_addr,
-                    &req.chain_code,
-                )
-                .await?
+                Self::get_eth_nonce(&worker_ctx, &req.from_addr, &req.chain_code).await?
             }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
@@ -667,6 +664,7 @@ impl ProcessWithdrawTx {
         nonce: u64,
     ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 处理交易成功结果");
+        let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
 
         // 发送前端通知
         let data = NotifyEvent::Withdraw(WithdrawFront {
@@ -686,7 +684,7 @@ impl ProcessWithdrawTx {
         {
             tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 更新以太坊/BSC交易状态，包含nonce");
             ApiWithdrawRepo::update_api_withdraw_tx_status_nonce(
-                &worker_ctx.api_transaction_pool,
+                &api_transaction_pool,
                 &req.from_addr,
                 &req.chain_code,
                 &req.trade_no,
@@ -700,7 +698,7 @@ impl ProcessWithdrawTx {
         } else {
             tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 更新非以太坊/BSC交易状态");
             ApiWithdrawRepo::update_api_withdraw_tx_status(
-                &worker_ctx.api_transaction_pool,
+                &api_transaction_pool,
                 &req.trade_no,
                 req.nonce,
                 &tx.tx_hash,
@@ -752,8 +750,9 @@ impl ProcessWithdrawTx {
         });
         _ = FrontendNotifyEvent::new(data).send_with_ctx(worker_ctx.ctx).await;
         // 更新交易状态,发送失败
+        let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
         let res = ApiWithdrawRepo::update_api_withdraw_status_and_err(
-            &worker_ctx.api_transaction_pool,
+            &api_transaction_pool,
             &trade_no,
             ApiWithdrawStatus::SendingTxFailed,
             err_code,

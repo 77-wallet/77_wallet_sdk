@@ -82,10 +82,7 @@ impl ProcessCollectTxHandle {
 
         // 初始化Shadow系统
         shadow::enable();
-        let api_transaction_pool = ctx.api_transaction_pool()?;
-        let api_wallet_pool = ctx.api_wallet_pool()?;
-        let shadow_system =
-            shadow::init(ctx, api_transaction_pool.clone(), api_wallet_pool.clone()).await;
+        let shadow_system = shadow::init(ctx).await;
 
         Ok(Self {
             shutdown_tx,

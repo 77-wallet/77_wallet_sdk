@@ -5,10 +5,13 @@ use crate::infrastructure::runtime::time::new_production_interval;
 
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
-use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
+use wallet_database::ApiTransactionDbPool;
 
-use crate::infrastructure::api_trans::withdraw::diagnose::{
-    CachedDiagnoser, DiagnoseEvent, WithdrawStuckMonitor,
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::withdraw::diagnose::{
+        CachedDiagnoser, DiagnoseEvent, WithdrawStuckMonitor,
+    },
 };
 use dashmap::DashMap;
 use std::time::Instant;
@@ -206,11 +209,10 @@ pub struct WithdrawShadowActorSystem {
 }
 
 impl WithdrawShadowActorSystem {
-    pub fn new(
-        ctx: &'static crate::context::Context,
-        api_withdraw_pool: ApiTransactionDbPool,
-        core_pool: ApiWalletDbPool,
-    ) -> Self {
+    pub fn new(ctx: &'static crate::context::Context) -> Result<Self, ServiceError> {
+        let api_withdraw_pool = ctx.api_transaction_pool()?;
+        let core_pool = ctx.api_wallet_pool()?;
+
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();
@@ -394,7 +396,7 @@ impl WithdrawShadowActorSystem {
             }
         });
 
-        Self {
+        Ok(Self {
             shutdown_tx,
             dispatcher_message_tx,
             scanner_handle,
@@ -403,7 +405,7 @@ impl WithdrawShadowActorSystem {
             monitor_handle,
             intent_tx,
             scanner,
-        }
+        })
     }
 
     /// 停止Shadow系统

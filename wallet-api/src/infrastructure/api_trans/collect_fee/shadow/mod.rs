@@ -94,14 +94,11 @@ pub use dispatcher::DispatcherConfig;
 pub(crate) use predicate::evaluate_point;
 pub use scanner::{ScannerConfig, ShadowScanner};
 pub(crate) use stage::{ADVANCEMENT_ORDER, AdvancementPoint};
-use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 pub use worker::ShadowFeeWorker;
 
 /// Shadow系统初始化
 pub(crate) async fn init(
     ctx: &'static crate::context::Context,
-    api_transaction_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
 ) -> Option<actor::FeeShadowActorSystem> {
     // 检查开关是否开启
     if !FEE_SHADOW_ENABLED.load(Ordering::Relaxed) {
@@ -110,7 +107,13 @@ pub(crate) async fn init(
     }
 
     // 初始化Shadow Actor系统
-    let actor_system = actor::FeeShadowActorSystem::new(ctx, api_transaction_pool, core_pool);
+    let actor_system = match actor::FeeShadowActorSystem::new(ctx) {
+        Ok(actor_system) => actor_system,
+        Err(error) => {
+            tracing::error!(?error, "Fee Shadow System failed to initialize");
+            return None;
+        }
+    };
 
     tracing::info!("Fee Shadow System initialized and started");
     Some(actor_system)

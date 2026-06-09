@@ -22,8 +22,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct FeeTxWorkerCtx {
-    pool: ApiTransactionDbPool,
-    backend_api: std::sync::Arc<wallet_transport_backend::api::BackendApi>,
+    ctx: &'static crate::context::Context,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
 }
@@ -57,13 +56,11 @@ pub(super) struct ProcessFeeTxReport {
 impl ProcessFeeTxReport {
     pub(super) fn new(
         ctx: &'static crate::context::Context,
-        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
     ) -> Self {
         let worker_ctx = FeeTxWorkerCtx {
-            pool: pool.clone(),
-            backend_api: ctx.get_global_backend_api(),
+            ctx,
             address_locks: Arc::new(DashMap::new()),
             global_sem: Arc::new(Semaphore::new(64)),
         };
@@ -108,8 +105,15 @@ impl ProcessFeeTxReport {
         let trade_no = trade_no.to_string();
         tracing::info!(trade_no=%trade_no, "[手续费归集报告] 根据交易编号处理单个手续费交易报告");
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "[手续费归集报告] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let api_fee = match ApiFeeRepo::get_api_fee_by_trade_no_status(
-                &ctx.pool,
+                &pool,
                 &trade_no,
                 &[
                     ApiFeeStatus::SendingTx,
@@ -132,8 +136,7 @@ impl ProcessFeeTxReport {
             let _guard = lock.lock().await;
             let _permit = ctx.global_sem.acquire().await.unwrap();
             // 直接调用时不检查重试时间
-            Self::process_fee_single_tx_report(ctx.pool, api_fee, false, ctx.backend_api.clone())
-                .await
+            Self::process_fee_single_tx_report(api_fee, false, ctx.ctx).await
         });
     }
 
@@ -142,8 +145,15 @@ impl ProcessFeeTxReport {
         let ctx = self.worker_ctx.clone();
 
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!("[手续费归集报告] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let res = ApiFeeRepo::page_api_fee_with_status(
-                &ctx.pool,
+                &pool,
                 0,
                 1000,
                 &[
@@ -175,13 +185,7 @@ impl ProcessFeeTxReport {
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
                     // 定时检查时需要检查重试时间
-                    Self::process_fee_single_tx_report(
-                        ctx.pool.clone(),
-                        req,
-                        true,
-                        ctx.backend_api.clone(),
-                    )
-                    .await
+                    Self::process_fee_single_tx_report(req, true, ctx.ctx).await
                 });
             }
         });
@@ -189,10 +193,9 @@ impl ProcessFeeTxReport {
 
     /// 处理单个手续费交易报告的辅助函数，用于并发处理
     async fn process_fee_single_tx_report(
-        pool: ApiTransactionDbPool,
         req: ApiFeeEntity,
         check_retry_time: bool,
-        backend_api: std::sync::Arc<wallet_transport_backend::api::BackendApi>,
+        ctx: &'static crate::context::Context,
     ) {
         tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 处理单个手续费交易报告，当前状态: {:?}", req.status);
 
@@ -267,6 +270,7 @@ impl ProcessFeeTxReport {
         };
 
         tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 调用后端API上传交易执行报告");
+        let backend_api = ctx.get_global_backend_api();
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 None,
@@ -281,10 +285,24 @@ impl ProcessFeeTxReport {
         {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 交易执行报告上传成功");
+                let pool = match ctx.api_transaction_pool() {
+                    Ok(pool) => pool,
+                    Err(err) => {
+                        tracing::warn!(trade_no=%req.trade_no, "[手续费归集报告] 获取交易数据库连接池失败: {}", err);
+                        return;
+                    }
+                };
                 Self::handle_report_success(pool.clone(), req).await;
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "[手续费归集报告] 交易执行报告上传失败: {}", err);
+                let pool = match ctx.api_transaction_pool() {
+                    Ok(pool) => pool,
+                    Err(pool_err) => {
+                        tracing::warn!(trade_no=%req.trade_no, "[手续费归集报告] 获取交易数据库连接池失败: {}", pool_err);
+                        return;
+                    }
+                };
                 Self::handle_report_failed(pool.clone(), req, err).await;
             }
         }
