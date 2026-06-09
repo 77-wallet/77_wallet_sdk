@@ -1,7 +1,10 @@
 // legacy collect fee transaction confirm worker.
 #![allow(deprecated)]
 
-use crate::infrastructure::api_trans::collect_fee::command::ProcessFeeTxConfirmReportCommand;
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::collect_fee::command::ProcessFeeTxConfirmReportCommand,
+};
 use chrono::TimeDelta;
 use dashmap::DashMap;
 use std::sync::{Arc, Weak};
@@ -115,7 +118,10 @@ impl ProcessFeeTxConfirmReport {
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_fee_single_tx_confirm_report(fee, ctx.ctx).await;
+                    if let Err(err) = Self::process_fee_single_tx_confirm_report(fee, ctx.ctx).await
+                    {
+                        tracing::warn!(trade_no=%trade_no, "[手续费归集确认] 处理手续费交易确认报告失败: {}", err);
+                    }
                 }
                 Err(err) => {
                     tracing::warn!(trade_no=%trade_no, "[手续费归集确认] 获取手续费交易确认报告失败: {}", err);
@@ -158,11 +164,15 @@ impl ProcessFeeTxConfirmReport {
             for req in transfer_fees {
                 let ctx = ctx.clone();
                 tokio::spawn(async move {
+                    let trade_no = req.trade_no.clone();
                     let lock = ctx.get_address_lock(&req.from_addr);
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_fee_single_tx_confirm_report(req, ctx.ctx).await
+                    if let Err(err) = Self::process_fee_single_tx_confirm_report(req, ctx.ctx).await
+                    {
+                        tracing::warn!(trade_no=%trade_no, "[手续费归集确认] 处理手续费交易确认报告失败: {}", err);
+                    }
                 });
             }
         });
@@ -171,7 +181,7 @@ impl ProcessFeeTxConfirmReport {
     async fn process_fee_single_tx_confirm_report(
         req: ApiFeeEntity,
         ctx: &'static crate::context::Context,
-    ) {
+    ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no,hash=?req.tx_hash,status=%req.status, "[手续费归集确认] 处理单个手续费交易确认报告");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -179,30 +189,24 @@ impl ProcessFeeTxConfirmReport {
             tracing::warn!(trade_no=%req.trade_no,
                 "[手续费归集确认] 手续费交易确认报告处理超时，retry not due yet, skip this round"
             );
-            return;
+            return Ok(());
         }
         if req.status == ApiFeeStatus::SendingTxFailed {
             tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告状态错误");
-            return;
+            return Ok(());
         };
         if !(req.status == ApiFeeStatus::Success || req.status == ApiFeeStatus::Failure) {
             tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告状态错误: {}", req.status);
-            return;
+            return Ok(());
         }
         tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 调用后端API发送交易确认报告");
         // 检查 TxRes ACK 是否已发送
-        let pool = match ctx.api_transaction_pool() {
-            Ok(pool) => pool,
-            Err(err) => {
-                tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 获取交易数据库连接池失败: {}", err);
-                return;
-            }
-        };
+        let pool = ctx.api_transaction_pool()?;
         let (_, tx_res_ack_sent_at) =
             ApiFeeRepo::get_ack_times(&pool, &req.trade_no).await.unwrap_or((None, None));
         if tx_res_ack_sent_at.is_some() {
             tracing::warn!(trade_no=%req.trade_no, ?tx_res_ack_sent_at, "[手续费归集确认] TxRes ack 已发送，跳过");
-            return;
+            return Ok(());
         }
 
         let backend_api = ctx.get_global_backend_api();
@@ -227,6 +231,7 @@ impl ProcessFeeTxConfirmReport {
                 Self::handle_confirm_report_failed(pool.clone(), req, err).await;
             }
         }
+        Ok(())
     }
 
     async fn handle_confirm_report_success(pool: ApiTransactionDbPool, req: ApiFeeEntity) {

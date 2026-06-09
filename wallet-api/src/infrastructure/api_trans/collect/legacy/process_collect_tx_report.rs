@@ -1,7 +1,10 @@
 #![allow(deprecated)]
 
 // legacy collect transaction report worker.
-use crate::infrastructure::api_trans::collect::command::ProcessCollectTxReportCommand;
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::collect::command::ProcessCollectTxReportCommand,
+};
 use chrono::TimeDelta;
 use dashmap::DashMap;
 use serde_json::json;
@@ -134,7 +137,9 @@ impl ProcessCollectTxReport {
             let _permit = ctx.global_sem.acquire().await.unwrap();
 
             // 直接调用时不检查重试时间
-            Self::process_single_tx_report(req, false, ctx.ctx).await
+            if let Err(err) = Self::process_single_tx_report(req, false, ctx.ctx).await {
+                tracing::warn!(trade_no=%trade_no, "[归集交易报告] 处理单条归集交易报告失败: {}", err);
+            }
         });
     }
 
@@ -174,7 +179,10 @@ impl ProcessCollectTxReport {
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_single_tx_report(req, true, ctx.ctx).await
+                    let trade_no = req.trade_no.clone();
+                    if let Err(err) = Self::process_single_tx_report(req, true, ctx.ctx).await {
+                        tracing::warn!(trade_no=%trade_no, "[归集交易报告] 处理单条归集交易报告失败: {}", err);
+                    }
                 });
             }
         });
@@ -185,7 +193,7 @@ impl ProcessCollectTxReport {
         req: ApiCollectEntity,
         check_retry_time: bool,
         ctx: &'static crate::context::Context,
-    ) {
+    ) -> Result<(), ServiceError> {
         let worker_type = if check_retry_time { "batch" } else { "single" };
         tracing::info!(trade_no=%req.trade_no, status=%req.status, worker_type=%worker_type, post_tx_count=%req.post_tx_count, "[归集交易报告] 开始处理单条归集交易报告");
 
@@ -201,7 +209,7 @@ impl ProcessCollectTxReport {
 
             if timeout < TimeDelta::seconds(backoff) {
                 tracing::warn!(trade_no=%req.trade_no, worker_type=%worker_type, post_tx_count=%req.post_tx_count, "[归集交易报告] 未到重试时间，跳过本次处理");
-                return;
+                return Ok(());
             }
         } else {
             tracing::info!(trade_no=%req.trade_no, worker_type=%worker_type, post_tx_count=%req.post_tx_count, "[归集交易报告] 直接调用，跳过重试时间检查");
@@ -244,27 +252,16 @@ impl ProcessCollectTxReport {
         {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, worker_type=%worker_type, "[归集交易报告] 上传执行结果成功");
-                let pool = match ctx.api_transaction_pool() {
-                    Ok(pool) => pool,
-                    Err(err) => {
-                        tracing::warn!(trade_no=%req.trade_no, "[归集交易报告] 获取交易数据库连接池失败: {}", err);
-                        return;
-                    }
-                };
+                let pool = ctx.api_transaction_pool()?;
                 Self::handle_report_success(pool.clone(), req).await
             }
             Err(err) => {
                 tracing::warn!(trade_no=%req.trade_no, worker_type=%worker_type, "[归集交易报告] 上传执行结果失败: {}", err);
-                let pool = match ctx.api_transaction_pool() {
-                    Ok(pool) => pool,
-                    Err(pool_err) => {
-                        tracing::warn!(trade_no=%req.trade_no, "[归集交易报告] 获取交易数据库连接池失败: {}", pool_err);
-                        return;
-                    }
-                };
+                let pool = ctx.api_transaction_pool()?;
                 Self::handle_report_failed(pool.clone(), req, err).await
             }
         }
+        Ok(())
     }
 
     async fn handle_report_success(pool: ApiTransactionDbPool, req: ApiCollectEntity) {

@@ -2,7 +2,10 @@
 // process_withdraw_tx_confirm.rs
 #![allow(deprecated)]
 
-use crate::infrastructure::api_trans::withdraw::command::ProcessWithdrawTxConfirmReportCommand;
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::withdraw::command::ProcessWithdrawTxConfirmReportCommand,
+};
 use chrono::TimeDelta;
 use dashmap::DashMap;
 use std::sync::{Arc, Weak};
@@ -140,7 +143,11 @@ impl ProcessWithdrawTxConfirmReport {
                     let _address_guard = address_lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_withdraw_single_tx_confirm_report(req, ctx.ctx).await;
+                    if let Err(err) =
+                        Self::process_withdraw_single_tx_confirm_report(req, ctx.ctx).await
+                    {
+                        tracing::warn!(trade_no=%trade_no, "[提现确认] 处理提现交易确认报告失败: {}", err);
+                    }
                 }
                 Err(err) => {
                     tracing::warn!(trade_no=%trade_no, "[提现确认] 获取提现交易确认报告失败: {}", err);
@@ -180,13 +187,18 @@ impl ProcessWithdrawTxConfirmReport {
             for req in withdraws {
                 let ctx = ctx.clone();
                 tokio::spawn(async move {
+                    let trade_no = req.trade_no.clone();
                     let trade_lock = ctx.get_trade_lock(&req.trade_no);
                     let address_lock = ctx.get_address_lock(&req.to_addr);
                     let _trade_guard = trade_lock.lock().await;
                     let _address_guard = address_lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_withdraw_single_tx_confirm_report(req, ctx.ctx).await
+                    if let Err(err) =
+                        Self::process_withdraw_single_tx_confirm_report(req, ctx.ctx).await
+                    {
+                        tracing::warn!(trade_no=%trade_no, "[提现确认] 处理提现交易确认报告失败: {}", err);
+                    }
                 });
             }
         });
@@ -195,7 +207,7 @@ impl ProcessWithdrawTxConfirmReport {
     async fn process_withdraw_single_tx_confirm_report(
         req: ApiWithdrawEntity,
         ctx: &'static crate::context::Context,
-    ) {
+    ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -203,40 +215,34 @@ impl ProcessWithdrawTxConfirmReport {
             tracing::warn!(trade_no=%req.trade_no,
                 "process_withdraw_single_tx_confirm_report timeout post confirm_tx_count is too long"
             );
-            return;
+            return Ok(());
         }
         if req.status == ApiWithdrawStatus::SendingTxFailed {
             tracing::warn!(trade_no=%req.trade_no, "process_withdraw_single_tx_confirm_report status is wrong");
-            return;
+            return Ok(());
         };
         if !(req.status == ApiWithdrawStatus::Success || req.status == ApiWithdrawStatus::Failure) {
             tracing::warn!(trade_no=%req.trade_no,
                 "process_withdraw_single_tx_confirm_report status is wrong {}",
                 req.status
             );
-            return;
+            return Ok(());
         }
 
         // 添加幂等性检查，防止重复发送 Result ACK
-        let pool = match ctx.api_transaction_pool() {
-            Ok(pool) => pool,
-            Err(err) => {
-                tracing::warn!(trade_no=%req.trade_no, "[提现确认] 获取交易数据库连接池失败: {}", err);
-                return;
-            }
-        };
+        let pool = ctx.api_transaction_pool()?;
         let (_, result_ack_sent_at) =
             ApiWithdrawRepo::get_ack_times(&pool, &req.trade_no).await.unwrap_or((None, None));
         if result_ack_sent_at.is_some() {
             tracing::warn!(trade_no=%req.trade_no, ?result_ack_sent_at, "[提现确认] Result ACK 已发送，跳过");
-            return;
+            return Ok(());
         }
 
         // ✅ 强顺序屏障：TX_RES ACK 只能在已收到并持久化 AWM_ORDER_TRANS_RES 后发送
         // 该 legacy worker 仍可能被并发路径触发，必须与 shadow worker 的 gate 保持一致
         if req.tx_res_received_at.is_none() {
             tracing::warn!(trade_no=%req.trade_no, "[提现确认] TxRes ACK skipped: tx_res not received");
-            return;
+            return Ok(());
         }
 
         tracing::info!(trade_no=%req.trade_no, "[提现确认] 准备调用后端API发送 Result ACK");
@@ -260,13 +266,14 @@ impl ProcessWithdrawTxConfirmReport {
                     tracing::info!(trade_no=%req.trade_no, "[提现确认] 设置 TxRes ACK 发送时间成功");
                 }
 
-                Self::handle_confirm_report_success(pool.clone(), req).await
+                Self::handle_confirm_report_success(pool.clone(), req).await;
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "[提现确认] 发送 TxRes ACK 失败: {}", err);
-                Self::handle_confirm_report_failed(pool.clone(), req, err).await
+                Self::handle_confirm_report_failed(pool.clone(), req, err).await;
             }
         }
+        Ok(())
     }
 
     async fn handle_confirm_report_success(pool: ApiTransactionDbPool, req: ApiWithdrawEntity) {

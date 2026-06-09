@@ -1,7 +1,10 @@
 #![allow(deprecated)]
 
 // legacy collect transaction confirm worker.
-use crate::infrastructure::api_trans::collect::command::ProcessCollectTxConfirmReportCommand;
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::collect::command::ProcessCollectTxConfirmReportCommand,
+};
 use chrono::TimeDelta;
 use dashmap::DashMap;
 use std::sync::{Arc, Weak};
@@ -138,7 +141,11 @@ impl ProcessCollectTxConfirmReport {
             let _guard = lock.lock().await;
             let _permit = ctx.global_sem.acquire().await.unwrap();
 
-            Self::process_collect_single_tx_confirm_report(req, false, ctx.ctx).await
+            if let Err(err) =
+                Self::process_collect_single_tx_confirm_report(req, false, ctx.ctx).await
+            {
+                tracing::warn!(trade_no=%trade_no, "[归集交易确认] 处理归集交易确认报告失败: {}", err);
+            }
         });
     }
 
@@ -177,7 +184,12 @@ impl ProcessCollectTxConfirmReport {
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_collect_single_tx_confirm_report(req, true, ctx.ctx).await
+                    let trade_no = req.trade_no.clone();
+                    if let Err(err) =
+                        Self::process_collect_single_tx_confirm_report(req, true, ctx.ctx).await
+                    {
+                        tracing::warn!(trade_no=%trade_no, "[归集交易确认] 处理归集交易确认报告失败: {}", err);
+                    }
                 });
             }
         });
@@ -187,7 +199,7 @@ impl ProcessCollectTxConfirmReport {
         req: ApiCollectEntity,
         check_retry_time: bool,
         ctx: &'static crate::context::Context,
-    ) {
+    ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, status=%req.status, "[归集交易确认] 开始处理单条归集交易确认报告");
 
         // 只有在需要检查重试时间时才执行检查
@@ -201,14 +213,14 @@ impl ProcessCollectTxConfirmReport {
                 tracing::warn!(trade_no=%req.trade_no,
                     "[归集交易确认] 未到重试时间，跳过本次处理，当前重试次数: {}", req.post_confirm_tx_count
                 );
-                return;
+                return Ok(());
             }
         } else {
             tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 直接调用，跳过重试时间检查");
         }
         if req.status == ApiCollectStatus::SendingTxFailed {
             tracing::warn!(trade_no=%req.trade_no, "[归集交易确认] 交易状态错误: SendingTxFailed");
-            return;
+            return Ok(());
         };
         if !(req.status == ApiCollectStatus::Success || req.status == ApiCollectStatus::Failure) {
             tracing::warn!(
@@ -216,25 +228,19 @@ impl ProcessCollectTxConfirmReport {
                 "[归集交易确认] 交易状态错误: {}",
                 req.status
             );
-            return;
+            return Ok(());
         }
 
         let backend_api = ctx.get_global_backend_api();
         tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 准备调用后端API发送交易事件确认");
 
         // 检查 TxRes ACK 是否已发送
-        let pool = match ctx.api_transaction_pool() {
-            Ok(pool) => pool,
-            Err(err) => {
-                tracing::warn!(trade_no=%req.trade_no, "[归集交易确认] 获取交易数据库连接池失败: {}", err);
-                return;
-            }
-        };
+        let pool = ctx.api_transaction_pool()?;
         let (_, result_ack_sent_at) =
             ApiCollectRepo::get_ack_times(&pool, &req.trade_no).await.unwrap_or((None, None));
         if result_ack_sent_at.is_some() {
             tracing::warn!(trade_no=%req.trade_no, ?result_ack_sent_at, "[归集交易确认] Result ack 已发送，跳过");
-            return;
+            return Ok(());
         }
 
         match backend_api
@@ -249,13 +255,14 @@ impl ProcessCollectTxConfirmReport {
                 // TODO：设置ACK时间
                 tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 发送交易事件确认成功");
 
-                Self::handle_confirm_report_success(pool.clone(), req).await
+                Self::handle_confirm_report_success(pool.clone(), req).await;
             }
             Err(err) => {
                 tracing::warn!(trade_no=%req.trade_no, "[归集交易确认] 发送交易事件确认失败: {}", err);
-                Self::handle_confirm_report_failed(pool, req, err).await
+                Self::handle_confirm_report_failed(pool, req, err).await;
             }
         }
+        Ok(())
     }
 
     async fn handle_confirm_report_success(pool: ApiTransactionDbPool, req: ApiCollectEntity) {
