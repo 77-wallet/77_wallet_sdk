@@ -647,26 +647,13 @@ impl ShadowCollectWorker {
         &self,
         delegation: &ApiResourceDelegationEntity,
     ) -> Result<String, ServiceError> {
-        let mut auth_retry_attempted = false;
-        loop {
-            match self.execute_tron_resource_delegation_once(delegation).await {
-                Ok(tx_hash) => return Ok(tx_hash),
-                Err(err)
-                    if !auth_retry_attempted
-                        && resource_rpc_auth::should_retry_after_rpc_auth_error(&err) =>
-                {
-                    auth_retry_attempted = true;
-                    resource_rpc_auth::refresh_and_prepare_retry(
-                        &delegation.chain_code,
-                        "collect_resource_delegation",
-                        &delegation.resource_trade_no,
-                        &err,
-                    )
-                    .await?;
-                }
-                Err(err) => return Err(err),
-            }
-        }
+        resource_rpc_auth::run_with_rpc_auth_retry(
+            &delegation.chain_code,
+            "collect_resource_delegation",
+            &delegation.resource_trade_no,
+            || self.execute_tron_resource_delegation_once(delegation),
+        )
+        .await
     }
 
     async fn execute_tron_resource_delegation_once(

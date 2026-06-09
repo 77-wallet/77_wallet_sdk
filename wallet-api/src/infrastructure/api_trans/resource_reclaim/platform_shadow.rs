@@ -38,6 +38,7 @@ use crate::{
                 ResourceDelegationSigner, new_tron_undelegate_args,
                 resolve_resource_delegation_signer,
             },
+            resource_rpc_auth,
             shadow_rpc_policy,
         },
         runtime::time::new_production_interval,
@@ -449,13 +450,23 @@ impl PlatformResourceReclaimWorker {
         }
 
         let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
-        backend_api
+        if let Err(err) = backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &resource_trade_no,
                 platform_resource_task_trans_type(&resource_task),
                 TransAckType::Tx,
             ))
-            .await?;
+            .await
+        {
+            let service_err: ServiceError = err.into();
+            self.schedule_platform_undelegation_task_ack_retry(
+                &resource_trade_no,
+                resource_task.retry_count,
+                &service_err,
+            )
+            .await;
+            return Err(service_err);
+        }
 
         let affected =
             ApiResourceDelegationRepo::mark_task_ack_sent(&self.pool, &resource_trade_no)
@@ -476,6 +487,38 @@ impl PlatformResourceReclaimWorker {
         }
 
         Ok(())
+    }
+
+    async fn schedule_platform_undelegation_task_ack_retry(
+        &self,
+        resource_trade_no: &str,
+        retry_count: i64,
+        err: &ServiceError,
+    ) {
+        let wait_secs = Self::platform_undelegation_retry_wait_secs(retry_count);
+        let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
+        match ApiResourceDelegationRepo::mark_task_ack_retry_wait(
+            &self.pool,
+            resource_trade_no,
+            &next_retry_at.to_rfc3339(),
+        )
+        .await
+        {
+            Ok(affected) => info!(
+                resource_trade_no = %resource_trade_no,
+                wait_secs,
+                affected,
+                error = %err,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation task ACK retry scheduled"
+            ),
+            Err(e) => warn!(
+                resource_trade_no = %resource_trade_no,
+                error = %e,
+                source = "platform_resource_reclaim_shadow",
+                "Failed to schedule platform undelegation task ACK retry"
+            ),
+        }
     }
 
     async fn process_platform_undelegation_result_ack(
@@ -574,9 +617,15 @@ impl PlatformResourceReclaimWorker {
 
     fn is_terminal_platform_undelegation_execute_error(err: &ServiceError) -> bool {
         let message = err.to_string();
-        matches!(err, ServiceError::Parameter(_))
+        if matches!(err, ServiceError::Parameter(_))
             && (message.contains("authorized resource delegation missing permissionId")
                 || message.contains("authorized resource signer not found"))
+        {
+            return true;
+        }
+
+        message.contains("delegated Resource does not exist")
+            || message.contains("insufficient delegateFrozenBalance")
     }
 
     async fn mark_platform_undelegation_terminal_failure(
@@ -665,7 +714,13 @@ impl PlatformResourceReclaimWorker {
             return Ok(());
         }
 
-        let tx_hash = self.execute_tron_platform_undelegation(&delegation).await?;
+        let tx_hash = resource_rpc_auth::run_with_rpc_auth_retry(
+            &delegation.chain_code,
+            "platform_resource_delegation_undelegate",
+            &resource_trade_no,
+            || self.execute_tron_platform_undelegation(&delegation),
+        )
+        .await?;
         let affected = ApiResourceDelegationRepo::mark_broadcast_success(
             &self.pool,
             &resource_trade_no,
@@ -1430,6 +1485,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn platform_undelegation_chain_validation_error_is_terminal_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_terminal_chain_validation",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "100",
+            ),
+        )
+        .await
+        .expect("insert platform reclaim");
+
+        let worker = PlatformResourceReclaimWorker::new(pool.clone());
+        worker
+            .handle_platform_undelegation_execute_failure_if_needed(
+                "rsc_terminal_chain_validation",
+                Err(ServiceError::ChainInteract(
+                    wallet_chain_interact::Error::RpcNode(
+                        "contract validation error class org.tron.core.exception.ContractValidateException : delegated Resource does not exist"
+                            .to_string(),
+                    ),
+                )),
+            )
+            .await
+            .expect("record terminal failure");
+
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_terminal_chain_validation",
+        )
+        .await
+        .expect("load reclaim");
+        assert_eq!(got.tx_status.as_deref(), Some("fail"));
+        assert_eq!(
+            got.err_code.as_deref(),
+            Some(PlatformResourceReclaimWorker::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE)
+        );
+        assert!(
+            got.err_msg
+                .as_deref()
+                .unwrap_or_default()
+                .contains("delegated Resource does not exist")
+        );
+        assert_eq!(got.result_status, Some(ApiResourceDelegationResultStatus::Fail));
+        assert!(got.next_retry_at.is_none());
+    }
+
+    #[tokio::test]
     async fn scanner_finds_platform_undelegation_recover_for_collect_and_withdraw() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
@@ -1532,6 +1650,57 @@ mod tests {
             PlatformResourceReclaimIntent::RecoverPlatformUndelegation(trade_no)
                 if trade_no == "rsc_platform_undelegate_withdraw_recover"
         )));
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_task_ack_retry_sets_retry_wait() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_undelegate_task_ack_retry",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert platform undelegate");
+
+        let worker = PlatformResourceReclaimWorker::new(pool.clone());
+        worker
+            .schedule_platform_undelegation_task_ack_retry(
+                "rsc_platform_undelegate_task_ack_retry",
+                0,
+                &ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+                    500,
+                    Some("system busy".to_string()),
+                )),
+            )
+            .await;
+
+        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_platform_undelegate_task_ack_retry",
+        )
+        .await
+        .expect("load task");
+        assert_eq!(persisted.retry_count, 1);
+        assert!(persisted.next_retry_at.is_some());
+        assert!(persisted.task_ack_sent_at.is_none());
     }
 
     #[tokio::test]

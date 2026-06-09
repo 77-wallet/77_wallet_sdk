@@ -377,7 +377,10 @@ impl ShadowWithdrawWorker {
 
     async fn process_eval_resource_gate(&self, trade_no: String) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Processing EvalResourceGate command");
-        self.process_resource_gate_inner(&trade_no).await
+        resource_rpc_auth::run_with_rpc_auth_retry("tron", "withdraw_eval_resource_gate", &trade_no, || {
+            self.process_resource_gate_inner(&trade_no)
+        })
+        .await
     }
 
     async fn process_fee_estimate(&self, trade_no: String) -> Result<(), ServiceError> {
@@ -387,7 +390,13 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
-        let fee_details = self.estimate_tron_fee_details_for_withdraw(&req).await?;
+        let fee_details = resource_rpc_auth::run_with_rpc_auth_retry(
+            &req.chain_code,
+            "withdraw_estimate_fee",
+            &trade_no,
+            || self.estimate_tron_fee_details_for_withdraw(&req),
+        )
+        .await?;
         let estimated_transaction_fee =
             Self::format_estimated_fee_amount(fee_details.estimate_fee.amount);
         let estimated_resource_consume =
@@ -1692,26 +1701,13 @@ impl ShadowWithdrawWorker {
         &self,
         delegation: &ApiResourceDelegationEntity,
     ) -> Result<String, ServiceError> {
-        let mut auth_retry_attempted = false;
-        loop {
-            match self.execute_tron_resource_delegation_once(delegation).await {
-                Ok(tx_hash) => return Ok(tx_hash),
-                Err(err)
-                    if !auth_retry_attempted
-                        && resource_rpc_auth::should_retry_after_rpc_auth_error(&err) =>
-                {
-                    auth_retry_attempted = true;
-                    resource_rpc_auth::refresh_and_prepare_retry(
-                        &delegation.chain_code,
-                        "withdraw_resource_delegation",
-                        &delegation.resource_trade_no,
-                        &err,
-                    )
-                    .await?;
-                }
-                Err(err) => return Err(err),
-            }
-        }
+        resource_rpc_auth::run_with_rpc_auth_retry(
+            &delegation.chain_code,
+            "withdraw_resource_delegation",
+            &delegation.resource_trade_no,
+            || self.execute_tron_resource_delegation_once(delegation),
+        )
+        .await
     }
 
     async fn execute_tron_resource_delegation_once(

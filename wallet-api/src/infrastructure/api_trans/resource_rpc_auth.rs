@@ -1,4 +1,5 @@
 use crate::{domain::api_wallet::trans::ApiTransDomain, error::service::ServiceError};
+use std::future::Future;
 
 pub(crate) fn should_retry_after_rpc_auth_error(err: &ServiceError) -> bool {
     err.is_rpc_auth_unauthorized()
@@ -17,6 +18,29 @@ pub(crate) async fn refresh_and_prepare_retry(
         err,
     )
     .await
+}
+
+pub(crate) async fn run_with_rpc_auth_retry<T, Fut>(
+    chain_code: &str,
+    operation: &'static str,
+    resource_trade_no: &str,
+    mut action: impl FnMut() -> Fut,
+) -> Result<T, ServiceError>
+where
+    Fut: Future<Output = Result<T, ServiceError>>,
+{
+    let mut auth_retry_attempted = false;
+
+    loop {
+        match action().await {
+            Ok(value) => return Ok(value),
+            Err(err) if !auth_retry_attempted && should_retry_after_rpc_auth_error(&err) => {
+                auth_retry_attempted = true;
+                refresh_and_prepare_retry(chain_code, operation, resource_trade_no, &err).await?;
+            }
+            Err(err) => return Err(err),
+        }
+    }
 }
 
 #[cfg(test)]
