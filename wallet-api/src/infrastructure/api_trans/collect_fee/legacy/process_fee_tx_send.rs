@@ -174,29 +174,21 @@ impl ProcessFeeTx {
         tokio::spawn(async move {
             let _g = TradeGuard::new(&trade_no, worker_ctx.processing_trade.clone());
             tracing::info!(trade_no=%trade_no, "[手续费归集] 根据交易编号处理单个手续费交易");
-            let api_transaction_pool = match worker_ctx.ctx.api_transaction_pool() {
-                Ok(pool) => pool,
-                Err(err) => {
-                    tracing::error!(trade_no=%trade_no, "[手续费归集] 获取交易数据库连接池失败: {:?}", err);
-                    return;
-                }
-            };
-            let res = ApiFeeRepo::get_api_fee_by_trade_no_status(
-                &api_transaction_pool,
-                &trade_no,
-                &[ApiFeeStatus::Init],
-            )
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
+                let fee = ApiFeeRepo::get_api_fee_by_trade_no_status(
+                    &api_transaction_pool,
+                    &trade_no,
+                    &[ApiFeeStatus::Init],
+                )
+                .await?;
+                tracing::info!(trade_no=%trade_no, "[手续费归集] 找到待处理的手续费交易记录");
+                Self::process_fee_single_tx(worker_ctx, fee).await?;
+                Ok(())
+            }
             .await;
-            match res {
-                Ok(fee) => {
-                    tracing::info!(trade_no=%trade_no, "[手续费归集] 找到待处理的手续费交易记录");
-                    if let Err(err) = Self::process_fee_single_tx(worker_ctx, fee).await {
-                        tracing::error!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易失败: {:?}", err);
-                    }
-                }
-                Err(err) => {
-                    tracing::error!(trade_no=%trade_no, "[手续费归集] 获取手续费交易记录失败: {:?}", err);
-                }
+            if let Err(err) = res {
+                tracing::error!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易失败: {:?}", err);
             }
         });
     }
@@ -216,45 +208,38 @@ impl ProcessFeeTx {
             let _batch_guard = permit;
             tracing::info!("[手续费归集] 批量处理手续费交易");
 
-            let api_transaction_pool = match worker_ctx.ctx.api_transaction_pool() {
-                Ok(pool) => pool,
-                Err(err) => {
-                    tracing::error!("[手续费归集] 获取交易数据库连接池失败: {:?}", err);
-                    return;
-                }
-            };
-            // 获取交易这里有问题
-            let res = ApiFeeRepo::page_api_fee_with_status(
-                &api_transaction_pool,
-                0,
-                1000,
-                &[ApiFeeStatus::Init],
-            )
-            .await;
-            match res {
-                Ok((_, transfer_fees)) => {
-                    tracing::info!(
-                        "[手续费归集] 找到 {} 条待处理的手续费交易记录",
-                        transfer_fees.len()
-                    );
-                    for req in transfer_fees {
-                        let worker_ctx = worker_ctx.clone();
-                        let trade_no = req.trade_no.clone();
-                        if !worker_ctx.processing_trade.insert(trade_no.clone()) {
-                            continue;
-                        }
-                        let ctx2 = worker_ctx.clone();
-                        tokio::spawn(async move {
-                            let _g = TradeGuard::new(&trade_no, ctx2.processing_trade.clone());
-                            if let Err(err) = Self::process_fee_single_tx(ctx2, req).await {
-                                tracing::error!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易失败: {:?}", err);
-                            }
-                        });
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
+                let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
+                    &api_transaction_pool,
+                    0,
+                    1000,
+                    &[ApiFeeStatus::Init],
+                )
+                .await?;
+                tracing::info!(
+                    "[手续费归集] 找到 {} 条待处理的手续费交易记录",
+                    transfer_fees.len()
+                );
+                for req in transfer_fees {
+                    let worker_ctx = worker_ctx.clone();
+                    let trade_no = req.trade_no.clone();
+                    if !worker_ctx.processing_trade.insert(trade_no.clone()) {
+                        continue;
                     }
+                    let ctx2 = worker_ctx.clone();
+                    tokio::spawn(async move {
+                        let _g = TradeGuard::new(&trade_no, ctx2.processing_trade.clone());
+                        if let Err(err) = Self::process_fee_single_tx(ctx2, req).await {
+                            tracing::error!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易失败: {:?}", err);
+                        }
+                    });
                 }
-                Err(err) => {
-                    tracing::error!("[手续费归集] 获取手续费交易记录列表失败: {:?}", err);
-                }
+                Ok(())
+            }
+            .await;
+            if let Err(err) = res {
+                tracing::error!("[手续费归集] 获取手续费交易记录列表失败: {:?}", err);
             }
         });
     }

@@ -304,34 +304,26 @@ impl ProcessWithdrawTx {
         let trade_no = trade_no.to_string();
 
         tokio::spawn(async move {
-            let api_transaction_pool = match ctx.ctx.api_transaction_pool() {
-                Ok(pool) => pool,
-                Err(err) => {
-                    tracing::warn!(trade_no=%trade_no, "withdraw_tx:send: 获取交易数据库连接池失败: {}", err);
-                    return;
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = ctx.ctx.api_transaction_pool()?;
+                let req = ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
+                    &api_transaction_pool,
+                    &trade_no,
+                    &[ApiWithdrawStatus::AuditPass],
+                )
+                .await?;
+                if !ctx.processing_trade.insert(req.trade_no.clone()) {
+                    tracing::warn!(trade_no=%req.trade_no, "withdraw tx already processing, skip");
+                    return Ok(());
                 }
-            };
-            let req = match ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
-                &api_transaction_pool,
-                &trade_no,
-                &[ApiWithdrawStatus::AuditPass],
-            )
-            .await
-            {
-                Ok(res) => res,
-                Err(err) => {
-                    tracing::warn!(trade_no=%trade_no, "process withdraw tx not found: {}", err);
-                    return;
-                }
-            };
-            if !ctx.processing_trade.insert(req.trade_no.clone()) {
-                tracing::warn!(trade_no=%req.trade_no, "withdraw tx already processing, skip");
-                return;
-            }
-            let _guard = TradeGuard::new(&req.trade_no, ctx.processing_trade.clone());
+                let _guard = TradeGuard::new(&req.trade_no, ctx.processing_trade.clone());
 
-            if let Err(e) = Self::process_withdraw_single_tx(ctx, req).await {
-                tracing::error!(trade_no=%trade_no, "withdraw_tx:send: 处理单个提币交易失败: {}", e);
+                Self::process_withdraw_single_tx(ctx, req).await?;
+                Ok(())
+            }
+            .await;
+            if let Err(err) = res {
+                tracing::error!(trade_no=%trade_no, "withdraw_tx:send: 处理单个提币交易失败: {}", err);
             }
         });
     }
@@ -351,40 +343,34 @@ impl ProcessWithdrawTx {
 
         tokio::spawn(async move {
             let _batch_guard = permit;
-            let api_transaction_pool = match ctx.ctx.api_transaction_pool() {
-                Ok(pool) => pool,
-                Err(err) => {
-                    tracing::warn!("withdraw_tx:send: 获取交易数据库连接池失败: {}", err);
-                    return;
-                }
-            };
-            let res = ApiWithdrawRepo::list_api_withdraw_with_status(
-                &api_transaction_pool,
-                vec![ApiWithdrawStatus::AuditPass],
-                0,
-                1000,
-            )
-            .await;
-            let withdraw_txs = match res {
-                Ok(v) => v,
-                Err(err) => {
-                    tracing::warn!("process_withdraw_tx_send 查询待处理提币交易失败: {}", err);
-                    return;
-                }
-            };
-            tracing::info!("withdraw_tx:send: 找到 {} 笔待处理的提币交易", withdraw_txs.len());
-            for req in withdraw_txs {
-                let ctx = ctx.clone();
-                let trade_no = req.trade_no.clone(); // 提前克隆trade_no
-                if !ctx.processing_trade.insert(trade_no.clone()) {
-                    continue;
-                }
-                tokio::spawn(async move {
-                    let _guard = TradeGuard::new(&trade_no, ctx.processing_trade.clone());
-                    if let Err(err) = Self::process_withdraw_single_tx(ctx, req).await {
-                        tracing::error!(trade_no=%trade_no, "withdraw_tx:send: 处理单个提币交易失败: {}", err);
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = ctx.ctx.api_transaction_pool()?;
+                let withdraw_txs = ApiWithdrawRepo::list_api_withdraw_with_status(
+                    &api_transaction_pool,
+                    vec![ApiWithdrawStatus::AuditPass],
+                    0,
+                    1000,
+                )
+                .await?;
+                tracing::info!("withdraw_tx:send: 找到 {} 笔待处理的提币交易", withdraw_txs.len());
+                for req in withdraw_txs {
+                    let ctx = ctx.clone();
+                    let trade_no = req.trade_no.clone(); // 提前克隆trade_no
+                    if !ctx.processing_trade.insert(trade_no.clone()) {
+                        continue;
                     }
-                });
+                    tokio::spawn(async move {
+                        let _guard = TradeGuard::new(&trade_no, ctx.processing_trade.clone());
+                        if let Err(err) = Self::process_withdraw_single_tx(ctx, req).await {
+                            tracing::error!(trade_no=%trade_no, "withdraw_tx:send: 处理单个提币交易失败: {}", err);
+                        }
+                    });
+                }
+                Ok(())
+            }
+            .await;
+            if let Err(err) = res {
+                tracing::warn!("process_withdraw_tx_send 查询待处理提币交易失败: {}", err);
             }
         });
     }

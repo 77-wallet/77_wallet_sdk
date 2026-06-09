@@ -193,34 +193,26 @@ impl ProcessCollectTx {
         let trade_no = trade_no.to_string();
 
         tokio::spawn(async move {
-            let api_transaction_pool = match ctx.ctx.api_transaction_pool() {
-                Ok(pool) => pool,
-                Err(err) => {
-                    tracing::warn!(trade_no=%trade_no, "collect_tx:send: 获取交易数据库连接池失败: {}", err);
-                    return;
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = ctx.ctx.api_transaction_pool()?;
+                let req = ApiCollectRepo::get_api_collect_by_trade_no_status(
+                    &api_transaction_pool,
+                    &trade_no,
+                    &[ApiCollectStatus::Init],
+                )
+                .await?;
+                if !ctx.processing_trade.insert(req.trade_no.clone()) {
+                    tracing::warn!(trade_no=%req.trade_no, "collect tx already processing, skip");
+                    return Ok(());
                 }
-            };
-            let req = match ApiCollectRepo::get_api_collect_by_trade_no_status(
-                &api_transaction_pool,
-                &trade_no,
-                &[ApiCollectStatus::Init],
-            )
-            .await
-            {
-                Ok(res) => res,
-                Err(err) => {
-                    tracing::warn!(trade_no=%trade_no, "process collect tx not found: {}", err);
-                    return;
-                }
-            };
-            if !ctx.processing_trade.insert(req.trade_no.clone()) {
-                tracing::warn!(trade_no=%req.trade_no, "collect tx already processing, skip");
-                return;
-            }
-            let _guard = TradeGuard::new(&req.trade_no, ctx.processing_trade.clone());
+                let _guard = TradeGuard::new(&req.trade_no, ctx.processing_trade.clone());
 
-            if let Err(e) = Self::process_collect_single_tx(ctx, req).await {
-                tracing::error!(trade_no=%trade_no, "collect_tx:send: 处理单个归集交易失败: {}", e);
+                Self::process_collect_single_tx(ctx, req).await?;
+                Ok(())
+            }
+            .await;
+            if let Err(err) = res {
+                tracing::error!(trade_no=%trade_no, "collect_tx:send: 处理单个归集交易失败: {}", err);
             }
         });
     }
@@ -240,41 +232,34 @@ impl ProcessCollectTx {
 
         tokio::spawn(async move {
             let _batch_guard = permit;
-            let api_transaction_pool = match ctx.ctx.api_transaction_pool() {
-                Ok(pool) => pool,
-                Err(err) => {
-                    tracing::warn!("collect_tx:send: 获取交易数据库连接池失败: {}", err);
-                    return;
-                }
-            };
-            // 获取交易这里有问题
-            let res = ApiCollectRepo::page_api_collect_with_status(
-                &api_transaction_pool,
-                0,
-                1000,
-                &[ApiCollectStatus::Init],
-            )
-            .await;
-            let (_, collect_txs) = match res {
-                Ok(v) => v,
-                Err(err) => {
-                    tracing::warn!("process_collect_tx_send 查询待处理归集交易失败: {}", err);
-                    return;
-                }
-            };
-            tracing::info!("collect_tx:send: 找到 {} 笔待处理的归集交易", collect_txs.len());
-            for req in collect_txs {
-                let ctx = ctx.clone();
-                let trade_no = req.trade_no.clone(); // 提前克隆trade_no
-                if !ctx.processing_trade.insert(trade_no.clone()) {
-                    continue;
-                }
-                tokio::spawn(async move {
-                    let _guard = TradeGuard::new(&trade_no, ctx.processing_trade.clone());
-                    if let Err(err) = Self::process_collect_single_tx(ctx, req).await {
-                        tracing::error!(trade_no=%trade_no, "collect_tx:send: 处理单个归集交易失败: {}", err);
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = ctx.ctx.api_transaction_pool()?;
+                let (_, collect_txs) = ApiCollectRepo::page_api_collect_with_status(
+                    &api_transaction_pool,
+                    0,
+                    1000,
+                    &[ApiCollectStatus::Init],
+                )
+                .await?;
+                tracing::info!("collect_tx:send: 找到 {} 笔待处理的归集交易", collect_txs.len());
+                for req in collect_txs {
+                    let ctx = ctx.clone();
+                    let trade_no = req.trade_no.clone(); // 提前克隆trade_no
+                    if !ctx.processing_trade.insert(trade_no.clone()) {
+                        continue;
                     }
-                });
+                    tokio::spawn(async move {
+                        let _guard = TradeGuard::new(&trade_no, ctx.processing_trade.clone());
+                        if let Err(err) = Self::process_collect_single_tx(ctx, req).await {
+                            tracing::error!(trade_no=%trade_no, "collect_tx:send: 处理单个归集交易失败: {}", err);
+                        }
+                    });
+                }
+                Ok(())
+            }
+            .await;
+            if let Err(err) = res {
+                tracing::warn!("process_collect_tx_send 查询待处理归集交易失败: {}", err);
             }
         });
     }
