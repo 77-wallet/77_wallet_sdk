@@ -771,7 +771,14 @@ impl PlatformResourceReclaimWorker {
             }
             Ok(None) => self.schedule_platform_undelegation_recover_retry(&resource_trade_no).await,
             Err(err) => {
-                self.schedule_platform_undelegation_rebuild_retry(&resource_trade_no, &err).await
+                warn!(
+                    resource_trade_no = %resource_trade_no,
+                    tx_hash = %tx_hash,
+                    error = %err,
+                    source = "platform_resource_reclaim_shadow",
+                    "Platform undelegation recover query failed; retrying original tx hash"
+                );
+                self.schedule_platform_undelegation_recover_retry(&resource_trade_no).await
             }
         }
     }
@@ -857,6 +864,14 @@ impl PlatformResourceReclaimWorker {
         let is_success = delegation.tx_status.as_deref() == Some("success") && has_success_hash;
         let upload_status = if is_success { TransStatus::Success } else { TransStatus::Fail };
         let remark = if is_success { "" } else { delegation.err_msg.as_deref().unwrap_or("") };
+        if !is_success
+            && delegation.err_code.as_deref().is_none_or(|s| s.trim().is_empty())
+            && remark.trim().is_empty()
+        {
+            return Err(ServiceError::Parameter(
+                "platform undelegation failure receipt requires err_code or err_msg".to_string(),
+            ));
+        }
 
         let mut payload = TxExecReceiptUploadReq::new(
             Some(&delegation.owner_address),
@@ -1520,6 +1535,132 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn platform_undelegation_recover_retry_preserves_broadcast_hash() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_undelegate_recover_retry",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert platform undelegate");
+        ApiResourceDelegationRepo::mark_task_ack_sent(
+            &pool,
+            "rsc_platform_undelegate_recover_retry",
+        )
+        .await
+        .expect("mark task ack");
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_undelegate_recover_retry")
+            .await
+            .expect("claim build slot");
+        ApiResourceDelegationRepo::mark_broadcast_success(
+            &pool,
+            "rsc_platform_undelegate_recover_retry",
+            "tx_hash_keep",
+        )
+        .await
+        .expect("mark broadcast success");
+
+        let worker = PlatformResourceReclaimWorker::new(pool.clone());
+        worker
+            .schedule_platform_undelegation_recover_retry("rsc_platform_undelegate_recover_retry")
+            .await
+            .expect("schedule recover retry");
+
+        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_platform_undelegate_recover_retry",
+        )
+        .await
+        .expect("load task");
+        assert_eq!(persisted.tx_hash.as_deref(), Some("tx_hash_keep"));
+        assert_eq!(persisted.tx_status.as_deref(), Some("success"));
+        assert_eq!(
+            persisted.recover_status,
+            Some(ApiResourceDelegationRecoverStatus::RecoverWaiting)
+        );
+        assert!(persisted.next_retry_at.is_some());
+        assert_eq!(persisted.retry_count, 1);
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_rebuild_retry_clears_broadcast_hash() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_undelegate_rebuild_retry",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert platform undelegate");
+        ApiResourceDelegationRepo::mark_broadcast_success(
+            &pool,
+            "rsc_platform_undelegate_rebuild_retry",
+            "tx_hash_clear",
+        )
+        .await
+        .expect("mark broadcast success");
+
+        let worker = PlatformResourceReclaimWorker::new(pool.clone());
+        worker
+            .schedule_platform_undelegation_rebuild_retry(
+                "rsc_platform_undelegate_rebuild_retry",
+                &ServiceError::Parameter("build failed".to_string()),
+            )
+            .await
+            .expect("schedule rebuild retry");
+
+        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_platform_undelegate_rebuild_retry",
+        )
+        .await
+        .expect("load task");
+        assert_eq!(persisted.tx_hash, None);
+        assert_eq!(persisted.tx_status, None);
+        assert_eq!(
+            persisted.recover_status,
+            Some(ApiResourceDelegationRecoverStatus::RetryRecover)
+        );
+        assert!(persisted.next_retry_at.is_some());
+        assert_eq!(persisted.retry_count, 1);
+    }
+
+    #[tokio::test]
     async fn scanner_finds_platform_undelegation_receipt_upload_after_success() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
@@ -1745,6 +1886,54 @@ mod tests {
         assert_eq!(value["type"], "COL_RSC_RC");
         assert_eq!(value["status"], "SUCCESS");
         assert_eq!(value["hash"], "tx_hash");
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_failure_receipt_requires_error_fact() {
+        let task = ApiResourceDelegationEntity {
+            id: 1,
+            uid: "uid".to_string(),
+            source: ApiResourceDelegationSource::Platform,
+            operation_type: ApiResourceDelegationOperationType::Undelegate,
+            origin_trade_no: None,
+            origin_trade_type: Some(ApiTradeType::Collect as i64),
+            resource_trade_no: "CR_EMPTY_FAIL".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: "receiver".to_string(),
+            delegation_mode: wallet_database::entities::api_resource_delegation::ApiResourceDelegationMode::WithdrawAddress,
+            permission_id: None,
+            resource_type: ApiResourceType::Energy,
+            native_amount: "1".to_string(),
+            amount: "100".to_string(),
+            status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
+            task_ack_sent_at: None,
+            building_at: None,
+            tx_hash: None,
+            tx_status: None,
+            tx_exec_receipt_uploaded_at: None,
+            result_status: None,
+            result_received_at: None,
+            result_ack_sent_at: None,
+            result_payload: None,
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+        };
+
+        let err =
+            PlatformResourceReclaimWorker::build_platform_undelegation_tx_exec_receipt_payload(
+                &task,
+            )
+            .unwrap_err();
+        assert!(
+            matches!(err, ServiceError::Parameter(message) if message.contains("requires err_code or err_msg"))
+        );
     }
 
     #[tokio::test]
