@@ -26,7 +26,6 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 /// 只要 address lock + global semaphore
 #[derive(Clone)]
 struct CollectTxWorkerCtx {
-    pool: ApiTransactionDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
     ctx: &'static crate::context::Context,
@@ -55,12 +54,10 @@ pub(super) struct ProcessCollectTxReport {
 impl ProcessCollectTxReport {
     pub(super) fn new(
         ctx: &'static crate::context::Context,
-        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxReportCommand>,
     ) -> Self {
         let worker_ctx = CollectTxWorkerCtx {
-            pool,
             address_locks: Arc::new(DashMap::new()),
             global_sem: Arc::new(Semaphore::new(64)),
             ctx,
@@ -111,8 +108,15 @@ impl ProcessCollectTxReport {
         let trade_no = trade_no.to_string();
         tracing::info!(trade_no=%trade_no, "[归集交易报告] 开始处理单个归集交易报告");
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "[归集交易报告] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let req = match ApiCollectRepo::get_api_collect_by_trade_no_status(
-                &ctx.pool,
+                &pool,
                 &trade_no,
                 &[ApiCollectStatus::SendingTx, ApiCollectStatus::SendingTxFailed],
             )
@@ -130,7 +134,7 @@ impl ProcessCollectTxReport {
             let _permit = ctx.global_sem.acquire().await.unwrap();
 
             // 直接调用时不检查重试时间
-            Self::process_single_tx_report(ctx.pool, req, false, ctx.ctx).await
+            Self::process_single_tx_report(req, false, ctx.ctx).await
         });
     }
 
@@ -139,8 +143,15 @@ impl ProcessCollectTxReport {
         tracing::info!("[归集交易报告] 开始批量处理归集交易报告");
 
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!("[归集交易报告] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let res = ApiCollectRepo::page_api_collect_with_status(
-                &ctx.pool,
+                &pool,
                 0,
                 1000,
                 &[ApiCollectStatus::SendingTx, ApiCollectStatus::SendingTxFailed],
@@ -163,7 +174,7 @@ impl ProcessCollectTxReport {
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_single_tx_report(ctx.pool.clone(), req, true, ctx.ctx).await
+                    Self::process_single_tx_report(req, true, ctx.ctx).await
                 });
             }
         });
@@ -171,7 +182,6 @@ impl ProcessCollectTxReport {
 
     /// 静态方法：处理单个交易报告
     async fn process_single_tx_report(
-        pool: ApiTransactionDbPool,
         req: ApiCollectEntity,
         check_retry_time: bool,
         ctx: &'static crate::context::Context,
@@ -234,10 +244,24 @@ impl ProcessCollectTxReport {
         {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, worker_type=%worker_type, "[归集交易报告] 上传执行结果成功");
+                let pool = match ctx.api_transaction_pool() {
+                    Ok(pool) => pool,
+                    Err(err) => {
+                        tracing::warn!(trade_no=%req.trade_no, "[归集交易报告] 获取交易数据库连接池失败: {}", err);
+                        return;
+                    }
+                };
                 Self::handle_report_success(pool.clone(), req).await
             }
             Err(err) => {
                 tracing::warn!(trade_no=%req.trade_no, worker_type=%worker_type, "[归集交易报告] 上传执行结果失败: {}", err);
+                let pool = match ctx.api_transaction_pool() {
+                    Ok(pool) => pool,
+                    Err(pool_err) => {
+                        tracing::warn!(trade_no=%req.trade_no, "[归集交易报告] 获取交易数据库连接池失败: {}", pool_err);
+                        return;
+                    }
+                };
                 Self::handle_report_failed(pool.clone(), req, err).await
             }
         }

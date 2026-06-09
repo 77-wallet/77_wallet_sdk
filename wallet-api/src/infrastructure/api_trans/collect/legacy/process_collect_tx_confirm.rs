@@ -21,7 +21,6 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct CollectConfirmWorkerCtx {
-    pool: ApiTransactionDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
     ctx: &'static crate::context::Context,
@@ -50,12 +49,10 @@ pub(super) struct ProcessCollectTxConfirmReport {
 impl ProcessCollectTxConfirmReport {
     pub(super) fn new(
         ctx: &'static crate::context::Context,
-        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxConfirmReportCommand>,
     ) -> Self {
         let worker_ctx = CollectConfirmWorkerCtx {
-            pool,
             address_locks: Arc::new(DashMap::new()),
             global_sem: Arc::new(Semaphore::new(64)),
             ctx,
@@ -112,8 +109,15 @@ impl ProcessCollectTxConfirmReport {
         tracing::info!(trade_no=%trade_no, "[归集交易确认] 开始处理单个归集交易确认报告");
 
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "[归集交易确认] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let req = match ApiCollectRepo::get_api_collect_by_trade_no_status(
-                &ctx.pool,
+                &pool,
                 &trade_no,
                 &[ApiCollectStatus::Failure, ApiCollectStatus::Success],
             )
@@ -134,8 +138,7 @@ impl ProcessCollectTxConfirmReport {
             let _guard = lock.lock().await;
             let _permit = ctx.global_sem.acquire().await.unwrap();
 
-            Self::process_collect_single_tx_confirm_report(ctx.pool.clone(), req, false, ctx.ctx)
-                .await
+            Self::process_collect_single_tx_confirm_report(req, false, ctx.ctx).await
         });
     }
 
@@ -145,8 +148,15 @@ impl ProcessCollectTxConfirmReport {
         tracing::info!("[归集交易确认] 开始批量处理归集交易确认报告");
 
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!("[归集交易确认] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let res = ApiCollectRepo::page_api_collect_with_status(
-                &ctx.pool,
+                &pool,
                 0,
                 1000,
                 &[ApiCollectStatus::Failure, ApiCollectStatus::Success],
@@ -167,20 +177,13 @@ impl ProcessCollectTxConfirmReport {
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_collect_single_tx_confirm_report(
-                        ctx.pool.clone(),
-                        req,
-                        true,
-                        ctx.ctx,
-                    )
-                    .await
+                    Self::process_collect_single_tx_confirm_report(req, true, ctx.ctx).await
                 });
             }
         });
     }
 
     async fn process_collect_single_tx_confirm_report(
-        pool: ApiTransactionDbPool,
         req: ApiCollectEntity,
         check_retry_time: bool,
         ctx: &'static crate::context::Context,
@@ -220,6 +223,13 @@ impl ProcessCollectTxConfirmReport {
         tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 准备调用后端API发送交易事件确认");
 
         // 检查 TxRes ACK 是否已发送
+        let pool = match ctx.api_transaction_pool() {
+            Ok(pool) => pool,
+            Err(err) => {
+                tracing::warn!(trade_no=%req.trade_no, "[归集交易确认] 获取交易数据库连接池失败: {}", err);
+                return;
+            }
+        };
         let (_, result_ack_sent_at) =
             ApiCollectRepo::get_ack_times(&pool, &req.trade_no).await.unwrap_or((None, None));
         if result_ack_sent_at.is_some() {

@@ -48,9 +48,6 @@ impl ProcessCollectTxHandle {
         let shutdown_rx3 = shutdown_tx.subscribe();
 
         // 获取 collect 数据库连接池
-        let api_wallet_pool = ctx.api_wallet_pool()?;
-        let api_transaction_pool = ctx.api_transaction_pool()?;
-
         let (tx_tx, tx_rx) = mpsc::channel(1);
         let (report_tx, report_rx) = mpsc::channel(1);
 
@@ -62,31 +59,19 @@ impl ProcessCollectTxHandle {
         // Kept temporarily for safe migration.
 
         // 发交易
-        let _tx = ProcessCollectTx::new(
-            api_wallet_pool.clone(),
-            api_transaction_pool.clone(),
-            ctx,
-            shutdown_rx1,
-            tx_rx,
-            report_tx.clone(),
-        );
+        let _tx = ProcessCollectTx::new(ctx, shutdown_rx1, tx_rx, report_tx.clone());
         // 注释掉自动启动，旧工作者不再运行
         // let tx_handle = tokio::spawn(async move { tx.run().await });
 
         // 上报交易
-        let _tx_report =
-            ProcessCollectTxReport::new(ctx, api_transaction_pool.clone(), shutdown_rx2, report_rx);
+        let _tx_report = ProcessCollectTxReport::new(ctx, shutdown_rx2, report_rx);
         // 注释掉自动启动，旧工作者不再运行
         // let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
 
         // 上报已经确认交易
         let (confirm_report_tx, confirm_report_rx) = mpsc::channel(1);
-        let _tx_confirm_report = ProcessCollectTxConfirmReport::new(
-            ctx,
-            api_transaction_pool.clone(),
-            shutdown_rx3,
-            confirm_report_rx,
-        );
+        let _tx_confirm_report =
+            ProcessCollectTxConfirmReport::new(ctx, shutdown_rx3, confirm_report_rx);
         // 注释掉自动启动，旧工作者不再运行
         // let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
 
@@ -97,6 +82,8 @@ impl ProcessCollectTxHandle {
 
         // 初始化Shadow系统
         shadow::enable();
+        let api_transaction_pool = ctx.api_transaction_pool()?;
+        let api_wallet_pool = ctx.api_wallet_pool()?;
         let shadow_system =
             shadow::init(ctx, api_transaction_pool.clone(), api_wallet_pool.clone()).await;
 
