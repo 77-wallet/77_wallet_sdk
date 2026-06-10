@@ -483,13 +483,13 @@ impl ShadowCollectWorker {
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
             ShadowCollectCommand::Recover(trade_no) => self.process_recover(trade_no).await,
             ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no) => {
-                let result = self.process_resource_delegation_execute(trade_no.clone()).await;
-                self.handle_resource_delegation_terminal_failure_if_needed(&trade_no, result).await
+                let result = self.process_local_resource_delegation_execute(trade_no.clone()).await;
+                self.handle_local_resource_delegation_failure_if_needed(&trade_no, result).await
             }
         }
     }
 
-    async fn handle_resource_delegation_terminal_failure_if_needed(
+    async fn handle_local_resource_delegation_failure_if_needed(
         &self,
         resource_trade_no: &str,
         result: Result<(), ServiceError>,
@@ -500,12 +500,12 @@ impl ShadowCollectWorker {
 
         match err.retry_policy() {
             wallet_utils::RetryPolicy::Never => {
-                self.mark_resource_delegation_failed(resource_trade_no, &err).await?;
+                self.mark_local_resource_delegation_failed(resource_trade_no, &err).await?;
                 self.release_collect_gate_after_local_delegation_failure(resource_trade_no).await?;
                 Ok(())
             }
             wallet_utils::RetryPolicy::Delay => {
-                self.schedule_resource_delegation_rebuild_retry(resource_trade_no, &err).await?;
+                self.schedule_local_resource_delegation_rebuild_retry(resource_trade_no, &err).await?;
                 info!(
                     resource_trade_no = %resource_trade_no,
                     error = %err,
@@ -517,7 +517,7 @@ impl ShadowCollectWorker {
         }
     }
 
-    async fn schedule_resource_delegation_rebuild_retry(
+    async fn schedule_local_resource_delegation_rebuild_retry(
         &self,
         resource_trade_no: &str,
         err: &ServiceError,
@@ -561,7 +561,7 @@ impl ShadowCollectWorker {
         Ok(())
     }
 
-    async fn process_resource_delegation_execute(
+    async fn process_local_resource_delegation_execute(
         &self,
         resource_trade_no: String,
     ) -> Result<(), ServiceError> {
@@ -632,7 +632,7 @@ impl ShadowCollectWorker {
         Ok(())
     }
 
-    async fn mark_resource_delegation_failed(
+    async fn mark_local_resource_delegation_failed(
         &self,
         resource_trade_no: &str,
         err: &ServiceError,
@@ -4217,7 +4217,7 @@ mod tests {
             .expect("claim build slot");
 
         worker
-            .schedule_resource_delegation_rebuild_retry(
+            .schedule_local_resource_delegation_rebuild_retry(
                 "rsc_platform_delegate_retry",
                 &ServiceError::Parameter("retryable test error".to_string()),
             )
