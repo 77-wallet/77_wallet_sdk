@@ -604,6 +604,7 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
+        // 共享执行能力：仅完成资源代理任务广播，本体不关心 collect 阶段语义。
         let tx_hash =
             execute_resource_delegation(&delegation, "collect_resource_delegation").await?;
         let affected = ApiResourceDelegationRepo::mark_broadcast_success(
@@ -640,6 +641,7 @@ impl ShadowCollectWorker {
         resource_trade_no: &str,
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
+        // 统一失败 fact 映射，保持与其他 resource delegation 统一上报约定。
         let (err_code, err_msg) = resource_delegation_failure_fact(err);
         let affected = ApiResourceDelegationRepo::mark_failed_if_unfinished(
             &self.collect_pool,

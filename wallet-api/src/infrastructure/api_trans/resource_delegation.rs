@@ -10,7 +10,6 @@ use crate::{
         resource_rpc_auth,
     },
 };
-use wallet_utils::RetryableError as _;
 use wallet_chain_interact::{
     BillResourceConsume,
     tron::operations::{RawTransactionParams, TronTxOperation},
@@ -19,20 +18,30 @@ use wallet_database::entities::{
     api_resource_delegation::{ApiResourceDelegationEntity, ApiResourceDelegationOperationType},
     api_resource_type::ApiResourceType,
 };
+use wallet_utils::RetryableError as _;
 
 /// 资源代理重试退避：指数退避上限 1 小时。
+/// - 第 0 次：60s
+/// - 之后每次翻倍，最终上限 3600s
 pub(crate) fn resource_delegation_retry_wait_secs(retry_count: i64) -> i64 {
     let exponent = retry_count.clamp(0, 6) as u32;
     (60_i64 * (1_i64 << exponent)).min(3600)
 }
 
 /// 资源代理失败 fact 的统一映射。
+/// - 网络问题归入 ERR_6005
+/// - 其他失败归入 ERR_6008
 pub(crate) fn resource_delegation_failure_fact(err: &ServiceError) -> (String, String) {
     let err_code = if err.is_network_error() { "ERR_6005" } else { "ERR_6008" };
     (err_code.to_string(), err.to_string())
 }
 
 /// 使用统一 RPC-auth 策略执行资源代理广播。
+///
+/// 注意：
+/// 1) 这里只做“执行一个 resource delegation 任务本身”，
+/// 2) 不包含 collect/withdraw 主链推进逻辑。
+/// 3) 是否立即触发下一步，由各自 shadow/stage 决定。
 pub(crate) async fn execute_resource_delegation(
     delegation: &ApiResourceDelegationEntity,
     rpc_purpose: &'static str,
@@ -46,6 +55,7 @@ pub(crate) async fn execute_resource_delegation(
     .await
 }
 
+// 资源任务执行内部实现：支持 Delegate / Undelegate 的 TRON 交易构建、签名与广播。
 async fn execute_resource_delegation_once(
     delegation: &ApiResourceDelegationEntity,
 ) -> Result<String, ServiceError> {

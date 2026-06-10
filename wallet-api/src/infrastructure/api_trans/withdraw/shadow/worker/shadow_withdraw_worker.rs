@@ -513,6 +513,7 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
+        // 共享的 resource delegation 执行逻辑，和 collect 分支共用同一套签名/广播路径。
         let tx_hash =
             execute_resource_delegation(&delegation, "withdraw_resource_delegation").await?;
         ApiResourceDelegationRepo::mark_broadcast_success(&self.pool, &resource_trade_no, &tx_hash)
@@ -1700,6 +1701,7 @@ impl ShadowWithdrawWorker {
         resource_trade_no: &str,
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
+        // 统一失败 fact 映射，便于资源代理成功/失败上报一致。
         let (err_code, err_msg) = resource_delegation_failure_fact(err);
         ApiResourceDelegationRepo::mark_failed_if_unfinished(
             &self.pool,
