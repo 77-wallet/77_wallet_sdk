@@ -750,6 +750,19 @@ mod tests {
     }
 
     #[test]
+    fn can_build_blocks_tron_when_service_fee_is_required() {
+        let mut blocked = base_collect();
+        blocked.raw_tx = None;
+        blocked.need_service_fee = Some(true);
+        blocked.chain_code = "tron".to_string();
+        blocked.resource_gate_released_at = Some(Utc::now());
+
+        let blocked_eval = evaluate_stage(CollectStage::CanBuild, &blocked);
+        assert!(!blocked_eval.can_advance);
+        assert!(blocked_eval.reasons.iter().any(|reason| reason.code == "need_service_fee"));
+    }
+
+    #[test]
     fn need_resource_gate_advances_for_unreleased_tron_only() {
         let mut blocked = base_collect();
         blocked.raw_tx = None;
