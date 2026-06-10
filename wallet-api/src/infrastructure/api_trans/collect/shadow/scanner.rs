@@ -706,77 +706,6 @@ mod tests {
         },
     };
 
-    #[tokio::test]
-    async fn try_advance_prioritizes_collect_resource_result_ack_before_build() -> anyhow::Result<()>
-    {
-        let dir = tempfile::tempdir()?;
-        let db_root = dir.path().to_string_lossy().to_string();
-        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
-            .await?
-            .into_transaction_db_pool()?;
-        let (intent_tx, mut intent_rx) = mpsc::channel(100);
-        let scanner = ShadowScanner::new(pool.clone(), ScannerConfig::default(), intent_tx, None);
-
-        ApiCollectRepo::upsert_api_collect(
-            &pool,
-            "uid_1",
-            "collect",
-            "from_addr",
-            "to_addr",
-            "1",
-            "digest",
-            "tron",
-            None,
-            "TRX",
-            "C_pending_rsc_ack",
-            2,
-            ApiCollectStatus::Init,
-            1,
-        )
-        .await?;
-        sqlx::query(
-            r#"
-            UPDATE api_collect
-            SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                resource_gate_result = ?
-            WHERE trade_no = ?
-            "#,
-        )
-        .bind(ApiResourceGateResult::PlatformDelegateSuccess.as_i64())
-        .bind("C_pending_rsc_ack")
-        .execute(pool.as_ref())
-        .await?;
-
-        ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            &pool,
-            NewApiResourceDelegation::platform_delegate(
-                "uid_1",
-                "C_pending_rsc_ack",
-                "C_pending_rsc_ack",
-                ApiTradeType::Collect as i64,
-                "",
-                "",
-                "0",
-            ),
-            ApiResourceDelegationResultStatus::Success,
-            None,
-            Some(r#"{"tradeNo":"C_pending_rsc_ack","status":true}"#),
-        )
-        .await?;
-
-        scanner.try_advance("C_pending_rsc_ack").await;
-
-        let intent = intent_rx.try_recv().expect("resource ACK intent should be dispatched");
-        assert!(matches!(
-            intent,
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(ref trade_no))
-                if trade_no == "C_pending_rsc_ack"
-        ));
-        assert!(intent_rx.try_recv().is_err());
-
-        Ok(())
-    }
 }
 
 /// Shadow Scanner
@@ -900,7 +829,7 @@ impl ShadowScanner {
         };
 
         for record in records {
-            let intent = CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(
+            let intent = CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(
                 record.resource_trade_no,
             ));
             self.dispatch_intent(intent).await;
@@ -1374,30 +1303,6 @@ impl ShadowScanner {
             return;
         }
 
-        match self.pending_resource_result_ack_trade_no(trade_no).await {
-            Ok(Some(resource_trade_no)) => {
-                trace!(
-                    trade_no = %trade_no,
-                    resource_trade_no = %resource_trade_no,
-                    "Resource result ACK is pending; advancing ACK before collect main chain"
-                );
-                self.dispatch_intent(CollectIntent::SideEffect(
-                    SideEffectIntent::SendResourceResultAck(resource_trade_no),
-                ))
-                .await;
-                return;
-            }
-            Ok(None) => {}
-            Err(e) => {
-                error!(
-                    trade_no = %trade_no,
-                    error = %e,
-                    "Failed to check pending collect resource result ACK"
-                );
-                return;
-            }
-        }
-
         // err_code 冻结：只允许 UploadTxExecReceipt
         if collect.err_code.is_some() {
             let eval = crate::infrastructure::api_trans::collect::shadow::predicate::evaluate_stage(
@@ -1572,16 +1477,4 @@ impl ShadowScanner {
         );
     }
 
-    async fn pending_resource_result_ack_trade_no(
-        &self,
-        origin_trade_no: &str,
-    ) -> Result<Option<String>, wallet_database::Error> {
-        Ok(wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::find_pending_result_ack_by_origin(
-            &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
-            origin_trade_no,
-        )
-        .await?
-        .map(|row| row.resource_trade_no))
-    }
 }

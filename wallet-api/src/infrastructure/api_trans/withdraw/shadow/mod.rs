@@ -66,8 +66,6 @@ pub enum WithdrawChainIntent {
     /// - `resource_ready` / `need_platform_delegate` 是评估结果状态，不是独立 intent
     /// - 后续 BuildTx 仍由 scanner 基于事实推进
     EvalResourceGate(String),
-    /// 执行平台代理资源代理任务，trade_no 是资源任务号。
-    ExecuteResourceDelegation(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易
@@ -90,12 +88,6 @@ pub enum WithdrawChainIntent {
 pub enum WithdrawSideEffectIntent {
     /// 发送交易 ACK
     SendTxAck(String),
-    /// 发送平台资源结果确认 ACK，trade_no 是资源任务号
-    SendResourceResultAck(String),
-    /// 发送平台资源任务接收 ACK，trade_no 是资源任务号
-    SendResourceTaskAck(String),
-    /// 上传平台代理资源执行回执，trade_no 是资源任务号
-    UploadResourceTxExecReceipt(String),
     /// 发送交易结果 ACK
     SendTxResAck(String),
     /// 上传交易执行回执

@@ -91,7 +91,7 @@ pub enum ShadowCollectCommand {
     /// 恢复交易
     Recover(String),
     /// 执行平台代理资源代理任务，trade_no 是资源任务号
-    ExecuteResourceDelegation(String),
+    ExecuteLocalResourceDelegation(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -470,7 +470,7 @@ impl ShadowCollectWorker {
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
             ShadowCollectCommand::Recover(trade_no) => trade_no,
-            ShadowCollectCommand::ExecuteResourceDelegation(trade_no) => trade_no,
+            ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no) => trade_no,
         };
 
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
@@ -482,7 +482,7 @@ impl ShadowCollectWorker {
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
             ShadowCollectCommand::Recover(trade_no) => self.process_recover(trade_no).await,
-            ShadowCollectCommand::ExecuteResourceDelegation(trade_no) => {
+            ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no) => {
                 let result = self.process_resource_delegation_execute(trade_no.clone()).await;
                 self.handle_resource_delegation_terminal_failure_if_needed(&trade_no, result).await
             }

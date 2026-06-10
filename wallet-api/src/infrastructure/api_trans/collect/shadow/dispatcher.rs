@@ -27,15 +27,12 @@ pub enum RunningKey {
     BuildTx(String),
     BroadcastTx(String),
     RecoverTx(String),
-    ExecuteResourceDelegation(String),
+    ExecuteLocalResourceDelegation(String),
     SendOrderAck(String),
     SendResultAck(String),
     UploadServiceFee(String),
     UploadTxExecReceipt(String),
     SendTxFeeResAck(String),
-    SendResourceResultAck(String),
-    SendResourceTaskAck(String),
-    UploadResourceTxExecReceipt(String),
 }
 
 impl RunningKey {
@@ -54,8 +51,8 @@ impl RunningKey {
             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
                 RunningKey::RecoverTx(trade_no.clone())
             }
-            CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(trade_no)) => {
-                RunningKey::ExecuteResourceDelegation(trade_no.clone())
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) => {
+                RunningKey::ExecuteLocalResourceDelegation(trade_no.clone())
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                 RunningKey::SendOrderAck(trade_no.clone())
@@ -71,15 +68,6 @@ impl RunningKey {
             }
             CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(trade_no)) => {
                 RunningKey::SendTxFeeResAck(trade_no.clone())
-            }
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => {
-                RunningKey::SendResourceResultAck(trade_no.clone())
-            }
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(trade_no)) => {
-                RunningKey::SendResourceTaskAck(trade_no.clone())
-            }
-            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(trade_no)) => {
-                RunningKey::UploadResourceTxExecReceipt(trade_no.clone())
             }
         }
     }
@@ -115,47 +103,17 @@ mod tests {
     }
 
     #[test]
-    fn resource_result_ack_uses_distinct_running_key() {
-        use crate::infrastructure::api_trans::collect::shadow::SideEffectIntent;
-
-        let trade_no = "RSC_KEY";
-        let resource_ack = RunningKey::from_intent(&CollectIntent::SideEffect(
-            SideEffectIntent::SendResourceResultAck(trade_no.to_string()),
-        ));
-        let result_ack = RunningKey::from_intent(&CollectIntent::SideEffect(
-            SideEffectIntent::SendResultAck(trade_no.to_string()),
-        ));
-        assert!(matches!(resource_ack, RunningKey::SendResourceResultAck(_)));
-        assert_ne!(resource_ack, result_ack);
-    }
-
-    #[test]
     fn resource_delegation_execution_uses_distinct_running_key() {
         let resource_trade_no = "RSC_EXEC_KEY";
         let resource_exec = RunningKey::from_intent(&CollectIntent::Chain(
-            ChainIntent::ExecuteResourceDelegation(resource_trade_no.to_string()),
+            ChainIntent::ExecuteLocalResourceDelegation(resource_trade_no.to_string()),
         ));
         let collect_build = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BuildTx(
             resource_trade_no.to_string(),
         )));
 
-        assert!(matches!(resource_exec, RunningKey::ExecuteResourceDelegation(_)));
+        assert!(matches!(resource_exec, RunningKey::ExecuteLocalResourceDelegation(_)));
         assert_ne!(resource_exec, collect_build);
-    }
-
-    #[test]
-    fn resource_receipt_upload_uses_distinct_running_key() {
-        use crate::infrastructure::api_trans::collect::shadow::SideEffectIntent;
-
-        let trade_no = "RSC_RECEIPT_KEY";
-        let resource_receipt = RunningKey::from_intent(&CollectIntent::SideEffect(
-            SideEffectIntent::UploadResourceTxExecReceipt(trade_no.to_string()),
-        ));
-        let collect_receipt = RunningKey::from_intent(&CollectIntent::SideEffect(
-            SideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
-        ));
-        assert!(matches!(resource_receipt, RunningKey::UploadResourceTxExecReceipt(_)));
-        assert_ne!(resource_receipt, collect_receipt);
     }
 
     #[test]
@@ -218,9 +176,9 @@ impl DispatchTrace {
                 key,
                 side_effect: false,
             },
-            CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(trade_no)) => Self {
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) => Self {
                 worker: "ShadowCollectWorker",
-                command: "ExecuteResourceDelegation",
+                command: "ExecuteLocalResourceDelegation",
                 phase: "resource_delegation",
                 trade_no: trade_no.clone(),
                 key,
@@ -266,32 +224,6 @@ impl DispatchTrace {
                 key,
                 side_effect: true,
             },
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => Self {
-                worker: "SideEffectWorker",
-                command: "SendResourceResultAck",
-                phase: "side_effect",
-                trade_no: trade_no.clone(),
-                key,
-                side_effect: true,
-            },
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(trade_no)) => Self {
-                worker: "SideEffectWorker",
-                command: "SendResourceTaskAck",
-                phase: "side_effect",
-                trade_no: trade_no.clone(),
-                key,
-                side_effect: true,
-            },
-            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(trade_no)) => {
-                Self {
-                    worker: "SideEffectWorker",
-                    command: "UploadResourceTxExecReceipt",
-                    phase: "side_effect",
-                    trade_no: trade_no.clone(),
-                    key,
-                    side_effect: true,
-                }
-            }
         }
     }
 }
@@ -399,10 +331,10 @@ impl ShadowDispatcher {
                 debug!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
                 shadow_worker.handle(ShadowCollectCommand::Recover(trade_no.clone())).await
             }
-            CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(trade_no)) => {
-                debug!(trade_no = %trade_no, "Sending ExecuteResourceDelegation command to Shadow Worker");
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) => {
+                debug!(trade_no = %trade_no, "Sending ExecuteLocalResourceDelegation command to Shadow Worker");
                 shadow_worker
-                    .handle(ShadowCollectCommand::ExecuteResourceDelegation(trade_no.clone()))
+                    .handle(ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no.clone()))
                     .await
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
@@ -429,24 +361,6 @@ impl ShadowDispatcher {
                 info!(trade_no = %trade_no, "Sending SendTxFeeResAck command to SideEffect Worker");
                 side_effect_worker
                     .handle(SideEffectCommand::SendTxFeeResAck(trade_no.clone()))
-                    .await
-            }
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => {
-                info!(trade_no = %trade_no, "Sending SendResourceResultAck command to SideEffect Worker");
-                side_effect_worker
-                    .handle(SideEffectCommand::SendResourceResultAck(trade_no.clone()))
-                    .await
-            }
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(trade_no)) => {
-                info!(trade_no = %trade_no, "Sending SendResourceTaskAck command to SideEffect Worker");
-                side_effect_worker
-                    .handle(SideEffectCommand::SendResourceTaskAck(trade_no.clone()))
-                    .await
-            }
-            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(trade_no)) => {
-                info!(trade_no = %trade_no, "Sending UploadResourceTxExecReceipt command to SideEffect Worker");
-                side_effect_worker
-                    .handle(SideEffectCommand::UploadResourceTxExecReceipt(trade_no.clone()))
                     .await
             }
         }

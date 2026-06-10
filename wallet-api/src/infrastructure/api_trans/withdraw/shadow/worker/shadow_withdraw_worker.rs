@@ -356,10 +356,6 @@ impl ShadowWithdrawWorker {
             super::ShadowWithdrawCommand::EvalResourceGate(trade_no) => {
                 self.process_eval_resource_gate(trade_no).await
             }
-            super::ShadowWithdrawCommand::ExecuteResourceDelegation(trade_no) => {
-                let result = self.process_resource_delegation_execute(trade_no.clone()).await;
-                self.handle_resource_delegation_terminal_failure_if_needed(&trade_no, result).await
-            }
             super::ShadowWithdrawCommand::BuildTx(trade_no) => {
                 self.process_build_tx(trade_no).await
             }

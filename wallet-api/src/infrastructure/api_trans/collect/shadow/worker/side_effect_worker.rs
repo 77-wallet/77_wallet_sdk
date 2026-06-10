@@ -75,12 +75,6 @@ pub enum SideEffectCommand {
     UploadTxExecReceipt(String),
     /// 发送手续费结果确认
     SendTxFeeResAck(String),
-    /// 发送资源结果确认，trade_no 是资源任务号
-    SendResourceResultAck(String),
-    /// 发送资源任务接收确认，trade_no 是资源任务号
-    SendResourceTaskAck(String),
-    /// 上传平台代理资源执行回执，trade_no 是资源任务号
-    UploadResourceTxExecReceipt(String),
 }
 
 /// Projection of a resource-task terminal outcome back into the origin collect
@@ -125,21 +119,6 @@ impl SideEffectCommand {
             }
             SideEffectCommand::SendTxFeeResAck(trade_no) => {
                 crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::SendTxFeeResAck(
-                    trade_no.clone(),
-                )
-            }
-            SideEffectCommand::SendResourceResultAck(trade_no) => {
-                crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::SendResourceResultAck(
-                    trade_no.clone(),
-                )
-            }
-            SideEffectCommand::SendResourceTaskAck(trade_no) => {
-                crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::SendResourceTaskAck(
-                    trade_no.clone(),
-                )
-            }
-            SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => {
-                crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::UploadResourceTxExecReceipt(
                     trade_no.clone(),
                 )
             }
@@ -338,9 +317,6 @@ impl SideEffectWorker {
             SideEffectCommand::UploadServiceFee(trade_no) => trade_no,
             SideEffectCommand::UploadTxExecReceipt(trade_no) => trade_no,
             SideEffectCommand::SendTxFeeResAck(trade_no) => trade_no,
-            SideEffectCommand::SendResourceResultAck(trade_no) => trade_no,
-            SideEffectCommand::SendResourceTaskAck(trade_no) => trade_no,
-            SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => trade_no,
         };
 
         let trade_no_clone = trade_no.to_string();
@@ -373,15 +349,6 @@ impl SideEffectWorker {
                     }
                     SideEffectCommand::SendTxFeeResAck(trade_no) => {
                         self_clone.process_tx_fee_res_ack(trade_no).await
-                    }
-                    SideEffectCommand::SendResourceResultAck(trade_no) => {
-                        self_clone.process_resource_result_ack(trade_no).await
-                    }
-                    SideEffectCommand::SendResourceTaskAck(trade_no) => {
-                        self_clone.process_resource_task_ack(trade_no).await
-                    }
-                    SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => {
-                        self_clone.process_resource_tx_exec_receipt(trade_no).await
                     }
                 }
             }
@@ -756,7 +723,7 @@ impl SideEffectWorker {
     /// - receipt upload remains a stable failure fallback when no backend
     ///   result notification is available
     ///
-    /// So `UploadResourceTxExecReceipt` is only a fallback closure hook;
+    /// So resource receipt upload is only a fallback closure hook;
     /// uploading a success receipt does not mean "failed_bypass".
     async fn project_resource_task_outcome_to_collect_gate(
         &self,

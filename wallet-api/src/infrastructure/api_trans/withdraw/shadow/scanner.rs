@@ -853,22 +853,10 @@ impl ShadowScanner {
                 let trade_no = match &intent {
                     WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no))
-                    | WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(
-                        trade_no,
-                    ))
                     | WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no))
                     | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no))
-                    | WithdrawIntent::SideEffect(
-                        WithdrawSideEffectIntent::SendResourceResultAck(trade_no),
-                    )
-                    | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceTaskAck(
-                        trade_no,
-                    ))
-                    | WithdrawIntent::SideEffect(
-                        WithdrawSideEffectIntent::UploadResourceTxExecReceipt(trade_no),
-                    )
                     | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(
                         trade_no,
                     ))
@@ -948,29 +936,6 @@ impl ShadowScanner {
             );
         }
         // ============================================================================
-
-        match self.pending_resource_result_ack_trade_no(trade_no).await {
-            Ok(Some(resource_trade_no)) => {
-                trace!(
-                    trade_no = %trade_no,
-                    resource_trade_no = %resource_trade_no,
-                    "Resource result ACK is pending; advancing ACK before withdraw main chain"
-                );
-                self.dispatch_intent(WithdrawIntent::SideEffect(
-                    WithdrawSideEffectIntent::SendResourceResultAck(resource_trade_no),
-                ));
-                return;
-            }
-            Ok(None) => {}
-            Err(e) => {
-                error!(
-                    trade_no = %trade_no,
-                    error = %e,
-                    "Failed to check pending withdraw resource result ACK"
-                );
-                return;
-            }
-        }
 
         // err_code 冻结：只允许 UploadTxExecReceipt
         if withdraw.err_code.is_some() {
@@ -1118,18 +1083,6 @@ impl ShadowScanner {
         );
     }
 
-    async fn pending_resource_result_ack_trade_no(
-        &self,
-        origin_trade_no: &str,
-    ) -> Result<Option<String>, wallet_database::Error> {
-        Ok(wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::find_pending_result_ack_by_origin(
-            &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
-            origin_trade_no,
-        )
-        .await?
-        .map(|row| row.resource_trade_no))
-    }
 }
 
 #[cfg(test)]
@@ -1237,86 +1190,6 @@ mod tests {
         withdraw.err_code = Some(ErrCode::UnknownError);
 
         assert!(need_tx_exec_receipt_upload(&withdraw));
-    }
-
-    #[tokio::test]
-    async fn try_advance_prioritizes_withdraw_resource_result_ack_before_build()
-    -> anyhow::Result<()> {
-        let dir = tempfile::tempdir()?;
-        let db_root = dir.path().to_string_lossy().to_string();
-        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
-            .await?
-            .into_transaction_db_pool()?;
-        let (intent_tx, mut intent_rx) = mpsc::channel(100);
-        let scanner = ShadowScanner::new(pool.clone(), ScannerConfig::default(), intent_tx, None);
-
-        ApiWithdrawRepo::upsert_api_withdraw(
-            &pool,
-            "uid_1",
-            "withdraw",
-            "from_addr",
-            "to_addr",
-            "1",
-            "digest",
-            "tron",
-            AssetTokenKey::Native,
-            "TRX",
-            "W_pending_rsc_ack",
-            None,
-            None,
-            None,
-            ApiTradeType::Withdraw,
-            0,
-            None,
-            ApiWithdrawStatus::Init,
-            ApiWithdrawStatus::Init,
-            "0",
-            "0",
-            None,
-            None,
-        )
-        .await?;
-        sqlx::query(
-            r#"
-            UPDATE api_withdraws
-            SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = ?
-            "#,
-        )
-        .bind("W_pending_rsc_ack")
-        .execute(pool.as_ref())
-        .await?;
-
-        ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            &pool,
-            NewApiResourceDelegation::platform_delegate(
-                "uid_1",
-                "W_pending_rsc_ack",
-                "W_pending_rsc_ack",
-                ApiTradeType::Withdraw as i64,
-                "",
-                "",
-                "0",
-            ),
-            ApiResourceDelegationResultStatus::Success,
-            None,
-            Some(r#"{"tradeNo":"W_pending_rsc_ack","status":true}"#),
-        )
-        .await?;
-
-        scanner.try_advance("W_pending_rsc_ack").await;
-
-        let intent = intent_rx.try_recv().expect("resource ACK intent should be dispatched");
-        assert!(matches!(
-            intent,
-            WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceResultAck(ref trade_no))
-                if trade_no == "W_pending_rsc_ack"
-        ));
-        assert!(intent_rx.try_recv().is_err());
-
-        Ok(())
     }
 
     #[tokio::test]

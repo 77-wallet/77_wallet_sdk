@@ -93,30 +93,24 @@ pub async fn upload_collect_service_fee_via_worker(
 
 pub async fn send_resource_result_ack_via_worker(
     collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
-    resource_trade_no: &str,
+    _core_pool: ApiWalletDbPool,
+    _resource_trade_no: &str,
 ) -> Result<(), ServiceError> {
-    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
-    let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
-    let advancer =
-        Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
-    let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
-    worker.handle(SideEffectCommand::SendResourceResultAck(resource_trade_no.to_string())).await
+    crate::infrastructure::api_trans::resource_delegate::platform_shadow::scan_and_process_once(
+        collect_pool,
+    )
+    .await
 }
 
 pub async fn upload_resource_tx_exec_receipt_via_worker(
     collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
-    resource_trade_no: &str,
+    _core_pool: ApiWalletDbPool,
+    _resource_trade_no: &str,
 ) -> Result<(), ServiceError> {
-    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
-    let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
-    let advancer =
-        Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
-    let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
-    worker
-        .handle(SideEffectCommand::UploadResourceTxExecReceipt(resource_trade_no.to_string()))
-        .await
+    crate::infrastructure::api_trans::resource_delegate::platform_shadow::scan_and_process_once(
+        collect_pool,
+    )
+    .await
 }
 
 pub async fn upload_collect_tx_exec_receipt_via_backend(
@@ -223,8 +217,8 @@ pub async fn scan_collect_intent_labels_once(
             CollectIntent::Chain(ChainIntent::BuildTx(_)) => "BuildTx".to_string(),
             CollectIntent::Chain(ChainIntent::BroadcastTx(_)) => "BroadcastTx".to_string(),
             CollectIntent::Chain(ChainIntent::RecoverTx(_)) => "RecoverTx".to_string(),
-            CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(_)) => {
-                "ExecuteResourceDelegation".to_string()
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(_)) => {
+                "ExecuteLocalResourceDelegation".to_string()
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(_)) => {
                 "SendOrderAck".to_string()
@@ -234,15 +228,6 @@ pub async fn scan_collect_intent_labels_once(
             }
             CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(_)) => {
                 "SendTxFeeResAck".to_string()
-            }
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(_)) => {
-                "SendResourceResultAck".to_string()
-            }
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(_)) => {
-                "SendResourceTaskAck".to_string()
-            }
-            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(_)) => {
-                "UploadResourceTxExecReceipt".to_string()
             }
             CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(_)) => {
                 "UploadServiceFee".to_string()

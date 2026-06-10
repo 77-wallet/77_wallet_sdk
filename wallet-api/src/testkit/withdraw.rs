@@ -3,39 +3,25 @@
 //! Integration tests use these wrappers when the behavior under test lives
 //! behind crate-private workflow types.
 
-use std::sync::Arc;
-
 use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 use crate::{
     error::service::ServiceError,
     infrastructure::api_trans::withdraw::{
         WithdrawChainIntent, WithdrawIntent, WithdrawShadowScanner, WithdrawShadowScannerConfig,
-        WithdrawShadowSideEffectCommand, WithdrawShadowSideEffectWorker, WithdrawSideEffectIntent,
+        WithdrawSideEffectIntent,
     },
 };
 
 pub async fn send_resource_result_ack_via_worker(
     tx_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
-    resource_trade_no: &str,
+    _core_pool: ApiWalletDbPool,
+    _resource_trade_no: &str,
 ) -> Result<(), ServiceError> {
-    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
-    let scanner = Arc::new(WithdrawShadowScanner::new(
-        tx_pool.clone(),
-        WithdrawShadowScannerConfig {
-            scan_interval: std::time::Duration::from_secs(60),
-            max_items_per_scan: 8,
-        },
-        intent_tx,
-        None,
-    ));
-    let worker = WithdrawShadowSideEffectWorker::new(tx_pool, core_pool, scanner);
-    worker
-        .handle(WithdrawShadowSideEffectCommand::SendResourceResultAck(
-            resource_trade_no.to_string(),
-        ))
-        .await
+    crate::infrastructure::api_trans::resource_delegate::platform_shadow::scan_and_process_once(
+        tx_pool,
+    )
+    .await
 }
 
 pub async fn send_tx_ack_via_worker(
@@ -43,6 +29,11 @@ pub async fn send_tx_ack_via_worker(
     core_pool: ApiWalletDbPool,
     trade_no: &str,
 ) -> Result<(), ServiceError> {
+    use std::sync::Arc;
+    use crate::infrastructure::api_trans::withdraw::{
+        WithdrawShadowSideEffectCommand, WithdrawShadowSideEffectWorker,
+    };
+
     let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
     let scanner = Arc::new(WithdrawShadowScanner::new(
         tx_pool.clone(),
@@ -59,25 +50,13 @@ pub async fn send_tx_ack_via_worker(
 
 pub async fn upload_resource_tx_exec_receipt_via_worker(
     tx_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
-    resource_trade_no: &str,
+    _core_pool: ApiWalletDbPool,
+    _resource_trade_no: &str,
 ) -> Result<(), ServiceError> {
-    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
-    let scanner = Arc::new(WithdrawShadowScanner::new(
-        tx_pool.clone(),
-        WithdrawShadowScannerConfig {
-            scan_interval: std::time::Duration::from_secs(60),
-            max_items_per_scan: 8,
-        },
-        intent_tx,
-        None,
-    ));
-    let worker = WithdrawShadowSideEffectWorker::new(tx_pool, core_pool, scanner);
-    worker
-        .handle(WithdrawShadowSideEffectCommand::UploadResourceTxExecReceipt(
-            resource_trade_no.to_string(),
-        ))
-        .await
+    crate::infrastructure::api_trans::resource_delegate::platform_shadow::scan_and_process_once(
+        tx_pool,
+    )
+    .await
 }
 
 pub async fn scan_withdraw_intent_labels_once(
@@ -133,9 +112,6 @@ fn withdraw_intent_summary(intent: WithdrawIntent) -> (String, String) {
         WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no)) => {
             ("EvalResourceGate".to_string(), trade_no)
         }
-        WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(trade_no)) => {
-            ("ExecuteResourceDelegation".to_string(), trade_no)
-        }
         WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
             ("BuildTx".to_string(), trade_no)
         }
@@ -148,15 +124,6 @@ fn withdraw_intent_summary(intent: WithdrawIntent) -> (String, String) {
         WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no)) => {
             ("SendTxAck".to_string(), trade_no)
         }
-        WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceResultAck(trade_no)) => {
-            ("SendResourceResultAck".to_string(), trade_no)
-        }
-        WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceTaskAck(trade_no)) => {
-            ("SendResourceTaskAck".to_string(), trade_no)
-        }
-        WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadResourceTxExecReceipt(
-            trade_no,
-        )) => ("UploadResourceTxExecReceipt".to_string(), trade_no),
         WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(trade_no)) => {
             ("SendTxResAck".to_string(), trade_no)
         }

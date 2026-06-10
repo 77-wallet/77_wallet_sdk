@@ -107,9 +107,6 @@ impl SideEffectWorker {
         // 提取 trade_no 用于日志
         let trade_no = match &command {
             super::SideEffectCommand::SendTxAck(trade_no) => trade_no,
-            super::SideEffectCommand::SendResourceResultAck(trade_no) => trade_no,
-            super::SideEffectCommand::SendResourceTaskAck(trade_no) => trade_no,
-            super::SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => trade_no,
             super::SideEffectCommand::SendTxResAck(trade_no) => trade_no,
             super::SideEffectCommand::UploadTxExecReceipt(trade_no) => trade_no,
         };
@@ -121,15 +118,6 @@ impl SideEffectWorker {
             match command {
                 super::SideEffectCommand::SendTxAck(trade_no) => {
                     self_clone.process_send_tx_ack(trade_no).await
-                }
-                super::SideEffectCommand::SendResourceResultAck(trade_no) => {
-                    self_clone.process_resource_result_ack(trade_no).await
-                }
-                super::SideEffectCommand::SendResourceTaskAck(trade_no) => {
-                    self_clone.process_resource_task_ack(trade_no).await
-                }
-                super::SideEffectCommand::UploadResourceTxExecReceipt(trade_no) => {
-                    self_clone.process_resource_tx_exec_receipt(trade_no).await
                 }
                 super::SideEffectCommand::SendTxResAck(trade_no) => {
                     self_clone.process_send_tx_res_ack(trade_no).await
