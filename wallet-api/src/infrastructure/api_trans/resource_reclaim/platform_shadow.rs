@@ -407,10 +407,6 @@ impl PlatformResourceReclaimWorker {
         }
     }
 
-    fn platform_undelegation_retry_wait_secs(retry_count: i64) -> i64 {
-        resource_delegation_retry_wait_secs(retry_count)
-    }
-
     fn origin_trade_no<'a>(delegation: &'a ApiResourceDelegationEntity) -> &'a str {
         delegation.origin_trade_no.as_deref().unwrap_or("<missing>")
     }
@@ -494,7 +490,7 @@ impl PlatformResourceReclaimWorker {
         retry_count: i64,
         err: &ServiceError,
     ) {
-        let wait_secs = Self::platform_undelegation_retry_wait_secs(retry_count);
+        let wait_secs = resource_delegation_retry_wait_secs(retry_count);
         let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
         match ApiResourceDelegationRepo::mark_task_ack_retry_wait(
             &self.pool,
@@ -1052,7 +1048,7 @@ impl PlatformResourceReclaimWorker {
             ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, resource_trade_no)
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
-        let wait_secs = Self::platform_undelegation_retry_wait_secs(task.retry_count);
+        let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
         let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
         ApiResourceDelegationRepo::mark_recover_retry_wait(
             &self.pool,
@@ -1080,7 +1076,7 @@ impl PlatformResourceReclaimWorker {
         resource_trade_no: &str,
         retry_count: i64,
     ) {
-        let wait_secs = Self::platform_undelegation_retry_wait_secs(retry_count);
+        let wait_secs = resource_delegation_retry_wait_secs(retry_count);
         let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
         match ApiResourceDelegationRepo::mark_result_ack_retry_wait(
             &self.pool,
@@ -1114,7 +1110,7 @@ impl PlatformResourceReclaimWorker {
             ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, resource_trade_no)
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
-        let wait_secs = Self::platform_undelegation_retry_wait_secs(task.retry_count);
+        let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
         let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
         let next_status = if err.is_network_error() {
             ApiResourceDelegationRecoverStatus::RetryBuild
