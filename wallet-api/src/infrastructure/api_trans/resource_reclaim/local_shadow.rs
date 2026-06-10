@@ -30,7 +30,8 @@ use crate::{
     error::{service::ServiceError, system::SystemError},
     infrastructure::{
         api_trans::{
-            resource_amount::parse_resource_delegation_native_trx_units, shadow_rpc_policy,
+            resource_amount::parse_resource_delegation_native_trx_units,
+            resource_delegation::resource_delegation_retry_wait_secs, shadow_rpc_policy,
         },
         runtime::time::new_production_interval,
     },
@@ -199,8 +200,7 @@ impl LocalResourceReclaimWorker {
     }
 
     fn local_undelegation_retry_wait_secs(retry_count: i64) -> i64 {
-        let exponent = retry_count.clamp(0, 6) as u32;
-        (60_i64 * (1_i64 << exponent)).min(3600)
+        resource_delegation_retry_wait_secs(retry_count)
     }
 
     fn origin_trade_no<'a>(delegation: &'a ApiResourceDelegationEntity) -> &'a str {

@@ -38,8 +38,8 @@ use crate::{
                 ResourceDelegationSigner, new_tron_undelegate_args,
                 resolve_resource_delegation_signer,
             },
-            resource_rpc_auth,
-            shadow_rpc_policy,
+            resource_delegation::resource_delegation_retry_wait_secs,
+            resource_rpc_auth, shadow_rpc_policy,
         },
         runtime::time::new_production_interval,
     },
@@ -408,8 +408,7 @@ impl PlatformResourceReclaimWorker {
     }
 
     fn platform_undelegation_retry_wait_secs(retry_count: i64) -> i64 {
-        let exponent = retry_count.clamp(0, 6) as u32;
-        (60_i64 * (1_i64 << exponent)).min(3600)
+        resource_delegation_retry_wait_secs(retry_count)
     }
 
     fn origin_trade_no<'a>(delegation: &'a ApiResourceDelegationEntity) -> &'a str {
