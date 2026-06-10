@@ -447,10 +447,6 @@ impl ShadowWithdrawWorker {
         }
     }
 
-    fn resource_delegation_retry_wait_secs(retry_count: i64) -> i64 {
-        resource_delegation_retry_wait_secs(retry_count)
-    }
-
     async fn schedule_resource_delegation_rebuild_retry(
         &self,
         resource_trade_no: &str,
@@ -460,7 +456,7 @@ impl ShadowWithdrawWorker {
             ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, resource_trade_no)
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
-        let wait_secs = Self::resource_delegation_retry_wait_secs(task.retry_count);
+        let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
         let next_retry_at = Utc::now() + chrono::Duration::seconds(wait_secs);
         let next_status = if err.is_network_error() {
             ApiResourceDelegationRecoverStatus::RetryBuild
