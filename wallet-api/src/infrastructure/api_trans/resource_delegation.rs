@@ -151,3 +151,28 @@ async fn sign_tron_resource_delegation(
 
     Ok((tx_hash, raw_tx))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{resource_delegation_failure_fact, resource_delegation_retry_wait_secs};
+    use crate::error::service::ServiceError;
+
+    #[test]
+    fn retry_wait_secs_follows_exp_backoff_with_cap() {
+        assert_eq!(resource_delegation_retry_wait_secs(0), 60);
+        assert_eq!(resource_delegation_retry_wait_secs(1), 120);
+        assert_eq!(resource_delegation_retry_wait_secs(2), 240);
+        assert_eq!(resource_delegation_retry_wait_secs(3), 480);
+        assert_eq!(resource_delegation_retry_wait_secs(5), 1920);
+        assert_eq!(resource_delegation_retry_wait_secs(6), 3600);
+        assert_eq!(resource_delegation_retry_wait_secs(10), 3600);
+    }
+
+    #[test]
+    fn failure_fact_non_network_defaults_to_err_6008() {
+        let err = ServiceError::Parameter("test-business-error".to_string());
+        let (code, msg) = resource_delegation_failure_fact(&err);
+        assert_eq!(code, "ERR_6008");
+        assert_eq!(msg, "parameter error: test-business-error");
+    }
+}
