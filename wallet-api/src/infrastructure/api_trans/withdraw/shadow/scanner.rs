@@ -478,11 +478,6 @@ impl ShadowScanner {
         let start = Instant::now();
         trace!("Starting withdraw shadow scan round");
 
-        // Resource result ACK is the backend-visible closure for a platform
-        // delegation result. Prefer it before main-chain stages so a resource
-        // result cannot be followed by BuildTx/Broadcast before TX_RSC_RES ACK.
-        self.scan_need_resource_result_ack().await;
-
         // 手续费预估是审计展示用旁路快照，不参与主链路强顺序推进。
         self.scan_need_fee_estimate().await;
 
@@ -504,9 +499,6 @@ impl ShadowScanner {
         self.scan_need_recover().await;
         self.scan_need_tx_exec_receipt_upload().await;
         self.scan_confirmed_need_tx_res_ack().await;
-        self.scan_need_resource_task_ack().await;
-        self.scan_can_resource_delegation_execute().await;
-        self.scan_need_resource_tx_exec_receipt_upload().await;
 
         trace!("Withdraw shadow scan round completed in {:?}", start.elapsed());
     }
@@ -591,106 +583,6 @@ impl ShadowScanner {
         for record in records {
             let intent =
                 WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(record.trade_no));
-            self.dispatch_intent(intent);
-        }
-    }
-
-    async fn scan_need_resource_result_ack(&self) {
-        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource result ACK records");
-
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
-            &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan withdraw resource result ACK records");
-                return;
-            }
-        };
-
-        for record in records {
-            let intent = WithdrawIntent::SideEffect(
-                WithdrawSideEffectIntent::SendResourceResultAck(record.resource_trade_no),
-            );
-            self.dispatch_intent(intent);
-        }
-    }
-
-    async fn scan_need_resource_task_ack(&self) {
-        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource task ACK records");
-
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type(
-            &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan withdraw resource task ACK records");
-                return;
-            }
-        };
-
-        for record in records {
-            let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceTaskAck(
-                record.resource_trade_no,
-            ));
-            self.dispatch_intent(intent);
-        }
-    }
-
-    async fn scan_can_resource_delegation_execute(&self) {
-        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable withdraw resource delegation records");
-
-        self.scan_can_withdraw_platform_delegate().await;
-    }
-
-    async fn scan_can_withdraw_platform_delegate(&self) {
-        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable withdraw platform delegate records");
-
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
-            &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
-            wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform,
-            wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan executable withdraw platform delegate records");
-                return;
-            }
-        };
-
-        for record in records {
-            let intent = WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(
-                record.resource_trade_no,
-            ));
-            self.dispatch_intent(intent);
-        }
-    }
-
-    async fn scan_need_resource_tx_exec_receipt_upload(&self) {
-        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource tx exec receipt upload records");
-
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
-            &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan withdraw resource tx exec receipt upload records");
-                return;
-            }
-        };
-
-        for record in records {
-            let intent = WithdrawIntent::SideEffect(
-                WithdrawSideEffectIntent::UploadResourceTxExecReceipt(record.resource_trade_no),
-            );
             self.dispatch_intent(intent);
         }
     }

@@ -823,17 +823,13 @@ impl ShadowScanner {
         let start = Instant::now();
         trace!("Starting collect shadow scan round");
 
-        // 资源结果 ACK 是后端允许原单继续推进的门槛。
-        // 如果先扫 BuildTx/UploadServiceFee，可能出现“先申请手续费、后 ACK 资源结果”的乱序。
-        self.scan_need_resource_result_ack().await;
-
         // 按推进顺序执行扫描，确保与推进顺序完全一致
         for stage in COLLECT_ADVANCEMENT_ORDER {
             self.scan_stage(*stage).await;
         }
-        self.scan_need_resource_task_ack().await;
-        self.scan_can_resource_delegation_execute().await;
-        self.scan_need_resource_tx_exec_receipt_upload().await;
+        // collect shadow 只保留商户本地代理 fallback。
+        // 平台代理由 resource_delegate::platform_shadow 处理，避免主链和资源副链重复消费同一任务。
+        self.scan_can_local_resource_delegation_execute().await;
 
         trace!(elapsed = ?start.elapsed(), "Collect shadow scan round completed");
 
@@ -877,94 +873,16 @@ impl ShadowScanner {
         }
     }
 
-    async fn scan_need_resource_result_ack(&self) {
+    async fn scan_can_local_resource_delegation_execute(&self) {
         trace!(
             max_items = %self.config.max_items_per_scan,
-            "Scanning resource result ACK records"
+            "Scanning executable local resource delegation records"
         );
 
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
-            &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan resource result ACK records");
-                return;
-            }
-        };
-
-        for record in records {
-            let intent = CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(
-                record.resource_trade_no,
-            ));
-            self.dispatch_intent(intent).await;
-        }
+        self.scan_can_local_resource_delegate().await;
     }
 
-    async fn scan_need_resource_task_ack(&self) {
-        trace!(
-            max_items = %self.config.max_items_per_scan,
-            "Scanning resource task ACK records"
-        );
-
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type(
-            &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan resource task ACK records");
-                return;
-            }
-        };
-
-        for record in records {
-            let intent = CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(
-                record.resource_trade_no,
-            ));
-            self.dispatch_intent(intent).await;
-        }
-    }
-
-    async fn scan_can_resource_delegation_execute(&self) {
-        trace!(
-            max_items = %self.config.max_items_per_scan,
-            "Scanning executable resource delegation records"
-        );
-
-        self.scan_can_platform_delegate().await;
-        self.scan_can_local_delegate().await;
-    }
-
-    async fn scan_can_platform_delegate(&self) {
-        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable platform delegate records");
-
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
-            &self.pool,
-            ApiTradeType::Collect as i64,
-            ApiResourceDelegationSource::Platform,
-            ApiResourceDelegationOperationType::Delegate,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan executable platform delegate records");
-                return;
-            }
-        };
-
-        for record in records {
-            let intent = CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(
-                record.resource_trade_no,
-            ));
-            self.dispatch_intent(intent).await;
-        }
-    }
-
-    async fn scan_can_local_delegate(&self) {
+    async fn scan_can_local_resource_delegate(&self) {
         trace!(max_items = %self.config.max_items_per_scan, "Scanning executable local delegate records");
 
         let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
@@ -983,32 +901,6 @@ impl ShadowScanner {
 
         for record in records {
             let intent = CollectIntent::Chain(ChainIntent::ExecuteResourceDelegation(
-                record.resource_trade_no,
-            ));
-            self.dispatch_intent(intent).await;
-        }
-    }
-
-    async fn scan_need_resource_tx_exec_receipt_upload(&self) {
-        trace!(
-            max_items = %self.config.max_items_per_scan,
-            "Scanning resource tx exec receipt upload records"
-        );
-
-        let records = match wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
-            &self.pool,
-            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan resource tx exec receipt upload records");
-                return;
-            }
-        };
-
-        for record in records {
-            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(
                 record.resource_trade_no,
             ));
             self.dispatch_intent(intent).await;

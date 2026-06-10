@@ -55,7 +55,7 @@ pub enum ChainIntent {
     ///
     /// 注意：
     /// - `resource_ready` / `need_platform_delegate` 是评估结果状态，不是独立 intent
-    /// - 后续 BuildTx / ExecuteResourceDelegation 仍由 scanner 基于事实继续推进
+    /// - 后续 BuildTx / 本地代理 fallback 仍由 scanner 基于事实继续推进
     /// - 资源链这次只补齐到“回到旧 collect 主链入口”为止
     /// - 子账户主币 / 出款地址补币 / 原失败收口继续沿用上一版已经闭环的旧流程
     EvalResourceGate(String),
@@ -65,15 +65,13 @@ pub enum ChainIntent {
     BroadcastTx(String),
     /// 恢复交易
     RecoverTx(String),
-    /// 执行平台代理资源代理任务，trade_no 是资源任务号。
+    /// 执行商户本地资源代理 fallback，trade_no 是资源任务号。
     ///
-    /// 它虽然执行的是“资源动作”，但职责上仍属于 collect 主流程的链路步骤：
-    /// - 目的不是形成一条与 collect 并列的独立主流程
-    /// - 而是为 collect/withdraw 的后续推进补齐资源前置条件
+    /// 注意：平台代理 Delegate 已拆到 `resource_delegate::platform_shadow`。
+    /// collect shadow 只保留商户本地 fallback，因为它依赖 collect 资源 gate
+    /// 的本地兜底顺序。
     ///
-    /// collect gate 的释放时机也要和这个边界区分开：
-    /// - 成功释放由 `SendResourceResultAck` 收口
-    /// - 失败放行由 `UploadResourceTxExecReceipt` 作为稳定失败收口点触发
+    /// 平台结果成功/失败后释放 collect gate 的事实投影，也由资源代理副链负责。
     ExecuteResourceDelegation(String),
 }
 

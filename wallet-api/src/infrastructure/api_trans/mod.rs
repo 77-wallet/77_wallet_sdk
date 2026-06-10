@@ -185,6 +185,7 @@ pub(crate) mod resource_ack_type;
 pub(crate) mod resource_amount;
 pub(crate) mod resource_apply_outcome;
 pub(crate) mod resource_authorization;
+pub(crate) mod resource_delegate;
 pub(crate) mod resource_delegation;
 pub(crate) mod resource_operation;
 pub(crate) mod resource_reclaim;

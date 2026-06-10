@@ -5,6 +5,7 @@ use crate::{
         // asset_calc::actor_model::AssetCalcActorManager,
         api_trans::collect::legacy::process_collect_tx::ProcessCollectTxHandle,
         api_trans::collect_fee::legacy::process_fee_tx::ProcessFeeTxHandle,
+        api_trans::resource_delegate::platform_shadow::PlatformResourceDelegateShadowActorSystem,
         api_trans::resource_operation::shadow::ResourceOperationShadowActorSystem,
         api_trans::resource_reclaim::{
             local_shadow::LocalResourceReclaimShadowActorSystem,
@@ -34,7 +35,9 @@ pub struct Handles {
     process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
     process_collect_tx_handle: Arc<ProcessCollectTxHandle>,
     resource_operation_shadow: Arc<Mutex<Option<ResourceOperationShadowActorSystem>>>,
-    resource_reclaim_shadow: Arc<Mutex<Option<LocalResourceReclaimShadowActorSystem>>>,
+    platform_resource_delegate_shadow:
+        Arc<Mutex<Option<PlatformResourceDelegateShadowActorSystem>>>,
+    local_resource_reclaim_shadow: Arc<Mutex<Option<LocalResourceReclaimShadowActorSystem>>>,
     platform_resource_reclaim_shadow: Arc<Mutex<Option<PlatformResourceReclaimShadowActorSystem>>>,
     upload_log: Arc<UploadLogHandle>,
     normal_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
@@ -63,7 +66,15 @@ impl Handles {
             let api_transaction_pool = ctx.api_transaction_pool()?;
             infrastructure::api_trans::resource_operation::shadow::init(api_transaction_pool).await
         };
-        let resource_reclaim_shadow = {
+        let platform_resource_delegate_shadow = {
+            let ctx = crate::context::get_context()?;
+            let api_transaction_pool = ctx.api_transaction_pool()?;
+            infrastructure::api_trans::resource_delegate::platform_shadow::init(
+                api_transaction_pool,
+            )
+            .await
+        };
+        let local_resource_reclaim_shadow = {
             let ctx = crate::context::get_context()?;
             let api_transaction_pool = ctx.api_transaction_pool()?;
             infrastructure::api_trans::resource_reclaim::local_shadow::init(api_transaction_pool)
@@ -96,7 +107,12 @@ impl Handles {
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
             process_collect_tx_handle: Arc::new(process_collect_tx_handle),
             resource_operation_shadow: Arc::new(Mutex::new(Some(resource_operation_shadow))),
-            resource_reclaim_shadow: Arc::new(Mutex::new(Some(resource_reclaim_shadow))),
+            platform_resource_delegate_shadow: Arc::new(Mutex::new(Some(
+                platform_resource_delegate_shadow,
+            ))),
+            local_resource_reclaim_shadow: Arc::new(Mutex::new(Some(
+                local_resource_reclaim_shadow,
+            ))),
             platform_resource_reclaim_shadow: Arc::new(Mutex::new(Some(
                 platform_resource_reclaim_shadow,
             ))),
@@ -120,11 +136,24 @@ impl Handles {
             resource_operation_shadow.take();
         }
         {
-            let mut resource_reclaim_shadow = self.resource_reclaim_shadow.lock().await;
-            if let Some(resource_reclaim_shadow) = resource_reclaim_shadow.as_mut() {
-                resource_reclaim_shadow.stop().await;
+            let mut platform_resource_delegate_shadow =
+                self.platform_resource_delegate_shadow.lock().await;
+            if let Some(platform_resource_delegate_shadow) =
+                platform_resource_delegate_shadow.as_mut()
+            {
+                platform_resource_delegate_shadow.stop().await;
             }
-            resource_reclaim_shadow.take();
+            platform_resource_delegate_shadow.take();
+        }
+        {
+            let mut local_resource_reclaim_shadow =
+                self.local_resource_reclaim_shadow.lock().await;
+            if let Some(local_resource_reclaim_shadow) =
+                local_resource_reclaim_shadow.as_mut()
+            {
+                local_resource_reclaim_shadow.stop().await;
+            }
+            local_resource_reclaim_shadow.take();
         }
         {
             let mut platform_resource_reclaim_shadow =
