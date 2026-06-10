@@ -471,6 +471,10 @@ impl SideEffectWorker {
         if req.tx_res_received_at.is_none() {
             warn!(
                 trade_no = %trade_no,
+                tx_hash_present = %req.tx_hash.is_some(),
+                tx_hash_empty = %req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
+                tx_res_received_at = %req.tx_res_received_at.is_some(),
+                transaction_time_present = %req.transaction_time.is_some(),
                 source = "side_effect_worker",
                 "Result ACK skipped: tx_res not received"
             );
@@ -480,6 +484,10 @@ impl SideEffectWorker {
         if req.transaction_time.is_none() {
             warn!(
                 trade_no = %trade_no,
+                tx_hash_present = %req.tx_hash.is_some(),
+                tx_hash_empty = %req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
+                tx_res_received_at = %req.tx_res_received_at.is_some(),
+                transaction_time_present = %req.transaction_time.is_some(),
                 source = "side_effect_worker",
                 "Transaction time is NULL; cannot send result ACK"
             );

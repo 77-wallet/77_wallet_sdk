@@ -480,6 +480,27 @@ impl PlatformResourceDelegateWorker {
         task: &ApiResourceDelegationEntity,
     ) -> Result<(), ServiceError> {
         let release = Self::gate_release_from_result(task);
+        let origin_trade_type = task
+            .origin_trade_type
+            .map(|x| x.to_string())
+            .unwrap_or_else(|| "None".to_string());
+        let origin_trade_no = task.origin_trade_no.as_deref().unwrap_or("None");
+        let (release_origin, release_result) = release
+            .as_ref()
+            .map(|(o, r)| (o.as_str(), r.to_string()))
+            .unwrap_or(("None", "None".to_string()));
+        info!(
+            resource_trade_no = %task.resource_trade_no,
+            origin_trade_no = %origin_trade_no,
+            origin_trade_type = %origin_trade_type,
+            gate_release_origin = %release_origin,
+            gate_release_result = %release_result,
+            result_status = ?task.result_status,
+            tx_status = %task.tx_status.as_deref().unwrap_or("None"),
+            err_code = %task.err_code.as_deref().unwrap_or("None"),
+            source = "platform_resource_delegate",
+            "Marking resource delegation result ACK and projecting origin gate"
+        );
         match task.origin_trade_type {
             Some(x) if x == ApiTradeType::Collect as i64 => {
                 ApiCollectRepo::mark_resource_result_ack_sent_and_release_gate(
@@ -523,14 +544,30 @@ impl PlatformResourceDelegateWorker {
         let result = ApiResourceGateResult::ResourceDelegationFailedBypass;
         match task.origin_trade_type {
             Some(x) if x == ApiTradeType::Collect as i64 => {
-                ApiCollectRepo::mark_resource_released(&self.pool, origin_trade_no, result)
+                let rows = ApiCollectRepo::mark_resource_released(&self.pool, origin_trade_no, result)
                     .await
                     .map_err(|e| ServiceError::Database(e.into()))?;
+                info!(
+                    origin_trade_no = %origin_trade_no,
+                    resource_trade_no = %task.resource_trade_no,
+                    source = "platform_resource_delegate",
+                    rows_affected = %rows,
+                    release_reason = ?result,
+                    "Release collect gate by delegation failure bypass"
+                );
             }
             Some(x) if x == ApiTradeType::Withdraw as i64 => {
-                ApiWithdrawRepo::mark_resource_released(&self.pool, origin_trade_no, result)
+                let rows = ApiWithdrawRepo::mark_resource_released(&self.pool, origin_trade_no, result)
                     .await
                     .map_err(|e| ServiceError::Database(e.into()))?;
+                info!(
+                    origin_trade_no = %origin_trade_no,
+                    resource_trade_no = %task.resource_trade_no,
+                    source = "platform_resource_delegate",
+                    rows_affected = %rows,
+                    release_reason = ?result,
+                    "Release withdraw gate by delegation failure bypass"
+                );
             }
             _ => {}
         }
