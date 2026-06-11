@@ -478,7 +478,6 @@ impl ShadowAdvancer {
             }
         }
     }
-
 }
 
 #[cfg(test)]
@@ -521,5 +520,4 @@ mod tests {
         let trade_no = "test_trade_no";
         advancer.try_advance(trade_no).await;
     }
-
 }

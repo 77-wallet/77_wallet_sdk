@@ -31,8 +31,7 @@ use crate::{
     infrastructure::{
         api_trans::{
             resource_ack_type::{
-                is_original_order_resource_result_fact,
-                merchant_original_resource_result_ack_type,
+                is_original_order_resource_result_fact, merchant_original_resource_result_ack_type,
                 merchant_original_resource_result_trans_type, platform_resource_result_ack_type,
                 platform_resource_task_trans_type,
             },
@@ -132,7 +131,9 @@ impl PlatformResourceDelegateScanner {
                     )
                 }));
             }
-            Err(e) => error!(error = %e, ?origin_type, "Failed to scan platform delegate ACK records"),
+            Err(e) => {
+                error!(error = %e, ?origin_type, "Failed to scan platform delegate ACK records")
+            }
         }
     }
 
@@ -157,7 +158,9 @@ impl PlatformResourceDelegateScanner {
                     )
                 }));
             }
-            Err(e) => error!(error = %e, ?origin_type, "Failed to scan executable platform delegate records"),
+            Err(e) => {
+                error!(error = %e, ?origin_type, "Failed to scan executable platform delegate records")
+            }
         }
     }
 
@@ -182,7 +185,9 @@ impl PlatformResourceDelegateScanner {
                     )
                 }));
             }
-            Err(e) => error!(error = %e, ?origin_type, "Failed to scan recoverable platform delegate records"),
+            Err(e) => {
+                error!(error = %e, ?origin_type, "Failed to scan recoverable platform delegate records")
+            }
         }
     }
 
@@ -366,8 +371,7 @@ impl PlatformResourceDelegateWorker {
                 self.schedule_retry(
                     &resource_trade_no,
                     &ServiceError::Parameter(
-                        "platform resource delegation recover returned no final result"
-                            .to_string(),
+                        "platform resource delegation recover returned no final result".to_string(),
                     ),
                 )
                 .await
@@ -480,10 +484,8 @@ impl PlatformResourceDelegateWorker {
         task: &ApiResourceDelegationEntity,
     ) -> Result<(), ServiceError> {
         let release = Self::gate_release_from_result(task);
-        let origin_trade_type = task
-            .origin_trade_type
-            .map(|x| x.to_string())
-            .unwrap_or_else(|| "None".to_string());
+        let origin_trade_type =
+            task.origin_trade_type.map(|x| x.to_string()).unwrap_or_else(|| "None".to_string());
         let origin_trade_no = task.origin_trade_no.as_deref().unwrap_or("None");
         let (release_origin, release_result) = release
             .as_ref()
@@ -523,9 +525,12 @@ impl PlatformResourceDelegateWorker {
                 .map_err(|e| ServiceError::Database(e.into()))?;
             }
             _ => {
-                ApiResourceDelegationRepo::mark_result_ack_sent(&self.pool, &task.resource_trade_no)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                ApiResourceDelegationRepo::mark_result_ack_sent(
+                    &self.pool,
+                    &task.resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
             }
         }
         Ok(())
@@ -544,9 +549,10 @@ impl PlatformResourceDelegateWorker {
         let result = ApiResourceGateResult::ResourceDelegationFailedBypass;
         match task.origin_trade_type {
             Some(x) if x == ApiTradeType::Collect as i64 => {
-                let rows = ApiCollectRepo::mark_resource_released(&self.pool, origin_trade_no, result)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows =
+                    ApiCollectRepo::mark_resource_released(&self.pool, origin_trade_no, result)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     origin_trade_no = %origin_trade_no,
                     resource_trade_no = %task.resource_trade_no,
@@ -557,9 +563,10 @@ impl PlatformResourceDelegateWorker {
                 );
             }
             Some(x) if x == ApiTradeType::Withdraw as i64 => {
-                let rows = ApiWithdrawRepo::mark_resource_released(&self.pool, origin_trade_no, result)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows =
+                    ApiWithdrawRepo::mark_resource_released(&self.pool, origin_trade_no, result)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     origin_trade_no = %origin_trade_no,
                     resource_trade_no = %task.resource_trade_no,
@@ -639,9 +646,10 @@ impl PlatformResourceDelegateWorker {
         &self,
         resource_trade_no: &str,
     ) -> Result<ApiResourceDelegationEntity, ServiceError> {
-        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, resource_trade_no)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
+        let task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
         if task.source == ApiResourceDelegationSource::Platform
             && task.operation_type == ApiResourceDelegationOperationType::Delegate
         {

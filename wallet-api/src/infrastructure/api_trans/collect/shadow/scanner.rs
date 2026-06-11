@@ -705,7 +705,6 @@ mod tests {
             collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
         },
     };
-
 }
 
 /// Shadow Scanner
@@ -1476,5 +1475,4 @@ impl ShadowScanner {
             DiagnoseStage::Unknown,
         );
     }
-
 }

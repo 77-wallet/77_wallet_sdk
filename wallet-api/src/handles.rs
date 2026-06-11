@@ -146,11 +146,8 @@ impl Handles {
             platform_resource_delegate_shadow.take();
         }
         {
-            let mut local_resource_reclaim_shadow =
-                self.local_resource_reclaim_shadow.lock().await;
-            if let Some(local_resource_reclaim_shadow) =
-                local_resource_reclaim_shadow.as_mut()
-            {
+            let mut local_resource_reclaim_shadow = self.local_resource_reclaim_shadow.lock().await;
+            if let Some(local_resource_reclaim_shadow) = local_resource_reclaim_shadow.as_mut() {
                 local_resource_reclaim_shadow.stop().await;
             }
             local_resource_reclaim_shadow.take();

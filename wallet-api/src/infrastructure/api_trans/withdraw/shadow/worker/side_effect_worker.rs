@@ -555,5 +555,4 @@ mod tests {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         );
     }
-
 }

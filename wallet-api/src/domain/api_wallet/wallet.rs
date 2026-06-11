@@ -12,7 +12,10 @@ use crate::{
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
-    response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
+    response_vo::{
+        api_wallet::wallet::{ApiWalletItem, ApiWalletList},
+        standard_wallet::app::{ConfigApiWalletItem, ConfigApiWalletList, ConfigWalletInfo},
+    },
 };
 use std::{collections::HashMap, time::Instant};
 use wallet_crypto::{
@@ -720,6 +723,55 @@ impl ApiWalletDomain {
         list
     }
 
+    fn build_config_api_wallet_list(
+        wallets: &[wallet_database::entities::api_wallet::ApiWalletEntity],
+    ) -> ConfigApiWalletList {
+        let mut list = ConfigApiWalletList::new();
+
+        for e in wallets {
+            let wallet = ConfigWalletInfo::from(e);
+
+            match e.api_wallet_type {
+                ApiWalletType::SubAccount => {
+                    if let Some(binding_address) = &e.binding_address
+                        && let Some(item) = list.iter_mut().find(|item| {
+                            item.withdraw_wallet
+                                .as_ref()
+                                .map(|w| &w.address == binding_address)
+                                .unwrap_or(false)
+                        })
+                    {
+                        item.recharge_wallet = Some(wallet);
+                    } else {
+                        list.push(ConfigApiWalletItem {
+                            recharge_wallet: Some(wallet),
+                            withdraw_wallet: None,
+                        });
+                    }
+                }
+                ApiWalletType::Withdrawal => {
+                    if let Some(binding_address) = &e.binding_address
+                        && let Some(item) = list.iter_mut().find(|item| {
+                            item.recharge_wallet
+                                .as_ref()
+                                .map(|r| &r.address == binding_address)
+                                .unwrap_or(false)
+                        })
+                    {
+                        item.withdraw_wallet = Some(wallet);
+                    } else {
+                        list.push(ConfigApiWalletItem {
+                            recharge_wallet: None,
+                            withdraw_wallet: Some(wallet),
+                        });
+                    }
+                }
+            }
+        }
+
+        list
+    }
+
     pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
     {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
@@ -754,6 +806,13 @@ impl ApiWalletDomain {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         Ok(Self::build_api_wallet_list(&wallets, &HashMap::new(), false))
+    }
+
+    pub async fn get_config_api_wallet_list()
+    -> Result<ConfigApiWalletList, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let wallets = ApiWalletRepo::list(&pool, None).await?;
+        Ok(Self::build_config_api_wallet_list(&wallets))
     }
 }
 

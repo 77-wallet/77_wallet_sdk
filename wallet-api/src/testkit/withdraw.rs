@@ -29,10 +29,10 @@ pub async fn send_tx_ack_via_worker(
     core_pool: ApiWalletDbPool,
     trade_no: &str,
 ) -> Result<(), ServiceError> {
-    use std::sync::Arc;
     use crate::infrastructure::api_trans::withdraw::{
         WithdrawShadowSideEffectCommand, WithdrawShadowSideEffectWorker,
     };
+    use std::sync::Arc;
 
     let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
     let scanner = Arc::new(WithdrawShadowScanner::new(

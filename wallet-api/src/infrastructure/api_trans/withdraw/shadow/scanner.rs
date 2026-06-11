@@ -1082,7 +1082,6 @@ impl ShadowScanner {
             DiagnoseStage::Unknown,
         );
     }
-
 }
 
 #[cfg(test)]

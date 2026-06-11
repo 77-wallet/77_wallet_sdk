@@ -493,7 +493,7 @@ fn draw_subwallet_comma_copy_controls(app: &mut ApiWalletConsoleApp, ui: &mut eg
         RichText::new(
             "from/count also limit Copy addresses; comma copy outputs address1,address2,address3",
         )
-            .color(Color32::from_rgb(105, 118, 132)),
+        .color(Color32::from_rgb(105, 118, 132)),
     );
 }
 
@@ -525,15 +525,10 @@ fn subwallet_comma_addresses(app: &ApiWalletConsoleApp) -> String {
 fn limited_account_addresses_text(app: &ApiWalletConsoleApp) -> String {
     let start = copy_start_account_id(app);
     let count = copy_count(app);
-    let mut rows = app
-        .account_address_rows
-        .iter()
-        .filter(|row| row.account_id >= start)
-        .collect::<Vec<_>>();
+    let mut rows =
+        app.account_address_rows.iter().filter(|row| row.account_id >= start).collect::<Vec<_>>();
     rows.sort_by(|left, right| {
-        left.wallet_address
-            .cmp(&right.wallet_address)
-            .then(left.account_id.cmp(&right.account_id))
+        left.wallet_address.cmp(&right.wallet_address).then(left.account_id.cmp(&right.account_id))
     });
     rows.into_iter().take(count).map(|row| row.address.as_str()).collect::<Vec<_>>().join("\n")
 }

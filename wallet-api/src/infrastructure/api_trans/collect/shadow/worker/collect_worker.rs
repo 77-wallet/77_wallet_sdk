@@ -505,7 +505,8 @@ impl ShadowCollectWorker {
                 Ok(())
             }
             wallet_utils::RetryPolicy::Delay => {
-                self.schedule_local_resource_delegation_rebuild_retry(resource_trade_no, &err).await?;
+                self.schedule_local_resource_delegation_rebuild_retry(resource_trade_no, &err)
+                    .await?;
                 info!(
                     resource_trade_no = %resource_trade_no,
                     error = %err,
