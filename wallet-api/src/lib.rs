@@ -18,6 +18,7 @@ mod clippy_config {
     fn _clippy_config() {}
 }
 pub mod api;
+#[cfg(feature = "api-wallet-console")]
 pub mod api_wallet_console;
 pub mod app_state;
 pub mod application;
