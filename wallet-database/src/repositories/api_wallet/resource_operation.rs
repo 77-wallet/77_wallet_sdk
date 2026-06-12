@@ -21,6 +21,15 @@ impl ApiResourceOperationRepo {
         ApiResourceOperationDao::get_by_resource_trade_no(pool.read_ref(), resource_trade_no).await
     }
 
+    pub async fn get_by_hash_and_owner(
+        pool: &ApiTransactionDbPool,
+        tx_hash: &str,
+        owner_address: &str,
+    ) -> Result<Option<ApiResourceOperationEntity>, crate::Error> {
+        ApiResourceOperationDao::get_by_hash_and_owner(pool.read_ref(), tx_hash, owner_address)
+            .await
+    }
+
     pub async fn record_client_broadcast_success(
         pool: &ApiTransactionDbPool,
         input: NewApiResourceOperation,
@@ -237,6 +246,69 @@ mod tests {
         assert_eq!(got.resource_type, ApiResourceType::Energy);
         assert_eq!(got.status, ApiResourceOperationStatus::Pending);
         assert_eq!(got.amount, "1000");
+    }
+
+    #[tokio::test]
+    async fn resource_operation_records_client_vote_for_hash_detail_lookup() {
+        let pool = setup_api_transaction_pool("resource_operation_client_vote_lookup").await;
+        let input = NewApiResourceOperation::client_vote("uid_1", "vote_trade_1", "owner", "1010");
+
+        ApiResourceOperationRepo::record_client_broadcast_success(
+            &pool,
+            input,
+            "vote_hash",
+            "raw_vote_tx",
+            "0",
+        )
+        .await
+        .unwrap();
+
+        let got = ApiResourceOperationRepo::get_by_hash_and_owner(&pool, "vote_hash", "owner")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.task_source, ApiResourceOperationTaskSource::Client);
+        assert_eq!(got.operation_type, ApiResourceOperationType::Vote);
+        assert_eq!(got.tx_hash.as_deref(), Some("vote_hash"));
+        assert_eq!(got.raw_tx.as_deref(), Some("raw_vote_tx"));
+        assert_eq!(got.amount, "1010");
+
+        let missing =
+            ApiResourceOperationRepo::get_by_hash_and_owner(&pool, "vote_hash", "other_owner")
+                .await
+                .unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[tokio::test]
+    async fn resource_operation_records_client_withdraw_reward_for_hash_detail_lookup() {
+        let pool =
+            setup_api_transaction_pool("resource_operation_client_withdraw_reward_lookup").await;
+        let input = NewApiResourceOperation::client_withdraw_reward(
+            "uid_1",
+            "reward_trade_1",
+            "owner",
+            "12.5",
+        );
+
+        ApiResourceOperationRepo::record_client_broadcast_success(
+            &pool,
+            input,
+            "reward_hash",
+            "raw_reward_tx",
+            "0",
+        )
+        .await
+        .unwrap();
+
+        let got = ApiResourceOperationRepo::get_by_hash_and_owner(&pool, "reward_hash", "owner")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.task_source, ApiResourceOperationTaskSource::Client);
+        assert_eq!(got.operation_type, ApiResourceOperationType::WithdrawReward);
+        assert_eq!(got.tx_hash.as_deref(), Some("reward_hash"));
+        assert_eq!(got.amount, "12.5");
     }
 
     #[tokio::test]

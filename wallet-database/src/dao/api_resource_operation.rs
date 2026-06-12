@@ -62,6 +62,30 @@ impl ApiResourceOperationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn get_by_hash_and_owner<'a, E>(
+        exec: E,
+        tx_hash: &str,
+        owner_address: &str,
+    ) -> Result<Option<ApiResourceOperationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceOperationEntity>(
+            r#"
+            SELECT * FROM api_resource_operation
+            WHERE tx_hash = ?
+              AND owner_address = ?
+            ORDER BY id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(tx_hash)
+        .bind(owner_address)
+        .fetch_optional(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn record_client_broadcast_success<'a, E>(
         exec: E,
         input: NewApiResourceOperation,
@@ -153,6 +177,7 @@ impl ApiResourceOperationDao {
             r#"
             SELECT * FROM api_resource_operation
             WHERE task_source = 1
+              AND operation_type IN (1, 2)
               AND task_ack_sent_at IS NULL
             ORDER BY id ASC
             LIMIT ?
@@ -175,6 +200,7 @@ impl ApiResourceOperationDao {
             r#"
             SELECT * FROM api_resource_operation
             WHERE task_source = 1
+              AND operation_type IN (1, 2)
               AND task_ack_sent_at IS NOT NULL
               AND building_at IS NULL
               AND raw_tx IS NULL
@@ -200,6 +226,7 @@ impl ApiResourceOperationDao {
             r#"
             SELECT * FROM api_resource_operation
             WHERE task_source = 1
+              AND operation_type IN (1, 2)
               AND raw_tx IS NOT NULL
               AND trim(raw_tx) <> ''
               AND tx_hash IS NOT NULL
@@ -227,6 +254,7 @@ impl ApiResourceOperationDao {
             r#"
             SELECT * FROM api_resource_operation
             WHERE task_source = 1
+              AND operation_type IN (1, 2)
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
               AND raw_tx IS NOT NULL
@@ -256,6 +284,7 @@ impl ApiResourceOperationDao {
             r#"
             SELECT * FROM api_resource_operation
             WHERE task_source = 1
+              AND operation_type IN (1, 2)
               AND tx_exec_receipt_uploaded_at IS NULL
               AND (
                     transaction_time IS NOT NULL
@@ -282,6 +311,7 @@ impl ApiResourceOperationDao {
             r#"
             SELECT * FROM api_resource_operation
             WHERE task_source = 1
+              AND operation_type IN (1, 2)
               AND result_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
             ORDER BY result_received_at ASC
@@ -308,6 +338,7 @@ impl ApiResourceOperationDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
               AND task_source = 1
+              AND operation_type IN (1, 2)
               AND task_ack_sent_at IS NOT NULL
               AND building_at IS NULL
               AND raw_tx IS NULL
@@ -402,6 +433,7 @@ impl ApiResourceOperationDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
               AND task_source = 1
+              AND operation_type IN (1, 2)
               AND raw_tx IS NOT NULL
               AND trim(raw_tx) <> ''
               AND tx_hash IS NOT NULL
@@ -434,6 +466,7 @@ impl ApiResourceOperationDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
               AND task_source = 1
+              AND operation_type IN (1, 2)
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
               AND last_broadcast_at IS NOT NULL
@@ -464,6 +497,7 @@ impl ApiResourceOperationDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
               AND task_source = 1
+              AND operation_type IN (1, 2)
               AND tx_exec_receipt_uploaded_at IS NULL
               AND (
                     transaction_time IS NOT NULL
