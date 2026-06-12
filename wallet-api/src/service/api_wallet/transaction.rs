@@ -2,7 +2,8 @@ use crate::{
     context::Context,
     domain::{
         api_wallet::{
-            adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain, trans::ApiTransDomain,
+            adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain,
+            trans::ApiTransDomain,
         },
         app::config::ConfigDomain,
         bill::BillDomain,
@@ -23,6 +24,7 @@ use wallet_chain_interact::{BillResourceConsume, types::ChainPrivateKey};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool,
     entities::{
+        api_resource_operation::ApiResourceOperationEntity,
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
         asset_token_key::AssetTokenKey,
@@ -31,7 +33,8 @@ use wallet_database::{
     pagination::Pagination,
     repositories::{
         api_wallet::{
-            account::ApiAccountRepo, coin::ApiCoinRepo, nonce::ApiNonceRepo, wallet::ApiWalletRepo,
+            account::ApiAccountRepo, coin::ApiCoinRepo, nonce::ApiNonceRepo,
+            resource_operation::ApiResourceOperationRepo, wallet::ApiWalletRepo,
             withdraw::ApiWithdrawRepo,
         },
         bill::BillRepo,
@@ -202,7 +205,20 @@ impl ApiTransService {
         let api_transaction_pool = self.ctx.api_transaction_pool()?;
         let core_pool = self.ctx.api_wallet_pool()?;
         let bill =
-            ApiWithdrawRepo::get_by_hash_and_owner(&api_transaction_pool, owner, &tx_hash).await?;
+            match ApiWithdrawRepo::get_by_hash_and_owner(&api_transaction_pool, owner, &tx_hash)
+                .await
+            {
+                Ok(bill) => bill,
+                Err(wallet_database::Error::NotFound(_)) => {
+                    return Self::resource_operation_bill_detail_by_hash(
+                        &api_transaction_pool,
+                        owner,
+                        &tx_hash,
+                    )
+                    .await;
+                }
+                Err(err) => return Err(err.into()),
+            };
 
         let main_coin = ApiCoinRepo::main_coin(&bill.chain_code, &core_pool).await?;
         let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
@@ -217,6 +233,30 @@ impl ApiTransService {
             bill: e,
             resource_consume,
             fee_symbol: main_coin.symbol.to_string(),
+            signature: None,
+            wallet_name: "".to_string(),
+            account_name: "".to_string(),
+        })
+    }
+
+    pub(crate) async fn resource_operation_bill_detail_by_hash(
+        api_transaction_pool: &ApiTransactionDbPool,
+        owner: &str,
+        tx_hash: &str,
+    ) -> Result<BillDetailVo, ServiceError> {
+        let operation =
+            ApiResourceOperationRepo::get_by_hash_and_owner(api_transaction_pool, tx_hash, owner)
+                .await?
+                .ok_or(wallet_database::Error::NotFound(format!(
+                    "api resource operation not found,tx_hash = {} ,owner = {}",
+                    tx_hash, owner,
+                )))?;
+        let resource_consume = Self::operation_resource_consume(&operation)?;
+        let bill = Self::convert_resource_operation_to_bill_entity(&operation);
+        Ok(BillDetailVo {
+            bill,
+            resource_consume,
+            fee_symbol: "TRX".to_string(),
             signature: None,
             wallet_name: "".to_string(),
             account_name: "".to_string(),
@@ -555,6 +595,73 @@ impl ApiTransService {
         if trade_type == ApiTradeType::SelfRecharge { 0 } else { 1 }
     }
 
+    fn operation_resource_consume(
+        operation: &ApiResourceOperationEntity,
+    ) -> Result<Option<BillResourceConsume>, ServiceError> {
+        let Some(raw_tx) = operation.raw_tx.as_deref().filter(|value| !value.is_empty()) else {
+            return Ok(None);
+        };
+        let raw_tx = wallet_utils::serde_func::serde_from_str::<RawTx>(raw_tx)?;
+        match raw_tx {
+            RawTx::Tron(_, resource_consume, _) => Ok(Some(resource_consume)),
+            _ => Ok(None),
+        }
+    }
+
+    fn convert_resource_operation_to_bill_entity(
+        operation: &ApiResourceOperationEntity,
+    ) -> BillEntity {
+        let transaction_time = operation
+            .transaction_time
+            .or(operation.last_broadcast_at)
+            .unwrap_or(operation.created_at);
+        let status = if operation.err_code.is_some() {
+            3
+        } else if operation.tx_status.as_deref() == Some("success")
+            || operation.result_status.as_deref() == Some("success")
+        {
+            2
+        } else {
+            1
+        };
+
+        let tx_kind = match operation.operation_type {
+            wallet_database::entities::api_resource_operation::ApiResourceOperationType::Vote => {
+                BillKind::Vote
+            }
+            wallet_database::entities::api_resource_operation::ApiResourceOperationType::WithdrawReward => {
+                BillKind::WithdrawReward
+            }
+            _ => BillKind::Transfer,
+        };
+
+        BillEntity {
+            id: operation.id as i32,
+            hash: operation.tx_hash.clone().unwrap_or_default(),
+            chain_code: operation.chain_code.clone(),
+            symbol: "TRX".to_string(),
+            transfer_type: 1,
+            tx_kind: tx_kind.to_i8(),
+            owner: operation.owner_address.clone(),
+            from_addr: operation.owner_address.clone(),
+            to_addr: operation.receiver_address.clone().unwrap_or_default(),
+            token: AssetTokenKey::Native,
+            value: operation.amount.clone(),
+            resource_consume: "".to_string(),
+            transaction_fee: operation.transaction_fee.clone().unwrap_or_default(),
+            transaction_time,
+            status,
+            is_multisig: 0,
+            block_height: "".to_string(),
+            queue_id: operation.resource_trade_no.clone(),
+            notes: "".to_string(),
+            signer: operation.owner_address.clone(),
+            extra: operation.result_payload.clone().unwrap_or_default(),
+            created_at: operation.created_at,
+            updated_at: operation.updated_at,
+        }
+    }
+
     fn should_query_chain_result(status: ApiWithdrawStatus) -> bool {
         matches!(
             status,
@@ -661,7 +768,15 @@ impl ApiTransService {
 mod transfer_token_tests {
     use super::ApiTransService;
     use crate::request::api_wallet::{trans::ApiBaseTransferReq, transfer::ApiTransferExReq};
-    use wallet_database::entities::asset_token_key::AssetTokenKey;
+    use wallet_database::entities::{
+        api_resource_operation::{
+            ApiResourceOperationEntity, ApiResourceOperationStatus, ApiResourceOperationTaskSource,
+            ApiResourceOperationType,
+        },
+        api_resource_type::ApiResourceType,
+        asset_token_key::AssetTokenKey,
+        bill::BillKind,
+    };
 
     fn make_transfer_ex_req(token_address: Option<&str>) -> ApiTransferExReq {
         ApiTransferExReq {
@@ -697,6 +812,111 @@ mod transfer_token_tests {
         let token = AssetTokenKey::from_raw(Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
         let base = ApiTransService::build_api_transfer_base(&params, &token, 6);
         assert_eq!(base.token_address, token);
+    }
+
+    #[test]
+    fn api_resource_vote_operation_maps_to_vote_bill_detail_entity() {
+        let now = chrono::Utc::now();
+        let operation = ApiResourceOperationEntity {
+            id: 7,
+            uid: "uid_1".to_string(),
+            task_source: ApiResourceOperationTaskSource::Client,
+            operation_type: ApiResourceOperationType::Vote,
+            resource_trade_no: "vote_trade_1".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "TWithdrawOwner".to_string(),
+            receiver_address: None,
+            resource_type: ApiResourceType::Bandwidth,
+            amount: "1010".to_string(),
+            status: ApiResourceOperationStatus::Pending,
+            task_ack_sent_at: None,
+            building_at: None,
+            raw_tx: None,
+            tx_hash: Some("vote_hash".to_string()),
+            transaction_fee: Some("0".to_string()),
+            last_broadcast_at: Some(now),
+            transaction_time: None,
+            tx_status: Some("success".to_string()),
+            tx_exec_receipt_uploaded_at: None,
+            result_status: Some("success".to_string()),
+            result_received_at: None,
+            result_ack_sent_at: None,
+            result_payload: None,
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            created_at: now,
+            updated_at: None,
+        };
+
+        let bill = ApiTransService::convert_resource_operation_to_bill_entity(&operation);
+
+        assert_eq!(bill.hash, "vote_hash");
+        assert_eq!(bill.owner, "TWithdrawOwner");
+        assert_eq!(bill.from_addr, "TWithdrawOwner");
+        assert_eq!(bill.tx_kind, BillKind::Vote.to_i8());
+        assert_eq!(bill.value, "1010");
+        assert_eq!(bill.status, 2);
+        assert_eq!(bill.queue_id, "vote_trade_1");
+    }
+
+    #[test]
+    fn api_resource_withdraw_reward_operation_maps_to_reward_bill_detail_entity() {
+        let now = chrono::Utc::now();
+        let operation = ApiResourceOperationEntity {
+            id: 8,
+            uid: "uid_1".to_string(),
+            task_source: ApiResourceOperationTaskSource::Client,
+            operation_type: ApiResourceOperationType::WithdrawReward,
+            resource_trade_no: "reward_trade_1".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "TWithdrawOwner".to_string(),
+            receiver_address: None,
+            resource_type: ApiResourceType::Bandwidth,
+            amount: "12.5".to_string(),
+            status: ApiResourceOperationStatus::Pending,
+            task_ack_sent_at: None,
+            building_at: None,
+            raw_tx: None,
+            tx_hash: Some("reward_hash".to_string()),
+            transaction_fee: Some("0".to_string()),
+            last_broadcast_at: Some(now),
+            transaction_time: None,
+            tx_status: Some("success".to_string()),
+            tx_exec_receipt_uploaded_at: None,
+            result_status: Some("success".to_string()),
+            result_received_at: None,
+            result_ack_sent_at: None,
+            result_payload: None,
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            created_at: now,
+            updated_at: None,
+        };
+
+        let bill = ApiTransService::convert_resource_operation_to_bill_entity(&operation);
+
+        assert_eq!(bill.hash, "reward_hash");
+        assert_eq!(bill.owner, "TWithdrawOwner");
+        assert_eq!(bill.tx_kind, BillKind::WithdrawReward.to_i8());
+        assert_eq!(bill.value, "12.5");
+        assert_eq!(bill.status, 2);
+        assert_eq!(bill.queue_id, "reward_trade_1");
     }
 }
 

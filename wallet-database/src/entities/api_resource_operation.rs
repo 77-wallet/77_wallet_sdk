@@ -46,6 +46,8 @@ impl ApiResourceOperationTaskSource {
 pub enum ApiResourceOperationType {
     Stake = 1,
     Unstake = 2,
+    Vote = 3,
+    WithdrawReward = 4,
 }
 
 impl ApiResourceOperationType {
@@ -53,6 +55,8 @@ impl ApiResourceOperationType {
         match self {
             Self::Stake => 1,
             Self::Unstake => 2,
+            Self::Vote => 3,
+            Self::WithdrawReward => 4,
         }
     }
 }
@@ -212,5 +216,37 @@ impl NewApiResourceOperation {
             resource_type,
             amount: amount.into(),
         }
+    }
+
+    pub fn client_vote(
+        uid: impl Into<String>,
+        resource_trade_no: impl Into<String>,
+        owner_address: impl Into<String>,
+        vote_count: impl Into<String>,
+    ) -> Self {
+        Self::client(
+            uid,
+            resource_trade_no,
+            owner_address,
+            ApiResourceType::Bandwidth,
+            vote_count,
+            ApiResourceOperationType::Vote,
+        )
+    }
+
+    pub fn client_withdraw_reward(
+        uid: impl Into<String>,
+        resource_trade_no: impl Into<String>,
+        owner_address: impl Into<String>,
+        reward_amount: impl Into<String>,
+    ) -> Self {
+        Self::client(
+            uid,
+            resource_trade_no,
+            owner_address,
+            ApiResourceType::Bandwidth,
+            reward_amount,
+            ApiResourceOperationType::WithdrawReward,
+        )
     }
 }

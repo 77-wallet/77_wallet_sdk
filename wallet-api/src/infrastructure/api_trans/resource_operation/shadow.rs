@@ -535,6 +535,11 @@ impl ResourceOperationWorker {
                     UnFreezeBalanceArgs::new(&operation.owner_address, resource, amount, None)?;
                 args.build_raw_transaction(chain.get_provider()).await?
             }
+            ApiResourceOperationType::Vote | ApiResourceOperationType::WithdrawReward => {
+                return Err(ServiceError::Parameter(
+                    "resource operation worker does not build client governance tasks".to_string(),
+                ));
+            }
         };
 
         self.sign_tron_resource_raw(operation, raw).await
@@ -555,6 +560,7 @@ impl ResourceOperationWorker {
                 Self::parse_trx_amount(&operation.amount)? * tron::consts::TRX_VALUE
             }
             ApiResourceOperationType::Unstake => 0,
+            ApiResourceOperationType::Vote | ApiResourceOperationType::WithdrawReward => 0,
         };
         let need_sun = consumer.transaction_fee_i64().saturating_add(stake_amount_sun);
         if balance.to::<i64>() < need_sun {
