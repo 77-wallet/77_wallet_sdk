@@ -32,14 +32,8 @@ use wallet_chain_interact::{
     },
 };
 use wallet_database::{
-    entities::{
-        api_account::ApiAccountEntity, api_resource_operation::NewApiResourceOperation,
-        api_wallet::ApiWalletType, bill::BillKind,
-    },
-    repositories::api_wallet::{
-        account::ApiAccountRepo, resource_operation::ApiResourceOperationRepo,
-        wallet::ApiWalletRepo,
-    },
+    entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType, bill::BillKind},
+    repositories::api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
 };
 
 pub(crate) struct ApiResourceDomain;
@@ -47,6 +41,7 @@ pub(crate) struct ApiResourceDomain;
 pub(crate) struct ApiResourceBroadcastOutcome {
     pub(crate) uid: Option<String>,
     pub(crate) resource_type: Option<ResourceType>,
+    pub(crate) amount: Option<String>,
     pub(crate) tx_hash: String,
     pub(crate) owner_address: String,
     pub(crate) raw_tx: String,
@@ -145,10 +140,10 @@ impl ApiResourceDomain {
     pub(crate) async fn withdraw_wallet_votes(
         ctx: &'static Context,
         req: VoteWitnessReq,
-    ) -> Result<String, ServiceError> {
+    ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
         let owner_ctx = Self::withdraw_wallet_account_context(ctx, &req.owner_address).await?;
         let args = VoteWitnessArgs::try_from(&req)?;
-        let outcome = Self::execute_tron_resource_operation(
+        let mut outcome = Self::execute_tron_resource_operation(
             req.owner_address.clone(),
             0,
             args,
@@ -156,28 +151,16 @@ impl ApiResourceDomain {
             ctx,
         )
         .await?;
-        let api_transaction_pool = ctx.api_transaction_pool()?;
-        let operation = NewApiResourceOperation::client_vote(
-            owner_ctx.uid,
-            uuid::Uuid::new_v4().to_string(),
-            outcome.owner_address.clone(),
-            req.get_votes().to_string(),
-        );
-        ApiResourceOperationRepo::record_client_broadcast_success(
-            &api_transaction_pool,
-            operation,
-            &outcome.tx_hash,
-            &outcome.raw_tx,
-            &outcome.transaction_fee,
-        )
-        .await?;
-        Ok(outcome.tx_hash)
+        outcome.uid = Some(owner_ctx.uid);
+        outcome.resource_type = Some(ResourceType::BANDWIDTH);
+        outcome.amount = Some(req.get_votes().to_string());
+        Ok(outcome)
     }
 
     pub(crate) async fn withdraw_wallet_claim_votes_rewards(
         ctx: &'static Context,
         req: WithdrawBalanceReq,
-    ) -> Result<String, ServiceError> {
+    ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
         let owner_ctx = Self::withdraw_wallet_account_context(ctx, &req.owner_address).await?;
         let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
         let value = chain.get_provider().get_reward(&req.owner_address).await?.to_sun();
@@ -186,7 +169,7 @@ impl ApiResourceDomain {
         }
         let mut args = WithdrawBalanceArgs::try_from(&req)?;
         args.value = Some(value);
-        let outcome = Self::execute_tron_resource_operation(
+        let mut outcome = Self::execute_tron_resource_operation(
             req.owner_address.clone(),
             0,
             args,
@@ -194,22 +177,10 @@ impl ApiResourceDomain {
             ctx,
         )
         .await?;
-        let api_transaction_pool = ctx.api_transaction_pool()?;
-        let operation = NewApiResourceOperation::client_withdraw_reward(
-            owner_ctx.uid,
-            uuid::Uuid::new_v4().to_string(),
-            outcome.owner_address.clone(),
-            value.to_string(),
-        );
-        ApiResourceOperationRepo::record_client_broadcast_success(
-            &api_transaction_pool,
-            operation,
-            &outcome.tx_hash,
-            &outcome.raw_tx,
-            &outcome.transaction_fee,
-        )
-        .await?;
-        Ok(outcome.tx_hash)
+        outcome.uid = Some(owner_ctx.uid);
+        outcome.resource_type = Some(ResourceType::BANDWIDTH);
+        outcome.amount = Some(value.to_string());
+        Ok(outcome)
     }
 
     pub(crate) async fn withdraw_wallet_account_context(
@@ -333,6 +304,7 @@ impl ApiResourceDomain {
         Ok(ApiResourceBroadcastOutcome {
             uid: None,
             resource_type: None,
+            amount: None,
             tx_hash,
             owner_address,
             raw_tx: raw_tx_str,
