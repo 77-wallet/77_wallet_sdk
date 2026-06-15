@@ -210,7 +210,7 @@ impl ApiTransService {
                 .await
             {
                 Ok(bill) => bill,
-                Err(wallet_database::Error::NotFound(_)) => {
+                Err(err) if Self::is_bill_detail_primary_lookup_not_found(&err) => {
                     return Self::resource_operation_bill_detail_by_hash(
                         &api_transaction_pool,
                         owner,
@@ -262,6 +262,16 @@ impl ApiTransService {
             wallet_name: "".to_string(),
             account_name: "".to_string(),
         })
+    }
+
+    fn is_bill_detail_primary_lookup_not_found(err: &wallet_database::Error) -> bool {
+        matches!(err, wallet_database::Error::NotFound(_))
+            || matches!(
+                err,
+                wallet_database::Error::Database(wallet_database::DatabaseError::Sqlx(
+                    sqlx::Error::RowNotFound
+                ))
+            )
     }
 
     pub async fn list_by_hashs(
@@ -816,6 +826,21 @@ mod transfer_token_tests {
         let token = AssetTokenKey::from_raw(Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
         let base = ApiTransService::build_api_transfer_base(&params, &token, 6);
         assert_eq!(base.token_address, token);
+    }
+
+    #[test]
+    fn api_bill_detail_primary_lookup_falls_back_on_row_not_found() {
+        let row_not_found = wallet_database::Error::Database(wallet_database::DatabaseError::Sqlx(
+            sqlx::Error::RowNotFound,
+        ));
+        let repo_not_found = wallet_database::Error::NotFound("missing bill".to_string());
+        let real_db_error = wallet_database::Error::Database(wallet_database::DatabaseError::Sqlx(
+            sqlx::Error::Protocol("connection closed".to_string()),
+        ));
+
+        assert!(ApiTransService::is_bill_detail_primary_lookup_not_found(&row_not_found));
+        assert!(ApiTransService::is_bill_detail_primary_lookup_not_found(&repo_not_found));
+        assert!(!ApiTransService::is_bill_detail_primary_lookup_not_found(&real_db_error));
     }
 
     #[test]
