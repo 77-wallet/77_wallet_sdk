@@ -100,11 +100,11 @@ impl ApiResourceOperationDao {
             INSERT INTO api_resource_operation
                 (uid, task_source, operation_type, resource_trade_no, chain_code,
                  owner_address, receiver_address, resource_type, amount, raw_tx,
-                 tx_hash, transaction_fee, last_broadcast_at, tx_status, result_status,
+                 tx_hash, transaction_fee, last_broadcast_at,
                  created_at, updated_at)
             VALUES
                 (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'success', 'success',
+                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT(resource_trade_no) DO UPDATE SET
@@ -120,8 +120,6 @@ impl ApiResourceOperationDao {
                 tx_hash = COALESCE(api_resource_operation.tx_hash, excluded.tx_hash),
                 transaction_fee = COALESCE(api_resource_operation.transaction_fee, excluded.transaction_fee),
                 last_broadcast_at = COALESCE(api_resource_operation.last_broadcast_at, excluded.last_broadcast_at),
-                tx_status = COALESCE(api_resource_operation.tx_status, excluded.tx_status),
-                result_status = COALESCE(api_resource_operation.result_status, excluded.result_status),
                 updated_at = excluded.updated_at
         "#;
 

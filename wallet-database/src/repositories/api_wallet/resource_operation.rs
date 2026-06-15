@@ -271,6 +271,9 @@ mod tests {
         assert_eq!(got.operation_type, ApiResourceOperationType::Vote);
         assert_eq!(got.tx_hash.as_deref(), Some("vote_hash"));
         assert_eq!(got.raw_tx.as_deref(), Some("raw_vote_tx"));
+        assert!(got.last_broadcast_at.is_some());
+        assert!(got.tx_status.is_none());
+        assert!(got.result_status.is_none());
         assert_eq!(got.amount, "1010");
 
         let missing =
@@ -308,6 +311,9 @@ mod tests {
         assert_eq!(got.task_source, ApiResourceOperationTaskSource::Client);
         assert_eq!(got.operation_type, ApiResourceOperationType::WithdrawReward);
         assert_eq!(got.tx_hash.as_deref(), Some("reward_hash"));
+        assert!(got.last_broadcast_at.is_some());
+        assert!(got.tx_status.is_none());
+        assert!(got.result_status.is_none());
         assert_eq!(got.amount, "12.5");
     }
 

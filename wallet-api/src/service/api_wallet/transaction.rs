@@ -916,6 +916,69 @@ mod transfer_token_tests {
     }
 
     #[test]
+    fn api_resource_stake_operation_stays_confirming_after_broadcast_only() {
+        let now = chrono::Utc::now();
+        let mut operation = test_resource_operation(
+            ApiResourceOperationType::Stake,
+            ApiResourceType::Energy,
+            "stake_hash",
+            "stake_trade_1",
+            "100",
+            now,
+        );
+        operation.tx_status = None;
+        operation.result_status = None;
+
+        let bill = ApiTransService::convert_resource_operation_to_bill_entity(&operation);
+
+        assert_eq!(bill.tx_kind, BillKind::FreezeEnergy.to_i8());
+        assert_eq!(bill.hash, "stake_hash");
+        assert_eq!(bill.status, 1);
+    }
+
+    #[test]
+    fn api_resource_unstake_operation_stays_confirming_after_broadcast_only() {
+        let now = chrono::Utc::now();
+        let mut operation = test_resource_operation(
+            ApiResourceOperationType::Unstake,
+            ApiResourceType::Bandwidth,
+            "unstake_hash",
+            "unstake_trade_1",
+            "50",
+            now,
+        );
+        operation.tx_status = None;
+        operation.result_status = None;
+
+        let bill = ApiTransService::convert_resource_operation_to_bill_entity(&operation);
+
+        assert_eq!(bill.tx_kind, BillKind::UnFreezeBandwidth.to_i8());
+        assert_eq!(bill.hash, "unstake_hash");
+        assert_eq!(bill.status, 1);
+    }
+
+    #[test]
+    fn api_resource_vote_operation_stays_confirming_after_broadcast_only() {
+        let now = chrono::Utc::now();
+        let mut operation = test_resource_operation(
+            ApiResourceOperationType::Vote,
+            ApiResourceType::Bandwidth,
+            "vote_hash",
+            "vote_trade_1",
+            "1010",
+            now,
+        );
+        operation.tx_status = None;
+        operation.result_status = None;
+
+        let bill = ApiTransService::convert_resource_operation_to_bill_entity(&operation);
+
+        assert_eq!(bill.tx_kind, BillKind::Vote.to_i8());
+        assert_eq!(bill.hash, "vote_hash");
+        assert_eq!(bill.status, 1);
+    }
+
+    #[test]
     fn api_resource_unstake_operation_maps_to_unfreeze_bill_detail_entity() {
         let now = chrono::Utc::now();
         let operation = test_resource_operation(
