@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -7,15 +8,17 @@ use std::{
 };
 
 use chrono::Utc;
-use tempfile::TempDir;
-use wallet_api::infrastructure::api_trans::ShadowCollectCommand;
+use wallet_api::{Context, infrastructure::api_trans::ShadowCollectCommand};
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool, SqliteContext,
+    ApiTransactionDbPool, SqliteContext,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
 
-use crate::harness::{AssertRole, CountRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole};
+use crate::harness::{
+    AssertRole, CountRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, ensure_env,
+    open_api_wallet_pool,
+};
 
 use super::{
     adapters::{
@@ -26,35 +29,32 @@ use super::{
 };
 
 pub(crate) struct ShadowCollectRecoveryScenario {
-    _dir: TempDir,
-    collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static Context,
+    db_dir: PathBuf,
     query_count: RefCell<Option<Arc<AtomicUsize>>>,
     adapter_guard: RefCell<Option<TronRecoverProbeGuard>>,
 }
 
 impl ShadowCollectRecoveryScenario {
     pub(crate) async fn new() -> Self {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let tx_ctx =
-            SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_transaction.db"))
-                .await
-                .expect("init api_transaction.db");
-        let collect_pool = tx_ctx.into_transaction_db_pool().expect("transaction pool");
-        let wallet_ctx =
-            SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_wallet.db"))
-                .await
-                .expect("init api_wallet.db");
-        let core_pool = ApiWalletDbPool::new(wallet_ctx.get_pool().expect("api wallet pool"));
+        let env = ensure_env().await;
+        let ctx = env.manager.ctx();
+        let core_pool = open_api_wallet_pool(&env.db_dir).await;
         ensure_sol_main_coin(&core_pool).await;
 
         Self {
-            _dir: dir,
-            collect_pool,
-            core_pool,
+            ctx,
+            db_dir: env.db_dir.clone(),
             query_count: RefCell::new(None),
             adapter_guard: RefCell::new(None),
         }
+    }
+
+    async fn collect_pool(&self) -> ApiTransactionDbPool {
+        let tx_ctx = SqliteContext::new(&self.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        tx_ctx.into_transaction_db_pool().expect("transaction pool")
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -134,13 +134,18 @@ impl CollectRecoverySeed for SeedRole<'_, ShadowCollectRecoveryScenario> {
 
     fn chain_query_clears_hash_then_confirms(&self, fixture: &CollectRecoveryFixture) {
         let clear_trade_no = fixture.trade_no.clone();
-        let clear_pool = self.scenario().collect_pool.clone();
+        let db_dir = self.scenario().db_dir.clone();
         let query_hook: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            let pool = clear_pool.clone();
+            let db_dir = db_dir.clone();
             let trade_no = clear_trade_no.clone();
             std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().expect("create helper runtime");
                 rt.block_on(async move {
+                    let tx_ctx =
+                        SqliteContext::new(&db_dir.to_string_lossy(), Some("api_transaction.db"))
+                            .await
+                            .expect("open api_transaction.db");
+                    let pool = tx_ctx.into_transaction_db_pool().expect("transaction pool");
                     let _ = sqlx::query(
                         r#"
                         UPDATE api_collect
@@ -172,7 +177,8 @@ impl CollectRecoverySeed for SeedRole<'_, ShadowCollectRecoveryScenario> {
     }
 
     async fn expired_raw_tx_collect(&self, fixture: &CollectRecoveryFixture) {
-        seed_tron_collect(&self.scenario().collect_pool, fixture).await;
+        let collect_pool = self.scenario().collect_pool().await;
+        seed_tron_collect(&collect_pool, fixture).await;
 
         let expired_raw_tx = expired_tron_raw_tx_json(Utc::now().timestamp_millis() - 60_000);
         sqlx::query(
@@ -194,13 +200,14 @@ impl CollectRecoverySeed for SeedRole<'_, ShadowCollectRecoveryScenario> {
         .bind(&expired_raw_tx)
         .bind(&fixture.tx_hash)
         .bind(ApiCollectStatus::SendingTx)
-        .execute(self.scenario().collect_pool.as_ref())
+        .execute(collect_pool.as_ref())
         .await
         .expect("seed expired raw tx facts");
     }
 
     async fn recoverable_collect_with_tx_hash(&self, fixture: &CollectRecoveryFixture) {
-        seed_tron_collect(&self.scenario().collect_pool, fixture).await;
+        let collect_pool = self.scenario().collect_pool().await;
+        seed_tron_collect(&collect_pool, fixture).await;
 
         sqlx::query(
             r#"
@@ -219,7 +226,7 @@ impl CollectRecoverySeed for SeedRole<'_, ShadowCollectRecoveryScenario> {
         )
         .bind(&fixture.tx_hash)
         .bind(&fixture.trade_no)
-        .execute(self.scenario().collect_pool.as_ref())
+        .execute(collect_pool.as_ref())
         .await
         .expect("seed recoverable collect row");
     }
@@ -233,10 +240,7 @@ pub(crate) trait CollectRecoveryWhen {
 #[async_trait::async_trait(?Send)]
 impl CollectRecoveryWhen for WhenRole<'_, ShadowCollectRecoveryScenario> {
     async fn recover_runs(&self, fixture: &CollectRecoveryFixture) {
-        let worker = build_shadow_collect_worker_from_pools(
-            self.scenario().collect_pool.clone(),
-            self.scenario().core_pool.clone(),
-        );
+        let worker = build_shadow_collect_worker_from_pools(self.scenario().ctx);
         worker
             .handle(ShadowCollectCommand::Recover(fixture.trade_no.clone()))
             .await
@@ -293,13 +297,15 @@ trait CollectRecoveryLoad {
 #[async_trait::async_trait(?Send)]
 impl CollectRecoveryLoad for LoadRole<'_, ShadowCollectRecoveryScenario> {
     async fn collect(&self, trade_no: &str) -> ApiCollectEntity {
-        ApiCollectRepo::get_api_collect_by_trade_no(&self.scenario().collect_pool, trade_no)
+        let collect_pool = self.scenario().collect_pool().await;
+        ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
             .await
             .expect("reload collect after recover")
     }
 
     async fn has_receipt_upload_candidate(&self, trade_no: &str) -> bool {
-        ApiCollectRepo::scan_need_tx_exec_receipt_upload(&self.scenario().collect_pool, 10_000)
+        let collect_pool = self.scenario().collect_pool().await;
+        ApiCollectRepo::scan_need_tx_exec_receipt_upload(&collect_pool, 10_000)
             .await
             .expect("scan need tx exec receipt upload")
             .iter()

@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::multisig::MultisigDomain,
     messaging::notify::{
         FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend,
@@ -50,12 +51,13 @@ impl OrderMultiSignCreated {
 }
 
 impl OrderMultiSignCreated {
-    pub(crate) async fn exec(
+    pub(crate) async fn exec_with_ctx(
         &self,
         _msg_id: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = ctx.get_global_sqlite_pool()?;
         tracing::info!(
             event_name = %event_name,
             ?self,
@@ -74,7 +76,8 @@ impl OrderMultiSignCreated {
 
         let core_pool = CoreDbPool::new(pool.clone());
         if MultisigAccountRepo::find_by_id(&core_pool, multisig_account_id).await?.is_none() {
-            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
+            MultisigDomain::recover_multisig_account_by_id_with_ctx(ctx, multisig_account_id)
+                .await?;
         }
 
         // update multisig account data
@@ -99,23 +102,11 @@ impl OrderMultiSignCreated {
         if let Some(account) = account {
             // 初始化资产
             crate::domain::assets::AssetsDomain::init_default_multisig_assets(
+                ctx,
                 multisig_account_address.clone(),
                 account.chain_code.clone(),
             )
             .await?;
-            // let notification = Notification::new_multisig_notification(
-            //     &account.name,
-            //     multisig_account_address,
-            //     multisig_account_id,
-            //     NotificationType::DeployCompletion,
-            // );
-
-            // let repo = RepositoryFactory::repo(pool.clone());
-            // let system_notification_service = SystemNotificationService::new(repo);
-
-            // system_notification_service
-            //     .add_system_notification(msg_id, notification, 0)
-            //     .await?;
         }
 
         let data = NotifyEvent::OrderMultiSignCreated(OrderMultiSignCreatedFrontend {
@@ -123,9 +114,17 @@ impl OrderMultiSignCreated {
             multisig_account_address: multisig_account_address.to_string(),
             address_type: address_type.to_string(),
         });
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
+    }
+
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
     }
 }
 
@@ -137,9 +136,9 @@ mod test {
     async fn update_multisig_address() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
+        let (manager, _) = get_manager().await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = manager.ctx.get_global_sqlite_pool()?;
         // 准备测试数据
         // let multisig_account_id = uuid::Uuid::new_v4(); // 生成一个新的 UUID 作为测试用的账户 ID
         let multisig_account_id = "216422221999116288";

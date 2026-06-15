@@ -1,5 +1,6 @@
 use crate::{
-    domain::node::NodeDomain, infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer,
+    context::Context, domain::node::NodeDomain,
+    infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer,
 };
 
 // biz_type = RPC_ADDRESS_CHANGE
@@ -28,8 +29,11 @@ pub struct RpcAddressInfoBody {
 }
 
 impl RpcChange {
-    pub(crate) async fn exec(&self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.core_pool()?;
+    pub(crate) async fn exec(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         // let list = crate::default_data::node::get_default_node_list()?;
 
         let RpcChange(body) = &self;
@@ -60,10 +64,10 @@ impl RpcChange {
         NodeDomain::upsert_chain_rpc(&pool, chain_infos).await?;
 
         // 可选：触发 ensurer，保证链可用
-        let api_pool = crate::get_context()?.api_wallet_pool()?;
+        let api_pool = ctx.api_wallet_pool()?;
         let ensurer = ChainNodeEnsurer::new(pool, api_pool);
         ensurer.ensure_all().await?;
-        crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
+        crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx).await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;

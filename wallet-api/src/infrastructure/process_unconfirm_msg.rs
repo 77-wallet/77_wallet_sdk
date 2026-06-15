@@ -1,5 +1,5 @@
 use crate::{
-    context::CONTEXT, domain::app::mqtt::MqttDomain, error::service::ServiceError,
+    domain::app::mqtt::MqttDomain, error::service::ServiceError,
     messaging::notify::FrontendNotifyEvent,
 };
 use std::sync::Arc;
@@ -17,11 +17,15 @@ pub struct UnconfirmedMsgProcessorHandle {
 }
 
 impl UnconfirmedMsgProcessorHandle {
-    pub async fn new(client_id: &str, notify: Arc<tokio::sync::Notify>) -> Self {
+    pub async fn new(
+        ctx: &'static crate::context::Context,
+        client_id: &str,
+        notify: Arc<tokio::sync::Notify>,
+    ) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
         let shutdown_rx1 = shutdown_tx.subscribe();
         // 发交易
-        let mut processor = UnconfirmedMsgProcessor::new(shutdown_rx1, client_id, notify);
+        let mut processor = UnconfirmedMsgProcessor::new(ctx, shutdown_rx1, client_id, notify);
         let tx_handle = tokio::spawn(async move { processor.start().await });
         Self { shutdown_tx, handle: Mutex::new(Some(tx_handle)) }
     }
@@ -44,8 +48,8 @@ impl UnconfirmedMsgProcessorHandle {
     }
 }
 
-#[derive(Debug)]
 struct UnconfirmedMsgProcessor {
+    ctx: &'static crate::context::Context,
     shutdown_rx: broadcast::Receiver<()>,
     client_id: String,
     notify: Arc<tokio::sync::Notify>,
@@ -53,15 +57,19 @@ struct UnconfirmedMsgProcessor {
 
 impl UnconfirmedMsgProcessor {
     pub fn new(
+        ctx: &'static crate::context::Context,
         shutdown_rx: broadcast::Receiver<()>,
         client_id: &str,
         notify: Arc<tokio::sync::Notify>,
     ) -> Self {
-        Self { shutdown_rx, client_id: client_id.into(), notify }
+        Self { ctx, shutdown_rx, client_id: client_id.into(), notify }
     }
 
-    async fn handle_once(&self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+    async fn handle_once(
+        &self,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.task_pool()?;
 
         // 判断数据库中是否存在大量的未处理消息,如果有则跳过
         if TaskQueueRepo::failed_task_queue(&pool).await?.len() < 500 {
@@ -71,13 +79,14 @@ impl UnconfirmedMsgProcessor {
             return Ok(());
         }
 
-        MqttDomain::process_unconfirm_msg(&self.client_id).await
+        MqttDomain::process_unconfirm_msg(ctx, &self.client_id).await
     }
 
-    async fn handle_and_report(&self) {
-        if let Err(e) = self.handle_once().await {
+    async fn handle_and_report(&self, ctx: &'static crate::context::Context) {
+        if let Err(e) = self.handle_once(ctx).await {
             tracing::error!("处理未确认消息失败: {}", e);
-            if let Err(send_err) = FrontendNotifyEvent::send_error(
+            if let Err(send_err) = FrontendNotifyEvent::send_error_with_ctx(
+                self.ctx,
                 "InitializationTask::ProcessUnconfirmMsg",
                 e.to_string(),
             )
@@ -88,8 +97,7 @@ impl UnconfirmedMsgProcessor {
         }
     }
 
-    async fn api_wallet_msg_resend(&self) {
-        let ctx = CONTEXT.get().unwrap();
+    async fn api_wallet_msg_resend(&self, ctx: &'static crate::context::Context) {
         let backend = ctx.get_global_backend_api();
         let res = backend
             .msg_ack_expired_resend(MsgAckExpiredResendReq {
@@ -107,16 +115,16 @@ impl UnconfirmedMsgProcessor {
     /// Runs once at startup, then repeats either when notified
     /// or every 30 seconds on a timer.
     pub async fn start(&mut self) -> Result<(), ServiceError> {
-        let ctx = CONTEXT.get().unwrap();
+        let ctx = self.ctx;
         let notify = self.notify.clone();
         let mut interval_30sec = tokio::time::interval(std::time::Duration::from_secs(30));
         let mut interval_10min = tokio::time::interval(std::time::Duration::from_secs(60 * 3));
 
         // 启动的时候执行一次
-        self.handle_and_report().await;
+        self.handle_and_report(ctx).await;
         let r = ctx.is_init_api_swap().await;
         if r {
-            self.api_wallet_msg_resend().await;
+            self.api_wallet_msg_resend(ctx).await;
         }
         loop {
             tokio::select! {
@@ -127,17 +135,17 @@ impl UnconfirmedMsgProcessor {
                  _ = notify.notified() => {
                      tracing::debug!("收到通知，开始处理");
                     // 定时执行
-                    self.handle_and_report().await;
+                    self.handle_and_report(ctx).await;
                  }
                  _ = interval_30sec.tick() => {
                      tracing::debug!("30秒超时,开始自动处理");
                     // 定时执行
-                    self.handle_and_report().await;
+                    self.handle_and_report(ctx).await;
                  }
                 _ = interval_10min.tick() => {
                     let r = ctx.is_init_api_swap().await;
                     if r {
-                        self.api_wallet_msg_resend().await;
+                    self.api_wallet_msg_resend(ctx).await;
                     }
                 }
             }

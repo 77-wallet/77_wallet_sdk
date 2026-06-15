@@ -6,11 +6,11 @@ impl WalletManager {
         &self,
         input: Vec<wallet_database::entities::announcement::CreateAnnouncementVo>,
     ) -> ReturnType<()> {
-        AnnouncementService::new().add(input).await
+        AnnouncementService::new(self.ctx).add(input).await
     }
 
     pub async fn pull_announcement(&self) -> ReturnType<()> {
-        AnnouncementService::new().pull_announcement().await
+        AnnouncementService::new(self.ctx).pull_announcement().await
     }
 
     pub async fn get_announcement_list(
@@ -18,15 +18,15 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<AnnouncementEntity>> {
-        AnnouncementService::new().get_announcement_list(page, page_size).await
+        AnnouncementService::new(self.ctx).get_announcement_list(page, page_size).await
     }
 
     pub async fn get_announcement_by_id(&self, id: &str) -> ReturnType<Option<AnnouncementEntity>> {
-        AnnouncementService::new().get_announcement_by_id(id).await
+        AnnouncementService::new(self.ctx).get_announcement_by_id(id).await
     }
 
     pub async fn read_announcement(&self, id: Option<&str>) -> ReturnType<()> {
-        AnnouncementService::new().read(id).await
+        AnnouncementService::new(self.ctx).read(id).await
     }
 }
 

@@ -101,15 +101,16 @@ impl ApiCoinService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
         let net = crate::domain::api_wallet::chain::ApiChainDomain::network_kind_by_chain_code(
-            chain_code,
+            chain_code, self.ctx,
         )
         .await?;
 
         ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let _ = ChainDomain::get_node(chain_code).await?;
+        let _ = ChainDomain::get_node_with_ctx(self.ctx, chain_code).await?;
 
-        let chain_instance = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let chain_instance =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, chain_code).await?;
 
         let coin = ApiCoinRepo::coin_by_chain_token_key_opt(
             chain_code,
@@ -172,9 +173,13 @@ impl ApiCoinService {
             (decimals, symbol, name)
         };
 
-        let mut account_addresses =
-            ApiAccountDomain::get_addresses(address, account_id, vec![chain_code.to_string()])
-                .await?;
+        let mut account_addresses = ApiAccountDomain::get_addresses_with_ctx(
+            self.ctx,
+            address,
+            account_id,
+            vec![chain_code.to_string()],
+        )
+        .await?;
 
         tracing::debug!("[customize_coin] account_addresses: {:?}", account_addresses);
         let account_addresses =
@@ -228,7 +233,7 @@ impl ApiCoinService {
         Tasks::new()
             .push(BackendApiTask::BackendApi(token_custom_init_task_data))
             .push(task)
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
         Ok(())
     }

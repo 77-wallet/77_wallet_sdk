@@ -29,13 +29,18 @@ use wallet_database::{
 };
 use wallet_transport_backend::{
     request::{
-        KeysInitReq,
-        api_wallet::wallet::{
-            AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+        DeviceDeleteReq, KeysInitReq,
+        api_wallet::{
+            address::ExpandAddressCompleteReq,
+            swap::{ApiInitSwapReq, ApiInitSwapResponse},
+            wallet::{
+                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            },
         },
     },
     response_vo::api_wallet::wallet::{
-        AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, UidStatus,
+        ActiveStatus, AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes,
+        QueryWalletActivationInfoResp, QueryWalletActivationInfoRespItem, UidStatus,
     },
 };
 
@@ -119,6 +124,37 @@ pub struct AppIdUidUsageCall {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpandAddressCompleteCall {
+    pub uid: String,
+    pub batch_id: String,
+    pub serial_no: String,
+    pub status: bool,
+    pub remark: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppIdWithdrawalWalletChangeCall {
+    pub withdrawal_uid: String,
+    pub org_app_id: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitSwapCall {
+    pub sn: String,
+    pub client_pub_key: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceDeleteCall {
+    pub sn: String,
+    pub uid_list: Vec<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeysInitCall {
     pub uid: String,
     pub sn: String,
@@ -136,7 +172,12 @@ pub enum ApiWalletBackendCall {
     AppIdImportRechargeWallet(AppIdImportRechargeWalletCall),
     KeysUidCheck { uid: String },
     QueryUidBindInfo { uid: String },
+    QueryWalletActivationInfo { uid: String },
     AppIdUidUsage(AppIdUidUsageCall),
+    ExpandAddressComplete(ExpandAddressCompleteCall),
+    AppIdWithdrawalWalletChange(AppIdWithdrawalWalletChangeCall),
+    InitSwap(InitSwapCall),
+    DeviceDelete(DeviceDeleteCall),
     InitApiWallet(AppIdImportCall),
     OldKeysInit(KeysInitCall),
 }
@@ -178,10 +219,30 @@ struct AppIdUidUsageReqView {
 }
 
 #[allow(dead_code)]
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExpandAddressCompleteReqView {
+    uid: String,
+    batch_id: String,
+    serial_no: String,
+    status: bool,
+    remark: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiInitSwapReqView {
+    sn: String,
+    client_pub_key: String,
+}
+
+#[allow(dead_code)]
 #[derive(Default)]
 struct FakeState {
     keys_uid_status_queue: VecDeque<UidStatus>,
     query_uid_bind_info_queue: VecDeque<QueryUidBindInfoRes>,
+    query_wallet_activation_info_queue: VecDeque<Vec<(String, ActiveStatus)>>,
     appid_uid_usage_used_queue: VecDeque<bool>,
     wallet_bind_appid_error: Option<String>,
     init_api_wallet_error: Option<String>,
@@ -190,6 +251,7 @@ struct FakeState {
     appid_import_delay: Option<Duration>,
     appid_import_recharge_wallet_error: Option<String>,
     query_uid_bind_info_error: Option<String>,
+    query_wallet_activation_info_error: Option<String>,
     calls: Vec<ApiWalletBackendCall>,
 }
 
@@ -232,6 +294,13 @@ impl FakeApiWalletBackend {
         state.appid_uid_usage_used_queue.push_back(used);
     }
 
+    pub fn enqueue_wallet_activation_info(&self, items: Vec<(&str, ActiveStatus)>) {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.query_wallet_activation_info_queue.push_back(
+            items.into_iter().map(|(chain, active)| (chain.to_string(), active)).collect(),
+        );
+    }
+
     pub fn set_wallet_bind_appid_error(&self, msg: Option<&str>) {
         let mut state = self.state.lock().expect("fake backend lock poisoned");
         state.wallet_bind_appid_error = msg.map(ToString::to_string);
@@ -250,6 +319,11 @@ impl FakeApiWalletBackend {
     pub fn set_query_uid_bind_info_error(&self, msg: Option<&str>) {
         let mut state = self.state.lock().expect("fake backend lock poisoned");
         state.query_uid_bind_info_error = msg.map(ToString::to_string);
+    }
+
+    pub fn set_query_wallet_activation_info_error(&self, msg: Option<&str>) {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.query_wallet_activation_info_error = msg.map(ToString::to_string);
     }
 
     pub fn with_calls<R>(&self, f: impl FnOnce(&[ApiWalletBackendCall]) -> R) -> R {
@@ -395,6 +469,26 @@ impl ApiWalletBackend for FakeApiWalletBackend {
         Ok(res)
     }
 
+    async fn query_wallet_activation_info(
+        &self,
+        uid: &str,
+    ) -> Result<QueryWalletActivationInfoResp, wallet_api::error::service::ServiceError> {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::QueryWalletActivationInfo { uid: uid.to_string() });
+        if let Some(msg) = state.query_wallet_activation_info_error.clone() {
+            return Err(Self::service_error(&msg));
+        }
+        let items = state.query_wallet_activation_info_queue.pop_front().unwrap_or_else(|| {
+            panic!("query_wallet_activation_info response not configured for uid={uid}")
+        });
+        Ok(QueryWalletActivationInfoResp(
+            items
+                .into_iter()
+                .map(|(chain, active)| QueryWalletActivationInfoRespItem { chain, active })
+                .collect(),
+        ))
+    }
+
     async fn appid_uid_usage(
         &self,
         req: AppIdUidUsageReq,
@@ -414,6 +508,67 @@ impl ApiWalletBackend for FakeApiWalletBackend {
             .pop_front()
             .unwrap_or_else(|| panic!("appid_uid_usage response not configured"));
         Ok(AppIdUidUsageRes { used })
+    }
+
+    async fn expand_address_complete(
+        &self,
+        req: ExpandAddressCompleteReq,
+    ) -> Result<(), wallet_api::error::service::ServiceError> {
+        let view: ExpandAddressCompleteReqView = serde_json::from_value(
+            serde_json::to_value(req).expect("serialize expand address complete req"),
+        )
+        .expect("deserialize expand address complete req");
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::ExpandAddressComplete(ExpandAddressCompleteCall {
+            uid: view.uid,
+            batch_id: view.batch_id,
+            serial_no: view.serial_no,
+            status: view.status,
+            remark: view.remark,
+        }));
+        Ok(())
+    }
+
+    async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), wallet_api::error::service::ServiceError> {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::AppIdWithdrawalWalletChange(
+            AppIdWithdrawalWalletChangeCall {
+                withdrawal_uid: withdrawal_uid.to_string(),
+                org_app_id: org_app_id.to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    async fn init_swap(
+        &self,
+        req: &ApiInitSwapReq,
+    ) -> Result<ApiInitSwapResponse, wallet_api::error::service::ServiceError> {
+        let view: ApiInitSwapReqView =
+            serde_json::from_value(serde_json::to_value(req).expect("serialize init swap req"))
+                .expect("deserialize init swap req");
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::InitSwap(InitSwapCall {
+            sn: view.sn,
+            client_pub_key: view.client_pub_key,
+        }));
+        Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+    }
+
+    async fn device_delete(
+        &self,
+        req: &DeviceDeleteReq,
+    ) -> Result<Option<()>, wallet_api::error::service::ServiceError> {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.calls.push(ApiWalletBackendCall::DeviceDelete(DeviceDeleteCall {
+            sn: req.sn.clone(),
+            uid_list: req.uid_list.clone(),
+        }));
+        Ok(Some(()))
     }
 }
 

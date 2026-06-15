@@ -2,7 +2,10 @@
 // process_withdraw_tx_report.rs
 #![allow(deprecated)]
 
-use crate::infrastructure::api_trans::withdraw::command::ProcessWithdrawTxReportCommand;
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::withdraw::command::ProcessWithdrawTxReportCommand,
+};
 use chrono::TimeDelta;
 use dashmap::DashMap;
 use serde_json::json;
@@ -85,7 +88,7 @@ impl AddressLockManager {
 /// 只要 address lock + global semaphore
 #[derive(Clone)]
 struct WithdrawTxWorkerCtx {
-    pool: ApiTransactionDbPool,
+    ctx: &'static crate::context::Context,
     address_locks: AddressLockManager,
     global_sem: Arc<Semaphore>,
 }
@@ -107,12 +110,12 @@ pub(super) struct ProcessWithdrawTxReport {
 
 impl ProcessWithdrawTxReport {
     pub(super) fn new(
-        pool: ApiTransactionDbPool,
+        ctx: &'static crate::context::Context,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxReportCommand>,
     ) -> Self {
         let worker_ctx = WithdrawTxWorkerCtx {
-            pool: pool.clone(),
+            ctx,
             address_locks: AddressLockManager::new(),
             global_sem: Arc::new(Semaphore::new(64)),
         };
@@ -162,8 +165,15 @@ impl ProcessWithdrawTxReport {
         let trade_no = trade_no.to_string();
         tracing::info!(trade_no=%trade_no, "[提币交易报告] 开始处理单个提币交易报告");
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "[提币交易报告] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let req = match ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
-                &ctx.pool,
+                &pool,
                 &trade_no,
                 &[ApiWithdrawStatus::SendingTx, ApiWithdrawStatus::SendingTxFailed],
             )
@@ -186,7 +196,9 @@ impl ProcessWithdrawTxReport {
             let _global_permit = ctx.global_sem.acquire().await.unwrap();
 
             // 直接调用时不检查重试时间
-            Self::process_single_tx_report(ctx.pool, req, false).await
+            if let Err(err) = Self::process_single_tx_report(req, false, ctx.ctx).await {
+                tracing::warn!(trade_no=%trade_no, "[提币交易报告] 处理单条提币交易报告失败: {}", err);
+            }
         });
     }
 
@@ -195,8 +207,15 @@ impl ProcessWithdrawTxReport {
         tracing::info!("[提币交易报告] 开始批量处理提币交易报告");
 
         tokio::spawn(async move {
+            let pool = match ctx.ctx.api_transaction_pool() {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!("[提币交易报告] 获取交易数据库连接池失败: {}", err);
+                    return;
+                }
+            };
             let res = ApiWithdrawRepo::list_api_withdraw_with_status(
-                &ctx.pool,
+                &pool,
                 vec![ApiWithdrawStatus::SendingTx, ApiWithdrawStatus::SendingTxFailed],
                 0,
                 1000,
@@ -215,6 +234,7 @@ impl ProcessWithdrawTxReport {
                 let ctx = ctx.clone();
 
                 tokio::spawn(async move {
+                    let trade_no = req.trade_no.clone();
                     let _permit = match ctx.get_address_lock(&req.from_addr).await {
                         Ok(permit) => permit,
                         Err(err) => {
@@ -224,7 +244,9 @@ impl ProcessWithdrawTxReport {
                     };
                     let _global_permit = ctx.global_sem.acquire().await.unwrap();
 
-                    Self::process_single_tx_report(ctx.pool.clone(), req, true).await
+                    if let Err(err) = Self::process_single_tx_report(req, true, ctx.ctx).await {
+                        tracing::warn!(trade_no=%trade_no, "[提币交易报告] 处理单条提币交易报告失败: {}", err);
+                    }
                 });
             }
         });
@@ -232,10 +254,10 @@ impl ProcessWithdrawTxReport {
 
     /// 静态方法：处理单个交易报告
     async fn process_single_tx_report(
-        pool: ApiTransactionDbPool,
         req: ApiWithdrawEntity,
         check_retry_time: bool,
-    ) {
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, status=%req.status, "[提币交易报告] 开始处理单条提币交易报告");
 
         // 只有在需要检查重试时间时才执行检查
@@ -250,7 +272,7 @@ impl ProcessWithdrawTxReport {
 
             if timeout < TimeDelta::seconds(backoff) {
                 tracing::warn!(trade_no=%req.trade_no, "[提币交易报告] 未到重试时间，跳过本次处理");
-                return;
+                return Ok(());
             }
         } else {
             tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 直接调用，跳过重试时间检查");
@@ -273,7 +295,6 @@ impl ProcessWithdrawTxReport {
             (TransStatus::Success, "".to_string(), None)
         };
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 准备调用后端API上传执行结果");
 
         // 创建请求对象
@@ -292,16 +313,20 @@ impl ProcessWithdrawTxReport {
             tx_req = tx_req.with_error_code(&code);
         }
 
+        let backend_api = ctx.get_global_backend_api();
         match backend_api.upload_tx_exec_receipt(&tx_req).await {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 上传执行结果成功");
+                let pool = ctx.api_transaction_pool()?;
                 Self::handle_report_success(pool.clone(), req).await
             }
             Err(err) => {
                 tracing::warn!(trade_no=%req.trade_no, "[提币交易报告] 上传执行结果失败: {}", err);
+                let pool = ctx.api_transaction_pool()?;
                 Self::handle_report_failed(pool.clone(), req, err).await
             }
         }
+        Ok(())
     }
 
     async fn handle_report_success(pool: ApiTransactionDbPool, req: ApiWithdrawEntity) {

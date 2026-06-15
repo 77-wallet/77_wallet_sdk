@@ -50,26 +50,31 @@ impl TaskTrait for InitializationTask {
         Ok(None)
     }
 
-    async fn execute(&self, _id: &str) -> Result<(), crate::error::service::ServiceError> {
+    async fn execute(
+        &self,
+        _id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         match self {
             InitializationTask::PullAnnouncement => {
-                let announcement_service = AnnouncementService::new();
+                let announcement_service = AnnouncementService::new(ctx);
                 let res = announcement_service.pull_announcement().await;
 
                 res?;
             }
             InitializationTask::PullHotCoins => {
-                CoinService::pull_hot_coins().await?;
+                let coin_service = CoinService::new(ctx);
+                coin_service.pull_hot_coins().await?;
 
-                CoinService::init_token_price().await?;
+                coin_service.init_token_price().await?;
             }
             InitializationTask::PullApiWalletCoins => {
                 // 从后端获取最新的币数据
-                let coins = ApiCoinDomain::pull_api_coins().await?;
+                let coins = ApiCoinDomain::pull_api_coins(ctx).await?;
 
                 // 只有当成功获取到新数据时，才更新币价和初始化
                 if !coins.is_empty() {
-                    ApiCoinDomain::init_token_price().await?;
+                    ApiCoinDomain::init_token_price(ctx).await?;
 
                     // let list = ApiCoinRepo::coin_list(&pool).await?;
 
@@ -101,24 +106,24 @@ impl TaskTrait for InitializationTask {
                     // }
 
                     // 添加支持的币种
-                    ApiCoinDomain::add_supported_coin(coins).await?;
+                    ApiCoinDomain::add_supported_coin(ctx, coins).await?;
                 } else {
                     tracing::warn!("No new coin data received from backend API");
                 }
             }
             InitializationTask::SetBlockBrowserUrl => {
-                let mut app_service = crate::service::app::AppService::new();
+                let mut app_service = crate::service::app::AppService::new(ctx);
                 app_service.set_block_browser_url().await?;
             }
             InitializationTask::SetFiat => {
-                ConfigDomain::init_currency().await?;
+                ConfigDomain::init_currency(ctx).await?;
             }
             InitializationTask::RecoverQueueData => {
-                MultisigQueueDomain::recover_all_uid_queue_data().await?;
+                MultisigQueueDomain::recover_all_uid_queue_data_with_ctx(ctx).await?;
             }
             InitializationTask::InitMqtt => {
                 tracing::debug!("init mqtt start");
-                MqttDomain::init_mqtt().await?;
+                MqttDomain::init_mqtt(ctx).await?;
                 tracing::debug!("init mqtt end");
             }
         }

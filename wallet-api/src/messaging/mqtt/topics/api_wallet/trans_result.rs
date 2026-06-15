@@ -1,5 +1,6 @@
 // messaging/mqtt/topics/api_wallet/trans_result.rs
 use crate::{
+    context::Context,
     domain::api_wallet::trans::{
         collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
     },
@@ -64,6 +65,7 @@ struct WithdrawActualFeeUpdate {
 impl AwmOrderTransResMsg {
     pub(crate) async fn exec(
         &self,
+        ctx: &'static Context,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(
@@ -82,7 +84,7 @@ impl AwmOrderTransResMsg {
             phase = "pre_ack_local_process",
             "AwmOrderTransResMsg processing before backend msg ack"
         );
-        if let Err(e) = self.check_uid().await {
+        if let Err(e) = self.check_uid(ctx).await {
             tracing::warn!(
                 msg_id = %_msg_id,
                 trade_no = %self.trade_no,
@@ -96,7 +98,7 @@ impl AwmOrderTransResMsg {
             return Err(e);
         }
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = ctx.get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         tracing::info!(
@@ -116,12 +118,13 @@ impl AwmOrderTransResMsg {
         );
 
         let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 
     pub(crate) async fn exec_resource_result(
         &self,
+        ctx: &'static Context,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(
@@ -133,62 +136,66 @@ impl AwmOrderTransResMsg {
             "Received AwmCmdRscResMsg"
         );
 
-        if self.uid_exists().await? {
-            let api_transaction_pool =
-                crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
-            self.resource_result(&api_transaction_pool).await?;
+        if self.uid_exists(ctx).await? {
+            let api_transaction_pool = ctx.api_transaction_pool()?;
+            self.resource_result_with_ctx(&api_transaction_pool, Some(ctx)).await?;
         } else {
             tracing::warn!("AwmCmdRscResMsg uid not found: {}", self.uid);
         }
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = ctx.get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
 
         let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 
-    pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn check_uid(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // tracing::info!("临时这样做");
         // return Ok(());
 
-        if !self.uid_exists().await? {
+        if !self.uid_exists(ctx).await? {
             tracing::warn!("AwmOrderTransResMsg uid not found: {}", self.uid);
             return Ok(());
         }
 
         // ✅ 强顺序屏障：先持久化“已收到 SER TxRes”事实，再进入 confirm_tx 路径
         // ⚠️ 若此处失败，必须返回错误并禁止 ack MQTT（让其重投）
-        let api_transaction_pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
         match self.trade_type {
             1 => {
                 ApiWithdrawRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
                     .await?;
                 self.persist_withdraw_actual_fee(&api_transaction_pool).await?;
-                self.withdraw().await?;
+                self.withdraw(ctx).await?;
             }
             2 => {
                 ApiCollectRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
                     .await?;
                 let fail_type = self.fail_type.unwrap_or(0);
-                self.collect(fail_type).await?;
+                self.collect(ctx, fail_type).await?;
             }
             3 => {
                 ApiFeeRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
                     .await?;
-                self.transfer_fee().await?;
+                self.transfer_fee(ctx).await?;
             }
             4 => {
-                self.resource_operation_result(&api_transaction_pool).await?;
+                self.resource_operation_result_with_ctx(&api_transaction_pool, Some(ctx)).await?;
             }
             5 => {
-                self.collect_resource_delegation_result(&api_transaction_pool).await?;
+                self.collect_resource_delegation_result_with_ctx(&api_transaction_pool, Some(ctx))
+                    .await?;
             }
             7 => {
-                self.withdraw_resource_delegation_result(&api_transaction_pool).await?;
+                self.withdraw_resource_delegation_result_with_ctx(&api_transaction_pool, Some(ctx))
+                    .await?;
             }
             6 | 8 => {
                 self.resource_reclaim_result(&api_transaction_pool).await?;
@@ -198,15 +205,19 @@ impl AwmOrderTransResMsg {
         Ok(())
     }
 
-    async fn uid_exists(&self) -> Result<bool, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+    async fn uid_exists(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<bool, crate::error::service::ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         Ok(res.is_some())
     }
 
-    async fn resource_result(
+    async fn resource_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         // AWM_CMD_RSC_RES is shared by two local roles. Platform wallets receive
         // real resource task results (CD/CR resource trade numbers), while
@@ -214,9 +225,13 @@ impl AwmOrderTransResMsg {
         // collect/withdraw order number. The handlers below resolve the local
         // fact first instead of trusting only the message trade type.
         match self.trade_type {
-            1 | 7 => self.withdraw_resource_delegation_result(api_transaction_pool).await,
-            2 | 5 => self.collect_resource_delegation_result(api_transaction_pool).await,
-            4 => self.resource_operation_result(api_transaction_pool).await,
+            1 | 7 => {
+                self.withdraw_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+            }
+            2 | 5 => {
+                self.collect_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+            }
+            4 => self.resource_operation_result_with_ctx(api_transaction_pool, ctx).await,
             6 | 8 => self.resource_reclaim_result(api_transaction_pool).await,
             _ => {
                 tracing::warn!(
@@ -229,9 +244,10 @@ impl AwmOrderTransResMsg {
         }
     }
 
-    async fn resource_operation_result(
+    async fn resource_operation_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status { "success" } else { "fail" };
         let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
@@ -246,14 +262,15 @@ impl AwmOrderTransResMsg {
         )
         .await?;
 
-        self.trigger_resource_operation_shadow().await;
+        self.trigger_resource_operation_shadow(ctx).await;
 
         Ok(())
     }
 
-    async fn collect_resource_delegation_result(
+    async fn collect_resource_delegation_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status {
             ApiResourceDelegationResultStatus::Success
@@ -283,7 +300,7 @@ impl AwmOrderTransResMsg {
             .await?;
 
             if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
-                self.trigger_collect_shadow(origin_trade_no).await;
+                self.trigger_collect_shadow(ctx, origin_trade_no).await;
             }
 
             return Ok(());
@@ -348,14 +365,15 @@ impl AwmOrderTransResMsg {
             resource_trade_no = %self.trade_no,
             "Collect resource result persisted; shadow will ACK resource result before advancing"
         );
-        self.trigger_collect_shadow(&collect.trade_no).await;
+        self.trigger_collect_shadow(ctx, &collect.trade_no).await;
 
         Ok(())
     }
 
-    async fn withdraw_resource_delegation_result(
+    async fn withdraw_resource_delegation_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status {
             ApiResourceDelegationResultStatus::Success
@@ -385,7 +403,7 @@ impl AwmOrderTransResMsg {
             .await?;
 
             if let Some(origin_trade_no) = resource_task.origin_trade_no.as_deref() {
-                self.trigger_withdraw_shadow(origin_trade_no).await;
+                self.trigger_withdraw_shadow(ctx, origin_trade_no).await;
             }
 
             return Ok(());
@@ -431,21 +449,26 @@ impl AwmOrderTransResMsg {
         )
         .await?;
 
-        self.trigger_withdraw_shadow(&withdraw.trade_no).await;
+        self.trigger_withdraw_shadow(ctx, &withdraw.trade_no).await;
 
         Ok(())
     }
 
-    async fn trigger_collect_shadow(&self, origin_trade_no: &str) {
-        let Some(context) = crate::context::CONTEXT.get() else {
+    async fn trigger_collect_shadow(&self, ctx: Option<&'static Context>, origin_trade_no: &str) {
+        let Some(ctx) = ctx else {
             tracing::debug!(
                 resource_trade_no = %self.trade_no,
                 origin_trade_no = %origin_trade_no,
-                "Skip collect shadow trigger: global context is not initialized"
+                "Skip collect shadow trigger: no context passed"
             );
             return;
         };
-        let Some(handles) = context.get_global_handles().await.upgrade() else {
+        let Some(handles) = optional_handles(ctx).await else {
+            tracing::debug!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = %origin_trade_no,
+                "Skip collect shadow trigger: global handles are not available"
+            );
             return;
         };
         let collect_handle = handles.get_global_processed_collect_tx_handle();
@@ -462,16 +485,21 @@ impl AwmOrderTransResMsg {
         }
     }
 
-    async fn trigger_withdraw_shadow(&self, origin_trade_no: &str) {
-        let Some(context) = crate::context::CONTEXT.get() else {
+    async fn trigger_withdraw_shadow(&self, ctx: Option<&'static Context>, origin_trade_no: &str) {
+        let Some(ctx) = ctx else {
             tracing::debug!(
                 resource_trade_no = %self.trade_no,
                 origin_trade_no = %origin_trade_no,
-                "Skip withdraw shadow trigger: global context is not initialized"
+                "Skip withdraw shadow trigger: no context passed"
             );
             return;
         };
-        let Some(handles) = context.get_global_handles().await.upgrade() else {
+        let Some(handles) = optional_handles(ctx).await else {
+            tracing::debug!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = %origin_trade_no,
+                "Skip withdraw shadow trigger: global handles are not available"
+            );
             return;
         };
         let withdraw_handle = handles.get_global_processed_withdraw_tx_handle();
@@ -488,15 +516,19 @@ impl AwmOrderTransResMsg {
         }
     }
 
-    async fn trigger_resource_operation_shadow(&self) {
-        let Some(context) = crate::context::CONTEXT.get() else {
+    async fn trigger_resource_operation_shadow(&self, ctx: Option<&'static Context>) {
+        let Some(ctx) = ctx else {
             tracing::debug!(
                 resource_trade_no = %self.trade_no,
-                "Skip resource operation shadow trigger: global context is not initialized"
+                "Skip resource operation shadow trigger: no context passed"
             );
             return;
         };
-        let Some(handles) = context.get_global_handles().await.upgrade() else {
+        let Some(handles) = optional_handles(ctx).await else {
+            tracing::debug!(
+                resource_trade_no = %self.trade_no,
+                "Skip resource operation shadow trigger: global handles are not available"
+            );
             return;
         };
         if let Err(e) = handles.trigger_resource_operation(&self.trade_no).await {
@@ -538,8 +570,11 @@ impl AwmOrderTransResMsg {
         Ok(())
     }
 
-    pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::service::ServiceError> {
-        ApiFeeDomain::confirm_tx(&self.trade_no, self.status).await.map_err(|e| {
+    pub(crate) async fn transfer_fee(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        ApiFeeDomain::confirm_tx(ctx, &self.trade_no, self.status).await.map_err(|e| {
             tracing::warn!(
                 trade_no = %self.trade_no,
                 trade_type = %self.trade_type,
@@ -553,23 +588,29 @@ impl AwmOrderTransResMsg {
 
     pub(crate) async fn collect(
         &self,
+        ctx: &'static Context,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        ApiCollectDomain::confirm_tx(&self.trade_no, self.status, fail_type).await.map_err(|e| {
-            tracing::warn!(
-                trade_no = %self.trade_no,
-                trade_type = %self.trade_type,
-                status = %self.status,
-                fail_type = %fail_type,
-                error = %e,
-                "ApiCollectDomain::confirm_tx failed for AwmOrderTransResMsg"
-            );
-            e
-        })
+        ApiCollectDomain::confirm_tx(ctx, &self.trade_no, self.status, fail_type).await.map_err(
+            |e| {
+                tracing::warn!(
+                    trade_no = %self.trade_no,
+                    trade_type = %self.trade_type,
+                    status = %self.status,
+                    fail_type = %fail_type,
+                    error = %e,
+                    "ApiCollectDomain::confirm_tx failed for AwmOrderTransResMsg"
+                );
+                e
+            },
+        )
     }
 
-    pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {
-        ApiWithdrawDomain::confirm_tx(&self.trade_no, self.status).await.map_err(|e| {
+    pub(crate) async fn withdraw(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        ApiWithdrawDomain::confirm_tx(ctx, &self.trade_no, self.status).await.map_err(|e| {
             tracing::warn!(
                 trade_no = %self.trade_no,
                 trade_type = %self.trade_type,
@@ -637,6 +678,48 @@ impl AwmOrderTransResMsg {
 
         Ok(())
     }
+
+    #[cfg(test)]
+    async fn resource_operation_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.resource_operation_result_with_ctx(api_transaction_pool, ctx).await
+    }
+
+    #[cfg(test)]
+    async fn collect_resource_delegation_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.collect_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+    }
+
+    #[cfg(test)]
+    async fn withdraw_resource_delegation_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.withdraw_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+    }
+
+    #[cfg(test)]
+    async fn resource_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        ctx: Option<&'static Context>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.resource_result_with_ctx(api_transaction_pool, ctx).await
+    }
+}
+
+async fn optional_handles(
+    ctx: &'static Context,
+) -> Option<std::sync::Arc<crate::handles::Handles>> {
+    ctx.get_global_handles().await.upgrade()
 }
 
 #[cfg(test)]
@@ -751,7 +834,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.resource_operation_result(&pool).await?;
+        msg.resource_operation_result(&pool, None).await?;
 
         let got =
             ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_result_msg").await?;
@@ -896,7 +979,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.collect_resource_delegation_result(&pool).await?;
+        msg.collect_resource_delegation_result(&pool, None).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_success").await?;
         assert!(collect.resource_gate_released_at.is_some());
@@ -933,7 +1016,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.collect_resource_delegation_result(&pool).await?;
+        msg.collect_resource_delegation_result(&pool, None).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_fail").await?;
         assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
@@ -998,7 +1081,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.resource_result(&pool).await?;
+        msg.resource_result(&pool, None).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_origin_result").await?;
         assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
@@ -1083,7 +1166,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.resource_result(&pool).await?;
+        msg.resource_result(&pool, None).await?;
 
         let withdraw = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &pool,

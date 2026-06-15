@@ -2,7 +2,7 @@ use wallet_api::testkit::collect::{
     send_resource_result_ack_via_worker, upload_resource_tx_exec_receipt_via_worker,
 };
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool,
     entities::{
         api_collect::ApiCollectEntity,
         api_resource_gate::{
@@ -15,7 +15,7 @@ use wallet_database::{
 
 use crate::harness::{
     AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, ensure_worker_env,
-    open_api_wallet_pool,
+    worker::WorkerTestEnv,
 };
 
 use super::{
@@ -27,8 +27,8 @@ use super::{
 };
 
 pub(crate) struct CollectResourceGateScenario {
+    env: &'static WorkerTestEnv,
     collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
 }
 
 impl CollectResourceGateScenario {
@@ -37,9 +37,8 @@ impl CollectResourceGateScenario {
         env.recorder.reset();
 
         let collect_pool = open_collect_pool(env).await;
-        let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-        Self { collect_pool, core_pool }
+        Self { env, collect_pool }
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -185,19 +184,14 @@ pub(crate) trait CollectResourceGateWhen {
 #[async_trait::async_trait(?Send)]
 impl CollectResourceGateWhen for WhenRole<'_, CollectResourceGateScenario> {
     async fn resource_result_ack_is_sent(&self, fixture: &CollectResourceGateFixture) {
-        send_resource_result_ack_via_worker(
-            self.scenario().collect_pool.clone(),
-            self.scenario().core_pool.clone(),
-            &fixture.resource_trade_no,
-        )
-        .await
-        .expect("send resource result ack");
+        send_resource_result_ack_via_worker(self.scenario().env.ctx(), &fixture.resource_trade_no)
+            .await
+            .expect("send resource result ack");
     }
 
     async fn resource_receipt_upload_is_sent(&self, fixture: &CollectResourceGateFixture) {
         upload_resource_tx_exec_receipt_via_worker(
-            self.scenario().collect_pool.clone(),
-            self.scenario().core_pool.clone(),
+            self.scenario().env.ctx(),
             &fixture.resource_trade_no,
         )
         .await

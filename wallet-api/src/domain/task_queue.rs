@@ -1,6 +1,9 @@
-use crate::infrastructure::task_queue::{
-    backend::{BackendApiTask, BackendApiTaskData},
-    task::Tasks,
+use crate::{
+    context::Context,
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
 };
 use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_transport_backend::request::SendMsgConfirm;
@@ -8,10 +11,9 @@ use wallet_transport_backend::request::SendMsgConfirm;
 pub(crate) struct TaskQueueDomain;
 
 impl TaskQueueDomain {
-    /// 执行TaskQueue从core_db到task_db的迁移（幂等 & 可重复执行）
-    pub async fn migrate_task_queue_to_db() -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::context::CONTEXT.get().unwrap();
-
+    pub async fn migrate_task_queue_to_db_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = ctx.core_pool()?;
         let task_pool = ctx.task_pool()?;
 
@@ -99,13 +101,14 @@ impl TaskQueueDomain {
         Ok(())
     }
 
-    pub async fn send_msg_confirm(
+    pub async fn send_msg_confirm_with_ctx(
+        ctx: &'static Context,
         ids: Vec<SendMsgConfirm>,
     ) -> Result<(), crate::error::service::ServiceError> {
         if !ids.is_empty() {
             const BATCH_SIZE: usize = 500;
+            let api = ctx.get_global_backend_api();
             for chunk in ids.chunks(BATCH_SIZE) {
-                let api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
                 api.send_msg_confirm(&wallet_transport_backend::request::SendMsgConfirmReq::new(
                     chunk.to_vec(),
                 ))
@@ -115,12 +118,12 @@ impl TaskQueueDomain {
         Ok(())
     }
 
-    // send a request to backend if failed wrap to task
-    pub async fn send_or_wrap_task<T: serde::Serialize + std::fmt::Debug>(
+    pub async fn send_or_wrap_task_with_ctx<T: serde::Serialize + std::fmt::Debug>(
+        ctx: &'static Context,
         req: T,
         endpoint: &str,
     ) -> Result<Option<BackendApiTask>, crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = ctx.get_global_backend_api();
 
         let res = backend.post_request::<_, serde_json::Value>(endpoint, &req).await;
 
@@ -133,15 +136,15 @@ impl TaskQueueDomain {
         Ok(None)
     }
 
-    // 发送任务,如果失败放入到队列中去
-    pub async fn send_or_to_queue<T: serde::Serialize + std::fmt::Debug>(
+    pub async fn send_or_to_queue_with_ctx<T: serde::Serialize + std::fmt::Debug>(
+        ctx: &'static Context,
         req: T,
         endpoint: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let task = Self::send_or_wrap_task(req, endpoint).await?;
+        let task = Self::send_or_wrap_task_with_ctx(ctx, req, endpoint).await?;
 
         if let Some(task) = task {
-            Tasks::new().push(task).send().await?;
+            Tasks::new().push(task).send_with_ctx(ctx).await?;
         }
 
         Ok(())

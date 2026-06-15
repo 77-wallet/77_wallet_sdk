@@ -1,5 +1,9 @@
-use crate::response_vo::standard_wallet::account::{BalanceInfo, BalanceStr};
+use crate::{
+    context::Context,
+    response_vo::standard_wallet::account::{BalanceInfo, BalanceStr},
+};
 use wallet_database::{
+    CoreDbPool,
     entities::asset_token_key::AssetTokenKey,
     repositories::{coin::CoinRepo, exchange_rate::ExchangeRateRepo},
 };
@@ -10,22 +14,19 @@ use wallet_utils::unit;
 pub struct TokenCurrencyGetter;
 
 impl TokenCurrencyGetter {
-    /// 从数据库获取代币的价格信息（token-key 强类型入口）
-    pub async fn get_currency_by_token_key(
+    pub async fn get_currency_by_token_key_with_pool(
+        pool: &CoreDbPool,
         currency: &str,
         chain_code: &str,
         symbol: &str,
         token_key: AssetTokenKey,
     ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
         // 获取数据库连接池
-        let pool = crate::context::get_context()?.core_pool()?;
-
-        // 查询代币信息
-        let coin = CoinRepo::coin_by_chain_token_key(chain_code, token_key, &pool).await?;
+        let coin = CoinRepo::coin_by_chain_token_key(chain_code, token_key, pool).await?;
 
         // 获取价格信息
         let (price, currency_price, rate) =
-            Self::calculate_price_info(&pool, &coin.price, currency).await?;
+            Self::calculate_price_info(pool, &coin.price, currency).await?;
 
         Ok(TokenCurrency {
             chain_code: chain_code.to_string(),
@@ -38,8 +39,32 @@ impl TokenCurrencyGetter {
         })
     }
 
+    pub async fn get_currency_by_token_key(
+        ctx: &Context,
+        currency: &str,
+        chain_code: &str,
+        symbol: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
+        Self::get_currency_by_token_key_with_pool(&pool, currency, chain_code, symbol, token_key)
+            .await
+    }
+
+    #[deprecated(note = "use get_currency_by_token_key with explicit Context")]
+    pub async fn get_currency_by_token_key_with_ctx(
+        ctx: &Context,
+        currency: &str,
+        chain_code: &str,
+        symbol: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
+        Self::get_currency_by_token_key(ctx, currency, chain_code, symbol, token_key).await
+    }
+
     /// 获取余额信息（token-key 强类型入口）
     pub async fn get_balance_info_by_token_key(
+        ctx: &Context,
         chain_code: &str,
         symbol: &str,
         amount: f64,
@@ -50,13 +75,25 @@ impl TokenCurrencyGetter {
 
         // 获取代币价格信息
         let token_price =
-            Self::get_currency_by_token_key(&currency, chain_code, symbol, token_key).await?;
+            Self::get_currency_by_token_key(ctx, &currency, chain_code, symbol, token_key).await?;
 
         Ok(BalanceInfo::new(amount, Some(token_price.get_price(&currency)), &currency))
     }
 
+    #[deprecated(note = "use get_balance_info_by_token_key with explicit Context")]
+    pub async fn get_balance_info_by_token_key_with_ctx(
+        ctx: &Context,
+        chain_code: &str,
+        symbol: &str,
+        amount: f64,
+        token_key: AssetTokenKey,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        Self::get_balance_info_by_token_key(ctx, chain_code, symbol, amount, token_key).await
+    }
+
     // 查询后端的币价，并转换为balance数据结构(修改为本地)
     pub async fn get_bal_by_backend(
+        ctx: &Context,
         chain_code: &str,
         token_addr: &str,
         amount: &str,
@@ -67,7 +104,7 @@ impl TokenCurrencyGetter {
 
         // let backend = crate::manager::Context::get_global_backend_api()?;
         // let token_price = backend.token_price(chain_code, token_addr).await?;
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = ctx.core_pool()?;
 
         // 查询代币信息
         let token = CoinRepo::coin_by_chain_token_key(
@@ -109,16 +146,15 @@ impl TokenCurrencyGetter {
     /// - currency: 法币符号
     /// - 返回值: (USDT价格, 法币价格, 汇率)
     async fn calculate_price_info(
-        _pool: &wallet_database::CoreDbPool,
+        pool: &wallet_database::CoreDbPool,
         price_str: &str,
         currency: &str,
     ) -> Result<(Option<f64>, Option<f64>, f64), crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
         // 获取汇率（如果不是USDT）
         let rate = if currency.eq_ignore_ascii_case("usdt") {
             1.0 // USDT的汇率为1
         } else {
-            ExchangeRateRepo::exchange_rate(currency, core_pool).await?.rate
+            ExchangeRateRepo::exchange_rate(currency, pool.clone()).await?.rate
         };
 
         // 解析价格

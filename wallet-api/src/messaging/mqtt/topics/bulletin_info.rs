@@ -1,3 +1,4 @@
+use crate::context::Context;
 use wallet_database::entities::announcement::CreateAnnouncementVo;
 
 use crate::{
@@ -99,6 +100,15 @@ impl BulletinMsg {
     pub(crate) async fn exec(
         &self,
         _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
+    }
+
+    pub(crate) async fn exec_with_ctx(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let Self { id, operation, .. } = self;
         if let Some(operation) = operation {
@@ -114,15 +124,15 @@ impl BulletinMsg {
                         status: 0,
                         send_time,
                     };
-                    AnnouncementService::new().add(vec![input]).await?;
+                    AnnouncementService::new(ctx).add(vec![input]).await?;
                 }
                 Operation::Delete => {
-                    AnnouncementService::new().physical_delete(id).await?;
+                    AnnouncementService::new(ctx).physical_delete(id).await?;
                 }
             }
         }
         let data = NotifyEvent::BulletinMsg(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
     }

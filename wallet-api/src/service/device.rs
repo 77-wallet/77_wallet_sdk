@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::app::config::ConfigDomain,
     infrastructure::task_queue::backend::{BackendApiTask, BackendApiTaskData},
 };
@@ -15,18 +16,20 @@ pub const APP_ID: &str = "ada7d9308190fe45";
 
 use crate::{infrastructure::task_queue::task::Tasks, request::devices::InitDeviceReq};
 
-pub struct DeviceService;
+pub struct DeviceService {
+    ctx: &'static Context,
+}
 
 impl DeviceService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn get_device_info(
         self,
         sn: &str,
     ) -> Result<Option<DeviceEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
         Ok(DeviceRepo::get_device_info(pool, sn).await?)
     }
 
@@ -36,10 +39,10 @@ impl DeviceService {
     ) -> Result<Option<()>, crate::error::service::ServiceError> {
         // let package_id = req.package_id.clone();
         let upsert_req = (&req).into();
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
         DeviceRepo::upsert(pool.clone(), upsert_req).await?;
 
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
@@ -56,19 +59,22 @@ impl DeviceService {
                 body: wallet_utils::serde_func::serde_to_value(&task_req)?,
             };
 
-            Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(task_data))
+                .send_with_ctx(self.ctx)
+                .await?;
         }
 
         let app_version =
             wallet_database::entities::config::AppVersion { app_version: req.app_version };
-        ConfigDomain::set_config(APP_VERSION, &app_version.to_json_str()?).await?;
+        ConfigDomain::set_config(self.ctx, APP_VERSION, &app_version.to_json_str()?).await?;
 
         // 第一次初始化设备时，主动bump epoch，将首次安装视为一次reset
         // 确保系统进入有效世代(epoch >= 1)，允许后续Init请求执行
-        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let current_epoch = ConfigDomain::get_keys_reset_epoch(self.ctx).await?;
         if current_epoch == 0 {
-            ConfigDomain::bump_keys_reset_epoch().await?;
-            let new_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+            ConfigDomain::bump_keys_reset_epoch(self.ctx).await?;
+            let new_epoch = ConfigDomain::get_keys_reset_epoch(self.ctx).await?;
             tracing::info!(
                 sn = sn,
                 old_epoch = current_epoch,
@@ -84,7 +90,7 @@ impl DeviceService {
         self,
         req: CreateDeviceEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
         DeviceRepo::upsert(pool, req).await?;
 
         Ok(())
@@ -93,9 +99,9 @@ impl DeviceService {
     pub async fn unbind_device(self, sn: &str) -> Result<(), crate::error::service::ServiceError> {
         // 1. 首先递增Epoch，切换世代，这是reset的核心事实
         // 确保reset开始后，所有后续操作都使用新世代的Epoch
-        ConfigDomain::bump_keys_reset_epoch().await?;
+        ConfigDomain::bump_keys_reset_epoch(self.ctx).await?;
         // 获取新的epoch值用于日志
-        let new_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let new_epoch = ConfigDomain::get_keys_reset_epoch(self.ctx).await?;
         tracing::info!(
             epoch = new_epoch,
             sn = sn,
@@ -109,7 +115,7 @@ impl DeviceService {
             }),
         };
 
-        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send_with_ctx(self.ctx).await?;
         Ok(())
     }
 }

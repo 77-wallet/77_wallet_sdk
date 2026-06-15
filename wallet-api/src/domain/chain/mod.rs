@@ -4,6 +4,7 @@ pub mod transaction;
 
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
+    context::Context,
     domain::app::config::ConfigDomain,
     infrastructure::{
         chain_node::chain_node_ensurer::ChainNodeEnsurer,
@@ -156,17 +157,27 @@ impl ChainDomain {
     }
 
     pub(crate) async fn network_kind_by_chain_code(
+        ctx: &'static Context,
         chain_code: &str,
     ) -> Result<NetworkKind, crate::error::service::ServiceError> {
-        let node = Self::get_node(chain_code).await?;
+        let node = Self::get_node_with_ctx(ctx, chain_code).await?;
         Ok(Self::network_kind_from_node_network(&node.network))
     }
 
-    pub(crate) async fn upsert_multi_chain_than_toggle(
+    pub(crate) async fn network_kind_by_chain_code_with_ctx(
+        ctx: &'static Context,
+        chain_code: &str,
+    ) -> Result<NetworkKind, crate::error::service::ServiceError> {
+        let node = Self::get_node_with_ctx(ctx, chain_code).await?;
+        Ok(Self::network_kind_from_node_network(&node.network))
+    }
+
+    pub(crate) async fn upsert_multi_chain_than_toggle_with_ctx(
+        ctx: &'static Context,
         chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<bool, crate::error::service::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
 
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
@@ -174,7 +185,7 @@ impl ChainDomain {
 
         let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
         let account_list = AccountRepo::list(pool.clone()).await?;
-        let app_version = super::app::config::ConfigDomain::get_app_version().await?.app_version;
+        let app_version = super::app::config::ConfigDomain::get_app_version(ctx).await?.app_version;
 
         if wallet_list.is_empty() {
             return Ok(false);
@@ -247,32 +258,37 @@ impl ChainDomain {
         }
 
         ChainRepo::upsert_multi_chain(&pool, input).await?;
-        Self::toggle_chains(&chain_codes).await?;
+        Self::toggle_chains_with_ctx(ctx, &chain_codes).await?;
 
         if !chain_codes.is_empty() {
             let chain_rpc_list_req = BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
                 &ChainRpcListReq::new(chain_codes),
             )?;
-            Tasks::new().push(BackendApiTask::BackendApi(chain_rpc_list_req)).send().await?;
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(chain_rpc_list_req))
+                .send_with_ctx(ctx)
+                .await?;
         }
 
         Ok(has_new_chain)
     }
 
-    pub(crate) async fn toggle_chains(
+    pub(crate) async fn toggle_chains_with_ctx(
+        ctx: &'static Context,
         chain_codes: &[String],
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
         ChainRepo::toggle_chains_status(&pool, chain_codes).await?;
         Ok(())
     }
 
-    pub(crate) async fn get_node(
+    pub(crate) async fn get_node_with_ctx(
+        ctx: &'static Context,
         chain_code: &str,
     ) -> Result<NodeInfo, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
+        let api_pool = ctx.api_wallet_pool()?;
         let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool);
         let node_id = ensurer.ensure_and_get_standard_chain_node(chain_code).await?;
 
@@ -294,6 +310,7 @@ impl ChainDomain {
     }
 
     pub(crate) async fn init_chains_assets(
+        ctx: &'static crate::context::Context,
         coins: &[CoinEntity],
         req: &mut TokenQueryPriceReq,
         address_batch_init_task_data: &mut AddressBatchInitReq,
@@ -310,7 +327,7 @@ impl ChainDomain {
         for chain in chain_list.iter() {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
-            let Ok(node) = Self::get_node(chain).await else {
+            let Ok(node) = Self::get_node_with_ctx(ctx, chain).await else {
                 tracing::warn!("chain: {:?} node not found", chain);
                 continue;
             };
@@ -326,6 +343,7 @@ impl ChainDomain {
 
                 let (account_address, derivation_path, address_init_req) =
                     AccountDomain::create_account_v2(
+                        ctx,
                         seed,
                         &instance,
                         derivation_path,
@@ -353,6 +371,7 @@ impl ChainDomain {
                     .await?,
                 );
                 AssetsDomain::init_default_assets(
+                    ctx,
                     coins,
                     &account_address.address,
                     &code.to_string(),
@@ -392,8 +411,10 @@ impl ChainDomain {
         Ok(())
     }
 
-    pub async fn init_load_default_chain() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+    pub async fn init_load_default_chain_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
 
         let list = crate::default_data::chain::get_default_chains_list()?;
 
@@ -417,7 +438,8 @@ impl ChainDomain {
         Ok(())
     }
 
-    pub async fn init_load_backend_chains(
+    pub async fn init_load_backend_chains_with_ctx(
+        ctx: &'static Context,
         backend_chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<(), crate::error::service::ServiceError> {
         // let backend_chains = Self::load_backend_chain().await?;
@@ -426,7 +448,7 @@ impl ChainDomain {
             return Ok(());
         }
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
         let backend_chain_map: HashMap<_, _> = backend_chains
             .list
@@ -471,15 +493,17 @@ impl ChainDomain {
         Ok(())
     }
 
-    pub async fn init_chain_info() -> Result<(), crate::error::service::ServiceError> {
-        Self::init_load_default_chain().await?;
+    pub async fn init_chain_info_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::init_load_default_chain_with_ctx(ctx).await?;
 
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
         let chain_list_req = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::CHAIN_LIST,
             &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(chain_list_req)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(chain_list_req)).send_with_ctx(ctx).await?;
         Ok(())
     }
 }

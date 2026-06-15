@@ -18,6 +18,8 @@ pub enum ShadowWithdrawCommand {
     Broadcast(String),
     /// 恢复交易
     Recover(String),
+    /// 执行资源代理任务
+    ExecuteResourceDelegation(String),
 }
 
 /// SideEffectWorker 命令
@@ -29,4 +31,10 @@ pub enum SideEffectCommand {
     SendTxResAck(String),
     /// 上传交易执行回执
     UploadTxExecReceipt(String),
+    /// 发送资源任务结果 ACK
+    SendResourceResultAck(String),
+    /// 发送资源任务 ACK
+    SendResourceTaskAck(String),
+    /// 上传资源任务交易执行回执
+    UploadResourceTxExecReceipt(String),
 }

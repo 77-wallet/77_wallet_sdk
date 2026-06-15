@@ -1,7 +1,6 @@
 use wallet_database::repositories::device::DeviceRepo;
 
 use crate::{
-    context::CONTEXT,
     domain::{self, chain::ChainDomain, node::NodeDomain},
     infrastructure::{
         chain_node::chain_node_ensurer::ChainNodeEnsurer,
@@ -13,14 +12,15 @@ use crate::{
     },
 };
 
-pub(crate) async fn init_some_data() -> Result<(), crate::error::service::ServiceError> {
-    crate::domain::app::config::ConfigDomain::init_url().await?;
-
-    let core_pool = crate::context::get_context()?.core_pool()?;
-    let api_wallet_pool = crate::context::get_context()?.api_wallet_pool()?;
+pub(crate) async fn init_some_data(
+    ctx: &'static crate::context::Context,
+) -> Result<(), crate::error::service::ServiceError> {
+    crate::domain::app::config::ConfigDomain::init_url(ctx).await?;
+    let core_pool = ctx.core_pool()?;
+    let api_wallet_pool = ctx.api_wallet_pool()?;
     // // 1. 先初始化链兜底
-    NodeDomain::init_load_default_nodes().await?;
-    ChainDomain::init_chain_info().await?;
+    NodeDomain::init_load_default_nodes_with_ctx(ctx).await?;
+    ChainDomain::init_chain_info_with_ctx(ctx).await?;
     let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_wallet_pool.clone());
     ensurer.ensure_all().await?;
 
@@ -35,10 +35,9 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     // node_service.init_node_info().await?;
 
     // let asset_calc_actor_manager =
-    //     CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
     // asset_calc_actor_manager.init_account_cache().await?;
     crate::domain::coin::CoinDomain::init_coins(&core_pool).await?;
-    crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
+    crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx).await?;
 
     let token_query_rates_req = BackendApiTaskData::new(
         wallet_transport_backend::consts::endpoint::TOKEN_QUERY_RATES,
@@ -58,8 +57,8 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     // let mqtt_init_req =
     //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
-    let sn = CONTEXT.get().unwrap().get_sn();
-    let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
+    let sn = ctx.get_sn();
+    let _ = domain::app::config::ConfigDomain::fetch_min_config(ctx, &sn).await;
 
     let device = DeviceRepo::get_device_info(core_pool, sn).await?;
 
@@ -80,7 +79,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
         .push(BackendApiTask::BackendApi(token_query_rates_req))
         .push(BackendApiTask::BackendApi(set_official_website_req))
         .push(BackendApiTask::BackendApi(set_app_install_download_req))
-        .send()
+        .send_with_ctx(ctx)
         .await?;
 
     Ok(())

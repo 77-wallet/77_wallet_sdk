@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use tracing::{error, info, warn};
-use wallet_chain_interact::BillResourceConsume;
+use wallet_chain_interact::{
+    BillResourceConsume,
+    tron::operations::{RawTransactionParams, TronTxOperation},
+};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
@@ -47,8 +50,14 @@ use crate::{
     },
     infrastructure::{
         api_trans::{
-            resource_amount::energy_shortfall_to_apply_amounts,
+            resource_amount::{
+                energy_shortfall_to_apply_amounts, parse_resource_delegation_native_trx_units,
+            },
             resource_apply_outcome::PlatformApplyOutcome,
+            resource_authorization::{
+                ResourceDelegationSigner, new_tron_delegate_args, new_tron_undelegate_args,
+                resolve_resource_delegation_signer,
+            },
             resource_delegation::{
                 execute_resource_delegation, resource_delegation_failure_fact,
                 resource_delegation_retry_wait_secs,
@@ -56,7 +65,7 @@ use crate::{
             resource_rpc_auth,
             withdraw::shadow::ShadowScanner,
         },
-        nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
+        nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
     response_vo::TronFeeDetails,
@@ -92,8 +101,7 @@ use wallet_utils::{RetryableError as _, conversion, unit};
 /// - nonce 从"动态信息"升级为"已裁决事实"
 /// - chain_rpc_guard 作为 RPC 压力阀
 pub struct ShadowWithdrawWorker {
-    pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static crate::context::Context,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
 }
@@ -339,14 +347,9 @@ impl ShadowWithdrawWorker {
         PlatformApplyOutcome::from_backend_response(is_success, dl_trade_no)
     }
 
-    pub fn new(
-        pool: ApiTransactionDbPool,
-        core_pool: ApiWalletDbPool,
-        scanner: Arc<ShadowScanner>,
-    ) -> Self {
-        Self { pool, core_pool, scanner }
+    pub fn new(ctx: &'static crate::context::Context, scanner: Arc<ShadowScanner>) -> Self {
+        Self { ctx, scanner }
     }
-
     /// 处理命令
     pub async fn handle(&self, command: super::ShadowWithdrawCommand) -> Result<(), ServiceError> {
         match command {
@@ -363,6 +366,9 @@ impl ShadowWithdrawWorker {
                 self.process_broadcast(trade_no).await
             }
             super::ShadowWithdrawCommand::Recover(trade_no) => self.process_recover(trade_no).await,
+            super::ShadowWithdrawCommand::ExecuteResourceDelegation(trade_no) => {
+                self.process_resource_delegation_execute(trade_no).await
+            }
         }
     }
 
@@ -397,7 +403,7 @@ impl ShadowWithdrawWorker {
             Self::tron_fee_estimate_resource_json(fee_details.energy, fee_details.bandwidth);
 
         let rows = ApiWithdrawRepo::update_fee_estimate(
-            &self.pool,
+            &self.ctx.api_transaction_pool()?,
             &trade_no,
             &estimated_transaction_fee,
             &estimated_resource_consume,
@@ -413,6 +419,119 @@ impl ShadowWithdrawWorker {
             source = "shadow_withdraw_worker",
             "Withdraw fee estimate snapshot write attempted"
         );
+        Ok(())
+    }
+
+    async fn handle_resource_delegation_terminal_failure_if_needed(
+        &self,
+        resource_trade_no: &str,
+        result: Result<(), ServiceError>,
+    ) -> Result<(), ServiceError> {
+        let Err(err) = result else {
+            return Ok(());
+        };
+
+        match err.retry_policy() {
+            wallet_utils::RetryPolicy::Never => {
+                self.mark_resource_delegation_failed(resource_trade_no, &err).await?;
+                Ok(())
+            }
+            wallet_utils::RetryPolicy::Delay => {
+                self.schedule_resource_delegation_rebuild_retry(resource_trade_no, &err).await?;
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %err,
+                    source = "shadow_withdraw_worker",
+                    "Resource delegation terminal step failed, will retry later"
+                );
+                Ok(())
+            }
+        }
+    }
+
+    fn resource_delegation_retry_wait_secs(retry_count: i64) -> i64 {
+        let exponent = retry_count.clamp(0, 6) as u32;
+        (60_i64 * (1_i64 << exponent)).min(3600)
+    }
+
+    async fn schedule_resource_delegation_rebuild_retry(
+        &self,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let wait_secs = Self::resource_delegation_retry_wait_secs(task.retry_count);
+        let next_retry_at = Utc::now() + chrono::Duration::seconds(wait_secs);
+        let next_status = if err.is_network_error() {
+            ApiResourceDelegationRecoverStatus::RetryBuild
+        } else {
+            ApiResourceDelegationRecoverStatus::RetryRecover
+        };
+
+        let affected = ApiResourceDelegationRepo::reset_for_retry(
+            &self.ctx.api_transaction_pool()?,
+            resource_trade_no,
+            next_status,
+            &next_retry_at.to_rfc3339(),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        info!(
+            resource_trade_no = %resource_trade_no,
+            origin_trade_no = ?task.origin_trade_no,
+            affected = %affected,
+            retry_count = task.retry_count + 1,
+            recover_status = ?next_status,
+            next_retry_at = %next_retry_at.to_rfc3339(),
+            wait_secs,
+            error = %err,
+            source = "shadow_withdraw_worker",
+            "Withdraw resource delegation reset for retry"
+        );
+
+        Ok(())
+    }
+
+    async fn process_resource_delegation_execute(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        let affected = ApiResourceDelegationRepo::claim_build_slot(
+            &self.ctx.api_transaction_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            return Ok(());
+        }
+
+        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if delegation.tx_hash.is_some() {
+            return Ok(());
+        }
+
+        let tx_hash = self.execute_tron_resource_delegation(&delegation).await?;
+        ApiResourceDelegationRepo::mark_broadcast_success(
+            &self.ctx.api_transaction_pool()?,
+            &resource_trade_no,
+            &tx_hash,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
         Ok(())
     }
 
@@ -432,7 +551,9 @@ impl ShadowWithdrawWorker {
         }
 
         let fee_details = self.estimate_tron_fee_details_for_withdraw(&req).await?;
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
+                .await?;
         let resource = adapter.account_resource(&req.from_addr).await?;
         let available_energy = resource.available_energy();
         let available_bandwidth = resource.available_bandwidth();
@@ -444,7 +565,7 @@ impl ShadowWithdrawWorker {
             fee_details.bandwidth,
         ) {
             let rows = ApiWithdrawRepo::mark_resource_released(
-                &self.pool,
+                &self.ctx.api_transaction_pool()?,
                 trade_no,
                 ApiResourceGateResult::ResourceReady,
             )
@@ -480,7 +601,7 @@ impl ShadowWithdrawWorker {
             Self::energy_delegation_shortfall_amount(required_energy, available_energy)
         else {
             let rows = ApiWithdrawRepo::mark_resource_released(
-                &self.pool,
+                &self.ctx.api_transaction_pool()?,
                 origin_trade_no,
                 ApiResourceGateResult::FallbackAllowed,
             )
@@ -532,7 +653,7 @@ impl ShadowWithdrawWorker {
             PlatformApplyOutcome::AcceptedWithOriginalTradeNo => origin_trade_no.to_string(),
             PlatformApplyOutcome::Rejected => {
                 let rows = ApiWithdrawRepo::mark_resource_released(
-                    &self.pool,
+                    &self.ctx.api_transaction_pool()?,
                     origin_trade_no,
                     ApiResourceGateResult::FallbackAllowed,
                 )
@@ -545,7 +666,7 @@ impl ShadowWithdrawWorker {
             }
         };
         ApiWithdrawRepo::mark_resource_blocked(
-            &self.pool,
+            &self.ctx.api_transaction_pool()?,
             origin_trade_no,
             ApiResourceBlockReason::NeedPlatformDelegate,
             Some(resource_trade_no.as_str()),
@@ -575,7 +696,8 @@ impl ShadowWithdrawWorker {
         receiver_address: &str,
         amount: &str,
     ) -> Result<PlatformApplyOutcome, ServiceError> {
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, chain_code).await?;
         let resource = adapter.account_resource(receiver_address).await?;
         let amounts = energy_shortfall_to_apply_amounts(amount, resource.energy_price())?;
         let (app_id, org_id) = self.resolve_resource_apply_identity(uid).await?;
@@ -602,7 +724,7 @@ impl ShadowWithdrawWorker {
             TransType::Wd,
         );
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         let resp = backend_api.apply_resource_delegation(&req).await?;
         let is_success = resp.is_success();
         let outcome = Self::platform_apply_outcome(is_success, resp.dl_trade_no);
@@ -638,7 +760,7 @@ impl ShadowWithdrawWorker {
         &self,
         uid: &str,
     ) -> Result<(String, String), ServiceError> {
-        let wallet = ApiWalletRepo::find_by_uid(&self.core_pool, uid)
+        let wallet = ApiWalletRepo::find_by_uid(&self.ctx.api_wallet_pool()?, uid)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
         let app_id = wallet.as_ref().and_then(|w| w.app_id.as_deref()).unwrap_or(uid);
@@ -728,8 +850,11 @@ impl ShadowWithdrawWorker {
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
+        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &req.chain_code,
+        )
+        .await;
         if _chain_rpc_guard.is_some() {
             info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Acquired chain rpc guard permit");
         }
@@ -753,7 +878,7 @@ impl ShadowWithdrawWorker {
 
                         if existing_tx_hash.is_none() {
                             let rows_affected = ApiWithdrawRepo::backfill_tx_hash_if_missing(
-                                &self.pool,
+                                &self.ctx.api_transaction_pool()?,
                                 &fresh_req.trade_no,
                                 &tx_resp.tx_hash,
                                 "shadow_withdraw_worker",
@@ -815,7 +940,7 @@ impl ShadowWithdrawWorker {
                             .to_rfc3339();
                     let rows_affected =
                         ApiWithdrawRepo::confirm_onchain_transaction_fact_with_recover(
-                            &self.pool,
+                            &self.ctx.api_transaction_pool()?,
                             &fresh_req.trade_no,
                             &tx_resp.tx_hash,
                             &transaction_time,
@@ -855,7 +980,7 @@ impl ShadowWithdrawWorker {
                             "Detected expired tron raw_tx during recover; invalidating stale tx facts"
                         );
                         let rows = ApiWithdrawRepo::invalidate_raw_tx(
-                            &self.pool,
+                            &self.ctx.api_transaction_pool()?,
                             &req.trade_no,
                             None,
                             None,
@@ -877,10 +1002,12 @@ impl ShadowWithdrawWorker {
                 }
 
                 let now = Utc::now();
-                let rows_affected =
-                    ApiWithdrawRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected = ApiWithdrawRepo::mark_broadcast_uncertain_attempt(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_withdraw_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -912,7 +1039,7 @@ impl ShadowWithdrawWorker {
                         "EVM uncertain timeout reached; running nonce reconcile"
                     );
 
-                    let nonce_engine = get_nonce_engine();
+                    let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
                     nonce_engine.trigger_reconcile_with_reason(
                         &refreshed.from_addr,
                         &refreshed.chain_code,
@@ -920,7 +1047,7 @@ impl ShadowWithdrawWorker {
                         true,
                     );
                     let _ = ApiWithdrawRepo::mark_broadcast_uncertain_reconciled(
-                        &self.pool,
+                        &self.ctx.api_transaction_pool()?,
                         &refreshed.trade_no,
                     )
                     .await
@@ -956,7 +1083,7 @@ impl ShadowWithdrawWorker {
                     Self::EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS
                 );
                 let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
-                    &self.pool,
+                    &self.ctx.api_transaction_pool()?,
                     &refreshed.trade_no,
                     wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
                     ErrCode::TransactionOnChainException,
@@ -969,7 +1096,7 @@ impl ShadowWithdrawWorker {
                 })?;
 
                 let stage_rows = ApiWithdrawRepo::set_failure_stage(
-                    &self.pool,
+                    &self.ctx.api_transaction_pool()?,
                     &refreshed.trade_no,
                     WithdrawFailureStage::Chain,
                 )
@@ -1002,7 +1129,7 @@ impl ShadowWithdrawWorker {
                     "Tron tx missing from confirmed and pending pools beyond timeout; marking manual handling"
                 );
                 let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
-                    &self.pool,
+                    &self.ctx.api_transaction_pool()?,
                     &req.trade_no,
                     wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
                     ErrCode::TransactionOnChainException,
@@ -1011,7 +1138,7 @@ impl ShadowWithdrawWorker {
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
                 let stage_rows = ApiWithdrawRepo::set_failure_stage(
-                    &self.pool,
+                    &self.ctx.api_transaction_pool()?,
                     &req.trade_no,
                     WithdrawFailureStage::Chain,
                 )
@@ -1100,7 +1227,9 @@ impl ShadowWithdrawWorker {
         };
 
         // 先占位 build slot，防止同一 trade_no 在构建期间被重复推进。
-        let build_slot_rows = ApiWithdrawRepo::update_building_at(&self.pool, trade_no).await?;
+        let build_slot_rows =
+            ApiWithdrawRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+                .await?;
         if build_slot_rows == 0 {
             info!(
                 trade_no = %trade_no,
@@ -1112,14 +1241,17 @@ impl ShadowWithdrawWorker {
 
         // ====== phase 2: 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&withdraw.chain_code).await;
+        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &withdraw.chain_code,
+        )
+        .await;
         if _chain_rpc_guard.is_some() {
             info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Acquired chain rpc guard permit");
         }
 
         // 通过Context获取Handles实例，然后获取私钥管理器
-        let handles = crate::context::get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key =
             private_key_manager.get_private_key(&withdraw.from_addr, &withdraw.chain_code).await?;
@@ -1132,6 +1264,7 @@ impl ShadowWithdrawWorker {
 
         // 10. 构建交易
         let (tx_hash, raw_tx, fee_str) = ApiTransDomain::build_transfer_raw(
+            &self.ctx,
             transfer_req,
             Some(private_key), // 私钥管理
         )
@@ -1143,7 +1276,7 @@ impl ShadowWithdrawWorker {
             // 11. 立即将tx_hash、raw_tx和nonce存储到数据库
             let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
             let rows_affected = ApiWithdrawRepo::update_after_build(
-                &self.pool,
+                &self.ctx.api_transaction_pool()?,
                 &withdraw.trade_no,
                 &tx_hash,
                 &raw_tx_str,
@@ -1173,6 +1306,7 @@ impl ShadowWithdrawWorker {
         withdraw: &ApiWithdrawEntity,
     ) -> Result<bool, ServiceError> {
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            self.ctx,
             &withdraw.chain_code,
             withdraw.token_addr.clone(),
         )
@@ -1185,7 +1319,8 @@ impl ShadowWithdrawWorker {
         };
 
         let adapter: std::sync::Arc<dyn crate::domain::api_wallet::adapter::tx::Tx + Send + Sync> =
-            ApiChainAdapterFactory::get_transaction_adapter(&withdraw.chain_code).await?;
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &withdraw.chain_code)
+                .await?;
         let balance = adapter.balance_token_key(&withdraw.from_addr, token_key).await?;
         let balance = unit::format_to_string(balance, coin.decimals)?;
 
@@ -1252,8 +1387,12 @@ impl ShadowWithdrawWorker {
             }
 
             if Self::is_evm_chain_code(&fresh_withdraw.chain_code) {
-                match ApiTransDomain::nonce(&fresh_withdraw.from_addr, &fresh_withdraw.chain_code)
-                    .await
+                match ApiTransDomain::nonce(
+                    &self.ctx,
+                    &fresh_withdraw.from_addr,
+                    &fresh_withdraw.chain_code,
+                )
+                .await
                 {
                     Ok(chain_nonce) => {
                         if Self::should_force_align_prebroadcast_nonce_gap(
@@ -1273,7 +1412,7 @@ impl ShadowWithdrawWorker {
                                 "EVM pre-broadcast nonce-gap detected; best-effort force align"
                             );
 
-                            let nonce_engine = get_nonce_engine();
+                            let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
                             if let Err(e) = nonce_engine
                                 .force_align_to_chain_next_nonce(
                                     &fresh_withdraw.from_addr,
@@ -1320,8 +1459,11 @@ impl ShadowWithdrawWorker {
 
         // ====== phase 2: 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&withdraw.chain_code).await;
+        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &withdraw.chain_code,
+        )
+        .await;
         if _chain_rpc_guard.is_some() {
             info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Acquired chain rpc guard permit");
         }
@@ -1335,6 +1477,7 @@ impl ShadowWithdrawWorker {
         // 7. 广播交易
         info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Starting to broadcast transaction");
         let tx_resp = ApiTransDomain::broadcast_transfer(
+            &self.ctx,
             &withdraw.chain_code,
             raw_tx,
             withdraw.tx_hash.as_deref(),
@@ -1371,10 +1514,12 @@ impl ShadowWithdrawWorker {
                         "0".to_string()
                     };
 
-                    let rows_affected =
-                        ApiWithdrawRepo::mark_broadcast_executed(&self.pool, &withdraw.trade_no)
-                            .await
-                            .map_err(|e| ServiceError::Database(e.into()))?;
+                    let rows_affected = ApiWithdrawRepo::mark_broadcast_executed(
+                        &self.ctx.api_transaction_pool()?,
+                        &withdraw.trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
 
                     // 显式处理幂等情况：广播已被其他并发/恢复执行
                     if rows_affected == 0 {
@@ -1398,10 +1543,12 @@ impl ShadowWithdrawWorker {
                     return Ok(());
                 }
                 let had_uncertain_since = withdraw.broadcast_uncertain_since_at.is_some();
-                let rows_affected =
-                    ApiWithdrawRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected = ApiWithdrawRepo::mark_broadcast_uncertain_attempt(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_withdraw_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -1426,7 +1573,7 @@ impl ShadowWithdrawWorker {
         trade_no: &str,
     ) -> Result<wallet_database::entities::api_withdraw::ApiWithdrawEntity, ServiceError> {
         let entity = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &self.pool,
+            &self.ctx.api_transaction_pool()?,
             trade_no,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw,
         )
@@ -1475,10 +1622,10 @@ impl ShadowWithdrawWorker {
                 // ⚠️ INVARIANT:
                 // This method MUST guarantee DB-level atomic CAS for nonce allocation.
                 // Any refactor breaking this invariant will cause nonce duplication.
-                use crate::infrastructure::nonce::nonce_engine::get_nonce_engine;
+                use crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx;
 
-                let nonce_engine = get_nonce_engine();
-                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code, &self.pool).await?;
+                let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
+                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
                 info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_withdraw_worker", "Retrieved nonce using NonceEngine");
                 Ok(nonce as u64)
             }
@@ -1491,7 +1638,7 @@ impl ShadowWithdrawWorker {
 
     async fn check_digest(&self, req: &ApiWithdrawEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "[提币] 验证交易摘要");
-        let sn = crate::context::get_context().unwrap().get_sn();
+        let sn = self.ctx.get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
@@ -1516,6 +1663,7 @@ impl ShadowWithdrawWorker {
 
         // 获取币种信息
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            self.ctx,
             &req.chain_code,
             req.token_addr.clone().into(),
         )
@@ -1553,7 +1701,8 @@ impl ShadowWithdrawWorker {
         token_key: AssetTokenKey,
         decimals: u8,
     ) -> Result<TronFeeDetails, ServiceError> {
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter("tron").await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, "tron").await?;
         let mut params = ApiBaseTransferReq::new(from, to, value, "tron");
         params.with_token(token_key.to_chain_token_option(), decimals, symbol);
         let fee = adapter.estimate_fee(params, main_symbol).await?;
@@ -1565,13 +1714,19 @@ impl ShadowWithdrawWorker {
         &self,
         req: &ApiWithdrawEntity,
     ) -> Result<TronFeeDetails, ServiceError> {
-        let main_coin =
-            ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, AssetTokenKey::Native)
-                .await?;
+        let main_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            self.ctx,
+            &req.chain_code,
+            AssetTokenKey::Native,
+        )
+        .await?;
         let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                    .await?;
+            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?;
             (token_coin.symbol, token_coin.token_address, token_coin.decimals)
         } else {
             (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
@@ -1587,6 +1742,161 @@ impl ShadowWithdrawWorker {
             token_decimals,
         )
         .await
+    }
+
+    async fn execute_tron_resource_delegation(
+        &self,
+        delegation: &ApiResourceDelegationEntity,
+    ) -> Result<String, ServiceError> {
+        let mut auth_retry_attempted = false;
+        loop {
+            match self.execute_tron_resource_delegation_once(delegation).await {
+                Ok(tx_hash) => return Ok(tx_hash),
+                Err(err)
+                    if !auth_retry_attempted
+                        && resource_rpc_auth::should_retry_after_rpc_auth_error(&err) =>
+                {
+                    auth_retry_attempted = true;
+                    resource_rpc_auth::refresh_and_prepare_retry(
+                        self.ctx,
+                        &delegation.chain_code,
+                        "withdraw_resource_delegation",
+                        &delegation.resource_trade_no,
+                        &err,
+                    )
+                    .await?;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+    }
+
+    async fn execute_tron_resource_delegation_once(
+        &self,
+        delegation: &ApiResourceDelegationEntity,
+    ) -> Result<String, ServiceError> {
+        if !delegation.chain_code.eq_ignore_ascii_case("tron") {
+            return Err(ServiceError::Parameter(format!(
+                "resource delegation only supports tron, got {}",
+                delegation.chain_code
+            )));
+        }
+
+        let trx_amount = parse_resource_delegation_native_trx_units(&delegation.native_amount)?;
+        let resource = Self::tron_resource_name(delegation.resource_type);
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(self.ctx).await?;
+        let _guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &delegation.chain_code,
+        )
+        .await;
+        let signer = resolve_resource_delegation_signer(self.ctx, delegation).await?;
+
+        let raw = match delegation.operation_type {
+            ApiResourceDelegationOperationType::Delegate => {
+                let args = new_tron_delegate_args(
+                    &delegation.owner_address,
+                    &delegation.receiver_address,
+                    trx_amount,
+                    resource,
+                    signer.permission_id,
+                )?;
+                args.build_raw_transaction(chain.get_provider()).await?
+            }
+            ApiResourceDelegationOperationType::Undelegate => {
+                let args = new_tron_undelegate_args(
+                    &delegation.owner_address,
+                    &delegation.receiver_address,
+                    trx_amount,
+                    resource,
+                    signer.permission_id,
+                )?;
+                args.build_raw_transaction(chain.get_provider()).await?
+            }
+        };
+        let (tx_hash, raw_tx) =
+            self.sign_tron_resource_delegation(delegation, &signer, raw).await?;
+        let tx_resp = ApiTransDomain::broadcast_transfer(
+            &self.ctx,
+            &delegation.chain_code,
+            raw_tx,
+            Some(&tx_hash),
+        )
+        .await?;
+
+        let Some(tx) = tx_resp else {
+            return Err(ServiceError::Parameter(
+                "resource delegation broadcast result uncertain".to_string(),
+            ));
+        };
+        if tx.tx_hash != tx_hash {
+            return Err(ServiceError::System(SystemError::Internal(
+                "resource delegation tx_hash mismatch between build and broadcast".to_string(),
+            )));
+        }
+
+        Ok(tx_hash)
+    }
+
+    async fn sign_tron_resource_delegation(
+        &self,
+        delegation: &ApiResourceDelegationEntity,
+        signer: &ResourceDelegationSigner,
+        mut raw: RawTransactionParams,
+    ) -> Result<(String, RawTx), ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(self.ctx).await?;
+        let provider = chain.get_provider();
+        let consumer =
+            provider.transfer_fee(&delegation.owner_address, None, &raw.raw_data_hex, 1).await?;
+        let balance = chain.balance(&delegation.owner_address, None).await?;
+        if balance.to::<i64>() < consumer.transaction_fee_i64() {
+            return Err(ServiceError::Parameter(format!(
+                "resource delegation balance is insufficient for tx fee: balance={}, need={}",
+                balance,
+                consumer.transaction_fee_i64()
+            )));
+        }
+
+        let handles = self.ctx.get_handles_arc().await?;
+        let private_key_manager = handles.get_global_private_key_manager();
+        let private_key = private_key_manager
+            .get_private_key(&signer.signer_address, &delegation.chain_code)
+            .await?;
+        let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
+        raw.signature.push(sign);
+
+        let tx_hash = raw.tx_id.clone();
+        let raw_tx = RawTx::Tron(
+            raw,
+            BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0),
+            consumer.transaction_fee(),
+        );
+
+        Ok((tx_hash, raw_tx))
+    }
+
+    fn tron_resource_name(resource_type: ApiResourceType) -> &'static str {
+        match resource_type {
+            ApiResourceType::Bandwidth => "bandwidth",
+            ApiResourceType::Energy => "energy",
+        }
+    }
+
+    async fn mark_resource_delegation_failed(
+        &self,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let err_code = if err.is_network_error() { "ERR_6005" } else { "ERR_6008" };
+        ApiResourceDelegationRepo::mark_failed_if_unfinished(
+            &self.ctx.api_transaction_pool()?,
+            resource_trade_no,
+            err_code,
+            &err.to_string(),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        Ok(())
     }
 
     /// 交易恢复逻辑
@@ -1631,6 +1941,7 @@ impl ShadowWithdrawWorker {
         }
 
         match ApiTransDomain::process_recovered_tx(
+            &self.ctx,
             &withdraw.chain_code,
             &withdraw.from_addr,
             tx_hash,
@@ -1679,7 +1990,7 @@ impl ShadowWithdrawWorker {
         // BuildTx 失败只需要释放 build slot，让 scanner 后续重试。
         // 这里不写失败事实，避免把可重试的构建失败误记成终态失败。
         if matches!(stage, WithdrawFailureStage::Build) && withdraw.raw_tx.is_none() {
-            let rows_affected = ApiWithdrawRepo::clear_building_at(&self.pool, trade_no)
+            let rows_affected = ApiWithdrawRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to clear build slot for BuildTx failure");
@@ -1707,7 +2018,7 @@ impl ShadowWithdrawWorker {
             && withdraw.last_broadcast_at.is_none()
         {
             let rows_affected =
-                ApiWithdrawRepo::invalidate_raw_tx(&self.pool, trade_no, None, None, None)
+                ApiWithdrawRepo::invalidate_raw_tx(&self.ctx.api_transaction_pool()?, trade_no, None, None, None)
                     .await
                     .map_err(|db_err: wallet_database::Error| {
                         error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to invalidate raw_tx for sol blockhash rebuild");
@@ -1731,7 +2042,7 @@ impl ShadowWithdrawWorker {
         if matches!(stage, WithdrawFailureStage::Broadcast)
             && ApiTransDomain::is_duplicate_broadcast_error(&err)
         {
-            let rows_affected = ApiWithdrawRepo::mark_broadcast_executed(&self.pool, trade_no)
+            let rows_affected = ApiWithdrawRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to mark broadcast executed for duplicate broadcast");
@@ -1763,7 +2074,8 @@ impl ShadowWithdrawWorker {
                 "Detected EVM nonce too low on broadcast, treat as idempotent success"
             );
 
-            let nonce_engine = crate::infrastructure::nonce::nonce_engine::get_nonce_engine();
+            let nonce_engine =
+                crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?;
             if let Err(e) = nonce_engine
                 .handle_nonce_error(&withdraw.from_addr, &withdraw.chain_code, &error_msg)
                 .await
@@ -1771,7 +2083,7 @@ impl ShadowWithdrawWorker {
                 warn!(trade_no = %trade_no, error = %e, source = "shadow_withdraw_worker", "Nonce self-heal failed");
             }
 
-            let rows_affected = ApiWithdrawRepo::mark_broadcast_executed(&self.pool, trade_no)
+            let rows_affected = ApiWithdrawRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to mark broadcast executed for nonce too low broadcast conflict");
@@ -1792,7 +2104,8 @@ impl ShadowWithdrawWorker {
         if ApiTransDomain::is_nonce_too_low_error(&err) {
             info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Detected nonce too low error, syncing nonce from chain");
 
-            let nonce_engine = crate::infrastructure::nonce::nonce_engine::get_nonce_engine();
+            let nonce_engine =
+                crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?;
             if let Err(e) = nonce_engine
                 .handle_nonce_error(&withdraw.from_addr, &withdraw.chain_code, &error_msg)
                 .await
@@ -1801,7 +2114,7 @@ impl ShadowWithdrawWorker {
             }
 
             let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
-                &self.pool,
+                &self.ctx.api_transaction_pool()?,
                 trade_no,
                 wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
                 ErrCode::SDKInternalError, // 使用通用错误码
@@ -1833,7 +2146,7 @@ impl ShadowWithdrawWorker {
                 };
 
                 let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
-                    &self.pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                     wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
                     err_code,
@@ -1850,20 +2163,25 @@ impl ShadowWithdrawWorker {
                 // 目的：
                 // - 事实驱动的状态推导可在 report_trigger 后进入 SendingTxFailedReport
                 // - Diagnose 日志能明确失败发生在哪个阶段
-                let stage_rows =
-                    match ApiWithdrawRepo::set_failure_stage(&self.pool, trade_no, stage).await {
-                        Ok(r) => r,
-                        Err(e) => {
-                            error!(
-                                trade_no = %trade_no,
-                                failure_stage = ?stage,
-                                error = %e,
-                                source = "shadow_withdraw_worker",
-                                "Failed to set withdraw failure_stage"
-                            );
-                            0
-                        }
-                    };
+                let stage_rows = match ApiWithdrawRepo::set_failure_stage(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                    stage,
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        error!(
+                            trade_no = %trade_no,
+                            failure_stage = ?stage,
+                            error = %e,
+                            source = "shadow_withdraw_worker",
+                            "Failed to set withdraw failure_stage"
+                        );
+                        0
+                    }
+                };
 
                 // 只有第一次写入失败事实才发送 Tick
                 if rows_affected > 0 || stage_rows > 0 {
@@ -1884,7 +2202,7 @@ impl ShadowWithdrawWorker {
     }
 
     async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
-        let rows_affected = ApiWithdrawRepo::clear_building_at(&self.pool, trade_no)
+        let rows_affected = ApiWithdrawRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
             .await
             .map_err(|db_err: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to clear build slot after BuildTx early exit");
@@ -1906,13 +2224,15 @@ impl ShadowWithdrawWorker {
 mod tests {
     use super::ShadowWithdrawWorker;
     use crate::{
-        domain::api_wallet::adapter::tx::RawTx, error::system::SystemError,
+        context::api_wallet_backend::ApiWalletBackend, domain::api_wallet::adapter::tx::RawTx,
+        error::system::SystemError,
         infrastructure::api_trans::resource_apply_outcome::PlatformApplyOutcome,
     };
+    use async_trait::async_trait;
     use chrono::Utc;
-    use std::sync::Arc;
+    use std::{fs, path::PathBuf, sync::Arc};
     use tempfile::tempdir;
-    use tokio::sync::mpsc;
+    use tokio::sync::{OnceCell, mpsc};
     use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
     use wallet_database::{
         ApiWalletDbPool, SqliteContext,
@@ -1932,6 +2252,160 @@ mod tests {
             withdraw::ApiWithdrawRepo,
         },
     };
+    use wallet_transport_backend::{
+        request::{
+            DeviceDeleteReq, KeysInitReq,
+            api_wallet::{
+                address::ExpandAddressCompleteReq,
+                swap::{ApiInitSwapReq, ApiInitSwapResponse},
+                wallet::{
+                    AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+                },
+            },
+        },
+        response_vo::api_wallet::wallet::{
+            AppIdUidUsageRes as ApiWalletAppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes,
+            QueryWalletActivationInfoResp, UidStatus,
+        },
+    };
+
+    #[derive(Default)]
+    struct NoopApiWalletBackend;
+
+    #[async_trait]
+    impl ApiWalletBackend for NoopApiWalletBackend {
+        async fn wallet_bind_appid(
+            &self,
+            _: BindAppIdReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn init_api_wallet(
+            &self,
+            _: AppIdImportReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn old_keys_init(
+            &self,
+            _: KeysInitReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn appid_import(
+            &self,
+            _: AppIdImportReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn appid_import_recharge_wallet(
+            &self,
+            _: AppIdImportRechargeWalletReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn keys_uid_check(
+            &self,
+            _: &str,
+        ) -> Result<KeysUidCheckRes, crate::error::service::ServiceError> {
+            Ok(KeysUidCheckRes { uid: String::new(), status: UidStatus::NormalWallet })
+        }
+        async fn query_uid_bind_info(
+            &self,
+            _: &str,
+        ) -> Result<QueryUidBindInfoRes, crate::error::service::ServiceError> {
+            Ok(QueryUidBindInfoRes {
+                app_id: String::new(),
+                org_id: String::new(),
+                bind_status: false,
+                sn: String::new(),
+            })
+        }
+        async fn query_wallet_activation_info(
+            &self,
+            _: &str,
+        ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
+            Ok(QueryWalletActivationInfoResp(vec![]))
+        }
+        async fn appid_uid_usage(
+            &self,
+            _: AppIdUidUsageReq,
+        ) -> Result<ApiWalletAppIdUidUsageRes, crate::error::service::ServiceError> {
+            Ok(ApiWalletAppIdUidUsageRes { used: false })
+        }
+        async fn expand_address_complete(
+            &self,
+            _: ExpandAddressCompleteReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn appid_withdrawal_wallet_change(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+        async fn init_swap(
+            &self,
+            _: &ApiInitSwapReq,
+        ) -> Result<ApiInitSwapResponse, crate::error::service::ServiceError> {
+            Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+        }
+        async fn device_delete(
+            &self,
+            _: &DeviceDeleteReq,
+        ) -> Result<Option<()>, crate::error::service::ServiceError> {
+            Ok(None)
+        }
+    }
+
+    async fn test_ctx() -> &'static crate::context::Context {
+        static CTX: tokio::sync::OnceCell<&'static crate::context::Context> =
+            tokio::sync::OnceCell::const_new();
+
+        *CTX.get_or_init(|| async {
+            let config = crate::config::Config::new(
+                r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#,
+            )
+            .expect("parse test config");
+
+            let mut dir = PathBuf::from(std::env::temp_dir());
+            dir.push("wallet-api-withdraw-shadow-worker-tests");
+            fs::create_dir_all(&dir).expect("ensure temp dir");
+
+            let dirs = crate::dirs::Dirs::new(&dir.to_string_lossy()).expect("create dirs");
+            crate::context::init_context_with_api_wallet_backend(
+                "wallet_api_shadow_withdraw_test_sn",
+                "unittest",
+                dirs,
+                None,
+                config,
+                Arc::new(NoopApiWalletBackend::default()),
+            )
+            .await
+            .expect("init test context")
+        })
+        .await
+    }
 
     fn base_withdraw() -> ApiWithdrawEntity {
         let now = Utc::now();
@@ -2110,6 +2584,224 @@ mod tests {
         );
     }
 
+    #[test]
+    fn withdraw_resource_delegation_retries_rpc_auth_unauthorized() {
+        let err = crate::error::service::ServiceError::TransportBackend(
+            wallet_transport_backend::Error::ApiBackend(401, Some("Unauthorized".to_string())),
+        );
+
+        assert!(
+            crate::infrastructure::api_trans::resource_rpc_auth::should_retry_after_rpc_auth_error(
+                &err
+            )
+        );
+    }
+
+    #[test]
+    fn withdraw_evm_prebroadcast_nonce_gap_does_not_align_for_small_gap() {
+        assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(3, 4));
+        assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(5, 3));
+    }
+
+    #[test]
+    fn withdraw_expired_tron_recover_guard_requires_no_broadcast_evidence() {
+        let raw_tx_json = expired_tron_raw_tx_json(123);
+
+        assert!(ShadowWithdrawWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            false
+        ));
+        assert!(!ShadowWithdrawWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            true
+        ));
+    }
+
+    #[test]
+    fn recover_hash_validation_accepts_missing_existing_hash() {
+        ShadowWithdrawWorker::validate_recovered_tx_hash("trade-no", None, "0xrecover")
+            .expect("missing hash should be allowed");
+    }
+
+    #[test]
+    fn recover_hash_validation_rejects_mismatch() {
+        let err = ShadowWithdrawWorker::validate_recovered_tx_hash(
+            "trade-no",
+            Some("0xexisting"),
+            "0xrecover",
+        )
+        .expect_err("mismatch must fail");
+
+        assert!(matches!(
+            err,
+            crate::error::service::ServiceError::System(SystemError::Internal(_))
+        ));
+    }
+
+    #[test]
+    fn withdraw_amount_shortage_detects_balance_below_requested_value() {
+        assert!(
+            ShadowWithdrawWorker::is_withdraw_amount_shortage("1.109998", "1.109999")
+                .expect("compare")
+        );
+        assert!(
+            !ShadowWithdrawWorker::is_withdraw_amount_shortage("1.109999", "1.109999")
+                .expect("compare")
+        );
+    }
+
+    #[tokio::test]
+    async fn clear_build_slot_after_claim_releases_building_at() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let test_ctx = test_ctx().await;
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner =
+            Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
+                test_ctx,
+                crate::infrastructure::api_trans::withdraw::shadow::ScannerConfig::default(),
+                intent_tx,
+                None,
+            ));
+        let worker = ShadowWithdrawWorker::new(test_ctx, scanner);
+
+        let trade_no = "W_clear_build_slot_after_claim";
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &collect_pool,
+            "uid",
+            "withdraw",
+            "from",
+            "to",
+            "1",
+            "digest",
+            "eth",
+            None,
+            "USDT",
+            trade_no,
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::SendingTx,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .expect("insert withdraw");
+
+        let claimed = ApiWithdrawRepo::update_building_at(&collect_pool, trade_no)
+            .await
+            .expect("claim build slot");
+        assert_eq!(claimed, 1);
+
+        worker.clear_build_slot_after_claim(trade_no).await.expect("clear build slot");
+
+        let persisted = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &collect_pool,
+            trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .expect("load withdraw");
+        assert!(persisted.building_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn withdraw_platform_delegate_retryable_error_releases_build_slot() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let transaction_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let transaction_pool =
+            transaction_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let test_ctx = test_ctx().await;
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner =
+            Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
+                test_ctx,
+                crate::infrastructure::api_trans::withdraw::shadow::ScannerConfig::default(),
+                intent_tx,
+                None,
+            ));
+        let worker = ShadowWithdrawWorker::new(test_ctx, scanner);
+
+        ApiResourceDelegationRepo::upsert(
+            &transaction_pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "wd_platform_delegate_retry",
+                ApiTradeType::Withdraw,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "withdraw_owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert platform delegation");
+        ApiResourceDelegationRepo::mark_task_ack_sent(
+            &transaction_pool,
+            "wd_platform_delegate_retry",
+        )
+        .await
+        .expect("mark ack");
+        ApiResourceDelegationRepo::claim_build_slot(
+            &transaction_pool,
+            "wd_platform_delegate_retry",
+        )
+        .await
+        .expect("claim build slot");
+
+        worker
+            .schedule_resource_delegation_rebuild_retry(
+                "wd_platform_delegate_retry",
+                &crate::error::service::ServiceError::Parameter("retryable test error".to_string()),
+            )
+            .await
+            .expect("schedule retry");
+
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &transaction_pool,
+            "wd_platform_delegate_retry",
+        )
+        .await
+        .expect("load platform task");
+        assert!(task.building_at.is_none());
+        assert_eq!(task.tx_hash, None);
+        assert_eq!(task.retry_count, 1);
+        assert_eq!(task.recover_status, Some(ApiResourceDelegationRecoverStatus::RetryRecover));
+        assert!(task.next_retry_at.is_some());
+    }
+
     #[tokio::test]
     async fn withdraw_resource_apply_identity_uses_wallet_app_and_merchant_ids() {
         let dir = tempdir().expect("tempdir");
@@ -2148,14 +2840,15 @@ mod tests {
             .expect("set merchant id");
 
         let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let test_ctx = test_ctx().await;
         let scanner =
             Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
-                transaction_pool.clone(),
+                test_ctx,
                 crate::infrastructure::api_trans::withdraw::shadow::ScannerConfig::default(),
                 intent_tx,
                 None,
             ));
-        let worker = ShadowWithdrawWorker::new(transaction_pool, wallet_pool, scanner);
+        let worker = ShadowWithdrawWorker::new(test_ctx, scanner);
 
         let (app_id, org_id) =
             worker.resolve_resource_apply_identity("wallet_uid").await.expect("resolve identity");

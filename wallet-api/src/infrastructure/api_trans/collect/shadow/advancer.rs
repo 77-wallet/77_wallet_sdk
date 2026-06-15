@@ -1,14 +1,18 @@
 use super::CollectIntent;
-use crate::infrastructure::api_trans::{
-    collect::{
-        diagnose::{DiagnoseEvent, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
-        shadow::{ChainIntent, SideEffectIntent, stage::CollectStage},
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::{
+        collect::{
+            diagnose::{DiagnoseEvent, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
+            shadow::{ChainIntent, SideEffectIntent, stage::CollectStage},
+        },
+        shadow_rpc_policy,
     },
-    shadow_rpc_policy,
 };
 use dashmap::DashMap;
 use scopeguard::defer;
 use std::{
+    fmt,
     sync::{
         Arc,
         atomic::{AtomicU64, AtomicUsize, Ordering},
@@ -19,7 +23,6 @@ use tokio::sync::{Semaphore, mpsc::Sender};
 use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 use wallet_database::{
-    ApiTransactionDbPool,
     entities::api_trade_type::ApiTradeType,
     repositories::api_wallet::{
         collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
@@ -51,13 +54,16 @@ fn intent_trade_no(intent: &CollectIntent) -> Option<String> {
             SideEffectIntent::UploadServiceFee(trade_no) => Some(trade_no.clone()),
             SideEffectIntent::UploadTxExecReceipt(trade_no) => Some(trade_no.clone()),
             SideEffectIntent::SendTxFeeResAck(trade_no) => Some(trade_no.clone()),
+            SideEffectIntent::SendResourceResultAck(trade_no) => Some(trade_no.clone()),
+            SideEffectIntent::SendResourceTaskAck(trade_no) => Some(trade_no.clone()),
+            SideEffectIntent::UploadResourceTxExecReceipt(trade_no) => Some(trade_no.clone()),
         },
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ShadowAdvancer {
-    pool: ApiTransactionDbPool,
+    ctx: &'static crate::context::Context,
     intent_tx: Sender<CollectIntent>,
     diagnose_tx: Option<Sender<DiagnoseEvent>>,
     running: Arc<DashMap<String, (Uuid, Instant)>>,
@@ -68,7 +74,7 @@ pub struct ShadowAdvancer {
 
 impl ShadowAdvancer {
     pub fn new(
-        pool: ApiTransactionDbPool,
+        ctx: &'static crate::context::Context,
         intent_tx: Sender<CollectIntent>,
         diagnose_tx: Option<Sender<DiagnoseEvent>>,
     ) -> Self {
@@ -76,7 +82,7 @@ impl ShadowAdvancer {
         let max_concurrency = shadow_rpc_policy::read_usize_env("SHADOW_MAX_CONCURRENCY", 8, 4, 64);
 
         Self {
-            pool,
+            ctx,
             intent_tx,
             diagnose_tx,
             running: Arc::new(DashMap::new()),
@@ -91,13 +97,16 @@ impl ShadowAdvancer {
     }
 
     fn runtime_capacity_snapshot(&self) -> (u32, usize, usize, usize) {
-        let pool = self.pool.as_ref();
-        (
-            pool.size(),
-            pool.num_idle(),
-            self.semaphore.available_permits(),
-            self.max_concurrency.load(Ordering::Relaxed),
-        )
+        let sem_available = self.semaphore.available_permits();
+        let max_concurrency = self.max_concurrency.load(Ordering::Relaxed);
+
+        match self.ctx.api_transaction_pool() {
+            Ok(pool) => {
+                let pool = pool.as_ref();
+                (pool.size(), pool.num_idle(), sem_available, max_concurrency)
+            }
+            Err(_) => (0, 0, sem_available, max_concurrency),
+        }
     }
 
     /// 获取当前时间戳（毫秒）
@@ -140,6 +149,12 @@ impl ShadowAdvancer {
     /// 5. 找到第一个满足条件的推进点，生成对应意图
     /// 6. 发送意图并返回
     pub async fn try_advance(&self, trade_no: &str) {
+        if let Err(error) = self.try_advance_result(trade_no).await {
+            error!(trade_no = %trade_no, %error, "Collect advancer try_advance failed");
+        }
+    }
+
+    async fn try_advance_result(&self, trade_no: &str) -> Result<(), ServiceError> {
         // 执行 running map GC
         let running = self.running.clone();
         let last_gc = self.last_gc.clone();
@@ -172,7 +187,7 @@ impl ShadowAdvancer {
         }
 
         if is_running {
-            return;
+            return Ok(());
         }
 
         // 确保清理running记录
@@ -203,7 +218,7 @@ impl ShadowAdvancer {
                         advancer_max_concurrency,
                         "Failed to acquire semaphore"
                     );
-                    return;
+                    return Ok(());
                 }
                 Err(_) => {
                     let (db_pool_size, db_pool_idle, sem_available, advancer_max_concurrency) =
@@ -217,7 +232,7 @@ impl ShadowAdvancer {
                         advancer_max_concurrency,
                         "Semaphore acquire timeout"
                     );
-                    return;
+                    return Ok(());
                 }
             };
         // 确保permit在作用域结束前不会被释放
@@ -226,7 +241,7 @@ impl ShadowAdvancer {
         trace!(trade_no = %trade_no, "Try advancing collect transaction");
 
         // 查询最新的DB状态（带timeout）
-        let pool = self.pool.clone();
+        let pool = self.ctx.api_transaction_pool()?;
         let collect = match tokio::time::timeout(
             DB_QUERY_TIMEOUT,
             ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no),
@@ -246,7 +261,7 @@ impl ShadowAdvancer {
                     advancer_max_concurrency,
                     "Failed to get api collect by trade_no"
                 );
-                return;
+                return Err(e.into());
             }
             Err(_) => {
                 let (db_pool_size, db_pool_idle, sem_available, advancer_max_concurrency) =
@@ -260,14 +275,50 @@ impl ShadowAdvancer {
                     advancer_max_concurrency,
                     "DB query timeout"
                 );
-                return;
+                return Ok(());
             }
         };
 
         // 架构级保险丝：冻结或已终止的记录不允许推进
         if collect.finished_at.is_some() {
             debug!(trade_no = %trade_no, "Advance skipped: frozen or finished");
-            return;
+            return Ok(());
+        }
+
+        match tokio::time::timeout(
+            DB_QUERY_TIMEOUT,
+            self.pending_resource_result_ack_trade_no(trade_no),
+        )
+        .await
+        {
+            Ok(Ok(Some(resource_trade_no))) => {
+                info!(
+                    trade_no = %trade_no,
+                    resource_trade_no = %resource_trade_no,
+                    "Resource result ACK is pending; advancing ACK before collect main chain"
+                );
+                self.dispatch_intent(CollectIntent::SideEffect(
+                    SideEffectIntent::SendResourceResultAck(resource_trade_no),
+                ));
+                return Ok(());
+            }
+            Ok(Ok(None)) => {}
+            Ok(Err(e)) => {
+                error!(
+                    trade_no = %trade_no,
+                    error = %e,
+                    "Failed to check pending resource result ACK"
+                );
+                return Ok(());
+            }
+            Err(_) => {
+                error!(
+                    trade_no = %trade_no,
+                    timeout = ?DB_QUERY_TIMEOUT,
+                    "Pending resource result ACK query timeout"
+                );
+                return Ok(());
+            }
         }
 
         // err_code 冻结：只允许 UploadTxExecReceipt
@@ -284,7 +335,7 @@ impl ShadowAdvancer {
                 ));
                 self.dispatch_intent(intent);
             }
-            return;
+            return Ok(());
         }
 
         // 按照 COLLECT_ADVANCEMENT_ORDER 顺序检查可推进点
@@ -305,7 +356,7 @@ impl ShadowAdvancer {
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent);
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedResourceGate => {
                         info!(trade_no = %trade_no, "Need to check resource gate");
@@ -313,14 +364,14 @@ impl ShadowAdvancer {
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent);
-                        return;
+                        return Ok(());
                     }
                     CollectStage::CanBuild => {
                         info!(trade_no = %trade_no, "Can build transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
                         self.dispatch_intent(intent);
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedTxFeeResAck => {
                         info!(trade_no = %trade_no, "Need to send tx fee res ACK");
@@ -328,12 +379,15 @@ impl ShadowAdvancer {
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent);
-                        return;
+                        return Ok(());
                     }
                     CollectStage::CanBroadcast => {
                         if let Some((host, remaining)) =
-                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code)
-                                .await
+                            shadow_rpc_policy::breaker_open_for_chain_code(
+                                self.ctx,
+                                &collect.chain_code,
+                            )
+                            .await
                         {
                             debug!(
                                 trade_no = %trade_no,
@@ -354,18 +408,21 @@ impl ShadowAdvancer {
                                     "try_advance_skip_because_breaker_open: collect advancer broadcast skipped"
                                 );
                             }
-                            return;
+                            return Ok(());
                         }
                         info!(trade_no = %trade_no, "Can broadcast transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
                         self.dispatch_intent(intent);
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedRecover => {
                         if let Some((host, remaining)) =
-                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code)
-                                .await
+                            shadow_rpc_policy::breaker_open_for_chain_code(
+                                self.ctx,
+                                &collect.chain_code,
+                            )
+                            .await
                         {
                             debug!(
                                 trade_no = %trade_no,
@@ -386,7 +443,7 @@ impl ShadowAdvancer {
                                     "try_advance_skip_because_breaker_open: collect advancer recover skipped"
                                 );
                             }
-                            return;
+                            return Ok(());
                         }
                         if !shadow_rpc_policy::allow_recover_dispatch(&format!(
                             "collect_advancer:{trade_no}"
@@ -396,13 +453,13 @@ impl ShadowAdvancer {
                                 cooldown = ?shadow_rpc_policy::recover_cooldown(),
                                 "recover_skip_because_cooldown: collect advancer recover skipped"
                             );
-                            return;
+                            return Ok(());
                         }
                         info!(trade_no = %trade_no, "Need to recover transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no.to_string()));
                         self.dispatch_intent(intent);
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedTxExecReceiptUpload => {
                         info!(trade_no = %trade_no, "Need to upload tx exec receipt");
@@ -410,7 +467,7 @@ impl ShadowAdvancer {
                             SideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
                         );
                         self.dispatch_intent(intent);
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedResultAck => {
                         info!(trade_no = %trade_no, "Need to send result ACK");
@@ -418,7 +475,7 @@ impl ShadowAdvancer {
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent);
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedServiceFeeUpload => {
                         info!(trade_no = %trade_no, "Need to upload service fee");
@@ -426,7 +483,7 @@ impl ShadowAdvancer {
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent);
-                        return;
+                        return Ok(());
                     }
                     CollectStage::FullyBlocked => {
                         // 不应该出现在推进顺序中
@@ -447,6 +504,7 @@ impl ShadowAdvancer {
             DiagnoseSource::Advancer,
             DiagnoseStage::Unknown,
         );
+        Ok(())
     }
 
     /// 分发推进意图
@@ -478,15 +536,34 @@ impl ShadowAdvancer {
             }
         }
     }
+
+    async fn pending_resource_result_ack_trade_no(
+        &self,
+        origin_trade_no: &str,
+    ) -> Result<Option<String>, crate::error::service::ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
+        Ok(ApiResourceDelegationRepo::find_pending_result_ack_by_origin(
+            &pool,
+            ApiTradeType::Collect as i64,
+            origin_trade_no,
+        )
+        .await?
+        .map(|row| row.resource_trade_no))
+    }
+}
+
+impl fmt::Debug for ShadowAdvancer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ShadowAdvancer").finish()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx;
     use tokio::sync::mpsc;
     use wallet_database::{
-        SqliteContext,
         entities::{
             api_collect::ApiCollectStatus,
             api_resource_delegation::{
@@ -504,20 +581,84 @@ mod tests {
         let (intent_tx, _intent_rx) = mpsc::channel(100);
         let (diagnose_tx, _diagnose_rx) = mpsc::channel(100);
 
-        // 创建测试用的内存数据库连接池
-        // 注意：这里使用 sqlx 的内存数据库
-        // 实际测试时，你可能需要使用真实的数据库连接
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        let db_pool = std::sync::Arc::new(pool);
-        let collect_pool = wallet_database::ApiTransactionDbPool::new(db_pool);
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
 
         // 创建 ShadowAdvancer 实例
-        let advancer = ShadowAdvancer::new(collect_pool, intent_tx, Some(diagnose_tx));
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, Some(diagnose_tx));
 
         // 测试 try_advance 方法
         // 注意：由于我们使用的是内存数据库，这个测试可能会失败
         // 实际测试时需要提供一个真实的数据库连接并确保表结构存在
         let trade_no = "test_trade_no";
         advancer.try_advance(trade_no).await;
+    }
+
+    #[tokio::test]
+    async fn try_advance_prioritizes_resource_result_ack_before_fee_upload() -> anyhow::Result<()> {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let pool = ctx.api_transaction_pool()?;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let (diagnose_tx, _diagnose_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, Some(diagnose_tx));
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid_1",
+            "collect",
+            "from_addr",
+            "to_addr",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            "C_pending_rsc_ack",
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE api_collect
+            SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                need_service_fee = true,
+                service_fee_uploaded_at = NULL
+            WHERE trade_no = ?
+            "#,
+        )
+        .bind("C_pending_rsc_ack")
+        .execute(pool.as_ref())
+        .await?;
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "C_pending_rsc_ack",
+                "C_pending_rsc_ack",
+                ApiTradeType::Collect as i64,
+                "",
+                "",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Fail,
+            Some(3),
+            Some(r#"{"tradeNo":"C_pending_rsc_ack","status":false}"#),
+        )
+        .await?;
+
+        advancer.try_advance("C_pending_rsc_ack").await;
+
+        let intent = intent_rx.try_recv().expect("resource ACK intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(ref trade_no))
+                if trade_no == "C_pending_rsc_ack"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+
+        Ok(())
     }
 }

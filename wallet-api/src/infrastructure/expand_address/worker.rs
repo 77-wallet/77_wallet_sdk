@@ -61,9 +61,10 @@ pub(crate) static SYNC_SEMA: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(6));
 // 快速任务信号量，限制最大并发任务数为12
 pub(crate) static FAST_SEMA: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(12));
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) enum ExpandJob {
     Create {
+        ctx: &'static crate::context::Context,
         job_id: String,
         uid: String,
         chain: String,
@@ -73,6 +74,7 @@ pub(crate) enum ExpandJob {
         result_tx: tokio::sync::mpsc::UnboundedSender<ExpandJobResult>,
     },
     Init {
+        ctx: &'static crate::context::Context,
         job_id: String,
         uid: String,
         chain: String,
@@ -82,6 +84,7 @@ pub(crate) enum ExpandJob {
         result_tx: tokio::sync::mpsc::UnboundedSender<ExpandJobResult>,
     },
     Notify {
+        ctx: &'static crate::context::Context,
         job_id: String,
         uid: String,
         chain: String,
@@ -91,12 +94,23 @@ pub(crate) enum ExpandJob {
     },
 }
 
+impl std::fmt::Debug for ExpandJob {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExpandJob")
+            .field("job_id", &self.id())
+            .field("job_type", &self.job_type())
+            .field("batch_id", &self.batch_id())
+            .finish()
+    }
+}
+
 impl ExpandJob {
     pub fn generate_job_id() -> String {
         JOB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).to_string()
     }
 
     pub fn new_create(
+        ctx: &'static crate::context::Context,
         uid: String,
         chain: String,
         batch_id: String,
@@ -105,6 +119,7 @@ impl ExpandJob {
         result_tx: tokio::sync::mpsc::UnboundedSender<ExpandJobResult>,
     ) -> Self {
         Self::Create {
+            ctx,
             job_id: Self::generate_job_id(),
             uid,
             chain,
@@ -116,6 +131,7 @@ impl ExpandJob {
     }
 
     pub fn new_init(
+        ctx: &'static crate::context::Context,
         uid: String,
         chain: String,
         batch_id: String,
@@ -124,6 +140,7 @@ impl ExpandJob {
         result_tx: tokio::sync::mpsc::UnboundedSender<ExpandJobResult>,
     ) -> Self {
         Self::Init {
+            ctx,
             job_id: Self::generate_job_id(),
             uid,
             chain,
@@ -135,6 +152,7 @@ impl ExpandJob {
     }
 
     pub fn new_notify(
+        ctx: &'static crate::context::Context,
         uid: String,
         chain: String,
         batch_id: String,
@@ -142,6 +160,7 @@ impl ExpandJob {
         result_tx: tokio::sync::mpsc::UnboundedSender<ExpandJobResult>,
     ) -> Self {
         Self::Notify {
+            ctx,
             job_id: Self::generate_job_id(),
             uid,
             chain,
@@ -288,8 +307,17 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
 
 async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
     match job {
-        ExpandJob::Create { job_id, uid, chain, batch_id, indices, dispatch_key, result_tx } => {
-            let result = run_create(job_id, uid, chain, batch_id, indices.clone()).await;
+        ExpandJob::Create {
+            ctx,
+            job_id,
+            uid,
+            chain,
+            batch_id,
+            indices,
+            dispatch_key,
+            result_tx,
+        } => {
+            let result = run_create(ctx, job_id, uid, chain, batch_id, indices.clone()).await;
 
             // Send job result without consuming the result
             if result.is_ok() {
@@ -311,9 +339,19 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
 
             result
         }
-        ExpandJob::Init { ref job_id, uid, chain, batch_id, indices, dispatch_key, result_tx } => {
+        ExpandJob::Init {
+            ctx,
+            ref job_id,
+            uid,
+            chain,
+            batch_id,
+            indices,
+            dispatch_key,
+            result_tx,
+        } => {
             // 执行run_init，但忽略返回结果，因为init任务只是发送chunk，不表示真正完成
-            let result = run_init(job_id.to_string(), uid, chain, batch_id, indices.clone()).await;
+            let result =
+                run_init(ctx, job_id.to_string(), uid, chain, batch_id, indices.clone()).await;
             match result {
                 Ok(_) => {
                     if let Err(err) = result_tx.send(ExpandJobResult::Succeeded {
@@ -336,10 +374,10 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
 
             Ok(())
         }
-        ExpandJob::Notify { job_id, uid, chain, batch_id, dispatch_key, result_tx } => {
+        ExpandJob::Notify { ctx, job_id, uid, chain, batch_id, dispatch_key, result_tx } => {
             // Notify任务作为普通job处理，不spawn新任务
             // 这样可以确保inflight计数正确
-            let result = run_notify(job_id.clone(), uid, chain, batch_id).await;
+            let result = run_notify(ctx, job_id.clone(), uid, chain, batch_id).await;
 
             // Send job result without consuming the result
             if result.is_ok() {
@@ -372,6 +410,7 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
 }
 
 async fn run_create(
+    ctx: &'static crate::context::Context,
     job_id: String,
     uid: String,
     chain: String,
@@ -397,13 +436,14 @@ async fn run_create(
         "WORKER: system ready passed"
     );
 
-    let executor = ExpandExecutor::new();
+    let executor = ExpandExecutor::new(ctx);
     let result = executor.execute_create(&uid, &chain, &indices, &batch_id).await;
 
-    handle_execution_result(&job_id, &batch_id, JobKind::Create, result).await
+    handle_execution_result(ctx, &job_id, &batch_id, JobKind::Create, result).await
 }
 
 async fn run_init(
+    ctx: &'static crate::context::Context,
     job_id: String,
     uid: String,
     chain: String,
@@ -450,7 +490,7 @@ async fn run_init(
                     "WORKER: executing chunk"
                 );
 
-                let executor = ExpandExecutor::new();
+                let executor = ExpandExecutor::new(ctx);
                 let res = executor
                     .execute_init(&uid_clone, &chain_clone, &chunk_indices, &batch_id_clone)
                     .await;
@@ -485,6 +525,7 @@ async fn run_init(
 }
 
 async fn run_notify(
+    ctx: &'static crate::context::Context,
     job_id: String,
     uid: String,
     chain: String,
@@ -498,27 +539,25 @@ async fn run_notify(
         "WORKER: starting notify task"
     );
 
-    let executor = ExpandExecutor::new();
+    let executor = ExpandExecutor::new(ctx);
     let result = executor.execute_notify(&uid, &batch_id).await;
 
-    handle_execution_result(&job_id, &batch_id, JobKind::Notify, result).await
+    handle_execution_result(ctx, &job_id, &batch_id, JobKind::Notify, result).await
 }
 
 /// 记录任务执行结果的事实
-async fn record_fact(_job_id: &str, batch_id: &str, job_kind: JobKind) {
+async fn record_fact(
+    ctx: &'static crate::context::Context,
+    _job_id: &str,
+    batch_id: &str,
+    job_kind: JobKind,
+) -> Result<(), crate::error::service::ServiceError> {
     match job_kind {
         JobKind::Notify => {
             // 对于Notify任务，记录expand_complete_at事实字段
-            if let Ok(context) = crate::context::get_context() {
-                if let Ok(pool) = context.api_wallet_pool() {
-                    // 记录事实：expand_complete已成功执行
-                    if let Err(e) =
-                        ExpandBatchRepo::update_expand_complete_at_if_null(&pool, batch_id).await
-                    {
-                        tracing::error!(error = %e, batch_id = %batch_id, "failed to update expand_complete_at");
-                    }
-                }
-            }
+            let pool = ctx.api_wallet_pool()?;
+            // 记录事实：expand_complete已成功执行
+            ExpandBatchRepo::update_expand_complete_at_if_null(&pool, batch_id).await?;
         }
         JobKind::Create | JobKind::Init => {
             // 对于Create/Init任务，不直接写local_complete_at事实
@@ -526,24 +565,24 @@ async fn record_fact(_job_id: &str, batch_id: &str, job_kind: JobKind) {
             // 这保证了事实写入的单一责任，便于调试和维护
         }
     }
+    Ok(())
 }
 
 /// 发送HintScan事件通知Scanner检查状态
-async fn emit_hint_scan() {
+async fn emit_hint_scan(ctx: &'static crate::context::Context) {
     // 任务成功完成，发送HintScan事件通知Scanner检查状态
     // 只有在数据库事实已形成后发送
-    if let Ok(context) = crate::context::get_context() {
-        if let Some(event_tx) = context.get_expand_event_tx().await {
-            // best-effort hint, ignore failure
-            if let Err(err) = event_tx.send(ExpandEvent::HintScan).await {
-                tracing::warn!(error = %err, "failed to send expand hint scan event");
-            }
-            tracing::info!("sent HintScan event to scanner");
+    if let Some(event_tx) = ctx.get_expand_event_tx().await {
+        // best-effort hint, ignore failure
+        if let Err(err) = event_tx.send(ExpandEvent::HintScan).await {
+            tracing::warn!(error = %err, "failed to send expand hint scan event");
         }
+        tracing::info!("sent HintScan event to scanner");
     }
 }
 
 async fn handle_execution_result(
+    ctx: &'static crate::context::Context,
     job_id: &str,
     batch_id: &str,
     job_kind: JobKind,
@@ -559,11 +598,13 @@ async fn handle_execution_result(
                     );
 
                     // 1. 记录事实
-                    record_fact(job_id, batch_id, job_kind).await;
+                    if let Err(error) = record_fact(ctx, job_id, batch_id, job_kind).await {
+                        tracing::error!(%error, batch_id = %batch_id, "failed to record expand address fact");
+                    }
 
                     // 2. 仅为Notify任务发送HintScan事件（只有Notify会立即写入DB事实）
                     if let JobKind::Notify = job_kind {
-                        emit_hint_scan().await;
+                        emit_hint_scan(ctx).await;
                     }
                 }
                 crate::infrastructure::expand_address::executor::ExecOutcome::Retryable {

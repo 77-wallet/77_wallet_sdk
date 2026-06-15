@@ -5,7 +5,7 @@ use wallet_transport_backend::request::api_wallet::{
     address::ExpandAddressCompleteReq, msg::MsgAckReq,
 };
 
-use crate::domain::api_wallet::account::ApiAccountDomain;
+use crate::{context::Context, domain::api_wallet::account::ApiAccountDomain};
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
@@ -45,20 +45,20 @@ pub enum AddressAllockType {
 impl AwmCmdAddrExpandMsg {
     pub(crate) async fn exec(
         &self,
+        ctx: &'static Context,
         msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         // 确认消息
         tracing::debug!(msg_id=%msg_id, "确认收到消息");
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = ctx.get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(msg_id);
         backend.msg_ack(msg_ack_req).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         if api_wallet.is_none() {
             tracing::warn!(uid=%self.uid, "钱包不存在, 不执行扩容");
-            let backend = crate::context::get_context()?.get_global_backend_api();
             backend
                 .expand_address_complete(ExpandAddressCompleteReq::new(
                     &self.uid,
@@ -85,7 +85,7 @@ impl AwmCmdAddrExpandMsg {
         // 提交扩容任务
         tracing::info!(msg_id=%msg_id, uid=%self.uid, chain_code=%self.chain_code, "提交扩容任务给Actor管理器");
         // ✅ 事实已形成：batch 已入库
-        if let Some(tx) = crate::context::get_context()?.get_expand_event_tx().await {
+        if let Some(tx) = ctx.get_expand_event_tx().await {
             tx.send(crate::infrastructure::expand_address::event::ExpandEvent::HintScan).await.ok();
         }
 
@@ -93,6 +93,7 @@ impl AwmCmdAddrExpandMsg {
     }
 
     pub(crate) async fn get_needed_indices(
+        ctx: &'static Context,
         typ: &AddressAllockType,
         uid: &str,
         chain_code: &str,
@@ -111,8 +112,8 @@ impl AwmCmdAddrExpandMsg {
         let needed_indices = match typ {
             AddressAllockType::ChaBatch => {
                 tracing::debug!(uid=%uid, chain_code=%chain_code, "处理批量扩容类型");
-                let next = ApiAccountDomain::calculate_indices_for_expansion(
-                    uid, chain_code, batch_id, number,
+                let next = ApiAccountDomain::calculate_indices_for_expansion_with_ctx(
+                    ctx, uid, chain_code, batch_id, number,
                 )
                 .await?;
                 next
@@ -155,15 +156,10 @@ mod test {
         assert_eq!(format!("{:?}", msg.event_type), "AwmCmdAddrExpand");
     }
 
-    async fn init_manager() {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await.unwrap();
-    }
-
     #[tokio::test]
     async fn address_allock() -> anyhow::Result<()> {
-        init_manager().await;
+        wallet_utils::init_test_log();
+        let (manager, _) = get_manager().await.unwrap();
 
         let change = r#"
             {
@@ -177,7 +173,7 @@ mod test {
             }
         "#;
         let change = serde_json::from_str::<AwmCmdAddrExpandMsg>(&change).unwrap();
-        let _res = change.exec("2").await.unwrap();
+        let _res = change.exec(manager.ctx, "2").await.unwrap();
 
         Ok(())
     }

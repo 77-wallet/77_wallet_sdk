@@ -10,7 +10,7 @@ use crate::{
         wallet::WalletDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    infrastructure::nonce::nonce_engine::get_nonce_engine,
+    infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx,
     request::api_wallet::{
         trans::{ApiBaseTransferReq, ApiTransferReq},
         transfer::ApiTransferExReq,
@@ -74,9 +74,8 @@ impl ApiTransService {
     }
 
     async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
-        let nonce_engine = get_nonce_engine();
-        let nonce = nonce_engine.allocate_nonce(from_addr, chain_code, &pool).await?;
+        let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
+        let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
         Ok(nonce as i64)
     }
 
@@ -99,13 +98,15 @@ impl ApiTransService {
         params: ApiTransferExReq,
         _bill_kind: BillKind,
     ) -> Result<TransactionResult, ServiceError> {
-        WalletDomain::validate_password(&params.password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, &params.password).await?;
 
-        let private_key = crate::domain::api_wallet::account::ApiAccountDomain::get_private_key(
-            &params.base.from,
-            &params.base.chain_code,
-        )
-        .await?;
+        let private_key =
+            crate::domain::api_wallet::account::ApiAccountDomain::get_private_key_with_ctx(
+                self.ctx,
+                &params.base.from,
+                &params.base.chain_code,
+            )
+            .await?;
         self.transfer_with_private_key(params, private_key).await
     }
 
@@ -115,9 +116,10 @@ impl ApiTransService {
         private_key: ChainPrivateKey,
     ) -> Result<TransactionResult, ServiceError> {
         let from_addr = params.base.from.clone();
-        let _gate = crate::infrastructure::nonce::nonce_engine::get_nonce_engine()
-            .acquire_transfer_gate(&from_addr, &params.base.chain_code)
-            .await;
+        let _gate =
+            crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?
+                .acquire_transfer_gate(&from_addr, &params.base.chain_code)
+                .await;
 
         let pool = self.ctx.api_wallet_pool()?;
         let api_transaction_pool = self.ctx.api_transaction_pool()?;
@@ -138,9 +140,12 @@ impl ApiTransService {
         )?;
 
         let token_key = params.base.token_address.clone();
-        let coin =
-            ApiCoinDomain::get_coin_by_token_key_exact(&params.base.chain_code, token_key.clone())
-                .await?;
+        let coin = ApiCoinDomain::get_coin_by_token_key_exact_with_ctx(
+            self.ctx,
+            &params.base.chain_code,
+            token_key.clone(),
+        )
+        .await?;
 
         let chain_code = params.base.chain_code.as_str();
         let chain_code: ChainCode = chain_code.try_into()?;
@@ -152,7 +157,7 @@ impl ApiTransService {
             password: params.password.to_string(),
             nonce: nonce as u64,
         };
-        let res = ApiTransDomain::transfer(req, Some(private_key)).await?;
+        let res = ApiTransDomain::transfer_with_ctx(self.ctx, req, Some(private_key)).await?;
         let resource_consume = res.resource_consume().unwrap_or_else(|_| "".to_string());
         let trade_no = uuid::Uuid::new_v4().to_string();
         ApiWithdrawRepo::upsert_api_withdraw(
@@ -332,7 +337,9 @@ impl ApiTransService {
 
         // 过滤最小金额
         let min_value = match (symbol, filter_min_value) {
-            (Some(symbol), Some(true)) => ConfigDomain::get_config_min_value(symbol).await?,
+            (Some(symbol), Some(true)) => {
+                ConfigDomain::get_config_min_value(self.ctx, symbol).await?
+            }
             _ => None,
         };
         let mut tx_kinds = vec![];
@@ -409,7 +416,7 @@ impl ApiTransService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<RecentBillListVo>, ServiceError> {
-        let api_transaction_pool = crate::context::get_context()?.api_transaction_pool()?;
+        let api_transaction_pool = self.ctx.api_transaction_pool()?;
         let res = ApiWithdrawRepo::recent_bill(
             &api_transaction_pool,
             token,
@@ -449,8 +456,8 @@ impl ApiTransService {
     }
 
     pub async fn query_tx_result(&self, req: Vec<String>) -> Result<Vec<BillEntity>, ServiceError> {
-        let api_transaction_pool = crate::context::get_context()?.api_transaction_pool()?;
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let api_transaction_pool = self.ctx.api_transaction_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let mut res = vec![];
         for id in req.iter() {
             match self.sync_bill_info(core_pool.clone(), &api_transaction_pool, id).await {
@@ -525,8 +532,11 @@ impl ApiTransService {
         &self,
         transaction: &ApiWithdrawEntity,
     ) -> Result<Option<SyncBillEntity>, ServiceError> {
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter(&transaction.chain_code).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx,
+            &transaction.chain_code,
+        )
+        .await?;
 
         let tx_hash = match transaction.tx_hash {
             Some(ref tx_hash) if !tx_hash.is_empty() => tx_hash,
@@ -542,8 +552,12 @@ impl ApiTransService {
         // 查询余额
         let balance = adapter.balance_token_key(&transaction.from_addr, token_key.clone()).await?;
 
-        let coin =
-            ApiCoinDomain::get_coin_by_token_key_exact(&transaction.chain_code, token_key).await?;
+        let coin = ApiCoinDomain::get_coin_by_token_key_exact_with_ctx(
+            self.ctx,
+            &transaction.chain_code,
+            token_key,
+        )
+        .await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 

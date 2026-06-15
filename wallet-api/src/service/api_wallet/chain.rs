@@ -29,7 +29,7 @@ impl ApiChainService {
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
-        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies(self.ctx).await?;
 
         let mut account_addresses = Vec::<String>::new();
 
@@ -56,7 +56,7 @@ impl ApiChainService {
 
         let chains = ApiChainRepo::get_chain_list(&pool).await?;
 
-        let res = token_currencies.calculate_api_chain_assets_list(datas, chains).await?;
+        let res = token_currencies.calculate_api_chain_assets_list(datas, chains, self.ctx).await?;
         tracing::info!("[get_chain_assets_list] res: {res:?}");
         Ok(res)
     }
@@ -68,7 +68,7 @@ impl ApiChainService {
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
-        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies(self.ctx).await?;
 
         let mut account_addresses = std::collections::HashSet::<String>::new();
 
@@ -98,8 +98,9 @@ impl ApiChainService {
         let chains = ApiChainRepo::get_chain_list(&pool).await?;
 
         // 使用原有计算层
-        let calculated =
-            token_currencies.calculate_api_chain_assets_list(filtered_datas, chains).await?;
+        let calculated = token_currencies
+            .calculate_api_chain_assets_list(filtered_datas, chains, self.ctx)
+            .await?;
 
         // 构建分组映射
         let mut group_map: HashMap<(String, String), Vec<ChainAssets>> = HashMap::new();
@@ -131,7 +132,7 @@ impl ApiChainService {
 
         // 构建结果
         let mut res = Vec::with_capacity(reqs.len());
-        let currency = crate::domain::app::config::ConfigDomain::get_currency().await?;
+        let currency = crate::domain::app::config::ConfigDomain::get_currency(self.ctx).await?;
 
         for (chain_code, token_address) in reqs {
             let key = (chain_code.clone(), token_address.clone());
@@ -185,8 +186,7 @@ impl ApiChainService {
     }
 
     pub async fn sync_chains(&self) -> Result<Vec<String>, crate::error::service::ServiceError> {
-        ApiChainDomain::sync_chains().await
-        // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        ApiChainDomain::sync_chains(self.ctx).await
         // let app_version = ConfigDomain::get_app_version().await?;
         // let chain_list = backend.api_wallet_chain_list(&app_version.app_version).await?;
         // ApiChainDomain::upsert_multi_api_chain_than_toggle(chain_list).await
@@ -194,7 +194,7 @@ impl ApiChainService {
 
     pub async fn sync_wallet_chain_data(&self) -> Result<(), crate::error::service::ServiceError> {
         let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
-        ApiChainDomain::sync_wallet_chain_data(&unlock_token).await
+        ApiChainDomain::sync_wallet_chain_data(self.ctx, &unlock_token).await
     }
 }
 

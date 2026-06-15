@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool, entities::api_collect::ApiCollectEntity,
+    ApiTransactionDbPool, entities::api_collect::ApiCollectEntity,
     repositories::api_wallet::collect::ApiCollectRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
@@ -14,6 +14,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 };
 
 use crate::{
+    context::Context,
     error::service::ServiceError,
     infrastructure::api_trans::collect::{
         legacy::AddressLockManager,
@@ -66,80 +67,73 @@ pub fn build_collect_tx_exec_receipt_payload(
 }
 
 pub async fn upload_collect_tx_exec_receipt_via_worker(
-    collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static Context,
     trade_no: &str,
 ) -> Result<(), ServiceError> {
     let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
     let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
-    let advancer =
-        Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
-    let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
+    let advancer = Arc::new(ShadowAdvancer::new(ctx, intent_tx, Some(diagnose_tx)));
+    let worker = SideEffectWorker::new(ctx, advancer);
     worker.handle(SideEffectCommand::UploadTxExecReceipt(trade_no.to_string())).await
 }
 
 pub async fn upload_collect_service_fee_via_worker(
-    collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static Context,
     trade_no: &str,
 ) -> Result<(), ServiceError> {
     let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
     let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
-    let advancer =
-        Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, Some(diagnose_tx)));
-    let worker = SideEffectWorker::new(collect_pool, core_pool, advancer);
+    let advancer = Arc::new(ShadowAdvancer::new(ctx, intent_tx, Some(diagnose_tx)));
+    let worker = SideEffectWorker::new(ctx, advancer);
     worker.handle(SideEffectCommand::UploadServiceFee(trade_no.to_string())).await
 }
 
 pub async fn send_resource_result_ack_via_worker(
-    collect_pool: ApiTransactionDbPool,
-    _core_pool: ApiWalletDbPool,
-    _resource_trade_no: &str,
+    ctx: &'static Context,
+    resource_trade_no: &str,
 ) -> Result<(), ServiceError> {
-    crate::infrastructure::api_trans::resource_delegate::platform_shadow::scan_and_process_once(
-        collect_pool,
-    )
-    .await
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
+    let advancer = Arc::new(ShadowAdvancer::new(ctx, intent_tx, Some(diagnose_tx)));
+    let worker = SideEffectWorker::new(ctx, advancer);
+    worker.handle(SideEffectCommand::SendResourceResultAck(resource_trade_no.to_string())).await
 }
 
 pub async fn upload_resource_tx_exec_receipt_via_worker(
-    collect_pool: ApiTransactionDbPool,
-    _core_pool: ApiWalletDbPool,
-    _resource_trade_no: &str,
+    ctx: &'static Context,
+    resource_trade_no: &str,
 ) -> Result<(), ServiceError> {
-    crate::infrastructure::api_trans::resource_delegate::platform_shadow::scan_and_process_once(
-        collect_pool,
-    )
-    .await
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
+    let advancer = Arc::new(ShadowAdvancer::new(ctx, intent_tx, Some(diagnose_tx)));
+    let worker = SideEffectWorker::new(ctx, advancer);
+    worker
+        .handle(SideEffectCommand::UploadResourceTxExecReceipt(resource_trade_no.to_string()))
+        .await
 }
 
 pub async fn upload_collect_tx_exec_receipt_via_backend(
+    ctx: &'static Context,
     req: &ApiCollectEntity,
     trade_no: &str,
 ) -> Result<(), ServiceError> {
     let payload = build_collect_tx_exec_receipt_payload(req, trade_no);
-    let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+    let backend_api = ctx.get_global_backend_api();
     backend_api.upload_tx_exec_receipt(&payload).await?;
     Ok(())
 }
 
 pub async fn scan_and_dispatch_collect_tx_exec_receipt_once(
+    ctx: &'static Context,
     collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
 ) -> Result<Option<String>, ServiceError> {
     let (intent_tx, mut intent_rx) = tokio::sync::mpsc::channel(8);
     let scanner_intent_tx = intent_tx.clone();
     let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
-    let advancer =
-        Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx.clone(), Some(diagnose_tx)));
-    let side_effect_worker =
-        Arc::new(SideEffectWorker::new(collect_pool.clone(), core_pool.clone(), advancer.clone()));
-    let shadow_worker = Arc::new(ShadowCollectWorker::new(
-        collect_pool.clone(),
-        core_pool,
-        Arc::new(AddressLockManager::new()),
-        advancer,
-    ));
+    let advancer = Arc::new(ShadowAdvancer::new(ctx, intent_tx.clone(), Some(diagnose_tx)));
+    let side_effect_worker = Arc::new(SideEffectWorker::new(ctx, advancer.clone()));
+    let shadow_worker =
+        Arc::new(ShadowCollectWorker::new(ctx, Arc::new(AddressLockManager::new()), advancer));
     let dispatcher = ShadowDispatcher::new(
         collect_pool.clone(),
         DispatcherConfig::default(),
@@ -148,7 +142,7 @@ pub async fn scan_and_dispatch_collect_tx_exec_receipt_once(
         intent_tx,
     );
     let scanner = ShadowScanner::new(
-        collect_pool.clone(),
+        ctx,
         ScannerConfig { scan_interval: std::time::Duration::from_secs(60), max_items_per_scan: 8 },
         scanner_intent_tx,
         None,
@@ -196,11 +190,11 @@ pub async fn scan_and_dispatch_collect_tx_exec_receipt_once(
 }
 
 pub async fn scan_collect_intent_labels_once(
-    collect_pool: ApiTransactionDbPool,
+    ctx: &'static Context,
 ) -> Result<Vec<String>, ServiceError> {
     let (intent_tx, mut intent_rx) = tokio::sync::mpsc::channel(8);
     let scanner = ShadowScanner::new(
-        collect_pool,
+        ctx,
         ScannerConfig { scan_interval: std::time::Duration::from_secs(60), max_items_per_scan: 8 },
         intent_tx,
         None,
@@ -228,6 +222,15 @@ pub async fn scan_collect_intent_labels_once(
             }
             CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(_)) => {
                 "SendTxFeeResAck".to_string()
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(_)) => {
+                "SendResourceResultAck".to_string()
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(_)) => {
+                "SendResourceTaskAck".to_string()
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(_)) => {
+                "UploadResourceTxExecReceipt".to_string()
             }
             CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(_)) => {
                 "UploadServiceFee".to_string()

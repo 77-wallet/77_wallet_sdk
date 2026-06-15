@@ -28,7 +28,11 @@ pub(crate) trait TaskTrait: Send + Sync {
     fn get_type(&self) -> TaskType;
     fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError>;
 
-    async fn execute(&self, id: &str) -> Result<(), crate::error::service::ServiceError>;
+    async fn execute(
+        &self,
+        id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError>;
 
     fn as_any(&self) -> &dyn Any;
 }
@@ -89,7 +93,8 @@ fn is_noop_task_execution_mode() -> bool {
     TASK_EXECUTION_MODE.load(std::sync::atomic::Ordering::Relaxed) == TaskExecutionMode::Noop as u8
 }
 
-pub(crate) async fn dispatch_task_entities(
+pub(crate) async fn dispatch_task_entities_with_ctx(
+    ctx: &'static crate::context::Context,
     entities: Vec<TaskQueueEntity>,
 ) -> Result<(), crate::error::service::ServiceError> {
     #[cfg(any(test, feature = "integration-tests"))]
@@ -101,7 +106,7 @@ pub(crate) async fn dispatch_task_entities(
         return Ok(());
     }
 
-    let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+    let handles = ctx.get_global_handles().await;
     let Some(handles) = handles.upgrade() else {
         return Err(crate::error::service::ServiceError::System(
             crate::error::system::SystemError::Internal(
@@ -111,7 +116,7 @@ pub(crate) async fn dispatch_task_entities(
     };
 
     let task_sender = handles.get_global_task_manager();
-    let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+    let pool = ctx.task_pool()?;
 
     let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
     for task_entity in entities.into_iter() {
@@ -188,12 +193,16 @@ impl Tasks {
     }
 
     async fn dispatch_tasks(
+        ctx: &'static crate::context::Context,
         entities: Vec<TaskQueueEntity>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        dispatch_task_entities(entities).await
+        dispatch_task_entities_with_ctx(ctx, entities).await
     }
 
-    pub(crate) async fn send(self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn send_with_ctx(
+        self,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         #[cfg(any(test, feature = "integration-tests"))]
         if is_noop_task_execution_mode() {
             return Ok(());
@@ -203,10 +212,15 @@ impl Tasks {
             return Ok(());
         }
         let create_entities = self.create_task_entities().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = ctx.task_pool()?;
         let entities = TaskQueueRepo::create_multi_task(&pool, &create_entities).await?;
-        Self::dispatch_tasks(entities).await?;
+        Self::dispatch_tasks(ctx, entities).await?;
         Ok(())
+    }
+
+    #[deprecated(note = "pass Context explicitly with send_with_ctx")]
+    pub(crate) async fn send(self) -> Result<(), crate::error::service::ServiceError> {
+        self.send_with_ctx(crate::get_context()?).await
     }
 }
 

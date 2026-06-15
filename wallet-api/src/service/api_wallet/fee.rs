@@ -50,7 +50,7 @@ impl TransferFeeService {
             trade_type,
             uid: uid.to_string(),
         };
-        let res = ApiFeeDomain::transfer_fee(&req).await;
+        let res = ApiFeeDomain::transfer_fee_with_ctx(self.ctx, &req).await;
         match res {
             Ok(_) => Ok(()),
             Err(e) => {

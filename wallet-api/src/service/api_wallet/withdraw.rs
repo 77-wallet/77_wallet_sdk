@@ -124,7 +124,7 @@ impl WithdrawService {
             client_id: None,
             create_time: None,
         };
-        let res = ApiWithdrawDomain::withdraw(&req).await;
+        let res = ApiWithdrawDomain::withdraw_with_ctx(self.ctx, &req).await;
         match res {
             Ok(()) => Ok(()),
             Err(e) => {

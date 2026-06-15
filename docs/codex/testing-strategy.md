@@ -8,6 +8,8 @@
 - 离线验证（不依赖真实网络/backend）
 - 回归可控（覆盖成功路径 + 失败不变性）
 
+本仓库的行为场景表达约束与映射方法，见 `docs/codex/bdd-methodology.md`。
+
 ## Hard Constraints
 
 - 不引入新的业务逻辑语义。

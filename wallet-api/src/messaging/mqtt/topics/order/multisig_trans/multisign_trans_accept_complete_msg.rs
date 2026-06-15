@@ -59,12 +59,13 @@ impl TryFrom<&MultiSignTransAcceptCompleteMsgBody> for NewSignatureEntity {
 
 // 签名的结果同步给所有人
 impl MultiSignTransAcceptCompleteMsg {
-    pub(crate) async fn exec(
+    pub(crate) async fn exec_with_ctx(
         &self,
         _msg_id: &str,
+        ctx: &'static crate::context::Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         tracing::info!(
             event_name = %event_name,
@@ -88,17 +89,25 @@ impl MultiSignTransAcceptCompleteMsg {
                 MultisigQueueRepo::sync_sign_status(&queue, queue.status, core_pool.clone())
                     .await?;
 
-                MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;
+                MultisigQueueDomain::update_raw_data_with_ctx(ctx, &queue.id, pool.clone()).await?;
             }
         }
 
         // 最后同步消息给到前端。
         for msg in body {
             let data = NotifyEvent::MultiSignTransAcceptCompleteMsg(msg.to_owned());
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         }
 
         Ok(())
+    }
+
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
     }
 }
 
@@ -109,7 +118,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_() {
+    async fn test_() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
 
@@ -131,8 +140,9 @@ mod test {
         "#;
         let res = serde_json::from_str::<MultiSignTransAcceptCompleteMsg>(&raw).unwrap();
 
-        let (_, _) = get_manager().await.unwrap();
+        let (manager, _) = get_manager().await.unwrap();
 
-        res.exec("x").await.unwrap();
+        res.exec("x", manager.ctx).await?;
+        Ok(())
     }
 }

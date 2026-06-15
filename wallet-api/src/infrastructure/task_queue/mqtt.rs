@@ -119,24 +119,28 @@ impl TaskTrait for MqttTask {
         Ok(res)
     }
 
-    async fn execute(&self, id: &str) -> Result<(), crate::error::service::ServiceError> {
+    async fn execute(
+        &self,
+        id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         match self {
-            MqttTask::OrderMultiSignAccept(data) => data.exec(id).await?,
-            MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(id).await?,
-            MqttTask::OrderMultiSignServiceComplete(data) => data.exec(id).await?,
-            MqttTask::OrderMultiSignCreated(data) => data.exec(id).await?,
-            MqttTask::OrderMultiSignCancel(data) => data.exec(id).await?,
-            MqttTask::MultiSignTransAccept(data) => data.exec(id).await?,
-            MqttTask::MultiSignTransCancel(data) => data.exec(id).await?,
-            MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(id).await?,
-            MqttTask::AcctChange(data) => data.exec(id).await?,
-            MqttTask::BulletinMsg(data) => data.exec(id).await?,
-            MqttTask::PermissionAccept(data) => data.exec(id).await?,
-            MqttTask::MultiSignTransExecute(data) => data.exec(id).await?,
-            MqttTask::CleanPermission(data) => data.exec(id).await?,
-            MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
-            MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.execute(id).await?,
-            MqttTask::ApiWalletAcctChange(data) => data.exec(id).await?,
+            MqttTask::OrderMultiSignAccept(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::OrderMultiSignServiceComplete(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::OrderMultiSignCreated(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::OrderMultiSignCancel(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::MultiSignTransAccept(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::MultiSignTransCancel(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::AcctChange(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::BulletinMsg(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::PermissionAccept(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::MultiSignTransExecute(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::CleanPermission(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::OrderAllConfirmed(data) => data.exec_with_ctx(id, ctx).await?,
+            MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.execute(id, ctx).await?,
+            MqttTask::ApiWalletAcctChange(data) => data.exec(ctx, id).await?,
         }
         Ok(())
     }

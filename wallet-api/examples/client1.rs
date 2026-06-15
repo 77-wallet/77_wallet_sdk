@@ -4,16 +4,30 @@
 use std::sync::Arc;
 
 use tokio_stream::StreamExt as _;
-use wallet_api::{
-    messaging::notify::FrontendNotifyEvent,
-    testkit::env::{get_manager, get_manager_with_config},
-};
+#[cfg(any(feature = "integration-tests", test))]
+use wallet_api::messaging::notify::FrontendNotifyEvent;
+#[cfg(any(feature = "integration-tests", test))]
+use wallet_api::testkit::env::{get_manager, get_manager_with_config};
+
+#[cfg(not(any(feature = "integration-tests", test)))]
+use wallet_api::messaging::notify::FrontendNotifyEvent;
+
+#[cfg(not(any(feature = "integration-tests", test)))]
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing::warn!("client1 example requires feature `integration-tests`");
+    let (_tx, _rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    let _ = _tx;
+    let _ = _rx;
+    Ok(())
+}
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 // 694a5988a284522b74515e4b	AwmCmdAddrExpand
 // {"eventNo":"2003389549658427392","eventType":"3","data":{"type":"CHA_BATCH","chain":"tron","index":null,"uid":"9c9e3364495c32daa7e0b04a8c484ae4c96c2b5521c1c42f30144085bbbf7282","serialNo":"tron_9c9e3364495c32daa7e0b04a8c484ae4c96c2b5521c1c42f30144085bbbf7282","number":"50","batchId":"694a59873034a42d1d0f1c42"},"time":1766480264,"sign":"kh0oLoudImFzM+1n+dZ6ge64qv1qBRMw10qPVbDzi9dCBMh7UsxS3mvKTllLnXsIpzNuOgSvObFR3VMCSV054A==","secret":"/HwKnoG2Q0K5xMjnxf78lZO43ghx/pMmTmIE3xfSeuM="}
 //	2	0	0	2025-12-23T08:57:44Z	2025-12-23T09:22:48Z	TransportBackend error: `encryption error: `invalid shared key``
 
+#[cfg(any(feature = "integration-tests", test))]
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // wallet_utils::log::init_log_with_level(tracing::Level::INFO);
@@ -21,8 +35,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .await
     //     .unwrap();
     // Self::init_log(Some("error")).await?;
-    let (wallet_manager, _test_params) = get_manager_with_config("client1.toml").await?;
-    let dirs = wallet_api::get_context()?.get_global_dirs();
+    let (wallet_manager, _test_params): (
+        wallet_api::manager::WalletManager,
+        wallet_api::testkit::env::TestParams,
+    ) = get_manager_with_config("client1.toml").await?;
+    let dirs = wallet_manager.ctx().get_global_dirs();
     let _ = wallet_api::xlog::init_log(Some("info"), &"app_code", &dirs, "sn").await;
     tracing::info!("init_api_swap");
     wallet_manager.init_api_swap().await?;
@@ -208,8 +225,9 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
 
 /// 测试获取钱包列表
 #[allow(unused)]
-async fn test_get_api_wallet_list() {
-    let res = wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list().await;
+#[cfg(any(feature = "integration-tests", test))]
+async fn test_get_api_wallet_list(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
+    let res = wallet_manager.get_api_wallet_list().await;
     tracing::info!("get_api_wallet_list: {res:#?}");
 }
 

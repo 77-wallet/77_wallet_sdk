@@ -86,7 +86,8 @@ impl ApiAccountService {
             page_size,
             "api_wallet.account.list_api_accounts_v2 requested"
         );
-        ApiAccountDomain::list_api_accounts_v2(
+        ApiAccountDomain::list_api_accounts_v2_with_ctx(
+            self.ctx,
             wallet_address,
             account_id,
             chain_code,
@@ -106,17 +107,18 @@ impl ApiAccountService {
         serial_no: &str,
         batch_id: &str,
     ) -> Result<(), ServiceError> {
-        ApiWalletDomain::expand_address(
-            "1",
-            &address_allock_type,
-            index,
-            &uid,
-            &chain_code,
-            number,
-            serial_no,
-            &batch_id,
-        )
-        .await?;
+        ApiWalletDomain::new(self.ctx)
+            .expand_address(
+                "1",
+                &address_allock_type,
+                index,
+                &uid,
+                &chain_code,
+                number,
+                serial_no,
+                &batch_id,
+            )
+            .await?;
 
         Ok(())
     }
@@ -131,13 +133,14 @@ impl ApiAccountService {
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let pool = self.ctx.api_wallet_pool()?;
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        ApiAccountDomain::create_api_account(
+        ApiAccountDomain::create_api_account_with_ctx(
+            self.ctx,
             wallet_address,
             chains,
             &indices,
@@ -163,7 +166,7 @@ impl ApiAccountService {
         name: &str,
         is_default_name: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let pool = self.ctx.api_wallet_pool()?;
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
@@ -225,7 +228,8 @@ impl ApiAccountService {
             wallet_utils::address::AccountIndexMap::from_account_id(1)?
         };
 
-        ApiAccountDomain::create_api_account(
+        ApiAccountDomain::create_api_account_with_ctx(
+            self.ctx,
             wallet_address,
             chains,
             &[account_index_map.input_index],
@@ -248,8 +252,8 @@ impl ApiAccountService {
         chain_code: &str,
         password: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
-        WalletDomain::validate_password(password).await?;
-        Ok(ApiAccountDomain::get_private_key(address, chain_code).await?)
+        WalletDomain::validate_password_with_context(self.ctx, password).await?;
+        Ok(ApiAccountDomain::get_private_key_with_ctx(self.ctx, address, chain_code).await?)
     }
 
     pub async fn address_used(
@@ -258,7 +262,7 @@ impl ApiAccountService {
         index: i32,
         uid: &str,
     ) -> Result<(), ServiceError> {
-        Ok(ApiAccountDomain::address_used(chain_code, index, uid).await?)
+        Ok(ApiAccountDomain::address_used_with_ctx(self.ctx, chain_code, index, uid).await?)
     }
 
     pub async fn edit_account_name(
@@ -288,7 +292,7 @@ impl ApiAccountService {
             wallet_transport_backend::consts::endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
             &req,
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(req)).send_with_ctx(self.ctx).await?;
 
         Ok(())
     }
@@ -299,8 +303,8 @@ impl ApiAccountService {
         account_id: u32,
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -309,7 +313,8 @@ impl ApiAccountService {
 
         let index = AccountIndexMap::from_account_id(account_id)?;
 
-        let strategy = StrategyDomain::query_withdraw_strategy(&api_wallet.uid).await?;
+        let strategy =
+            StrategyDomain::query_withdraw_strategy_with_ctx(self.ctx, &api_wallet.uid).await?;
 
         if strategy.chain_configs.iter().any(|config| {
             config.normal_address.index == Some(index.input_index)
@@ -330,7 +335,7 @@ impl ApiAccountService {
             )
             .into());
         };
-        WalletDomain::validate_password(password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, password).await?;
         // Check if this is the last account
         let account_count = ApiAccountRepo::count_unique_account_ids(&pool, wallet_address).await?;
         if account_count <= 1 {
@@ -355,7 +360,10 @@ impl ApiAccountService {
             }
         }
 
-        Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
+        Tasks::new()
+            .push(BackendApiTask::BackendApi(device_unbind_address_task))
+            .send_with_ctx(self.ctx)
+            .await?;
 
         Ok(())
     }
@@ -367,9 +375,9 @@ impl ApiAccountService {
         password: &str,
         all: bool,
     ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
-        WalletDomain::validate_password(password).await?;
+        WalletDomain::validate_password_with_context(self.ctx, password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
 
@@ -400,7 +408,7 @@ impl ApiAccountService {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Ok(node) = ApiChainDomain::get_node(chain).await else {
+            let Ok(node) = ApiChainDomain::get_node(chain, self.ctx).await else {
                 continue;
             };
             for address_type in address_types {
@@ -459,7 +467,7 @@ impl ApiAccountService {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<QueryApiAccountDerivationPath>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let results = ApiAccountRepo::list_by_wallet_address_account_id(
             &pool,
             Some(wallet_address),

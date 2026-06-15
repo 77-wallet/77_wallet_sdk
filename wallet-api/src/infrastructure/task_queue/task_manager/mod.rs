@@ -22,8 +22,9 @@ use wallet_utils::{RetryableError as _, error::RetryPolicy};
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TaskManager {
+    ctx: &'static crate::context::Context,
     running_tasks: RunningTasks,
     // task_sender: crate::manager::TaskSender,
     pub(crate) notify: Arc<tokio::sync::Notify>,
@@ -32,11 +33,12 @@ pub struct TaskManager {
 
 impl TaskManager {
     /// 创建一个新的 TaskManager 实例
-    pub fn new(notify: Arc<tokio::sync::Notify>) -> Self {
+    pub fn new(ctx: &'static crate::context::Context, notify: Arc<tokio::sync::Notify>) -> Self {
         let running_tasks: RunningTasks = Arc::new(DashSet::new());
-        let dispatcher = Dispatcher::new(Arc::clone(&running_tasks));
+        let dispatcher = Dispatcher::new(ctx, Arc::clone(&running_tasks));
         // let task_sender = dispatcher.task_dispatcher(Arc::clone(&running_tasks));
         Self {
+            ctx,
             running_tasks,
             // task_sender,
             notify,
@@ -48,11 +50,12 @@ impl TaskManager {
     pub async fn start_task_check(&self) -> Result<(), ServiceError> {
         let running_tasks = Arc::clone(&self.running_tasks);
 
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = self.ctx.task_pool()?;
         TaskQueueRepo::delete_tasks_with_request_body_like(&pool, SEND_MSG_CONFIRM).await?;
+        let ctx = self.ctx;
 
         tokio::spawn(async move {
-            Self::task_check(running_tasks).await;
+            Self::task_check(ctx, running_tasks).await;
         });
         Ok(())
     }
@@ -63,19 +66,22 @@ impl TaskManager {
     }
 
     /// 任务检查函数
-    async fn task_check(running_tasks: RunningTasks) {
+    async fn task_check(ctx: &'static crate::context::Context, running_tasks: RunningTasks) {
         // 在 TaskManager 的方法中启动
         tracing::info!("task check start");
-        if let Err(e) = Self::check_handle(&running_tasks).await {
+        if let Err(e) = Self::check_handle(ctx, &running_tasks).await {
             tracing::error!("task check error: {}", e);
         }
         tracing::info!("task check end");
     }
 
     /// 检查并发送任务的处理函数
-    async fn check_handle(running_tasks: &RunningTasks) -> Result<(), ServiceError> {
-        let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+    async fn check_handle(
+        ctx: &'static crate::context::Context,
+        running_tasks: &RunningTasks,
+    ) -> Result<(), ServiceError> {
+        let handles = ctx.get_handles_arc().await?;
+        let pool = ctx.task_pool()?;
         let manager = handles.get_global_task_manager();
 
         TaskQueueRepo::delete_old(&pool, 15).await?;
@@ -112,7 +118,11 @@ impl TaskManager {
         Ok(())
     }
 
-    async fn process_single_task(task: TaskQueueEntity, running_tasks: RunningTasks) {
+    async fn process_single_task(
+        ctx: &'static crate::context::Context,
+        task: TaskQueueEntity,
+        running_tasks: RunningTasks,
+    ) {
         let task_id = task.id.clone();
 
         let mut retry_count = 0;
@@ -133,7 +143,7 @@ impl TaskManager {
             //     break;
             // }
 
-            match Self::handle_task(&task).await {
+            match Self::handle_task(ctx, &task).await {
                 Ok(()) => break, // 成功
                 Err(e) => {
                     tracing::error!(?task, "[task_process] error: {}", e);
@@ -155,21 +165,18 @@ impl TaskManager {
                         );
                     } else {
                         // 否则，记录错误并增加重试次数
-                        if let Err(e) = Self::increase_retry_times(&task.id, retry_count).await {
+                        if let Err(e) = Self::increase_retry_times(ctx, &task.id, retry_count).await
+                        {
                             tracing::error!("[process_single_task] error: {}", e);
                         }
                     }
 
-                    if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
-                        if let Err(err) =
-                            TaskQueueRepo::task_failed(&pool, &task_id, &e.to_string()).await
-                        {
-                            tracing::warn!(
-                                task_id = %task_id,
-                                error = %err,
-                                "failed to mark task as failed"
-                            );
-                        }
+                    if let Err(err) = Self::mark_task_failed(ctx, &task_id, &e.to_string()).await {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %err,
+                            "failed to mark task as failed"
+                        );
                     }
 
                     if retry_count >= 10 {
@@ -178,18 +185,19 @@ impl TaskManager {
                             task_id,
                             retry_count
                         );
-                        if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
-                            if let Err(err) = TaskQueueRepo::task_hang_up(&pool, &task_id).await {
-                                tracing::warn!(
-                                    task_id = %task_id,
-                                    error = %err,
-                                    "failed to mark task as hang up"
-                                );
-                            }
+                        if let Err(err) = Self::hang_up_task(ctx, &task_id).await {
+                            tracing::warn!(
+                                task_id = %task_id,
+                                error = %err,
+                                "failed to mark task as hang up"
+                            );
+                        } else {
                             tracing::warn!("[process_single_task] task {} hang up", task_id);
                         }
 
-                        if let Err(e) = Self::upload_task_error_info(&task, &e.to_string()).await {
+                        if let Err(e) =
+                            Self::upload_task_error_info(ctx, &task, &e.to_string()).await
+                        {
                             tracing::error!(
                                 "[process_single_task] upload_task_error_info error: {}",
                                 e
@@ -234,12 +242,13 @@ impl TaskManager {
     }
 
     async fn upload_task_error_info(
+        ctx: &'static crate::context::Context,
         task_entity: &TaskQueueEntity,
         error_info: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
-        let sn = crate::context::get_context()?.get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let pool = ctx.core_pool()?;
+        let sn = ctx.get_sn().to_string();
+        let Some(device) = DeviceRepo::get_device_info(pool, &sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -247,7 +256,7 @@ impl TaskManager {
         };
 
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
 
         let req = ClientTaskLogUploadReq::new(
             &device.sn,
@@ -260,12 +269,12 @@ impl TaskManager {
             error_info,
         );
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = ctx.get_global_backend_api();
         backend_api.client_task_log_upload(req).await?;
 
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
         if task.get_type() == TaskType::Mqtt {
-            let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
+            let handles = ctx.get_handles_arc().await?;
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
             tracing::info!(
                 "upload task error info mqtt submit unconfirmed msg collector: {}",
@@ -277,10 +286,11 @@ impl TaskManager {
     }
 
     async fn increase_retry_times(
+        ctx: &'static crate::context::Context,
         task_id: &str,
         retry_count: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = ctx.task_pool()?;
 
         if retry_count > 0 {
             TaskQueueRepo::increase_retry_times(&pool, task_id).await?;
@@ -289,10 +299,30 @@ impl TaskManager {
         Ok(())
     }
 
+    async fn mark_task_failed(
+        ctx: &'static crate::context::Context,
+        task_id: &str,
+        error: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.task_pool()?;
+        TaskQueueRepo::task_failed(&pool, task_id, error).await?;
+        Ok(())
+    }
+
+    async fn hang_up_task(
+        ctx: &'static crate::context::Context,
+        task_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.task_pool()?;
+        TaskQueueRepo::task_hang_up(&pool, task_id).await?;
+        Ok(())
+    }
+
     async fn handle_task(
+        ctx: &'static crate::context::Context,
         task_entity: &TaskQueueEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = ctx.task_pool()?;
 
         let id = task_entity.id.clone();
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
@@ -300,12 +330,12 @@ impl TaskManager {
 
         TaskQueueRepo::task_running(&pool, &id).await?;
 
-        task.execute(&id).await?;
+        task.execute(&id, ctx).await?;
 
         TaskQueueRepo::task_done(&pool, &id).await?;
 
         if task_type == TaskType::Mqtt {
-            let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
+            let handles = ctx.get_handles_arc().await?;
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
             tracing::info!("handle task mqtt submit unconfirmed msg collector: {}", id);
             unconfirmed_msg_collector.submit(vec![id])?;

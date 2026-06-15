@@ -66,12 +66,13 @@ impl TryFrom<&MultiSignTransAccept> for NewMultisigQueueEntity {
 }
 
 impl MultiSignTransAccept {
-    pub(crate) async fn exec(
+    pub(crate) async fn exec_with_ctx(
         &self,
         _msg_id: &str,
+        ctx: &'static crate::context::Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         tracing::info!(
@@ -90,9 +91,17 @@ impl MultiSignTransAccept {
         // self.system_notify(&queue, pool).await?;
 
         let data = NotifyEvent::Confirmation(ConfirmationFrontend::try_from(self)?);
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
+    }
+
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
     }
 }
 
@@ -104,12 +113,12 @@ mod test {
     async fn acct_change() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
+        let (manager, _) = get_manager().await?;
 
         let str1 = r#"{"queue":{"id":"236618098902437888","from_addr":"TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ","to_addr":"TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR","value":"1","expiration":1741344050,"symbol":"TRX","chain_code":"tron","token_addr":null,"msg_hash":"2229df18911ebfe143bfd129a9a083364ab3de63da01887ff535cf0b45685415","tx_hash":"","raw_data":"QAAAAAAAAAAyMjI5ZGYxODkxMWViZmUxNDNiZmQxMjlhOWEwODMzNjRhYjNkZTYzZGEwMTg4N2ZmNTM1Y2YwYjQ1Njg1NDE1dwEAAAAAAAB7ImNvbnRyYWN0IjpbeyJwYXJhbWV0ZXIiOnsidmFsdWUiOnsiYW1vdW50IjoxMDAwMDAwLCJvd25lcl9hZGRyZXNzIjoiNDE4ODM3YzhkNzJhNDUwNTRjNmVjZDJlZDU5NmU4YzNiMDIzZTc3ZWUzIiwidG9fYWRkcmVzcyI6IjQxY2NjYTgzODIwMzY1MjE2NjY0OTFkZDk0ODQyODJkNjUzNjNhZTcwZiJ9LCJ0eXBlX3VybCI6InR5cGUuZ29vZ2xlYXBpcy5jb20vcHJvdG9jb2wuVHJhbnNmZXJDb250cmFjdCJ9LCJ0eXBlIjoiVHJhbnNmZXJDb250cmFjdCJ9XSwicmVmX2Jsb2NrX2J5dGVzIjoiMGVkNiIsInJlZl9ibG9ja19oYXNoIjoiMmQ0NjM0YzM3N2UzZWMwZCIsImV4cGlyYXRpb24iOjE3NDEzNDQxMDgwMDAsInRpbWVzdGFtcCI6MTc0MTMzNjg1MDcyMn0KAQAAAAAAADBhMDIwZWQ2MjIwODJkNDYzNGMzNzdlM2VjMGQ0MGUwZGJjOTgxZDczMjVhNjcwODAxMTI2MzBhMmQ3NDc5NzA2NTJlNjc2ZjZmNjc2YzY1NjE3MDY5NzMyZTYzNmY2ZDJmNzA3MjZmNzQ2ZjYzNmY2YzJlNTQ3MjYxNmU3MzY2NjU3MjQzNmY2ZTc0NzI2MTYzNzQxMjMyMGExNTQxODgzN2M4ZDcyYTQ1MDU0YzZlY2QyZWQ1OTZlOGMzYjAyM2U3N2VlMzEyMTU0MWNjY2E4MzgyMDM2NTIxNjY2NDkxZGQ5NDg0MjgyZDY1MzYzYWU3MGYxOGMwODQzZDcwYTJlMjhlZmVkNjMyAAAAAAAAAAA=","status":2,"notes":"salary","fail_reason":"","created_at":"2025-03-07T08:40:50Z","updated_at":null,"account_id":"195330590956982272","transfer_type":1,"permission_id":""},"signatures":[{"id":19,"queue_id":"236618098902437888","address":"TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ","signature":"6aeb7f11e5155bdca868af1da8cff62101ba8687bcf6da68817bc332d55f750713f29998c93af69f60d49905c295f67b53a4316045816d8d890065b0684d986600","status":1,"created_at":"2025-03-07T08:40:52Z","updated_at":null},{"id":20,"queue_id":"236618098902437888","address":"TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1","signature":"4cef26991bc0f536900be1a741e7dc72b29623f8f7a57a94e1abfe52ae4cc11a66c953db37d97c52608b48ff6804ea8e570847fca1011ec2faabb2236b2e544501","status":1,"created_at":"2025-03-07T08:40:52Z","updated_at":null}]}"#;
         let change = serde_json::from_str::<MultiSignTransAccept>(&str1).unwrap();
 
-        let res = change.exec("1").await;
+        let res = change.exec("1", manager.ctx).await;
         println!("{:?}", res);
         Ok(())
     }

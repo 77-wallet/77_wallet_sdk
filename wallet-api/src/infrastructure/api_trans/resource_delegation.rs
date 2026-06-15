@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{api_wallet::trans::ApiTransDomain, chain::adapter::ChainAdapterFactory},
     error::{service::ServiceError, system::SystemError},
     infrastructure::api_trans::{
@@ -43,6 +44,7 @@ pub(crate) fn resource_delegation_failure_fact(err: &ServiceError) -> (String, S
 /// 2) 不包含 collect/withdraw 主链推进逻辑。
 /// 3) 是否立即触发下一步，由各自 shadow/stage 决定。
 pub(crate) async fn execute_resource_delegation(
+    ctx: &'static Context,
     delegation: &ApiResourceDelegationEntity,
     rpc_purpose: &'static str,
 ) -> Result<String, ServiceError> {
@@ -50,13 +52,14 @@ pub(crate) async fn execute_resource_delegation(
         &delegation.chain_code,
         rpc_purpose,
         &delegation.resource_trade_no,
-        || execute_resource_delegation_once(delegation),
+        || execute_resource_delegation_once(ctx, delegation),
     )
     .await
 }
 
 // 资源任务执行内部实现：支持 Delegate / Undelegate 的 TRON 交易构建、签名与广播。
 async fn execute_resource_delegation_once(
+    ctx: &'static Context,
     delegation: &ApiResourceDelegationEntity,
 ) -> Result<String, ServiceError> {
     if !delegation.chain_code.eq_ignore_ascii_case("tron") {
@@ -71,10 +74,13 @@ async fn execute_resource_delegation_once(
         ApiResourceType::Bandwidth => "bandwidth",
         _ => "energy",
     };
-    let chain = ChainAdapterFactory::get_tron_adapter().await?;
-    let _chain_rpc_guard =
-        crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&delegation.chain_code).await;
-    let signer = resolve_resource_delegation_signer(delegation).await?;
+    let chain = ChainAdapterFactory::get_tron_adapter(ctx).await?;
+    let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+        ctx,
+        &delegation.chain_code,
+    )
+    .await;
+    let signer = resolve_resource_delegation_signer(ctx, delegation).await?;
 
     let raw = match delegation.operation_type {
         ApiResourceDelegationOperationType::Delegate => {
@@ -99,9 +105,10 @@ async fn execute_resource_delegation_once(
         }
     };
 
-    let (tx_hash, raw_tx) = sign_tron_resource_delegation(delegation, &signer, raw).await?;
+    let (tx_hash, raw_tx) = sign_tron_resource_delegation(ctx, delegation, &signer, raw).await?;
     let tx_resp =
-        ApiTransDomain::broadcast_transfer(&delegation.chain_code, raw_tx, Some(&tx_hash)).await?;
+        ApiTransDomain::broadcast_transfer(ctx, &delegation.chain_code, raw_tx, Some(&tx_hash))
+            .await?;
 
     let Some(tx) = tx_resp else {
         return Err(ServiceError::Parameter(
@@ -118,11 +125,12 @@ async fn execute_resource_delegation_once(
 }
 
 async fn sign_tron_resource_delegation(
+    ctx: &'static Context,
     delegation: &ApiResourceDelegationEntity,
     signer: &ResourceDelegationSigner,
     mut raw: RawTransactionParams,
 ) -> Result<(String, crate::domain::api_wallet::adapter::tx::RawTx), ServiceError> {
-    let chain = ChainAdapterFactory::get_tron_adapter().await?;
+    let chain = ChainAdapterFactory::get_tron_adapter(ctx).await?;
     let provider = chain.get_provider();
     let consumer =
         provider.transfer_fee(&delegation.owner_address, None, &raw.raw_data_hex, 1).await?;
@@ -135,7 +143,7 @@ async fn sign_tron_resource_delegation(
         )));
     }
 
-    let handles = crate::context::get_context()?.get_handles_arc().await?;
+    let handles = ctx.get_handles_arc().await?;
     let private_key_manager = handles.get_global_private_key_manager();
     let private_key =
         private_key_manager.get_private_key(&signer.signer_address, &delegation.chain_code).await?;

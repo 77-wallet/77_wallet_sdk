@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::api_wallet::account::ApiAccountDomain,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
@@ -21,14 +22,24 @@ pub struct AddressUseMsg(Vec<AddressUseItem>);
 impl AddressUseMsg {
     pub(crate) async fn _exec(
         &self,
+        ctx: &'static Context,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self._exec_with_ctx(ctx, _msg_id).await
+    }
+
+    pub(crate) async fn _exec_with_ctx(
+        &self,
+        ctx: &'static Context,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         for item in self.0.iter() {
-            ApiAccountDomain::address_used(&item.chain_code, item.index, &item.uid).await?;
+            ApiAccountDomain::address_used_with_ctx(ctx, &item.chain_code, item.index, &item.uid)
+                .await?;
         }
 
         let data = NotifyEvent::AddressUse(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
     }

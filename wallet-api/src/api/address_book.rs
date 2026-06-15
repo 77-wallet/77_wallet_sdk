@@ -12,8 +12,7 @@ impl WalletManager {
         address: String,
         chain_code: String,
     ) -> ReturnType<Option<AddressBookEntity>> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let service = AddressBookService::new(core_pool);
+        let service = AddressBookService::new_with_ctx(self.ctx)?;
         service.create(&name, &address, &chain_code).await
     }
 
@@ -24,15 +23,13 @@ impl WalletManager {
         address: String,
         chain_code: String,
     ) -> ReturnType<Option<AddressBookEntity>> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let service = AddressBookService::new(core_pool);
+        let service = AddressBookService::new_with_ctx(self.ctx)?;
 
         service.update(id, &name, &address, &chain_code).await
     }
 
     pub async fn delete_address_book(&self, id: i32) -> ReturnType<()> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let service = AddressBookService::new(core_pool);
+        let service = AddressBookService::new_with_ctx(self.ctx)?;
 
         service.delete(id).await
     }
@@ -43,15 +40,13 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<AddressBookEntity>> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let service = AddressBookService::new(core_pool);
+        let service = AddressBookService::new_with_ctx(self.ctx)?;
 
         service.lists(chain_code.as_deref(), page, page_size).await
     }
 
     pub async fn is_valid_address(&self, address: String, chain_code: String) -> ReturnType<()> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let service = AddressBookService::new(core_pool);
+        let service = AddressBookService::new_with_ctx(self.ctx)?;
 
         service.check_address(address, chain_code).await
     }
@@ -61,16 +56,14 @@ impl WalletManager {
         address: String,
         chain_code: String,
     ) -> ReturnType<AddressBookResp> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let service = AddressBookService::new(core_pool);
+        let service = AddressBookService::new_with_ctx(self.ctx)?;
         service.find_by_address(address, chain_code).await
     }
 
     pub async fn address_status(&self, address: String, chain_code: String) -> ReturnType<i64> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let service = AddressBookService::new(core_pool);
+        let service = AddressBookService::new_with_ctx(self.ctx)?;
 
-        service.address_status(address, chain_code).await
+        service.address_status(address, chain_code, self.ctx).await
     }
 }
 

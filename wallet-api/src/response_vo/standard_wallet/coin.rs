@@ -275,27 +275,29 @@ impl AccountChainAssetTrait for crate::response_vo::api_wallet::assets::ApiAccou
 
 impl TokenCurrencies {
     pub async fn calculate_token_price_changes(
+        ctx: &'static crate::context::Context,
         data: &TokenPriceChangeBody,
         exchange_rate: f64,
     ) -> Result<TokenPriceChangeRes, crate::error::service::ServiceError> {
         // let market_value = wallet_utils::conversion::decimal_from_f64(data.market_value)?;
         // let day_change_amount =
         //     wallet_utils::conversion::decimal_from_f64(data.day_change_amount.unwrap_or_default())?;
-        let balance = Self::calculate(exchange_rate, data.price).await?;
-        let market_value = Self::calculate(exchange_rate, data.market_value).await?;
+        let balance = Self::calculate(ctx, exchange_rate, data.price).await?;
+        let market_value = Self::calculate(ctx, exchange_rate, data.market_value).await?;
         let day_change_amount =
-            Self::calculate(exchange_rate, data.day_change_amount.unwrap_or_default()).await?;
+            Self::calculate(ctx, exchange_rate, data.day_change_amount.unwrap_or_default()).await?;
         Ok((data, balance, market_value, day_change_amount).into())
     }
 
     pub async fn calculate(
+        ctx: &'static crate::context::Context,
         exchange_rate: f64,
         value: f64,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         // let config = crate::app_state::APP_STATE.read().await;
         // let currency = config.currency();
         // let currency = "USD";
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
         let unit_price = value * exchange_rate;
 
         Ok(BalanceInfo {
@@ -319,6 +321,7 @@ impl TokenCurrencies {
      */
     async fn calculate_chain_assets_list_generic<T, U>(
         &self,
+        ctx: &'static crate::context::Context,
         data: Vec<T>,
         chains: Vec<U>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError>
@@ -340,6 +343,7 @@ impl TokenCurrencies {
             {
                 let balance = self
                     .async_calculate_to_balance(
+                        ctx,
                         assets.balance(),
                         assets.symbol(),
                         assets.chain_code(),
@@ -377,20 +381,23 @@ impl TokenCurrencies {
         &self,
         data: Vec<wallet_database::entities::assets::AssetsEntityWithAddressType>,
         chains: Vec<ChainEntity>,
+        ctx: &'static crate::context::Context,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
-        self.calculate_chain_assets_list_generic(data, chains).await
+        self.calculate_chain_assets_list_generic(ctx, data, chains).await
     }
 
     pub async fn calculate_api_chain_assets_list(
         &self,
         data: Vec<wallet_database::entities::api_assets::ApiAssetsEntityWithAddressType>,
         chains: Vec<ApiChainEntity>,
+        ctx: &'static crate::context::Context,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
-        self.calculate_chain_assets_list_generic(data, chains).await
+        self.calculate_chain_assets_list_generic(ctx, data, chains).await
     }
 
     pub async fn async_calculate_to_balance(
         &self,
+        ctx: &'static crate::context::Context,
         balance: &str,
         symbol: &str,
         chain_code: &str,
@@ -398,7 +405,7 @@ impl TokenCurrencies {
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
 
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address);
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
@@ -462,12 +469,13 @@ impl TokenCurrencies {
 
     pub async fn calculate_account_total_assets(
         &self,
+        ctx: &'static crate::context::Context,
         data: &mut [wallet_database::entities::assets::AssetsEntity],
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let mut account_total_assets = Some(wallet_types::Decimal::default());
         let mut amount = wallet_types::Decimal::default();
 
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
 
         for assets in data.iter_mut() {
             let token_currency_id =
@@ -500,6 +508,7 @@ impl TokenCurrencies {
     // 泛型方法处理不同类型的资产计算
     async fn calculate_assets_generic<T, U>(
         &self,
+        ctx: &'static crate::context::Context,
         data: T,
         existing_asset: &mut U,
     ) -> Result<(), crate::error::service::ServiceError>
@@ -516,7 +525,7 @@ impl TokenCurrencies {
         let token_currency_id =
             TokenCurrencyId::new(data.symbol(), data.chain_code(), data.token_address());
         let (price, _fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            let currency = ConfigDomain::get_currency().await?;
+            let currency = ConfigDomain::get_currency(ctx).await?;
             let price = token_currency.get_price(&currency);
             let fiat_balance = Some(price * balance_f);
             (Some(price), fiat_balance)
@@ -539,27 +548,31 @@ impl TokenCurrencies {
         &self,
         data: wallet_database::entities::assets::AssetsEntity,
         existing_asset: &mut super::assets::AccountChainAsset,
+        ctx: &'static crate::context::Context,
     ) -> Result<(), crate::error::service::ServiceError> {
-        self.calculate_assets_generic(data, existing_asset).await
+        self.calculate_assets_generic(ctx, data, existing_asset).await
     }
 
     pub async fn calculate_api_assets(
         &self,
         data: wallet_database::entities::api_assets::ApiAssetsEntity,
         existing_asset: &mut crate::response_vo::api_wallet::assets::ApiAccountChainAsset,
+        ctx: &'static crate::context::Context,
     ) -> Result<(), crate::error::service::ServiceError> {
-        self.calculate_assets_generic(data, existing_asset).await
+        self.calculate_assets_generic(ctx, data, existing_asset).await
     }
 
     // 泛型方法处理不同类型的资产实体计算
     async fn calculate_any_assets_entity<T>(
         &self,
+        ctx: &'static crate::context::Context,
         assets: &T,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError>
     where
         T: AssetsEntityTrait,
     {
         self.async_calculate_to_balance(
+            ctx,
             assets.balance(),
             assets.symbol(),
             assets.chain_code(),
@@ -571,19 +584,22 @@ impl TokenCurrencies {
     pub async fn calculate_assets_entity(
         &self,
         assets: &wallet_database::entities::assets::AssetsEntity,
+        ctx: &'static crate::context::Context,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        self.calculate_any_assets_entity(assets).await
+        self.calculate_any_assets_entity(ctx, assets).await
     }
 
     pub async fn calculate_api_assets_entity(
         &self,
         assets: &wallet_database::entities::api_assets::ApiAssetsEntity,
+        ctx: &'static crate::context::Context,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        self.calculate_any_assets_entity(assets).await
+        self.calculate_any_assets_entity(ctx, assets).await
     }
 
     pub async fn calculate_account_infos(
         &self,
+        ctx: &'static crate::context::Context,
         data: Vec<wallet_database::entities::account::AccountEntity>,
         chains: &ChainCodeAndName,
     ) -> Result<AccountInfos, crate::error::service::ServiceError> {
@@ -614,7 +630,7 @@ impl TokenCurrencies {
                 let name = chains.get(&account.chain_code);
                 let account_index_map =
                     wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
-                let balance = BalanceInfo::new_without_amount().await?;
+                let balance = BalanceInfo::new_without_amount(ctx).await?;
                 account_list.push(crate::response_vo::standard_wallet::wallet::AccountInfo {
                     account_id: account.account_id,
                     account_index_map,

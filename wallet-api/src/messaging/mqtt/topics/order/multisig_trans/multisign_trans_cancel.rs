@@ -18,9 +18,13 @@ impl MultiSignTransCancel {
 }
 
 impl MultiSignTransCancel {
-    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn exec_with_ctx(
+        &self,
+        _msg_id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
         tracing::info!(
@@ -42,9 +46,17 @@ impl MultiSignTransCancel {
         MultisigQueueRepo::update_fail(&core_pool, &self.withdraw_id, fail_reason::CANCEL).await?;
 
         let data = NotifyEvent::RecoverComplete;
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
+    }
+
+    pub async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
     }
 }
 
@@ -56,12 +68,12 @@ mod test {
     async fn acct_change() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await?;
+        let (manager, _) = get_manager().await?;
 
         let str1 = r#"{"withdrawId":"236618098902437888"}"#;
         let changet = serde_json::from_str::<MultiSignTransCancel>(&str1).unwrap();
 
-        let res = changet.exec("1").await;
+        let res = changet.exec("1", manager.ctx).await;
         println!("{:?}", res);
         Ok(())
     }

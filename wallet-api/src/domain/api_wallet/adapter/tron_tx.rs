@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -51,6 +52,7 @@ use wallet_utils::unit;
 pub(crate) struct TronTx {
     chain: TronChain,
     rpc_url: String,
+    ctx: &'static Context,
 }
 
 impl TronTx {
@@ -95,19 +97,28 @@ impl TronTx {
             || err_msg.contains("all response:{}")
     }
 
-    pub fn new(
+    #[cfg(test)]
+    pub fn new_for_test(
+        ctx: &'static Context,
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
         // let network = wallet_types::chain::network::NetworkKind::Mainnet;
+        Self::new_with_ctx(ctx, rpc_url, header_opt)
+    }
+
+    pub fn new_with_ctx(
+        ctx: &'static Context,
+        rpc_url: &str,
+        header_opt: Option<HashMap<String, String>>,
+    ) -> Result<Self, wallet_chain_interact::Error> {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
         let provider = tron::Provider::new(http_client)?;
 
         let tron_chain = TronChain::new(provider)?;
-        Ok(Self { chain: tron_chain, rpc_url: rpc_url.to_string() })
+        Ok(Self { chain: tron_chain, rpc_url: rpc_url.to_string(), ctx })
     }
-
     // 构建多签交易
     pub(super) async fn build_build_tx(
         &self,
@@ -648,7 +659,9 @@ impl Tx for TronTx {
 
             self.chain.simulate_simple_fee(&req.from, &req.to, 1, params).await?
         };
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let pool = self.ctx.api_wallet_pool()?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &self.ctx.core_pool()?,
             currency,
             &req.chain_code,
             main_symbol,

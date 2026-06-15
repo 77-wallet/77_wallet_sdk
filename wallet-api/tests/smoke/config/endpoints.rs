@@ -81,9 +81,9 @@ async fn test_jpush() -> Result<()> {
 #[tokio::test]
 #[ignore = "smoke test reads environment mqtt config"]
 async fn test_mqtt_uri() {
-    let _wallet_manager = get_manager().await;
+    let wallet_manager = get_manager().await;
 
-    let rs = ConfigDomain::get_mqtt_uri().await.unwrap();
+    let rs = ConfigDomain::get_mqtt_uri(wallet_manager.ctx()).await.unwrap();
 
     tracing::info!("uri : {}", serde_json::to_string(&rs).unwrap());
 }

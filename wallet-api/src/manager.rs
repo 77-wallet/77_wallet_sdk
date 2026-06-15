@@ -51,14 +51,15 @@ impl WalletManager {
 
         let context = init_context(sn, device_type, dir, sender, config).await?;
         GLOBAL_KEY.set_sn(sn);
-        unlock_session::start_wallet_unlock_session_rotation_task().await?;
+        unlock_session::start_wallet_unlock_session_rotation_task(context).await?;
 
         // 执行TaskQueue迁移
         tracing::info!("Running TaskQueue migration");
-        crate::domain::task_queue::TaskQueueDomain::migrate_task_queue_to_db().await?;
+        crate::domain::task_queue::TaskQueueDomain::migrate_task_queue_to_db_with_ctx(context)
+            .await?;
         tracing::info!("TaskQueue migration completed");
 
-        let handles = Arc::new(Handles::new(context.get_client_id()).await?);
+        let handles = Arc::new(Handles::new(context.get_client_id(), context).await?);
         context.set_global_handles(Arc::downgrade(&handles)).await;
 
         tracing::info!("start_task_check start");
@@ -72,12 +73,12 @@ impl WalletManager {
         // 启动地址恢复Worker
         tracing::info!("启动地址恢复Worker");
         let background_task_pool = context.get_global_background_task_pool();
-        start_address_recover_worker(background_task_pool).await?;
+        start_address_recover_worker(context, background_task_pool).await?;
 
         // 启动资产查询恢复Worker
         tracing::info!("启动资产查询恢复Worker");
         let background_task_pool = context.get_global_background_task_pool();
-        start_asset_query_worker(background_task_pool).await?;
+        start_asset_query_worker(context, background_task_pool).await?;
 
         // infrastructure::asset_calc::start_batch_recalculator(1000)?;
         tracing::info!("start_batch_recalculator start");
@@ -107,22 +108,23 @@ impl WalletManager {
         )
         .await?;
         GLOBAL_KEY.set_sn(sn);
-        unlock_session::start_wallet_unlock_session_rotation_task().await?;
+        unlock_session::start_wallet_unlock_session_rotation_task(context).await?;
 
-        let handles = Arc::new(Handles::new(context.get_client_id()).await?);
+        let handles = Arc::new(Handles::new(context.get_client_id(), context).await?);
         context.set_global_handles(Arc::downgrade(&handles)).await;
 
         Ok(WalletManager { ctx: context, handles: Some(handles) })
     }
 
     pub async fn init(&self, req: crate::request::devices::InitDeviceReq) -> ReturnType<()> {
-        DeviceService::new().init_device(req).await?;
+        DeviceService::new(self.ctx).init_device(req).await?;
         // TODO ： 某个版本进行取消,
-        domain::app::DeviceDomain::check_wallet_password_is_null().await?;
+        domain::app::DeviceDomain::check_wallet_password_is_null(self.ctx).await?;
 
         // self.init_api_swap().await?;
+        let ctx = self.ctx;
         tokio::spawn(async move {
-            if let Err(e) = init_some_data().await {
+            if let Err(e) = init_some_data(ctx).await {
                 tracing::error!("init_data error: {}", e);
             };
         });
@@ -139,14 +141,18 @@ impl WalletManager {
         Ok(())
     }
 
+    pub fn ctx(&self) -> &'static Context {
+        self.ctx
+    }
+
     pub async fn process_jpush_message(&self, message: &str) -> ReturnType<()> {
-        crate::service::jpush::JPushService::jpush(message).await.into()
+        crate::service::jpush::JPushService::new(self.ctx).jpush(message).await.into()
     }
 
     pub async fn get_task_queue_status(
         &self,
     ) -> ReturnType<crate::response_vo::standard_wallet::task_queue::TaskQueueStatus> {
-        TaskQueueService::new().get_task_queue_status().await
+        TaskQueueService::new(self.ctx).get_task_queue_status().await
     }
 
     pub async fn set_frontend_notify_sender(
@@ -221,7 +227,7 @@ mod tests {
         let config = crate::config::Config::new(&crate::testkit::env::get_config()?)?;
         let _manager =
             crate::manager::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = _manager.ctx.get_global_dirs();
 
         wallet_tree::wallet_hierarchy::v1::LegacyWalletTree::traverse_directory_structure(
             &dirs.wallet_dir,

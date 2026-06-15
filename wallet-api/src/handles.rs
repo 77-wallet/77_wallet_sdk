@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::app::{DeviceDomain, config::ConfigDomain},
     infrastructure::{
         self,
@@ -25,8 +26,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use wallet_database::repositories::device::DeviceRepo;
 
-#[derive(Debug)]
 pub struct Handles {
+    context: &'static crate::context::Context,
     task_manager: Arc<TaskManager>,
     inner_event_handle: Arc<InnerEventHandle>,
     unconfirmed_msg_collector: Arc<UnconfirmedMsgCollector>,
@@ -47,58 +48,49 @@ pub struct Handles {
 }
 
 impl Handles {
-    pub async fn new(client_id: &str) -> Result<Self, crate::error::service::ServiceError> {
-        let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
+    pub async fn new(
+        client_id: &str,
+        context: &'static Context,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let unconfirmed_msg_collector = UnconfirmedMsgCollector::new(context);
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());
-        let task_manager = TaskManager::new(notify.clone());
+        let task_manager = TaskManager::new(context, notify.clone());
 
         let unconfirmed_msg_processor =
-            UnconfirmedMsgProcessorHandle::new(&client_id, notify).await;
+            UnconfirmedMsgProcessorHandle::new(context, &client_id, notify).await;
 
-        let inner_event_handle = InnerEventHandle::new();
+        let inner_event_handle = InnerEventHandle::new(context);
 
-        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await?;
-        let process_fee_tx_handle = ProcessFeeTxHandle::new().await?;
-        let process_collect_tx_handle = ProcessCollectTxHandle::new().await?;
-        let resource_operation_shadow = {
-            let ctx = crate::context::get_context()?;
-            let api_transaction_pool = ctx.api_transaction_pool()?;
-            infrastructure::api_trans::resource_operation::shadow::init(api_transaction_pool).await
-        };
+        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new_with_ctx(context).await?;
+        let process_fee_tx_handle = ProcessFeeTxHandle::new_with_ctx(context).await?;
+        let process_collect_tx_handle = ProcessCollectTxHandle::new_with_ctx(context).await?;
+        let resource_operation_shadow =
+            infrastructure::api_trans::resource_operation::shadow::init(context).await?;
         let platform_resource_delegate_shadow = {
-            let ctx = crate::context::get_context()?;
-            let api_transaction_pool = ctx.api_transaction_pool()?;
+            let api_transaction_pool = context.api_transaction_pool()?;
             infrastructure::api_trans::resource_delegate::platform_shadow::init(
                 api_transaction_pool,
             )
             .await
         };
-        let local_resource_reclaim_shadow = {
-            let ctx = crate::context::get_context()?;
-            let api_transaction_pool = ctx.api_transaction_pool()?;
-            infrastructure::api_trans::resource_reclaim::local_shadow::init(api_transaction_pool)
-                .await
-        };
-        let platform_resource_reclaim_shadow = {
-            let ctx = crate::context::get_context()?;
-            let api_transaction_pool = ctx.api_transaction_pool()?;
-            infrastructure::api_trans::resource_reclaim::platform_shadow::init(api_transaction_pool)
-                .await
-        };
+        let local_resource_reclaim_shadow =
+            infrastructure::api_trans::resource_reclaim::local_shadow::init(context).await?;
+        let platform_resource_reclaim_shadow =
+            infrastructure::api_trans::resource_reclaim::platform_shadow::init(context).await?;
 
         // 初始化私钥管理器
         tracing::info!("Initialize private key manager start");
         let private_key_manager =
-            Arc::new(crate::infrastructure::private_key_manager::PrivateKeyManager::start());
+            Arc::new(crate::infrastructure::private_key_manager::PrivateKeyManager::start(context));
         tracing::info!("Initialize private key manager completed");
-        let context = crate::context::CONTEXT.get().unwrap();
         let dirs = context.get_global_dirs();
         let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
         let upload_log_handle =
             UploadLogHandle::new(base_path, 5 * 60, context.get_global_oss_client()).await;
         // let asset_calc_actor_manager = AssetCalcActorManager::start(pool.clone());
         Ok(Self {
+            context,
             task_manager: Arc::new(task_manager),
             inner_event_handle: Arc::new(inner_event_handle),
             unconfirmed_msg_collector: Arc::new(unconfirmed_msg_collector),
@@ -236,7 +228,7 @@ impl Handles {
     pub(crate) async fn init_normal_wallet_mqtt(
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::context::CONTEXT.get().unwrap();
+        let ctx = self.context;
         let pool = ctx.core_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
             return Err(crate::error::business::BusinessError::Device(
@@ -248,17 +240,17 @@ impl Handles {
         let client_id = DeviceDomain::client_id_by_device(&device)?;
         let password = DeviceDomain::md5_sn(&device.sn);
 
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
 
         let property =
             UserProperty::new(content, client_id, &device.sn, password, &app_version.app_version);
 
-        let url = ConfigDomain::get_mqtt_uri().await?.ok_or(
+        let url = ConfigDomain::get_mqtt_uri(ctx).await?.ok_or(
             crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::MqttClientNotInit,
             ),
         )?;
-        let h = ProcessMqttHandle::new(property, url).await?;
+        let h = ProcessMqttHandle::new(property, url, ctx).await?;
         self.normal_wallet_mqtt.lock().await.replace(h);
         Ok(())
     }
@@ -266,7 +258,7 @@ impl Handles {
     pub(crate) async fn init_api_wallet_mqtt(
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let ctx = crate::context::CONTEXT.get().unwrap();
+        let ctx = self.context;
         let pool = ctx.core_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
             return Err(crate::error::business::BusinessError::Device(
@@ -278,17 +270,17 @@ impl Handles {
         let client_id = DeviceDomain::client_id_by_device(&device)? + "_aw";
         let password = DeviceDomain::md5_sn(&device.sn);
 
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
 
         let property =
             UserProperty::new(content, client_id, &device.sn, password, &app_version.app_version);
 
-        let url = ConfigDomain::get_mqtt_uri().await?.ok_or(
+        let url = ConfigDomain::get_mqtt_uri(ctx).await?.ok_or(
             crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::MqttClientNotInit,
             ),
         )?;
-        let h = ProcessMqttHandle::new(property, url).await?;
+        let h = ProcessMqttHandle::new(property, url, ctx).await?;
         self.api_wallet_mqtt.lock().await.replace(h);
         Ok(())
     }

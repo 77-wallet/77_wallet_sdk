@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{bill::BillDomain, chain::adapter::ChainAdapterFactory},
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::inner_event::{InnerEvent, SyncAssetsData, SyncPriority},
@@ -62,11 +63,12 @@ impl ApiWalletAcctChange {
 
     pub(crate) async fn exec(
         &self,
+        ctx: &'static Context,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
         tracing::debug!("处理帐变: {:?}", self);
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
 
         if let Some(token_str) = &self.0.token {
             let has_coin = ApiCoinRepo::has_coin(
@@ -77,27 +79,27 @@ impl ApiWalletAcctChange {
             .await?;
             if !has_coin {
                 if let Err(e) =
-                    Self::try_create_coin_for_address(&self.0.chain_code, token_str).await
+                    Self::try_create_coin_for_address(ctx, &self.0.chain_code, token_str).await
                 {
                     tracing::error!("3deposit_acct_change 自动创建代币失败: to_addr {}", e);
                 }
             }
         }
 
-        if let Err(e) = self.try_repair_collect_from_acct_change().await {
+        if let Err(e) = self.try_repair_collect_from_acct_change(ctx).await {
             tracing::warn!(error = %e, "acct_change collect runtime repair failed (best-effort)");
         }
 
         // 充值帐变消息
-        self.deposit_acct_change().await?;
+        self.deposit_acct_change(ctx).await?;
 
         // 自己转账帐变
-        self.self_transfer_acct_change().await?;
+        self.self_transfer_acct_change(ctx).await?;
 
-        if let Err(e) = self.try_repair_fee_from_acct_change().await {
+        if let Err(e) = self.try_repair_fee_from_acct_change(ctx).await {
             tracing::warn!(error = %e, "acct_change fee runtime repair failed (best-effort)");
         }
-        if let Err(e) = self.try_repair_withdraw_from_acct_change().await {
+        if let Err(e) = self.try_repair_withdraw_from_acct_change(ctx).await {
             tracing::warn!(error = %e, "acct_change withdraw runtime repair failed (best-effort)");
         }
 
@@ -111,7 +113,7 @@ impl ApiWalletAcctChange {
             self.0.to_addr,
             self.0.token
         );
-        Self::sync_assets(&self).await?;
+        Self::sync_assets(ctx, &self).await?;
         tracing::info!(
             "账变资产同步阶段完成: tx_hash={}, chain_code={}, symbol={}, from_addr={}, to_addr={}, token={:?}",
             self.0.tx_hash,
@@ -125,7 +127,7 @@ impl ApiWalletAcctChange {
         // send acct_change to frontend
         let change_frontend = AcctChangeFrontend::from(self);
         let data = NotifyEvent::ApiWalletAcctChange(change_frontend);
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 
@@ -135,7 +137,10 @@ impl ApiWalletAcctChange {
     /// - Driven by external acct_change facts (do not rely on local collect.tx_hash)
     /// - Do not write `transaction_time` here; another MQTT path owns onchain-confirm facts
     /// - Only repair when a unique candidate can be identified
-    async fn try_repair_collect_from_acct_change(&self) -> Result<(), ServiceError> {
+    async fn try_repair_collect_from_acct_change(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), ServiceError> {
         // Normalize chain-specific hash formats (e.g. TON) before matching/writing.
         let normalized_hash = BillDomain::handle_hash(&self.0.tx_hash).trim().to_string();
         // Treat empty token as native coin to align with collect.token_addr NULL / empty storage.
@@ -237,8 +242,8 @@ impl ApiWalletAcctChange {
             }
         };
 
-        let wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
+        let wallet_pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
 
         // Restrict to subaccount-originated transfers; destination is intentionally NOT
         // constrained to a local withdrawal wallet because collect targets can vary.
@@ -451,7 +456,10 @@ impl ApiWalletAcctChange {
     /// - Driven by external acct_change facts (do not rely on local fee.tx_hash)
     /// - Hash-only repair (do NOT write transaction_time here)
     /// - Only repair when a unique candidate can be identified
-    async fn try_repair_fee_from_acct_change(&self) -> Result<(), ServiceError> {
+    async fn try_repair_fee_from_acct_change(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), ServiceError> {
         let normalized_hash = BillDomain::handle_hash(&self.0.tx_hash).trim().to_string();
         let normalized_token =
             self.0.token.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
@@ -549,8 +557,8 @@ impl ApiWalletAcctChange {
             }
         };
 
-        let wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
+        let wallet_pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
 
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
@@ -729,7 +737,10 @@ impl ApiWalletAcctChange {
     /// - Driven by external acct_change facts (do not rely on local withdraw.tx_hash)
     /// - Hash-only repair (do NOT write transaction_time here)
     /// - Only repair normal withdraw orders on success path
-    async fn try_repair_withdraw_from_acct_change(&self) -> Result<(), ServiceError> {
+    async fn try_repair_withdraw_from_acct_change(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), ServiceError> {
         let normalized_hash = BillDomain::handle_hash(&self.0.tx_hash).trim().to_string();
         let normalized_token =
             self.0.token.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
@@ -827,8 +838,8 @@ impl ApiWalletAcctChange {
             }
         };
 
-        let wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
+        let wallet_pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
 
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
@@ -1047,9 +1058,10 @@ impl ApiWalletAcctChange {
     }
 
     async fn sync_assets(
+        ctx: &'static Context,
         acct_change: &ApiWalletAcctChange,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
 
         // 记录帐变信息用于调试
         tracing::info!(
@@ -1200,7 +1212,7 @@ impl ApiWalletAcctChange {
             return Ok(());
         }
 
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        let handles = ctx.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
 
@@ -1238,17 +1250,19 @@ impl ApiWalletAcctChange {
 
     // 尝试为地址创建代币
     async fn try_create_coin_for_address(
+        ctx: &'static Context,
         chain_code: &str,
         token_address: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         tracing::error!("为地址创建代币22: chain_code={}, token={}", chain_code, token_address);
         if token_address.is_empty() {
             return Ok(());
         }
 
-        let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let chain_instance =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code).await?;
+        let backend_api = ctx.get_global_backend_api();
         let coins_finds = backend_api.fetch_all_api_tokens(None, None).await?;
         tracing::error!(
             "1try_create_coin_for_address find token coin , price is :{:?}",
@@ -1291,9 +1305,9 @@ impl ApiWalletAcctChange {
         Ok(())
     }
 
-    async fn deposit_acct_change(&self) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
+    async fn deposit_acct_change(&self, ctx: &'static Context) -> Result<(), ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
         let to_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.to_addr,
             &self.0.chain_code,
@@ -1355,9 +1369,9 @@ impl ApiWalletAcctChange {
         Ok(())
     }
 
-    async fn self_transfer_acct_change(&self) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
+    async fn self_transfer_acct_change(&self, ctx: &'static Context) -> Result<(), ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
             &self.0.chain_code,
@@ -1453,25 +1467,26 @@ mod test {
         testkit::env::get_manager,
     };
 
-    async fn init_manager() {
+    async fn init_manager() -> crate::manager::WalletManager {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (_, _) = get_manager().await.unwrap();
+        let (manager, _) = get_manager().await.unwrap();
+        manager
     }
 
     // 普通账交易
     #[tokio::test]
     async fn acct_change() -> anyhow::Result<()> {
-        init_manager().await;
+        let manager = init_manager().await;
 
         let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":0,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<ApiWalletAcctChange>(&change).unwrap();
-        let _res = change.exec("2").await.unwrap();
+        let _res = change.exec(manager.ctx, "2").await.unwrap();
 
         let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":1,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<ApiWalletAcctChange>(&change).unwrap();
 
-        let _res = change.exec("1").await.unwrap();
+        let _res = change.exec(manager.ctx, "1").await.unwrap();
         Ok(())
     }
 }

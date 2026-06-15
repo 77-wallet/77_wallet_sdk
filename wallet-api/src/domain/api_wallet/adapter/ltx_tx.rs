@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -26,10 +27,24 @@ use wallet_types::chain::address::r#type::LtcAddressType;
 
 pub(crate) struct LtcTx {
     chin: LtcChain,
+    ctx: &'static Context,
 }
 
 impl LtcTx {
-    pub fn new(rpc_url: &str, header_opt: Option<HashMap<String, String>>) -> Result<Self, Error> {
+    #[cfg(test)]
+    pub fn new_for_test(
+        ctx: &'static Context,
+        rpc_url: &str,
+        header_opt: Option<HashMap<String, String>>,
+    ) -> Result<Self, Error> {
+        Self::new_with_ctx(ctx, rpc_url, header_opt)
+    }
+
+    pub fn new_with_ctx(
+        ctx: &'static Context,
+        rpc_url: &str,
+        header_opt: Option<HashMap<String, String>>,
+    ) -> Result<Self, Error> {
         let network = wallet_types::chain::network::NetworkKind::Mainnet;
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let config = ProviderConfig {
@@ -40,7 +55,7 @@ impl LtcTx {
             access_key: None,
         };
         let ltc_chain = LtcChain::new(config, network, header_opt, timeout)?;
-        Ok(Self { chin: ltc_chain })
+        Ok(Self { chin: ltc_chain, ctx })
     }
 
     pub fn handle_ltc_fee_error(
@@ -132,7 +147,44 @@ impl Tx for LtcTx {
         params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(
+            &params.base.from,
+            &params.base.chain_code,
+            &pool,
+        )
+        .await?
+        .ok_or(crate::error::business::BusinessError::Account(
+            crate::error::business::account::AccountError::NotFound(params.base.from.to_string()),
+        ))?;
+
+        let address_type = LtcAddressType::try_from(Some(account.address_type))?;
+
+        let params = TransferArg::new(
+            &params.base.from,
+            &params.base.to,
+            &params.base.value,
+            address_type,
+            self.chin.network,
+        )?
+        .with_spend_all(params.base.spend_all);
+
+        let tx = self
+            .chin
+            .transfer(params, private_key)
+            .await
+            .map_err(|e| self.handle_ltc_fee_error(e))?;
+
+        Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
+    }
+
+    async fn transfer_with_ctx(
+        &self,
+        _ctx: &crate::context::Context,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<TransferResp, ServiceError> {
+        let pool = self.ctx.api_wallet_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
@@ -185,8 +237,10 @@ impl Tx for LtcTx {
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
+        let pool = self.ctx.api_wallet_pool()?;
 
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &self.ctx.core_pool()?,
             currency,
             &req.chain_code,
             main_symbol,
@@ -194,7 +248,47 @@ impl Tx for LtcTx {
         )
         .await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
+        let account =
+            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+                .await?
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+                ))?;
+
+        let address_type = LtcAddressType::try_from(Some(account.address_type))?;
+
+        let params =
+            TransferArg::new(&req.from, &req.to, &req.value, address_type, self.chin.network)?
+                .with_spend_all(req.spend_all);
+
+        let fee = self.chin.estimate_fee(params).await.map_err(|e| self.handle_ltc_fee_error(e))?;
+
+        let res = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        Ok(res)
+    }
+
+    async fn estimate_fee_with_ctx(
+        &self,
+        _ctx: &crate::context::Context,
+        req: ApiBaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        let currency = crate::app_state::APP_STATE.read().await;
+        let currency = currency.currency();
+        let pool = self.ctx.api_wallet_pool()?;
+
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &self.ctx.core_pool()?,
+            currency,
+            &req.chain_code,
+            main_symbol,
+            wallet_database::entities::asset_token_key::AssetTokenKey::Native,
+        )
+        .await?;
+
+        let pool = self.ctx.api_wallet_pool()?;
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?

@@ -43,7 +43,7 @@ use wallet_utils::{RetryableError as _, conversion, unit};
 use crate::{
     domain::api_wallet::wallet::ApiWalletDomain,
     error::{business::api_wallet::trans::TransError, system::SystemError},
-    infrastructure::nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
+    infrastructure::nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     request::api_wallet::trans::ApiTransferReq,
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
 };
@@ -156,9 +156,7 @@ enum ResourceGateNextStep {
 use crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer;
 
 pub struct ShadowCollectWorker {
-    /// 数据库连接池
-    collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static crate::context::Context,
     /// 地址锁管理器，保护地址级并发
     address_locks: Arc<AddressLockManager>,
     /// ShadowAdvancer 引用，用于统一推进执行
@@ -454,14 +452,12 @@ impl ShadowCollectWorker {
 
     /// 创建新的 Shadow Collect Worker
     pub fn new(
-        pool: ApiTransactionDbPool,
-        core_pool: ApiWalletDbPool,
+        ctx: &'static crate::context::Context,
         address_locks: Arc<AddressLockManager>,
         advancer: Arc<ShadowAdvancer>,
     ) -> Self {
-        Self { collect_pool: pool, core_pool, address_locks, advancer }
+        Self { ctx, address_locks, advancer }
     }
-
     /// 处理单个 Command
     pub async fn handle(&self, cmd: ShadowCollectCommand) -> Result<(), ServiceError> {
         // 提取 trade_no 用于日志
@@ -524,7 +520,7 @@ impl ShadowCollectWorker {
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             resource_trade_no,
         )
         .await
@@ -538,7 +534,7 @@ impl ShadowCollectWorker {
         };
 
         let affected = ApiResourceDelegationRepo::reset_for_retry(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             resource_trade_no,
             next_status,
             &next_retry_at.to_rfc3339(),
@@ -572,10 +568,12 @@ impl ShadowCollectWorker {
             "Processing resource delegation execution"
         );
 
-        let affected =
-            ApiResourceDelegationRepo::claim_build_slot(&self.collect_pool, &resource_trade_no)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+        let affected = ApiResourceDelegationRepo::claim_build_slot(
+            &self.ctx.api_transaction_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         if affected == 0 {
             info!(
                 resource_trade_no = %resource_trade_no,
@@ -586,7 +584,7 @@ impl ShadowCollectWorker {
         }
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             &resource_trade_no,
         )
         .await
@@ -603,9 +601,10 @@ impl ShadowCollectWorker {
 
         // 共享执行能力：仅完成资源代理任务广播，本体不关心 collect 阶段语义。
         let tx_hash =
-            execute_resource_delegation(&delegation, "collect_resource_delegation").await?;
+            execute_resource_delegation(self.ctx, &delegation, "collect_resource_delegation")
+                .await?;
         let affected = ApiResourceDelegationRepo::mark_broadcast_success(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             &resource_trade_no,
             &tx_hash,
         )
@@ -641,7 +640,7 @@ impl ShadowCollectWorker {
         // 统一失败 fact 映射，保持与其他 resource delegation 统一上报约定。
         let (err_code, err_msg) = resource_delegation_failure_fact(err);
         let affected = ApiResourceDelegationRepo::mark_failed_if_unfinished(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             resource_trade_no,
             &err_code,
             &err_msg,
@@ -777,7 +776,7 @@ impl ShadowCollectWorker {
         // that the collect order may enter the existing BuildTx flow; raw_tx
         // and tx_hash are still produced by the normal build path.
         let rows = ApiCollectRepo::mark_resource_released(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             &origin_trade_no,
             ApiResourceGateResult::ResourceReady,
         )
@@ -798,6 +797,7 @@ impl ShadowCollectWorker {
         origin_trade_no: String,
     ) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(&origin_trade_no).await?;
+        let ctx = self.ctx;
         if !Self::is_tron_collect(&req.chain_code) {
             return Ok(());
         }
@@ -811,11 +811,14 @@ impl ShadowCollectWorker {
         }
 
         let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
         let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                    .await?;
+            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?;
             (token_coin.symbol, token_coin.token_address, token_coin.decimals)
         } else {
             (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
@@ -831,7 +834,9 @@ impl ShadowCollectWorker {
                 token_decimals,
             )
             .await?;
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
+                .await?;
         let resource = adapter.account_resource(&req.from_addr).await?;
         let available_energy = resource.available_energy();
         let available_bandwidth = resource.available_bandwidth();
@@ -855,15 +860,19 @@ impl ShadowCollectWorker {
         req: &ApiCollectEntity,
         exec_to_addr: &str,
     ) -> Result<ResourceGateSnapshot, ServiceError> {
+        let ctx = self.ctx;
         // 这里只做“评估快照”：
         // - 估算如果现在 BuildTx，需要多少资源
         // - 读取子账户当前链上资源余额
         // 不在这里决定走平台代理还是本地代理，也不直接写 blocked/released 事实。
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
         let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                    .await?;
+            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?;
             (token_coin.symbol, token_coin.token_address, token_coin.decimals)
         } else {
             (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
@@ -880,7 +889,9 @@ impl ShadowCollectWorker {
                 token_decimals,
             )
             .await?;
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
+                .await?;
         let resource = adapter.account_resource(&req.from_addr).await?;
 
         Ok(ResourceGateSnapshot {
@@ -907,10 +918,12 @@ impl ShadowCollectWorker {
             return Ok(ResourceGateNextStep::Release);
         }
 
-        let delegations =
-            ApiResourceDelegationRepo::list_by_origin_trade_no(&self.collect_pool, origin_trade_no)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+        let delegations = ApiResourceDelegationRepo::list_by_origin_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            origin_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         let next_step = match Self::decide_collect_resource_block_path(req, &delegations) {
             ResourceDelegationBlockPath::LocalFallback => ResourceGateNextStep::BlockOnLocal,
             ResourceDelegationBlockPath::PlatformFallback => ResourceGateNextStep::BlockOnPlatform,
@@ -1035,7 +1048,7 @@ impl ShadowCollectWorker {
         // 商户侧只记录“原单正在等待平台代理结果”这个事实。
         // 真正的平台代理订单由平台钱包接收并执行，不在商户钱包本地创建任务行。
         let rows = ApiCollectRepo::mark_resource_blocked(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             origin_trade_no,
             ApiResourceBlockReason::NeedPlatformDelegate,
             resource_trade_no.as_deref(),
@@ -1066,11 +1079,12 @@ impl ShadowCollectWorker {
         receiver_address: &str,
         amount: &str,
     ) -> Result<PlatformApplyOutcome, ServiceError> {
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, chain_code).await?;
         let resource = adapter.account_resource(receiver_address).await?;
         let amounts = energy_shortfall_to_apply_amounts(amount, resource.energy_price())?;
 
-        let wallet = ApiWalletRepo::find_by_uid(&self.core_pool, uid)
+        let wallet = ApiWalletRepo::find_by_uid(&self.ctx.api_wallet_pool()?, uid)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
 
@@ -1095,7 +1109,7 @@ impl ShadowCollectWorker {
             source = "shadow_worker_v2",
             "Platform resource delegation apply request"
         );
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         let resp = backend_api.apply_resource_delegation(&req).await?;
 
         if resp.is_success() {
@@ -1146,11 +1160,11 @@ impl ShadowCollectWorker {
             native_amount,
             amount,
         );
-        ApiResourceDelegationRepo::upsert(&self.collect_pool, delegation)
+        ApiResourceDelegationRepo::upsert(&self.ctx.api_transaction_pool()?, delegation)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
         let rows = ApiCollectRepo::mark_resource_blocked(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             origin_trade_no,
             ApiResourceBlockReason::NeedLocalDelegate,
             Some(&resource_trade_no),
@@ -1180,7 +1194,7 @@ impl ShadowCollectWorker {
             return Ok(());
         }
         ApiResourceDelegationRepo::mark_result_received(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             &delegation.resource_trade_no,
             ApiResourceDelegationResultStatus::Success,
             None,
@@ -1205,7 +1219,7 @@ impl ShadowCollectWorker {
         resource_trade_no: &str,
     ) -> Result<(), ServiceError> {
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             resource_trade_no,
         )
         .await
@@ -1217,7 +1231,7 @@ impl ShadowCollectWorker {
             return Ok(());
         }
         let _ = ApiResourceDelegationRepo::mark_result_received(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             &delegation.resource_trade_no,
             ApiResourceDelegationResultStatus::Fail,
             None,
@@ -1245,7 +1259,7 @@ impl ShadowCollectWorker {
         // local delegation 到达终态后，collect 不再卡在资源 gate。
         // 后面是否还会因为主币不足、服务费不足而停下，交回原有 BuildTx/fee 流程判断。
         let affected = ApiCollectRepo::mark_resource_released(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             origin_trade_no,
             gate_result,
         )
@@ -1359,8 +1373,11 @@ impl ShadowCollectWorker {
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
+        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &req.chain_code,
+        )
+        .await;
         if _chain_rpc_guard.is_some() {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit");
         }
@@ -1389,7 +1406,7 @@ impl ShadowCollectWorker {
 
                         if existing_tx_hash.is_none() {
                             let rows_affected = ApiCollectRepo::backfill_tx_hash_if_missing(
-                                &self.collect_pool,
+                                &self.ctx.api_transaction_pool()?,
                                 &fresh_req.trade_no,
                                 &tx_resp.tx_hash,
                                 "shadow_worker_v2",
@@ -1456,7 +1473,7 @@ impl ShadowCollectWorker {
 
                     let rows_affected =
                         ApiCollectRepo::confirm_onchain_transaction_fact_with_recover(
-                            &self.collect_pool,
+                            &self.ctx.api_transaction_pool()?,
                             &fresh_req.trade_no,
                             &tx_resp.tx_hash,
                             &transaction_time,
@@ -1499,7 +1516,7 @@ impl ShadowCollectWorker {
                             "Using rebuild-only invalidation path for expired raw_tx (will NOT set need_service_fee)"
                         );
                         let rows = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
-                            &self.collect_pool,
+                            &self.ctx.api_transaction_pool()?,
                             &req.trade_no,
                             None,
                         )
@@ -1521,10 +1538,12 @@ impl ShadowCollectWorker {
                 }
 
                 let now = Utc::now();
-                let rows_affected =
-                    ApiCollectRepo::mark_broadcast_uncertain_attempt(&self.collect_pool, trade_no)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected = ApiCollectRepo::mark_broadcast_uncertain_attempt(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_collect_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -1556,7 +1575,7 @@ impl ShadowCollectWorker {
                     );
 
                     let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         &refreshed.trade_no,
                         ApiCollectStatus::SendingTxFailed,
                         Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE,
@@ -1587,9 +1606,13 @@ impl ShadowCollectWorker {
                         "EVM uncertain timeout reached; running nonce reconcile"
                     );
 
-                    let nonce_engine = get_nonce_engine();
-                    let chain_nonce =
-                        ApiTransDomain::nonce(&refreshed.from_addr, &refreshed.chain_code).await?;
+                    let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
+                    let chain_nonce = ApiTransDomain::nonce(
+                        &self.ctx,
+                        &refreshed.from_addr,
+                        &refreshed.chain_code,
+                    )
+                    .await?;
                     chain_nonce_for_log = Some(chain_nonce);
 
                     if chain_nonce < local_nonce_for_log {
@@ -1622,7 +1645,7 @@ impl ShadowCollectWorker {
                         reconcile_reason_label = "generic_uncertain";
                     }
                     let _ = ApiCollectRepo::mark_broadcast_uncertain_reconciled(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         &refreshed.trade_no,
                     )
                     .await
@@ -1644,7 +1667,7 @@ impl ShadowCollectWorker {
                         "EVM uncertain reconcile decision"
                     );
                     let rows = ApiCollectRepo::invalidate_raw_tx_for_rebroadcast(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         &refreshed.trade_no,
                         None,
                     )
@@ -1652,7 +1675,7 @@ impl ShadowCollectWorker {
                     .map_err(|e| ServiceError::Database(e.into()))?;
                     if rows > 0 {
                         let _ = ApiCollectRepo::mark_broadcast_uncertain_rebroadcast_attempted(
-                            &self.collect_pool,
+                            &self.ctx.api_transaction_pool()?,
                             &refreshed.trade_no,
                         )
                         .await
@@ -1674,7 +1697,7 @@ impl ShadowCollectWorker {
                 );
 
                 let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     &refreshed.trade_no,
                     ApiCollectStatus::SendingTxFailed,
                     Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE,
@@ -1707,7 +1730,7 @@ impl ShadowCollectWorker {
                     "Tron tx missing from confirmed and pending pools beyond timeout; rebroadcasting"
                 );
                 let rows = ApiCollectRepo::invalidate_raw_tx_for_rebroadcast(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     &req.trade_no,
                     None,
                 )
@@ -1767,11 +1790,12 @@ impl ShadowCollectWorker {
         // 4. 先占位建单槽位，防止同一 trade_no 在构建期间被重复推进
         // building_at 只作为短期 in-flight 保护，不参与最终事实判断。
         let build_slot_rows =
-            ApiCollectRepo::update_building_at(&self.collect_pool, trade_no).await?;
+            ApiCollectRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no).await?;
         if build_slot_rows == 0 {
             if self.reclaim_stale_build_slot(trade_no, req.building_at).await? {
                 let reclaimed_build_slot_rows =
-                    ApiCollectRepo::update_building_at(&self.collect_pool, trade_no).await?;
+                    ApiCollectRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+                        .await?;
                 if reclaimed_build_slot_rows > 0 {
                     info!(
                         trade_no = %trade_no,
@@ -1811,7 +1835,7 @@ impl ShadowCollectWorker {
 
         if updated_to_addr {
             ApiCollectRepo::update_api_collect_to_addr(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 &req.trade_no,
                 &exec_to_addr,
             )
@@ -1919,7 +1943,8 @@ impl ShadowCollectWorker {
 
         // ====== phase 1.5: 锁外 · EVM nonce-gap 前置纠偏（单次最多一次） ======
         if Self::is_evm_chain_code(&req.chain_code) {
-            let chain_nonce = ApiTransDomain::nonce(&req.from_addr, &req.chain_code).await?;
+            let chain_nonce =
+                ApiTransDomain::nonce(&self.ctx, &req.from_addr, &req.chain_code).await?;
             if Self::should_force_align_prebuild_nonce_gap(chain_nonce, nonce) {
                 let old_nonce = nonce;
                 let gap = old_nonce.saturating_sub(chain_nonce);
@@ -1934,7 +1959,7 @@ impl ShadowCollectWorker {
                     "EVM pre-build nonce-gap detected; forcing local nonce to chain nonce"
                 );
 
-                let nonce_engine = get_nonce_engine();
+                let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
                 let _ = nonce_engine
                     .force_align_to_chain_next_nonce(
                         &req.from_addr,
@@ -1973,14 +1998,17 @@ impl ShadowCollectWorker {
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
+        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &req.chain_code,
+        )
+        .await;
         if _chain_rpc_guard.is_some() {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit");
         }
 
         // 通过Context获取Handles实例，然后获取私钥管理器
-        let handles = crate::context::get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key =
             private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
@@ -1994,6 +2022,7 @@ impl ShadowCollectWorker {
         // 构建交易
         let (tx_hash, raw_tx, fee) =
             crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
+                &self.ctx,
                 transfer_req,
                 Some(private_key),
             )
@@ -2021,7 +2050,7 @@ impl ShadowCollectWorker {
             // 注意：使用序列化而非格式化，避免格式问题
             let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
             let rows_affected = ApiCollectRepo::update_after_build(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 &fresh_req.trade_no,
                 &tx_hash,
                 &raw_tx_str,
@@ -2111,8 +2140,11 @@ impl ShadowCollectWorker {
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
+        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
+            self.ctx,
+            &req.chain_code,
+        )
+        .await;
         if _chain_rpc_guard.is_some() {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit for broadcast");
         }
@@ -2138,6 +2170,7 @@ impl ShadowCollectWorker {
         // 广播交易
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Starting to broadcast transaction");
         let tx_resp = crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
+            &self.ctx,
             &req.chain_code,
             raw_tx,
             req.tx_hash.as_deref(),
@@ -2187,7 +2220,7 @@ impl ShadowCollectWorker {
                     };
 
                     let rows_affected = ApiCollectRepo::mark_broadcast_executed(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         &fresh_req.trade_no,
                     )
                     .await
@@ -2215,7 +2248,7 @@ impl ShadowCollectWorker {
                 if Self::tracks_broadcast_uncertain_state(&req.chain_code) {
                     let had_uncertain_since = req.broadcast_uncertain_since_at.is_some();
                     let rows_affected = ApiCollectRepo::mark_broadcast_uncertain_attempt(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         trade_no,
                     )
                     .await
@@ -2246,9 +2279,12 @@ impl ShadowCollectWorker {
         &self,
         trade_no: &str,
     ) -> Result<ApiCollectEntity, ServiceError> {
-        let entity = ApiCollectRepo::get_api_collect_by_trade_no(&self.collect_pool, trade_no)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
+        let entity = ApiCollectRepo::get_api_collect_by_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         Ok(entity)
     }
 
@@ -2263,7 +2299,7 @@ impl ShadowCollectWorker {
         let account = match wallet_database::repositories::api_wallet::account::ApiAccountRepo::find_one_by_address_chain_code(
             &req.from_addr,
             &req.chain_code,
-            &self.core_pool,
+            &self.ctx.api_wallet_pool()?,
         )
         .await
         {
@@ -2285,10 +2321,13 @@ impl ShadowCollectWorker {
         };
 
         // 2. 查询用户归集策略
-        let strategy = crate::domain::api_wallet::strategy::StrategyDomain::query_collect_strategy(
-            &account.uid,
-        )
-        .await?;
+        let ctx = self.ctx;
+        let strategy =
+            crate::domain::api_wallet::strategy::StrategyDomain::query_collect_strategy_with_ctx(
+                ctx,
+                &account.uid,
+            )
+            .await?;
         info!(trade_no = %req.trade_no, uid = %account.uid, source = "shadow_worker_v2", "Retrieved collect strategy");
 
         // 3. 根据chain_code查询链配置
@@ -2325,17 +2364,21 @@ impl ShadowCollectWorker {
     pub(crate) async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
+        let ctx = self.ctx;
 
         // 查询主币信息
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 主币信息: 币种={}, 小数位数={}", main_coin.symbol, main_coin.decimals);
 
         // 确定代币信息
         let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                    .await?;
+            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?;
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 代币信息: 币种={}, 代币地址={:?}, 小数位数={}", 
                 token_coin.symbol, token_coin.token_address, token_coin.decimals);
             (token_coin.symbol, token_coin.token_address, token_coin.decimals)
@@ -2484,6 +2527,7 @@ impl ShadowCollectWorker {
         &self,
         req: &ApiCollectEntity,
     ) -> Result<bool, ServiceError> {
+        let ctx = self.ctx;
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
         let token_key = if req.token_addr.is_contract() {
             req.token_addr.clone()
@@ -2492,10 +2536,14 @@ impl ShadowCollectWorker {
         };
 
         let token_coin = if req.token_addr.is_contract() {
-            ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                .await?
+            ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?
         } else {
-            ApiChainTransDomain::main_coin(&req.chain_code).await?
+            ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?
         };
 
         let balance_str =
@@ -2537,7 +2585,7 @@ impl ShadowCollectWorker {
             );
 
             let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
                 ErrCode::BalanceInsufficient,
@@ -2565,7 +2613,7 @@ impl ShadowCollectWorker {
             );
 
             return ApiCollectRepo::invalidate_raw_tx_for_rebuild(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 &req.trade_no,
                 Some(ApiCollectStatus::InsufficientBalance),
             )
@@ -2582,7 +2630,7 @@ impl ShadowCollectWorker {
         );
 
         ApiCollectRepo::invalidate_raw_tx_need_service_fee(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             &req.trade_no,
             Some(ApiCollectStatus::InsufficientBalance),
         )
@@ -2591,6 +2639,7 @@ impl ShadowCollectWorker {
     }
 
     pub(crate) async fn resolve_withdraw_from_addr(
+        ctx: &'static crate::context::Context,
         pool: &ApiWalletDbPool,
         req: &ApiCollectEntity,
     ) -> Result<String, ServiceError> {
@@ -2657,7 +2706,8 @@ impl ShadowCollectWorker {
         };
 
         // 3. 查询用户提币策略
-        let strategy = StrategyDomain::query_withdraw_strategy(&withdraw_wallet.uid).await?;
+        let strategy =
+            StrategyDomain::query_withdraw_strategy_with_ctx(ctx, &withdraw_wallet.uid).await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 获取提现策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
 
         // 4. 根据chain_code查询链配置
@@ -2698,8 +2748,11 @@ impl ShadowCollectWorker {
         tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_key.as_db_str(),
             source = "shadow_worker_v2", "collect_tx:send: 查询余额");
 
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx,
+            &chain_code.to_string(),
+        )
+        .await?;
         let balance = adapter.balance_token_key(&owner_address, token_key.clone()).await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
@@ -2728,8 +2781,11 @@ impl ShadowCollectWorker {
             source = "shadow_worker_v2", "collect_tx:send: 估算交易手续费开始");
 
         let adapter_start = std::time::Instant::now();
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx,
+            &chain_code.to_string(),
+        )
+        .await?;
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%adapter_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 获取适配器完成");
 
         let params_start = std::time::Instant::now();
@@ -2795,7 +2851,8 @@ impl ShadowCollectWorker {
         token_key: AssetTokenKey,
         decimals: u8,
     ) -> Result<TronFeeDetails, ServiceError> {
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter("tron").await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, "tron").await?;
         let mut params = ApiBaseTransferReq::new(from, to, value, "tron");
         params.with_token(token_key.to_chain_token_option(), decimals, symbol);
         let fee = adapter.estimate_fee(params, main_symbol).await?;
@@ -2812,7 +2869,8 @@ impl ShadowCollectWorker {
         tracing::info!(uid=%uid, chain_code=%chain_code, source = "shadow_worker_v2", "collect_tx:send: 查询归集策略");
 
         // 查询策略
-        let strategy = StrategyDomain::query_collect_strategy(uid).await?;
+        let ctx = self.ctx;
+        let strategy = StrategyDomain::query_collect_strategy_with_ctx(ctx, uid).await?;
 
         tracing::info!(uid=%uid, source = "shadow_worker_v2", "collect_tx:send: 获取归集策略成功，包含 {} 条链配置", strategy.chain_configs.len());
 
@@ -2832,7 +2890,7 @@ impl ShadowCollectWorker {
     async fn check_digest(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         info!(trade_no = %req.trade_no, source = "shadow_worker_v2", "Checking transaction digest");
 
-        let sn = crate::context::get_context().unwrap().get_sn();
+        let sn = self.ctx.get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         // ⚠️ 这里必须用后端给的空字符串的to_addr，不能用查询策略解析的地址
@@ -2861,6 +2919,7 @@ impl ShadowCollectWorker {
 
         // 获取币种信息
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            self.ctx,
             &req.chain_code,
             req.token_addr.clone().into(),
         )
@@ -2935,9 +2994,8 @@ impl ShadowCollectWorker {
                 // This method MUST guarantee DB-level atomic CAS for nonce allocation.
                 // Any refactor breaking this invariant will cause nonce duplication.
 
-                let nonce_engine = get_nonce_engine();
-                let nonce =
-                    nonce_engine.allocate_nonce(from_addr, chain_code, &self.collect_pool).await?;
+                let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
+                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
                 info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_worker_v2", "Retrieved nonce using NonceEngine");
                 Ok(nonce as u64)
             }
@@ -2962,6 +3020,7 @@ impl ShadowCollectWorker {
         info!(trade_no = %req.trade_no, tx_hash = %tx_hash, source = "shadow_worker_v2", "Processing recovered tx");
 
         match crate::domain::api_wallet::trans::ApiTransDomain::process_recovered_tx(
+            &self.ctx,
             &req.chain_code,
             &req.from_addr,
             tx_hash,
@@ -3039,7 +3098,7 @@ impl ShadowCollectWorker {
                 self.clear_build_slot_after_claim(trade_no).await?;
 
                 let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                     ApiCollectStatus::InsufficientBalance,
                     ErrCode::BalanceInsufficient,
@@ -3094,7 +3153,7 @@ impl ShadowCollectWorker {
             self.clear_build_slot_after_claim(trade_no).await?;
 
             let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 trade_no,
                 ApiCollectStatus::InsufficientBalance,
                 ErrCode::BalanceInsufficient,
@@ -3131,7 +3190,7 @@ impl ShadowCollectWorker {
             let now = Utc::now();
             if Self::should_terminal_fail_collect_build_503(&req, &err, now) {
                 let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                     ApiCollectStatus::SendingTxFailed,
                     ErrCode::NetworkException,
@@ -3157,7 +3216,7 @@ impl ShadowCollectWorker {
                 }
             } else {
                 let rows_affected = ApiCollectRepo::update_api_collect_post_tx_count(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                 )
                 .await
@@ -3195,7 +3254,7 @@ impl ShadowCollectWorker {
             && req.last_broadcast_at.is_none()
         {
             let rows_affected = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 trade_no,
                 None,
             )
@@ -3227,7 +3286,7 @@ impl ShadowCollectWorker {
         {
             let rows_affected =
                 wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_broadcast_executed(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                 )
                 .await
@@ -3259,7 +3318,7 @@ impl ShadowCollectWorker {
                 "Detected EVM nonce too low on broadcast, treat as idempotent success"
             );
 
-            let nonce_engine = get_nonce_engine();
+            let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
             if let Err(e) =
                 nonce_engine.handle_nonce_error(&req.from_addr, &req.chain_code, &error_msg).await
             {
@@ -3268,7 +3327,7 @@ impl ShadowCollectWorker {
 
             let rows_affected =
                 wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_broadcast_executed(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                 )
                 .await
@@ -3293,7 +3352,7 @@ impl ShadowCollectWorker {
         if ApiTransDomain::is_nonce_too_low_error(&err) {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Detected nonce too low error, syncing nonce from chain");
 
-            let nonce_engine = get_nonce_engine();
+            let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
             if let Err(e) =
                 nonce_engine.handle_nonce_error(&req.from_addr, &req.chain_code, &error_msg).await
             {
@@ -3301,7 +3360,7 @@ impl ShadowCollectWorker {
             }
 
             let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 trade_no,
                 wallet_database::entities::api_collect::ApiCollectStatus::SendingTxFailed,
                 ErrCode::SDKInternalError, // 使用通用错误码
@@ -3334,7 +3393,7 @@ impl ShadowCollectWorker {
                 };
 
                 let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                     wallet_database::entities::api_collect::ApiCollectStatus::SendingTxFailed,
                     err_code, // err_code - 通用失败码
@@ -3374,7 +3433,7 @@ impl ShadowCollectWorker {
             return Ok(false);
         }
 
-        let rows_affected = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no)
+        let rows_affected = ApiCollectRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
             .await
             .map_err(|e: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear build slot for BuildTx failure");
@@ -3392,7 +3451,7 @@ impl ShadowCollectWorker {
     }
 
     async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
-        let rows_affected = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no)
+        let rows_affected = ApiCollectRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
             .await
             .map_err(|e: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear build slot after BuildTx early exit");
@@ -3418,7 +3477,7 @@ impl ShadowCollectWorker {
             return Ok(false);
         }
 
-        let rows_affected = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no)
+        let rows_affected = ApiCollectRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
             .await
             .map_err(|e: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear stale build slot");
@@ -3441,14 +3500,21 @@ impl ShadowCollectWorker {
 mod tests {
     use super::ShadowCollectWorker;
     use crate::{
+        context::api_wallet_backend::ApiWalletBackend,
         error::{service::ServiceError, system::SystemError},
         infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent},
     };
+    use async_trait::async_trait;
     use chrono::Utc;
     use rust_decimal::Decimal;
-    use std::{str::FromStr, sync::Arc};
+    use std::{
+        fs,
+        path::PathBuf,
+        str::FromStr,
+        sync::{Arc, OnceLock},
+    };
     use tempfile::tempdir;
-    use tokio::sync::mpsc;
+    use tokio::sync::{OnceCell, mpsc};
     use wallet_database::{
         ApiWalletDbPool, SqliteContext,
         entities::{
@@ -3468,6 +3534,128 @@ mod tests {
             collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
         },
     };
+    use wallet_transport_backend::{
+        request::{
+            DeviceDeleteReq, KeysInitReq,
+            api_wallet::{
+                address::ExpandAddressCompleteReq,
+                swap::{ApiInitSwapReq, ApiInitSwapResponse},
+                wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq},
+            },
+        },
+        response_vo::api_wallet::wallet::{
+            AppIdUidUsageRes as ApiWalletAppIdUidUsageRes, KeysUidCheckRes,
+            QueryUidBindInfoRes as QueryBindInfoRes,
+            QueryWalletActivationInfoResp as ApiQueryActivationResp, UidStatus,
+        },
+    };
+
+    #[derive(Default)]
+    struct NoopApiWalletBackend;
+
+    #[async_trait]
+    impl ApiWalletBackend for NoopApiWalletBackend {
+        async fn wallet_bind_appid(&self, _: BindAppIdReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn init_api_wallet(&self, _: AppIdImportReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn old_keys_init(&self, _: KeysInitReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn appid_import(&self, _: AppIdImportReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn appid_import_recharge_wallet(
+            &self,
+            _: wallet_transport_backend::request::api_wallet::wallet::AppIdImportRechargeWalletReq,
+        ) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn keys_uid_check(&self, _: &str) -> Result<KeysUidCheckRes, ServiceError> {
+            Ok(KeysUidCheckRes { uid: String::new(), status: UidStatus::NormalWallet })
+        }
+        async fn query_uid_bind_info(&self, _: &str) -> Result<QueryBindInfoRes, ServiceError> {
+            Ok(QueryBindInfoRes {
+                app_id: String::new(),
+                org_id: String::new(),
+                bind_status: false,
+                sn: String::new(),
+            })
+        }
+        async fn query_wallet_activation_info(
+            &self,
+            _: &str,
+        ) -> Result<ApiQueryActivationResp, ServiceError> {
+            Ok(ApiQueryActivationResp(vec![]))
+        }
+        async fn appid_uid_usage(
+            &self,
+            _: AppIdUidUsageReq,
+        ) -> Result<ApiWalletAppIdUidUsageRes, ServiceError> {
+            Ok(ApiWalletAppIdUidUsageRes { used: false })
+        }
+        async fn expand_address_complete(
+            &self,
+            _: ExpandAddressCompleteReq,
+        ) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn appid_withdrawal_wallet_change(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn init_swap(&self, _: &ApiInitSwapReq) -> Result<ApiInitSwapResponse, ServiceError> {
+            Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+        }
+        async fn device_delete(&self, _: &DeviceDeleteReq) -> Result<Option<()>, ServiceError> {
+            Ok(None)
+        }
+    }
+
+    async fn test_ctx() -> &'static crate::context::Context {
+        let ctx = crate::context::init_context_with_api_wallet_backend(
+            "wallet_api_shadow_test_sn",
+            "unittest",
+            {
+                let mut dir = PathBuf::from(std::env::temp_dir());
+                dir.push("wallet-api-shadow-worker-tests");
+                fs::create_dir_all(&dir).expect("ensure temp dir");
+                crate::dirs::Dirs::new(&dir.to_string_lossy()).expect("create dirs")
+            },
+            None,
+            crate::config::Config::new(
+                r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#,
+            )
+            .expect("parse test config"),
+            Arc::new(NoopApiWalletBackend::default()),
+        )
+        .await
+        .expect("init test context");
+        Box::leak(Box::new(ctx))
+    }
 
     fn base_collect() -> ApiCollectEntity {
         ApiCollectEntity {
@@ -3536,18 +3724,12 @@ mod tests {
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
 
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 intent_tx.clone(),
                 None,
             )),
@@ -3596,18 +3778,12 @@ mod tests {
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
 
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 intent_tx.clone(),
                 None,
             )),
@@ -3678,18 +3854,12 @@ mod tests {
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
 
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 intent_tx.clone(),
                 None,
             )),
@@ -3870,17 +4040,12 @@ mod tests {
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 intent_tx.clone(),
                 None,
             )),
@@ -3925,17 +4090,12 @@ mod tests {
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 intent_tx.clone(),
                 None,
             )),
@@ -4012,17 +4172,12 @@ mod tests {
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 intent_tx.clone(),
                 None,
             )),
@@ -4106,17 +4261,12 @@ mod tests {
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 intent_tx,
                 None,
             )),
@@ -4177,17 +4327,12 @@ mod tests {
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 intent_tx,
                 None,
             )),
@@ -4247,17 +4392,12 @@ mod tests {
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
+            test_ctx().await,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
+                test_ctx().await,
                 intent_tx.clone(),
                 None,
             )),

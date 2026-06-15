@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::app::config::ConfigDomain,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent, other::ChainChangeFrontend},
 };
@@ -11,15 +12,22 @@ pub struct ChainChange(Vec<ChainUrlInfo>);
 
 // biz_type = CHAIN_CHANGE
 impl ChainChange {
-    pub(crate) async fn exec(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let ChainChange(body) = &self;
-        ConfigDomain::set_block_browser_url(body).await?;
+        ConfigDomain::set_block_browser_url(ctx, body).await?;
 
         let has_new_chain =
-            crate::domain::chain::ChainDomain::upsert_multi_chain_than_toggle(body.into()).await?;
+            crate::domain::chain::ChainDomain::upsert_multi_chain_than_toggle_with_ctx(
+                ctx,
+                body.into(),
+            )
+            .await?;
         let data = ChainChangeFrontend { has_new_chain, chains: self.0.to_vec() };
         let data = NotifyEvent::ChainChange(data);
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
     }

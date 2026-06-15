@@ -201,8 +201,10 @@ impl BalanceInfo {
         Self { amount, currency: currency.to_string(), unit_price, fiat_value }
     }
 
-    pub async fn new_without_amount() -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let currency = ConfigDomain::get_currency().await?;
+    pub async fn new_without_amount(
+        ctx: &'static crate::context::Context,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        let currency = ConfigDomain::get_currency(ctx).await?;
 
         Ok(Self {
             amount: 0.0,

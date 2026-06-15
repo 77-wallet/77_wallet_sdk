@@ -37,7 +37,7 @@ use crate::{
     },
     infrastructure::{
         chain_node::chain_node_ensurer::ChainNodeEnsurer,
-        expand_init::executor::do_init,
+        expand_init::executor::do_init_with_ctx,
         task_queue::{
             backend::{BackendApiTask, BackendApiTaskData},
             task::Tasks,
@@ -99,6 +99,7 @@ fn body_field_count(body: &serde_json::Value) -> usize {
 
 impl BackendTaskHandle {
     pub async fn do_handle(
+        ctx: &'static crate::context::Context,
         endpoint: &str,
         body: serde_json::Value,
         backend: Arc<BackendApi>,
@@ -116,7 +117,7 @@ impl BackendTaskHandle {
         let handler = Self::get_handler(endpoint);
         let body_kind = body_field_count(&body);
         tracing::info!(endpoint = endpoint, body_fields = body_kind, "handling backend task");
-        handler.handle(endpoint, body, backend.as_ref()).await?;
+        handler.handle(ctx, endpoint, body, backend.as_ref()).await?;
 
         Ok(())
     }
@@ -147,6 +148,7 @@ impl BackendTaskHandle {
 trait EndpointHandler {
     async fn handle(
         &self,
+        ctx: &'static crate::context::Context,
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
@@ -161,13 +163,14 @@ struct DefaultHandler;
 impl EndpointHandler for DefaultHandler {
     async fn handle(
         &self,
+        ctx: &'static crate::context::Context,
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
         // _wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let pool = ctx.core_pool()?;
+        let sn = ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -234,16 +237,17 @@ struct SpecialHandler;
 impl EndpointHandler for SpecialHandler {
     async fn handle(
         &self,
+        ctx: &'static crate::context::Context,
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
         // TODO： 完全不需要这个
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
+        let api_pool = ctx.api_wallet_pool()?;
         // let mut repo = wallet_database::factory::RepositoryFactory::repo(core_pool.into_inner());
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = ctx.get_sn();
         match endpoint {
             endpoint::DEVICE_INIT => {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
@@ -251,7 +255,7 @@ impl EndpointHandler for SpecialHandler {
                 DeviceRepo::device_init(core_pool.clone(), sn).await?;
             }
             endpoint::KEYS_V2_INIT => {
-                let status = ConfigDomain::get_keys_reset_status().await?;
+                let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
@@ -270,7 +274,7 @@ impl EndpointHandler for SpecialHandler {
                         "event": "keys_init_fail",
                         "message": e.to_string(),
                     });
-                    let _r = FrontendNotifyEvent::send_debug(message).await;
+                    let _r = FrontendNotifyEvent::send_debug_with_ctx(ctx, message).await;
                 }
                 res?;
 
@@ -279,7 +283,7 @@ impl EndpointHandler for SpecialHandler {
                 WalletRepo::wallet_init(core_pool, &req.uid).await?;
             }
             endpoint::old_wallet::OLD_KEYS_V2_INIT => {
-                let status = ConfigDomain::get_keys_reset_status().await?;
+                let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
@@ -298,7 +302,7 @@ impl EndpointHandler for SpecialHandler {
                         "event": "keys_init_fail",
                         "message": e.to_string(),
                     });
-                    let _r = FrontendNotifyEvent::send_debug(message).await;
+                    let _r = FrontendNotifyEvent::send_debug_with_ctx(ctx, message).await;
                 }
                 res?;
                 let req: wallet_transport_backend::request::KeysInitReq =
@@ -312,12 +316,12 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
                 // 直接转发给do_init执行，统一处理逻辑
-                do_init(req).await?;
+                do_init_with_ctx(ctx, req).await?;
 
                 tracing::info!("地址初始化请求处理完成");
             }
             endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT => {
-                let status = ConfigDomain::get_keys_reset_status().await?;
+                let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
@@ -364,7 +368,7 @@ impl EndpointHandler for SpecialHandler {
             }
 
             endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS => {
-                let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+                let pool = ctx.core_pool()?;
                 let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
                     return Err(crate::error::business::BusinessError::Device(
                         crate::error::business::device::DeviceError::Uninitialized,
@@ -384,18 +388,20 @@ impl EndpointHandler for SpecialHandler {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
 
                 res?;
-                let code = ConfigDomain::get_invite_code().await?.and_then(|c| c.code);
+                let code = ConfigDomain::get_invite_code(&ctx).await?.and_then(|c| c.code);
 
-                ConfigDomain::set_invite_code(Some(req.invitee), code).await?;
+                ConfigDomain::set_invite_code(&ctx, Some(req.invitee), code).await?;
             }
             endpoint::LANGUAGE_INIT => {
                 backend.post_req_str::<()>(endpoint, &body).await?;
                 DeviceRepo::language_init(core_pool.clone(), sn).await?;
-                crate::domain::announcement::AnnouncementDomain::pull_announcement(&core_pool)
-                    .await?;
+                crate::domain::announcement::AnnouncementDomain::pull_announcement(
+                    &core_pool, &ctx,
+                )
+                .await?;
             }
             endpoint::ADDRESS_BATCH_INIT => {
-                let status = ConfigDomain::get_keys_reset_status().await?;
+                let status = ConfigDomain::get_keys_reset_status(&ctx).await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
@@ -445,14 +451,14 @@ impl EndpointHandler for SpecialHandler {
                 let res = backend.post_req_str::<bool>(endpoint, &body).await;
                 res?;
 
-                crate::service::coin::CoinService::init_token_price().await?;
+                crate::service::coin::CoinService::new(ctx).init_token_price().await?;
             }
 
             endpoint::TOKEN_QUERY_RATES => {
                 let rates: TokenRates = backend.post_req_str::<TokenRates>(endpoint, &body).await?;
 
                 let exchange_rate_service =
-                    crate::service::exchange_rate::ExchangeRateService::new();
+                    crate::service::exchange_rate::ExchangeRateService::new(ctx);
                 exchange_rate_service.init(rates).await?;
             }
             endpoint::SYS_CONFIG_FIND_CONFIG_BY_KEY => {
@@ -462,7 +468,7 @@ impl EndpointHandler for SpecialHandler {
                     "OFFICIAL:WEBSITE" => {
                         let res =
                             backend.post_req_str::<FindConfigByKeyRes>(endpoint, &body).await?;
-                        ConfigDomain::set_official_website(res.value).await?;
+                        ConfigDomain::set_official_website(&ctx, res.value).await?;
                     }
                     _ => {
                         tracing::warn!("unknown key: {}", req.key);
@@ -471,7 +477,7 @@ impl EndpointHandler for SpecialHandler {
             }
             endpoint::APP_INSTALL_DOWNLOAD => {
                 let url = backend.post_req_str::<String>(endpoint, &body).await?;
-                ConfigDomain::set_app_download_qr_code_url(&url).await?;
+                ConfigDomain::set_app_download_qr_code_url(&ctx, &url).await?;
                 // ConfigDomain::set_version_download_url(&url).await?;
             }
             endpoint::VERSION_VIEW => {
@@ -489,13 +495,14 @@ impl EndpointHandler for SpecialHandler {
                     )
                     .await?;
                 // 1. 后端 chains → upsert 到本地
-                ChainDomain::init_load_backend_chains(input).await?;
+                ChainDomain::init_load_backend_chains_with_ctx(ctx, input).await?;
                 // 2. 基于本地 chains → 触发去拉 nodes
-                NodeDomain::init_sync_nodes().await?;
+                NodeDomain::init_sync_nodes_with_ctx(ctx).await?;
                 // 3. 兜底保证每条链都有 node
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
-                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
+                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx)
+                    .await?;
             }
             endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
                 let body: HashMap<String, String> =
@@ -503,9 +510,10 @@ impl EndpointHandler for SpecialHandler {
                 let app_version_code = body.get("appVersionCode");
                 let input = backend.api_wallet_chain_list(app_version_code.unwrap()).await?;
                 //先插入再过滤
-                if !ApiChainDomain::upsert_multi_api_chain_than_toggle(input).await?.is_empty() {
+                if !ApiChainDomain::upsert_multi_api_chain_than_toggle(ctx, input).await?.is_empty()
+                {
                     let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
-                    ApiChainDomain::sync_wallet_chain_data(&unlock_token).await?;
+                    ApiChainDomain::sync_wallet_chain_data(ctx, &unlock_token).await?;
                 }
             }
             endpoint::CHAIN_RPC_LIST => {
@@ -517,7 +525,8 @@ impl EndpointHandler for SpecialHandler {
                 NodeDomain::upsert_chain_rpc(&core_pool, input).await?;
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
-                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
+                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx)
+                    .await?;
             }
             endpoint::old_wallet::OLD_CHAIN_RPC_LIST => {
                 let input = backend
@@ -528,7 +537,8 @@ impl EndpointHandler for SpecialHandler {
                 NodeDomain::upsert_chain_rpc(&core_pool, input).await?;
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
-                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
+                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx)
+                    .await?;
             }
             endpoint::MQTT_INIT => {
                 // 1.4 version 注释掉,
@@ -542,11 +552,11 @@ impl EndpointHandler for SpecialHandler {
                 match backend.post_req_str::<Option<()>>(endpoint, &body).await {
                     Ok(_) => {
                         // 2. reset成功后，只设置status，epoch已在physical_reset中设置
-                        ConfigDomain::set_keys_reset_status(Some(true)).await?;
+                        ConfigDomain::set_keys_reset_status(&ctx, Some(true)).await?;
                     }
                     Err(err) => {
                         // 3. reset失败，status设为false
-                        ConfigDomain::set_keys_reset_status(Some(false)).await?;
+                        ConfigDomain::set_keys_reset_status(&ctx, Some(false)).await?;
                         return Err(err.into());
                     }
                 };
@@ -734,7 +744,8 @@ impl EndpointHandler for SpecialHandler {
                         addresses_to_recover.iter().map(|addr| addr.index).collect();
 
                     // 调用优化后的create_api_account，使用快速路径+慢速路径模式
-                    ApiAccountDomain::create_api_account(
+                    ApiAccountDomain::create_api_account_with_ctx(
+                        ctx,
                         &wallet.address,
                         vec![req.chain_code.to_string()],
                         &input_indices,
@@ -760,7 +771,8 @@ impl EndpointHandler for SpecialHandler {
 
                 // 5.7 投递地址恢复进度到统一通知聚合器（由聚合器负责节流、去重和最终发送）
                 let start_send_notify = Instant::now();
-                if let Err(e) = ApiAccountDomain::enqueue_address_recovery_progress(
+                if let Err(e) = ApiAccountDomain::enqueue_address_recovery_progress_with_ctx(
+                    ctx,
                     &req.uid,
                     &req.chain_code,
                     res.number as i32,
@@ -839,28 +851,26 @@ impl EndpointHandler for SpecialHandler {
 
                     Tasks::new()
                         .push(BackendApiTask::BackendApi(query_address_list_task_data))
-                        .send()
+                        .send_with_ctx(ctx)
                         .await?;
                 }
                 // 地址同步完成，发送HintScan事件通知Scanner检查状态
                 // 只有在数据库事实已形成后发送
-                if let Ok(context) = crate::context::get_context() {
-                    if let Some(event_tx) = context.get_expand_event_tx().await {
-                        use crate::infrastructure::expand_address::event::ExpandEvent;
-                        if let Err(err) = event_tx.send(ExpandEvent::HintScan).await {
-                            tracing::warn!(
-                                error = %err,
-                                uid = %req.uid,
-                                chain_code = %req.chain_code,
-                                "failed to send HintScan event"
-                            );
-                        } else {
-                            tracing::info!(
-                                "Sent HintScan event for uid={}, chain_code={}",
-                                req.uid,
-                                req.chain_code
-                            );
-                        }
+                if let Some(event_tx) = ctx.get_expand_event_tx().await {
+                    use crate::infrastructure::expand_address::event::ExpandEvent;
+                    if let Err(err) = event_tx.send(ExpandEvent::HintScan).await {
+                        tracing::warn!(
+                            error = %err,
+                            uid = %req.uid,
+                            chain_code = %req.chain_code,
+                            "failed to send HintScan event"
+                        );
+                    } else {
+                        tracing::info!(
+                            "Sent HintScan event for uid={}, chain_code={}",
+                            req.uid,
+                            req.chain_code
+                        );
                     }
                 }
 
@@ -882,7 +892,7 @@ impl EndpointHandler for SpecialHandler {
             endpoint::api_wallet::QUERY_ASSET_LIST => {
                 let req = wallet_utils::serde_func::serde_from_value::<AssetListReq>(body.clone())?;
                 crate::infrastructure::api_wallet_assets_sync::query_and_upsert_assets(
-                    &api_pool, backend, &req,
+                    ctx, &api_pool, backend, &req,
                 )
                 .await?;
             }

@@ -1,6 +1,7 @@
 #![allow(deprecated)]
 
 use crate::{
+    context::Context,
     error::{
         business::{
             BusinessError,
@@ -41,11 +42,11 @@ impl ApiWithdrawDomain {
         entity.audit_passed_at.is_none() && entity.audit_rejected_at.is_none()
     }
 
-    pub(crate) async fn withdraw(
+    pub(crate) async fn withdraw_with_ctx(
+        ctx: &'static Context,
         req: &ApiWithdrawReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         // 获取数据库连接
-        let ctx = crate::context::CONTEXT.get().unwrap();
         let core_pool = ctx.api_wallet_pool()?;
         let api_transaction_pool = ctx.api_transaction_pool()?;
         // 获取钱包
@@ -106,10 +107,10 @@ impl ApiWithdrawDomain {
             to_addr: req.to.to_string(),
             value: req.value.to_string(),
         });
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         if req.audit == 1 {
-            Self::sign_withdrawal_order(&req.trade_no).await?;
+            Self::sign_withdrawal_order(ctx, &req.trade_no).await?;
         }
 
         ApiWithdrawRepo::update_api_withdraw_status(
@@ -124,9 +125,7 @@ impl ApiWithdrawDomain {
         // 交易执行完全由事实驱动，而不是命令式触发
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
             {
@@ -141,18 +140,17 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn sign_withdrawal_order(
+        ctx: &'static Context,
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let pool = ctx.api_transaction_pool()?;
         // ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
         //     .await?;
 
         ApiWithdrawRepo::set_audit_passed(&pool, trade_no).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
             {
@@ -168,9 +166,10 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn reject_withdrawal_order(
+        ctx: &'static Context,
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let pool = ctx.api_transaction_pool()?;
         // ApiWithdrawRepo::update_api_withdraw_status_and_err(
         //     &pool,
         //     trade_no,
@@ -183,9 +182,7 @@ impl ApiWithdrawDomain {
         ApiWithdrawRepo::set_audit_rejected(&pool, trade_no, "rejected").await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
             {
@@ -200,8 +197,12 @@ impl ApiWithdrawDomain {
         Ok(())
     }
 
-    pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+    pub async fn confirm_tx(
+        ctx: &'static Context,
+        trade_no: &str,
+        status: bool,
+    ) -> Result<(), ServiceError> {
+        let pool = ctx.api_transaction_pool()?;
         let outcome = match Self::confirm_tx_in_pool(&pool, trade_no, status).await {
             Ok(outcome) => outcome,
             Err(e) => {
@@ -229,9 +230,7 @@ impl ApiWithdrawDomain {
         // 交易执行完全由事实驱动，而不是命令式触发
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
             {
@@ -251,7 +250,7 @@ impl ApiWithdrawDomain {
                 to_addr: outcome.tx.to_addr.to_string(),
                 value: outcome.tx.value.to_string(),
             });
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         }
 
         Ok(())

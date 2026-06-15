@@ -177,10 +177,12 @@ async fn test_build_multisig_queue() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires configured backend, chain state, and seeded addresses"]
 async fn test_recover_data() {
-    let _wallet_manager = get_manager().await;
+    let wallet_manager = get_manager().await;
 
     let uids = vec!["TL55jNbXWeM6se5fpKBQTTmH45HZ7stvW3".to_string()];
-    domain::permission::PermissionDomain::recover_permission(uids).await.unwrap();
+    domain::permission::PermissionDomain::recover_permission(wallet_manager.ctx(), uids)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

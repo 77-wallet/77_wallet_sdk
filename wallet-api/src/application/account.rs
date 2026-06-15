@@ -18,6 +18,6 @@ impl ApiAccountApplication {
         uid: &str,
         keyword: &str,
     ) -> ReturnType<ApiWalletAddressSearchResp> {
-        ApiAccountDomain::search_address(uid, keyword).await
+        ApiAccountDomain::search_address(self.ctx, uid, keyword).await
     }
 }

@@ -24,7 +24,7 @@ use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 impl WalletManager {
     // account resource
     pub async fn resource_info(&self, account: String) -> ReturnType<AccountResource> {
-        let service = StackService::new().await?;
+        let service = StackService::new(self.ctx).await?;
         service.account_resource(&account).await
     }
 
@@ -33,7 +33,7 @@ impl WalletManager {
         bill_kind: i64,
         content: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        StackService::new().await?.estimate_stake_fee(bill_kind, content).await
+        StackService::new(self.ctx).await?.estimate_stake_fee(bill_kind, content).await
     }
 
     // freeze balance
@@ -42,7 +42,7 @@ impl WalletManager {
         req: FreezeBalanceReq,
         password: String,
     ) -> ReturnType<FreezeResp> {
-        StackService::new().await?.freeze_balance(req, &password).await
+        StackService::new(self.ctx).await?.freeze_balance(req, &password).await
     }
 
     // un freeze balance
@@ -51,16 +51,16 @@ impl WalletManager {
         req: UnFreezeBalanceReq,
         password: String,
     ) -> ReturnType<FreezeResp> {
-        StackService::new().await?.un_freeze_balance(req, &password).await
+        StackService::new(self.ctx).await?.un_freeze_balance(req, &password).await
     }
 
     // freeze list
     pub async fn freeze_list(&self, owner_address: String) -> ReturnType<Vec<FreezeListResp>> {
-        StackService::new().await?.freeze_list(&owner_address).await
+        StackService::new(self.ctx).await?.freeze_list(&owner_address).await
     }
 
     pub async fn un_freeze_list(&self, owner_address: String) -> ReturnType<Vec<UnfreezeListResp>> {
-        StackService::new().await?.un_freeze_list(&owner_address).await
+        StackService::new(self.ctx).await?.un_freeze_list(&owner_address).await
     }
 
     pub async fn cancel_all_unfreeze(
@@ -68,7 +68,7 @@ impl WalletManager {
         req: CancelAllUnFreezeReq,
         password: String,
     ) -> ReturnType<CancelAllUnFreezeResp> {
-        StackService::new().await?.cancel_all_unfreeze(req, password).await
+        StackService::new(self.ctx).await?.cancel_all_unfreeze(req, password).await
     }
 
     /// Withdraws any unfrozen balances for the given owner address.
@@ -77,7 +77,7 @@ impl WalletManager {
         req: WithdrawBalanceReq,
         password: String,
     ) -> ReturnType<WithdrawUnfreezeResp> {
-        StackService::new().await?.withdraw_unfreeze(req, password).await
+        StackService::new(self.ctx).await?.withdraw_unfreeze(req, password).await
     }
 
     pub async fn request_resource(
@@ -93,15 +93,15 @@ impl WalletManager {
     }
 
     pub async fn address_exists(&self, accounts: Vec<String>) -> ReturnType<Vec<AddressExists>> {
-        StackService::new().await?.account_exists(accounts).await
+        StackService::new(self.ctx).await?.account_exists(accounts).await
     }
 
     pub async fn system_resource(&self, account: String) -> ReturnType<SystemEnergyResp> {
-        StackService::new().await?.system_resource(account).await
+        StackService::new(self.ctx).await?.system_resource(account).await
     }
 
     pub async fn request_energy(&self, account: String, energy: i64) -> ReturnType<String> {
-        StackService::new().await?.request_energy(account, energy).await
+        StackService::new(self.ctx).await?.request_energy(account, energy).await
     }
 
     // ************************************************ delegate *********************************************************
@@ -111,7 +111,10 @@ impl WalletManager {
         resource_type: String,
         is_multisig: Option<bool>,
     ) -> ReturnType<ResourceResp> {
-        StackService::new().await?.can_delegated_max(account, resource_type, is_multisig).await
+        StackService::new(self.ctx)
+            .await?
+            .can_delegated_max(account, resource_type, is_multisig)
+            .await
     }
 
     pub async fn min_remaining_time(
@@ -120,7 +123,7 @@ impl WalletManager {
         to: Vec<String>,
         resource_type: String,
     ) -> ReturnType<DelegateRemaingTime> {
-        StackService::new().await?.min_remiaing_time(from, to, resource_type).await
+        StackService::new(self.ctx).await?.min_remiaing_time(from, to, resource_type).await
     }
 
     pub async fn delegate_resource(
@@ -128,7 +131,7 @@ impl WalletManager {
         req: DelegateReq,
         password: String,
     ) -> ReturnType<DelegateResp> {
-        StackService::new().await?.delegate_resource(req, &password).await
+        StackService::new(self.ctx).await?.delegate_resource(req, &password).await
     }
 
     pub async fn batch_delegate(
@@ -136,7 +139,7 @@ impl WalletManager {
         req: BatchDelegate,
         password: String,
     ) -> ReturnType<BatchDelegateResp> {
-        StackService::new().await?.batch_delegate(req, password).await
+        StackService::new(self.ctx).await?.batch_delegate(req, password).await
     }
 
     // 回收资源
@@ -145,7 +148,7 @@ impl WalletManager {
         req: UnDelegateReq,
         password: String,
     ) -> ReturnType<DelegateResp> {
-        StackService::new().await?.un_delegate_resource(req, password).await
+        StackService::new(self.ctx).await?.un_delegate_resource(req, password).await
     }
 
     pub async fn batch_un_deleate(
@@ -153,7 +156,7 @@ impl WalletManager {
         req: BatchUnDelegate,
         password: String,
     ) -> ReturnType<BatchDelegateResp> {
-        StackService::new().await?.batch_un_delegate(req, password).await
+        StackService::new(self.ctx).await?.batch_un_delegate(req, password).await
     }
 
     pub async fn delegate_to_other(
@@ -163,7 +166,7 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<DelegateListResp>> {
-        StackService::new()
+        StackService::new(self.ctx)
             .await?
             .delegate_to_other(&owner_address, resource_type, page, page_size)
             .await
@@ -176,7 +179,7 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<DelegateListResp>> {
-        StackService::new()
+        StackService::new(self.ctx)
             .await?
             .delegate_from_other(&owner_address, resource_type, page, page_size)
             .await
@@ -184,27 +187,27 @@ impl WalletManager {
 
     // ************************************************ vote *********************************************************
     pub async fn votes(&self, req: VoteWitnessReq, password: &str) -> ReturnType<String> {
-        StackService::new().await?.votes(req, password).await
+        StackService::new(self.ctx).await?.votes(req, password).await
     }
 
     pub async fn voter_info(
         &self,
         owner: &str,
     ) -> ReturnType<response_vo::standard_wallet::stake::VoterInfoResp> {
-        StackService::new().await?.voter_info(owner).await
+        StackService::new(self.ctx).await?.voter_info(owner).await
     }
 
     pub async fn votes_node_list(
         &self,
         owner_address: Option<&str>,
     ) -> ReturnType<response_vo::standard_wallet::stake::VoteListResp> {
-        StackService::new().await?.vote_list(owner_address).await
+        StackService::new(self.ctx).await?.vote_list(owner_address).await
     }
 
     pub async fn top_witness(
         &self,
     ) -> ReturnType<Option<response_vo::standard_wallet::stake::Witness>> {
-        StackService::new().await?.top_witness().await
+        StackService::new(self.ctx).await?.top_witness().await
     }
 
     pub async fn claim_votes_rewards(
@@ -212,7 +215,7 @@ impl WalletManager {
         req: WithdrawBalanceReq,
         password: &str,
     ) -> ReturnType<String> {
-        StackService::new().await?.votes_claim_rewards(req, password).await
+        StackService::new(self.ctx).await?.votes_claim_rewards(req, password).await
     }
 
     // ************************************************ multisig  *********************************************************
@@ -223,7 +226,7 @@ impl WalletManager {
         expiration: i64,
         password: String,
     ) -> ReturnType<String> {
-        StackService::new()
+        StackService::new(self.ctx)
             .await?
             .build_multisig_stake(bill_kind, content, expiration, password)
             .await

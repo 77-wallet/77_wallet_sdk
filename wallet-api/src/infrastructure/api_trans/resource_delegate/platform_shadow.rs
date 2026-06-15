@@ -328,7 +328,12 @@ impl PlatformResourceDelegateWorker {
             return Ok(());
         }
         let task = self.load_platform_delegate(&resource_trade_no).await?;
-        let tx_hash = execute_resource_delegation(&task, "platform_resource_delegate").await?;
+        let tx_hash = execute_resource_delegation(
+            crate::context::get_context()?,
+            &task,
+            "platform_resource_delegate",
+        )
+        .await?;
         ApiResourceDelegationRepo::mark_broadcast_success(&self.pool, &resource_trade_no, &tx_hash)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
@@ -344,6 +349,7 @@ impl PlatformResourceDelegateWorker {
             return Ok(());
         };
         match ApiTransDomain::process_recovered_tx(
+            crate::context::get_context()?,
             &task.chain_code,
             &task.owner_address,
             tx_hash,

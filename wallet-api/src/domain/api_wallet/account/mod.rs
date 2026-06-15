@@ -1,6 +1,6 @@
 pub(crate) mod search;
 use crate::{
-    context::CONTEXT,
+    context::Context,
     domain::{
         account::AccountDomain,
         api_wallet::{assets::ApiAssetsDomain, chain::ApiChainDomain, wallet::ApiWalletDomain},
@@ -23,7 +23,7 @@ use crate::{
     },
     service::api_wallet::asset::AddressChainCode,
 };
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     time::{Duration, Instant},
@@ -86,7 +86,6 @@ struct AddressRecoveryProgressMsg {
     is_last_page: bool,
 }
 
-#[derive(Debug)]
 enum PageNotifyMsg {
     ExpandProgress(ExpandProgressMsg),
     AddressRecoveryProgress(AddressRecoveryProgressMsg),
@@ -130,15 +129,19 @@ const ADDRESS_RECOVERY_NOTIFY_STATE_PREFIX: &str = "addr_recovery:";
 const PAGE_NOTIFY_TICK: Duration = Duration::from_secs(1);
 const EXPAND_NOTIFY_BATCH_WINDOW: Duration = Duration::from_secs(5);
 
-static PAGE_NOTIFY_TX: Lazy<mpsc::Sender<PageNotifyMsg>> = Lazy::new(|| {
-    let (tx, rx) = mpsc::channel(1000);
-    tokio::spawn(async move {
-        run_page_notify_loop(rx).await;
-    });
-    tx
-});
+static PAGE_NOTIFY_TX: OnceCell<mpsc::Sender<PageNotifyMsg>> = OnceCell::new();
 
-async fn run_page_notify_loop(mut rx: mpsc::Receiver<PageNotifyMsg>) {
+fn page_notify_tx(ctx: &'static Context) -> &'static mpsc::Sender<PageNotifyMsg> {
+    PAGE_NOTIFY_TX.get_or_init(|| {
+        let (tx, rx) = mpsc::channel(1000);
+        tokio::spawn(async move {
+            run_page_notify_loop(ctx, rx).await;
+        });
+        tx
+    })
+}
+
+async fn run_page_notify_loop(ctx: &'static Context, mut rx: mpsc::Receiver<PageNotifyMsg>) {
     let mut states: HashMap<String, PageNotifyState> = HashMap::new();
     let mut interval = tokio::time::interval(PAGE_NOTIFY_TICK);
 
@@ -265,7 +268,7 @@ async fn run_page_notify_loop(mut rx: mpsc::Receiver<PageNotifyMsg>) {
                 }
             }
             _ = interval.tick() => {
-                if let Err(e) = try_notify_pages(&mut states).await {
+                if let Err(e) = try_notify_pages(ctx, &mut states).await {
                     tracing::warn!(error = %e, "page notify loop: try_notify_pages failed");
                 }
             }
@@ -278,6 +281,7 @@ async fn flush_batched_expand_notify(
     uid: &str,
     state: &mut PageNotifyState,
     now: Instant,
+    ctx: &'static Context,
 ) -> Result<(), ServiceError> {
     if state.pending_expand_notify_count == 0 {
         return Ok(());
@@ -296,7 +300,7 @@ async fn flush_batched_expand_notify(
     let notify_data =
         AwmCmdAddrExpandMsgFront { uid: uid.to_string(), number: count, done_number: count };
 
-    FrontendNotifyEvent::new(NotifyEvent::AwmCmdAddrExpand(notify_data)).send().await?;
+    FrontendNotifyEvent::new(NotifyEvent::AwmCmdAddrExpand(notify_data)).send_with_ctx(ctx).await?;
     state.pending_expand_notify_count = 0;
     state.last_emit_at = Some(now);
 
@@ -412,10 +416,10 @@ fn can_emit(last_emit_at: Option<Instant>, now: Instant) -> bool {
 }
 
 async fn try_notify_pages(
+    ctx: &'static Context,
     states: &mut HashMap<String, PageNotifyState>,
 ) -> Result<(), ServiceError> {
-    let context = crate::context::get_context()?;
-    let pool = context.api_wallet_pool()?;
+    let pool = ctx.api_wallet_pool()?;
     let now = Instant::now();
 
     for (uid, state) in states.iter_mut() {
@@ -424,13 +428,13 @@ async fn try_notify_pages(
             if can_emit(state.last_emit_at, now) {
                 if let Some(notify_data) = take_pending_address_recovery_notify(uid, state) {
                     FrontendNotifyEvent::new(NotifyEvent::AddressRecovery(notify_data))
-                        .send()
+                        .send_with_ctx(ctx)
                         .await?;
                     state.last_emit_at = Some(now);
                     continue;
                 }
             }
-            flush_batched_expand_notify(uid, state, now).await?;
+            flush_batched_expand_notify(uid, state, now, ctx).await?;
             continue;
         }
         let inited_by_chain: HashMap<String, HashSet<i32>> = {
@@ -595,29 +599,18 @@ async fn try_notify_pages(
         reconcile_address_recovery_pages(&pool, uid, state).await?;
         if can_emit(state.last_emit_at, now) {
             if let Some(notify_data) = take_pending_address_recovery_notify(uid, state) {
-                FrontendNotifyEvent::new(NotifyEvent::AddressRecovery(notify_data)).send().await?;
+                FrontendNotifyEvent::new(NotifyEvent::AddressRecovery(notify_data))
+                    .send_with_ctx(ctx)
+                    .await?;
                 state.last_emit_at = Some(now);
             } else {
-                flush_batched_expand_notify(uid, state, now).await?;
+                flush_batched_expand_notify(uid, state, now, ctx).await?;
             }
         }
     }
 
     Ok(())
 }
-
-// 暂时注释，等待 sqlx 编译时检查问题解决
-/*
-#[derive(sqlx::FromRow)]
-struct ApiAccountRecoveryData {
-    wallet_address: String,
-    address: String,
-    chain_code: String,
-    account_id: u32,
-    uid: String,
-    api_wallet_type: i32,
-}
-*/
 
 impl ApiAccountDomain {
     fn resolve_recover_start_page(
@@ -633,7 +626,8 @@ impl ApiAccountDomain {
     ///
     /// This is best-effort user-facing progress reporting. Core recovery flow must keep
     /// functioning even when the notify channel is unavailable.
-    pub(crate) async fn enqueue_address_recovery_progress(
+    pub(crate) async fn enqueue_address_recovery_progress_with_ctx(
+        ctx: &'static Context,
         uid: &str,
         chain_code: &str,
         page_num: i32,
@@ -649,7 +643,7 @@ impl ApiAccountDomain {
             total_number,
             is_last_page,
         });
-        PAGE_NOTIFY_TX.send(msg).await.map_err(|e| {
+        page_notify_tx(ctx).send(msg).await.map_err(|e| {
             crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::Internal(format!(
                     "address recovery notify queue send failed: {e}"
@@ -658,139 +652,18 @@ impl ApiAccountDomain {
         })
     }
 
-    // pub(crate) async fn list_api_accounts(
-    //     wallet_address: &str,
-    //     account_id: Option<u32>,
-    //     chain_code: Option<String>,
-    //     page: i64,
-    //     page_size: i64,
-    // ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-    //     let pool = CONTEXT.get().unwrap().api_wallet_pool()?;
+    // Historical list_api_accounts implementation removed during context-boundary cleanup.
 
-    //     let chains = ApiChainRepo::get_chain_list(&pool).await?;
-    //     let chain_codes = if let Some(ref chain_code) = chain_code {
-    //         vec![chain_code.to_string()]
-    //     } else {
-    //         chains.iter().map(|chain| chain.chain_code.clone()).collect()
-    //     };
-
-    //     let chains: ChainCodeAndName = chains.into();
-
-    //     let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
-    //         crate::error::service::ServiceError::Business(
-    //             crate::error::business::BusinessError::ApiWallet(
-    //                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-    //             ),
-    //         ),
-    //     )?;
-
-    //     let account_list = ApiAccountRepo::api_account_list(
-    //         pool.clone(),
-    //         Some(wallet.address),
-    //         account_id,
-    //         chain_codes,
-    //     )
-    //     .await?;
-
-    //     // let balance_list =
-    //     //     crate::infrastructure::asset_calc::get_balance_summary(wallet_address, chain_code)
-    //     //         .await?;
-
-    //     // tracing::info!("list_api_accounts balance_list: {balance_list:#?}");
-
-    //     let mut filtered_accounts: Vec<ApiAccountInfo> = Vec::new();
-    //     for account in account_list {
-    //         let address_type =
-    //             AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
-
-    //         let name = chains.get(&account.chain_code);
-    //         // let balance = if let Some(balance) = balance_list.get(&account.address) {
-    //         //     balance.clone()
-    //         // } else {
-    //         //     BalanceInfo::new_without_amount().await?
-    //         // };
-    //         let asset_calc_actor_manager =
-    //             CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
-    //         let balance = asset_calc_actor_manager
-    //             .get_balance_summary(
-    //                 Some(wallet_address),
-    //                 Some(account.account_id),
-    //                 chain_code.as_deref(),
-    //             )
-    //             .await?;
-    //         // let balance = crate::infrastructure::asset_calc::get_balance_summary(
-    //         //     Some(wallet_address),
-    //         //     Some(account.account_id),
-    //         //     chain_code.as_deref(),
-    //         // )
-    //         // .await?;
-
-    //         // tracing::info!("list_api_accounts balance: {balance:#?}");
-    //         // if balance.amount.is_zero() {
-    //         //     continue;
-    //         // }
-
-    //         if let Some(info) =
-    //             filtered_accounts.iter_mut().find(|info| info.account_id == account.account_id)
-    //         {
-    //             info.chain.push(crate::response_vo::standard_wallet::wallet::ChainInfo {
-    //                 address: account.address,
-    //                 wallet_address: account.wallet_address,
-    //                 derivation_path: account.derivation_path,
-    //                 chain_code: account.chain_code,
-    //                 name: name.cloned(),
-    //                 address_type,
-    //                 created_at: account.created_at,
-    //                 updated_at: account.updated_at,
-    //             });
-    //         } else {
-    //             let account_index_map =
-    //                 wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
-    //             filtered_accounts.push(ApiAccountInfo {
-    //                 account_id: account.account_id,
-    //                 account_index_map,
-    //                 name: account.name,
-    //                 balance,
-    //                 chain: vec![crate::response_vo::standard_wallet::wallet::ChainInfo {
-    //                     address: account.address,
-    //                     wallet_address: account.wallet_address,
-    //                     derivation_path: account.derivation_path,
-    //                     chain_code: account.chain_code,
-    //                     name: name.cloned(),
-    //                     address_type,
-    //                     created_at: account.created_at,
-    //                     updated_at: account.updated_at,
-    //                 }],
-    //                 api_wallet_type: account.api_wallet_type,
-    //             });
-    //         }
-    //     }
-
-    //     filtered_accounts
-    //         .sort_by(|a, b| a.account_id.partial_cmp(&b.account_id).unwrap_or(Ordering::Equal));
-
-    //     let total_count = filtered_accounts.len() as i64;
-    //     let start = (page * page_size).max(0) as usize;
-    //     let end = (start + page_size as usize).min(filtered_accounts.len());
-
-    //     let data = if start < filtered_accounts.len() {
-    //         filtered_accounts[start..end].to_vec()
-    //     } else {
-    //         Vec::new()
-    //     };
-
-    //     Ok(Pagination { page, page_size, total_count, data })
-    // }
-
-    pub(crate) async fn list_api_accounts_v2(
+    pub(crate) async fn list_api_accounts_v2_with_ctx(
+        ctx: &'static Context,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let pool = ctx.api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
         let chain_code_for_log = chain_code.clone();
         tracing::info!(
             wallet_address = %wallet_address,
@@ -848,7 +721,7 @@ impl ApiAccountDomain {
             "api_wallet.account.list_api_accounts_v2 domain finished"
         );
 
-        let currency = ConfigDomain::get_currency().await?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
         let exchange_rate =
             ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
         let cal_exchange_rate = |value: f64| {
@@ -904,20 +777,21 @@ impl ApiAccountDomain {
     }
 
     /// 从种子生成私钥的公共函数
-    pub(crate) async fn generate_private_key_from_seed(
+    pub(crate) async fn generate_private_key_from_seed_with_ctx(
+        ctx: &'static Context,
         wallet_address: &str,
         chain_code: &str,
         address_type: &AddressType,
         account_id: u32,
     ) -> Result<Vec<u8>, crate::error::service::ServiceError> {
         // 解密种子
-        let seed = ApiWalletDomain::get_seed(wallet_address).await?;
+        let seed = ApiWalletDomain::new(ctx).get_seed(wallet_address).await?;
 
         // 转换链码
         let code: ChainCode = chain_code.try_into()?;
 
         // 获取节点信息
-        let node = ChainDomain::get_node(chain_code).await?;
+        let node = ChainDomain::get_node_with_ctx(ctx, chain_code).await?;
 
         // 创建链实例
         let instance: wallet_chain_instance::instance::ChainObject = (
@@ -942,6 +816,7 @@ impl ApiAccountDomain {
 
     /// 加密私钥的公共函数
     pub(crate) async fn encrypt_private_key(
+        ctx: &'static Context,
         password: &str,
         private_key_bytes: &[u8],
     ) -> Result<String, crate::error::service::ServiceError> {
@@ -950,7 +825,7 @@ impl ApiAccountDomain {
         use wallet_crypto::KeystoreJsonGenerator;
 
         // 获取加密算法
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
         let rng = OsRng;
         let mut generator = KeystoreJsonGenerator::new(rng, algorithm.clone());
         let encrypted_private_key = generator.generate(password.as_bytes(), private_key_bytes)?;
@@ -959,12 +834,13 @@ impl ApiAccountDomain {
         Ok(wallet_utils::serde_func::serde_to_string(&encrypted_private_key)?)
     }
 
-    pub(crate) async fn get_private_key(
+    pub(crate) async fn get_private_key_with_ctx(
+        ctx: &'static Context,
         address: &str,
         chain_code: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
-        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_pool = ctx.api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
 
         // 查找账户信息
         let account =
@@ -985,7 +861,8 @@ impl ApiAccountDomain {
         let address_type: AddressType = account.address_type().try_into()?;
 
         // 调用公共函数生成私钥
-        let key = Self::generate_private_key_from_seed(
+        let key = Self::generate_private_key_from_seed_with_ctx(
+            ctx,
             &account.wallet_address,
             chain_code,
             &address_type,
@@ -1035,7 +912,8 @@ impl ApiAccountDomain {
     //     Ok(phrase)
     // }
 
-    pub(crate) async fn derive_subkey(
+    pub(crate) async fn derive_subkey_with_ctx(
+        ctx: &'static Context,
         uid: &str,
         seed: &[u8],
         wallet_address: &str,
@@ -1067,7 +945,7 @@ impl ApiAccountDomain {
 
         let address_type = instance.address_type();
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: checking if account exists");
         let account = ApiAccountRepo::find_one(
             &pool,
@@ -1077,7 +955,7 @@ impl ApiAccountDomain {
             api_wallet_type,
         )
         .await?;
-        let sn = CONTEXT.get().unwrap().get_sn();
+        let sn = ctx.get_sn().to_string();
 
         // 不再需要加密私钥并存储
         let address_type = instance.address_type();
@@ -1152,7 +1030,8 @@ impl ApiAccountDomain {
 
     /// Fast path for deriving subkey - returns the account data to be inserted
     /// This is used to quickly generate account data for batch insertion
-    pub(crate) async fn derive_subkey_fast(
+    pub(crate) async fn derive_subkey_fast_with_ctx(
+        ctx: &'static Context,
         uid: &str,
         seed: &[u8],
         wallet_address: &str,
@@ -1183,7 +1062,7 @@ impl ApiAccountDomain {
 
         let address_type = instance.address_type();
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let account = ApiAccountRepo::find_one(
             &pool,
             &address,
@@ -1192,7 +1071,7 @@ impl ApiAccountDomain {
             api_wallet_type,
         )
         .await?;
-        let sn = CONTEXT.get().unwrap().get_sn();
+        let sn = ctx.get_sn().to_string();
         // Generate account name
         let account_name = if is_default_name {
             format!("{account_name}{}", account_index_map.account_id)
@@ -1256,12 +1135,13 @@ impl ApiAccountDomain {
         Ok((address, req, address_init_req))
     }
 
-    pub(crate) async fn address_used(
+    pub(crate) async fn address_used_with_ctx(
+        ctx: &'static Context,
         chain_code: &str,
         index: i32,
         uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -1289,12 +1169,13 @@ impl ApiAccountDomain {
         Ok(())
     }
 
-    pub async fn get_addresses(
+    pub async fn get_addresses_with_ctx(
+        ctx: &'static Context,
         address: &str,
         account_id: Option<u32>,
         chain_codes: Vec<String>,
     ) -> Result<Vec<AddressChainCode>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let mut account_addresses = Vec::new();
 
         // 获取钱包下的这个账户的所有地址
@@ -1328,7 +1209,8 @@ impl ApiAccountDomain {
         Ok(account_addresses)
     }
 
-    pub(crate) async fn create_sub_account(
+    pub(crate) async fn create_sub_account_with_ctx(
+        ctx: &'static Context,
         wallet_address: &str,
         uid: &str,
         password: &str,
@@ -1346,7 +1228,8 @@ impl ApiAccountDomain {
 
         for batch in input_indices.chunks(BATCH_SIZE) {
             // 调用核心同步函数：只派生地址 + 写入数据库
-            Self::create_api_account(
+            Self::create_api_account_with_ctx(
+                ctx,
                 wallet_address,
                 vec![chain_code.to_string()],
                 batch,
@@ -1367,7 +1250,8 @@ impl ApiAccountDomain {
         Ok(())
     }
 
-    pub(crate) async fn create_withdrawal_account(
+    pub(crate) async fn create_withdrawal_account_with_ctx(
+        ctx: &'static Context,
         wallet_address: &str,
         chains: Vec<String>,
         account_name: &str,
@@ -1375,7 +1259,8 @@ impl ApiAccountDomain {
         is_recover: bool,
     ) -> Result<(), ServiceError> {
         let chains_for_asset_query = chains.clone();
-        Self::create_api_account(
+        Self::create_api_account_with_ctx(
+            ctx,
             wallet_address,
             chains,
             &[0, 1],
@@ -1394,7 +1279,7 @@ impl ApiAccountDomain {
         //
         // 使用 page = -1 避免与地址分页（从 0 开始）冲突。
         const WITHDRAWAL_ASSET_QUERY_PAGE: i64 = -1;
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -1441,7 +1326,8 @@ impl ApiAccountDomain {
         Ok(())
     }
 
-    pub(crate) async fn create_api_account(
+    pub(crate) async fn create_api_account_with_ctx(
+        ctx: &'static Context,
         wallet_address: &str,
         chains: Vec<String>,
         input_indices: &[i32],
@@ -1454,7 +1340,8 @@ impl ApiAccountDomain {
         current_page: i64,  // ⭐ 添加：当前页码
     ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
         tracing::info!("➡️ Before core");
-        let core_results = Self::create_api_account_core(
+        let core_results = Self::create_api_account_core_with_ctx(
+            ctx,
             wallet_address,
             chains,
             input_indices,
@@ -1489,7 +1376,7 @@ impl ApiAccountDomain {
         }
 
         // 发送所有任务到TaskManager
-        tasks.send().await?;
+        tasks.send_with_ctx(ctx).await?;
         tracing::info!("⬅️ All tasks sent to TaskManager");
         tracing::info!("⚡ create_api_account returned ok");
         Ok(core_results)
@@ -1497,7 +1384,8 @@ impl ApiAccountDomain {
 
     /// 核心同步执行部分：只处理必须的地址创建逻辑
     /// 绝不能阻塞超过几十毫秒
-    async fn create_api_account_core(
+    async fn create_api_account_core_with_ctx(
+        ctx: &'static Context,
         wallet_address: &str,
         chains: Vec<String>,
         input_indices: &[i32],
@@ -1509,20 +1397,20 @@ impl ApiAccountDomain {
         is_last_page: bool, // ⭐ 添加：是否最后一页
         _current_page: i64, // ⭐ 添加：当前页码（不再在此处推进地址查询状态）
     ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         // 获取种子
-        let seed = ApiWalletDomain::get_seed(&api_wallet.address).await?;
+        let seed = ApiWalletDomain::new(ctx).get_seed(&api_wallet.address).await?;
 
         // 遍历每个链，为每个链创建一个延迟任务
         let mut deferred_tasks = Vec::new();
 
         // 获取当前 epoch，所有任务共用同一个 epoch
-        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let current_epoch = ConfigDomain::get_keys_reset_epoch(ctx).await?;
 
         for chain_code in chains {
             let mut created_addresses_for_chain = Vec::new();
@@ -1553,7 +1441,7 @@ impl ApiAccountDomain {
                 let address_types = WalletDomain::address_type_by_chain(code);
 
                 for address_type in address_types {
-                    let Ok(node) = ApiChainDomain::get_node(chain_code.as_str()).await else {
+                    let Ok(node) = ApiChainDomain::get_node(chain_code.as_str(), ctx).await else {
                         tracing::warn!("chain: {:?} node not found", chain_code);
                         continue;
                     };
@@ -1568,18 +1456,20 @@ impl ApiAccountDomain {
                         .try_into()?;
 
                     // 使用 fast path 快速生成地址数据
-                    let (address, api_account_vo, address_init_req) = Self::derive_subkey_fast(
-                        &api_wallet.uid,
-                        &seed,
-                        &api_wallet.address,
-                        &account_index_map,
-                        &instance,
-                        name,
-                        is_default_name,
-                        api_wallet_type,
-                        is_recover,
-                    )
-                    .await?;
+                    let (address, api_account_vo, address_init_req) =
+                        Self::derive_subkey_fast_with_ctx(
+                            ctx,
+                            &api_wallet.uid,
+                            &seed,
+                            &api_wallet.address,
+                            &account_index_map,
+                            &instance,
+                            name,
+                            is_default_name,
+                            api_wallet_type,
+                            is_recover,
+                        )
+                        .await?;
 
                     created_addresses_for_chain.push(address);
                     api_account_vo_list_for_chain.push(api_account_vo);
@@ -1617,11 +1507,12 @@ impl ApiAccountDomain {
     }
 
     /// 延迟执行部分：处理所有副作用
-    pub(crate) async fn create_api_account_deferred(
+    pub(crate) async fn create_api_account_deferred_with_ctx(
+        ctx: &'static Context,
         data: CreateAccountDeferredData,
     ) -> Result<(), ServiceError> {
         tracing::info!("➡️ Before deferred");
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         // let mut all_asset_keys = Vec::new();
 
@@ -1686,7 +1577,7 @@ impl ApiAccountDomain {
                 indices,
                 page_size,
             });
-            let _ = PAGE_NOTIFY_TX.send(msg).await;
+            let _ = page_notify_tx(ctx).send(msg).await;
         } else {
             tracing::warn!(
                 uid = %data.api_wallet_uid,
@@ -1724,23 +1615,7 @@ impl ApiAccountDomain {
 
         // 8. 发送所有后台任务
         // 直接调用 send，不需要检查是否为空，send 方法会处理空的情况
-        tasks.send().await?;
-
-        // // 5. 更新资产到 actor
-        // if !all_asset_keys.is_empty() {
-        //     let asset_calc_actor_manager = crate::context::CONTEXT
-        //         .get()
-        //         .unwrap()
-        //         .get_global_asset_calc_actor_manager()
-        //         .await?;
-
-        //     tracing::info!("批量更新所有资产，共 {} 个资产", all_asset_keys.len());
-        //     let _ = asset_calc_actor_manager.update_assets(&all_asset_keys).await;
-        // }
-
-        // // 6. 刷新 actor 缓存
-        // let asset_calc_actor_manager =
-        //     crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+        tasks.send_with_ctx(ctx).await?;
 
         // // 为每个创建的地址添加到缓存
         // for address in &data.created_addresses {
@@ -1761,11 +1636,12 @@ impl ApiAccountDomain {
 
     /// 收集当前 uid + chain 下「已经被使用 / 占位」的所有 input_index
     /// used = account ∪ batch_item
-    pub async fn collect_used_indices(
+    pub async fn collect_used_indices_with_ctx(
+        ctx: &'static Context,
         uid: &str,
         chain: &str,
     ) -> Result<std::collections::BTreeSet<i32>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
 
         // 1. account 已初始化的索引
         let account_indices = ApiAccountRepo::get_all_account_indices(&pool, uid, chain).await?;
@@ -1822,13 +1698,14 @@ impl ApiAccountDomain {
     ///
     /// # Returns
     /// 返回需要分配的索引列表
-    pub(crate) async fn calculate_indices_for_expansion(
+    pub(crate) async fn calculate_indices_for_expansion_with_ctx(
+        ctx: &'static Context,
         uid: &str,
         chain_code: &str,
         batch_id: &str,
         requested_number: u32,
     ) -> Result<Vec<i32>, crate::error::service::ServiceError> {
-        let used = Self::collect_used_indices(uid, chain_code).await?;
+        let used = Self::collect_used_indices_with_ctx(ctx, uid, chain_code).await?;
 
         tracing::info!(
             uid=%uid,
@@ -1837,7 +1714,7 @@ impl ApiAccountDomain {
             "已收集所有已使用的索引"
         );
 
-        let pool = crate::context::get_context()?.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let batch_item_count = ExpandBatchItemRepo::count_by_batch_id(&pool, batch_id).await?;
         let available_indices = requested_number.saturating_sub(batch_item_count as u32);
 
@@ -1852,107 +1729,15 @@ impl ApiAccountDomain {
         Ok(indices)
     }
 
-    /*
-    /// 崩溃恢复机制：扫描 DB 恢复未完成的副作用
-    /// 暂时注释，等待 sqlx 编译时检查问题解决
-    pub(crate) async fn recover_unfinished_side_effects() -> Result<(), ServiceError> {
-        let context = crate::context::get_context()?;
-        let pool = context.api_wallet_pool()?;
-        let background_task_pool = context.get_global_background_task_pool();
-
-        tracing::info!("开始扫描未完成的副作用任务");
-
-        // 查询所有已初始化但可能需要补处理的地址
-        // 条件：
-        // 1. api_account.is_init = 1
-        // 2. api_assets 表中没有对应的资产记录 或 address_query_state.status != DONE
-        let accounts = sqlx::query!(r#"
-            SELECT DISTINCT 
-                aa.wallet_address as wallet_address,
-                aa.address as address,
-                aa.chain_code as chain_code,
-                aa.account_id as account_id,
-                aa.uid as uid,
-                aw.api_wallet_type as api_wallet_type
-            FROM api_account aa
-            JOIN api_wallet aw ON aa.wallet_address = aw.address
-            LEFT JOIN api_assets aas ON aa.address = aas.address AND aa.chain_code = aas.chain_code
-            LEFT JOIN address_query_state aqs ON aa.address = aqs.address AND aa.chain_code = aqs.chain_code
-            WHERE aa.is_init = 1
-            AND (
-                aas.address IS NULL
-                OR aqs.status != 'DONE'
-            )
-        "#)
-        .fetch_all(pool.as_ref())
-        .await
-        .map_err(|e| crate::error::service::ServiceError::System(crate::error::system::SystemError::Internal(format!("database error: {:?}", e))))?
-        .into_iter()
-        .map(|row| ApiAccountRecoveryData {
-            wallet_address: row.wallet_address,
-            address: row.address,
-            chain_code: row.chain_code,
-            account_id: row.account_id,
-            uid: row.uid,
-            api_wallet_type: row.api_wallet_type,
-        })
-        .collect::<Vec<_>>();
-
-        tracing::info!("发现 {} 个需要恢复的地址", accounts.len());
-
-        // 按 wallet_address 分组，处理每个钱包的地址
-        let mut wallet_groups: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
-        for account in accounts {
-            wallet_groups.entry(account.wallet_address.clone())
-                .or_default()
-                .push(account);
-        }
-
-        // 为每个钱包创建恢复任务
-        for (wallet_address, accounts) in wallet_groups {
-            // 收集需要恢复的地址和链码
-            let mut created_addresses = Vec::new();
-            let mut chain_codes = std::collections::HashSet::new();
-            let mut uid = String::new();
-            let mut api_wallet_type = ApiWalletType::SubAccount;
-
-            for account in &accounts {
-                created_addresses.push(account.address.clone());
-                chain_codes.insert(account.chain_code.clone());
-                uid = account.uid.clone();
-                api_wallet_type = ApiWalletType::from(account.api_wallet_type as u8);
-            }
-
-            let chain_codes: Vec<String> = chain_codes.into_iter().collect();
-
-            // 创建恢复任务数据
-            let deferred_data = CreateAccountDeferredData {
-                api_wallet_uid: uid.clone(),
-                api_wallet_address: wallet_address.clone() as String,
-                created_addresses,
-                api_address_init_req: ApiAddressInitReq::new(),
-                is_recover: true,
-            };
-
-            // 将恢复任务添加到后台任务池
-            background_task_pool.push(Self::create_api_account_deferred(deferred_data)).await;
-            tracing::info!(uid=%uid, wallet_address=%wallet_address, "已添加恢复任务到后台任务池");
-        }
-
-        tracing::info!("崩溃恢复任务扫描完成");
-        Ok(())
-    }
-    */
-
     /// 继续恢复地址查询状态
     /// 从上一个已知状态继续恢复过程
-    pub(crate) async fn continue_recover(
+    pub(crate) async fn continue_recover_with_ctx(
+        ctx: &'static Context,
         query_state: &AddressQueryStateEntity,
     ) -> Result<(), ServiceError> {
         use crate::infrastructure::task_queue::task::Tasks;
 
-        let context = crate::context::get_context()?;
-        let pool = context.api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
 
         tracing::info!(uid = %query_state.uid, chain_code = %query_state.chain_code, status = %query_state.status as u8, "继续恢复地址查询状态");
 
@@ -2005,7 +1790,7 @@ impl ApiAccountDomain {
         )?;
 
         // 使用现有的任务处理机制处理恢复任务
-        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send_with_ctx(ctx).await?;
 
         tracing::info!(uid = %query_state.uid, chain_code = %query_state.chain_code, "地址恢复任务已提交");
 

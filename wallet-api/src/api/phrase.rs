@@ -3,10 +3,6 @@ use crate::response_vo::standard_wallet::wallet::{GeneratePhraseRes, QueryPhrase
 use crate::{api::ReturnType, manager::WalletManager, service::wallet::WalletService};
 
 impl WalletManager {
-    fn phrase_wallet_service(&self) -> ReturnType<WalletService> {
-        Ok(WalletService::new())
-    }
-
     /// Generates a mnemonic phrase based on the specified language and word count.
     ///
     /// This function calls the `generate_phrase` function from the wallet manager handler
@@ -29,7 +25,7 @@ impl WalletManager {
         // passing in the language code and word count.
         // The result is then converted into the response type `GeneratePhraseRes`.
 
-        self.phrase_wallet_service()?.generate_phrase(language_code, count)
+        WalletService::new(self.ctx).generate_phrase(language_code, count)
     }
 
     /// Queries mnemonic phrases based on the specified language, keyword, and mode.
@@ -57,7 +53,7 @@ impl WalletManager {
         // passing in the language code, keyword, and mode.
         // The result is then converted into the response type `QueryPhraseRes`.
 
-        self.phrase_wallet_service()?.query_phrases(language_code, keyword, mode)
+        WalletService::new(self.ctx).query_phrases(language_code, keyword, mode)
     }
 
     /// Validates an array of mnemonic phrases and returns an array of valid phrases.
@@ -79,7 +75,7 @@ impl WalletManager {
         language_code: u8,
         phrases: Vec<&str>,
     ) -> ReturnType<Vec<String>> {
-        self.phrase_wallet_service()?.exact_query_phrase(language_code, phrases)
+        WalletService::new(self.ctx).exact_query_phrase(language_code, phrases)
     }
 }
 

@@ -36,18 +36,18 @@ impl PermissionDomain {
 
     // 恢复权限数据
     pub async fn recover_permission(
+        ctx: &'static crate::context::Context,
         addresses: Vec<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let backend = ctx.get_global_backend_api();
+        let pool = ctx.get_global_sqlite_pool()?;
 
         for address in addresses {
             let req = GetPermissionBackReq { address: Some(address), uid: None };
             let result = backend.get_permission_backup(req).await?;
 
             for item in result.list {
-                if let Err(e) = Self::handel_one_item(&pool, &item).await {
+                if let Err(e) = Self::handel_one_item(ctx, &pool, &item).await {
                     tracing::warn!("[recover_permission] error:{}", e);
                 }
             }
@@ -61,10 +61,11 @@ impl PermissionDomain {
     // 普通钱包在权限通知/恢复里依赖同一套落库语义；API 钱包资源授权代理
     // 只是在执行任务时更晚发现本地权限缓存缺失，所以复用这里补齐事实。
     pub async fn recover_permission_from_chain(
+        ctx: &'static crate::context::Context,
         pool: &DbPool,
         grantor_addr: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Self::handel_one_item(pool, grantor_addr).await
+        Self::handel_one_item(ctx, pool, grantor_addr).await
     }
 
     // retain the permissions to self.
@@ -145,10 +146,11 @@ impl PermissionDomain {
     }
 
     async fn handel_one_item(
+        ctx: &'static crate::context::Context,
         pool: &DbPool,
         grantor_addr: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
         let account = chain.account_info(grantor_addr).await?;
 
         let new_permission =
@@ -203,6 +205,7 @@ impl PermissionDomain {
     }
 
     pub async fn queue_fail_and_upload(
+        ctx: &'static crate::context::Context,
         pool: &DbPool,
         grantor_addr: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -210,7 +213,7 @@ impl PermissionDomain {
         let result = MultisigQueueRepo::permission_update_fail(grantor_addr, &core_pool).await?;
 
         for queue in result {
-            MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;
+            MultisigQueueDomain::update_raw_data_with_ctx(ctx, &queue.id, pool.clone()).await?;
         }
         Ok(())
     }

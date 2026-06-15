@@ -153,6 +153,7 @@ where
 
 impl ApiAssetsDomain {
     pub async fn get_api_wallet_assets(
+        ctx: &'static Context,
         wallet_address: Option<&str>,
         account_id: Option<u32>,
         chain_code: Option<&str>,
@@ -168,7 +169,7 @@ impl ApiAssetsDomain {
 
         load_total_assets_with_cache(&cache_key, fresh_ttl, || async move {
             if let Some(wallet_address) = wallet_address {
-                let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+            let pool = ctx.api_wallet_pool()?;
                 let count_start = std::time::Instant::now();
                 let address_count = ApiAccountRepo::count_by_wallet_address(
                     &pool,
@@ -198,7 +199,12 @@ impl ApiAssetsDomain {
                         path = "v2",
                         "wallet total assets using v2 path"
                     );
-                    return Self::get_api_wallet_assets_v2(Some(wallet_address), account_id, chain_code)
+                    return Self::get_api_wallet_assets_v2(
+                        ctx,
+                        Some(wallet_address),
+                        account_id,
+                        chain_code,
+                    )
                         .await;
                 }
 
@@ -212,6 +218,7 @@ impl ApiAssetsDomain {
                     "wallet total assets using v3 path"
                 );
                 match Self::get_api_wallet_assets_v3_unlocked(
+                    ctx,
                     wallet_address,
                     account_id,
                     chain_code,
@@ -239,7 +246,12 @@ impl ApiAssetsDomain {
                                 cache_key = %cache_key_for_query,
                                 "get_api_wallet_assets: v3 failed, fallback to v2 (enabled)"
                             );
-                            Self::get_api_wallet_assets_v2(Some(wallet_address), account_id, chain_code)
+                            Self::get_api_wallet_assets_v2(
+                                ctx,
+                                Some(wallet_address),
+                                account_id,
+                                chain_code,
+                            )
                                 .await
                         } else {
                             // 默认禁止回退 v2：避免在高压场景回到重 SQL 路径，造成二次放大。
@@ -255,7 +267,7 @@ impl ApiAssetsDomain {
                     }
                 }
             } else {
-                Self::get_api_wallet_assets_v2(None, account_id, chain_code).await
+                Self::get_api_wallet_assets_v2(ctx, None, account_id, chain_code).await
             }
         })
         .await
@@ -387,3 +399,4 @@ mod tests {
         assert_eq!(hit_count.load(Ordering::SeqCst), 3);
     }
 }
+use crate::context::Context;

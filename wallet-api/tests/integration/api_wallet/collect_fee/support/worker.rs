@@ -7,23 +7,18 @@ use wallet_api::infrastructure::api_trans::{
     AddressLockManager, ShadowAdvancer, ShadowCollectWorker,
 };
 use wallet_database::{
-    ApiWalletDbPool, SqliteContext,
+    ApiWalletDbPool,
     entities::{api_coin::ApiCoinData, asset_token_key::AssetTokenKey},
     repositories::api_wallet::coin::ApiCoinRepo,
 };
 
 pub(crate) async fn build_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWorker {
-    let collect_pool_ctx =
-        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
-            .await
-            .expect("open api transaction sqlite");
-    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
     ensure_sol_main_coin(&core_pool).await;
     let (intent_tx, _intent_rx) = mpsc::channel(1);
-    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx.clone(), None));
+    let advancer = Arc::new(ShadowAdvancer::new(env.ctx(), intent_tx.clone(), None));
 
-    ShadowCollectWorker::new(collect_pool, core_pool, Arc::new(AddressLockManager::new()), advancer)
+    ShadowCollectWorker::new(env.ctx(), Arc::new(AddressLockManager::new()), advancer)
 }
 
 pub(crate) async fn ensure_eth_main_coin(pool: &ApiWalletDbPool) {
@@ -46,17 +41,12 @@ pub(crate) async fn ensure_eth_main_coin(pool: &ApiWalletDbPool) {
 }
 
 pub(crate) async fn build_eth_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWorker {
-    let collect_pool_ctx =
-        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
-            .await
-            .expect("open api transaction sqlite");
-    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
     ensure_eth_main_coin(&core_pool).await;
     let (intent_tx, _intent_rx) = mpsc::channel(1);
-    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx.clone(), None));
+    let advancer = Arc::new(ShadowAdvancer::new(env.ctx(), intent_tx.clone(), None));
 
-    ShadowCollectWorker::new(collect_pool, core_pool, Arc::new(AddressLockManager::new()), advancer)
+    ShadowCollectWorker::new(env.ctx(), Arc::new(AddressLockManager::new()), advancer)
 }
 
 pub(crate) async fn ensure_sol_main_coin(pool: &ApiWalletDbPool) {

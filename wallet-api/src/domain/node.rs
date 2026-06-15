@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
-use crate::infrastructure::task_queue::{
-    backend::{BackendApiTask, BackendApiTaskData},
-    task::Tasks,
+use crate::{
+    context::Context,
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
 };
 use wallet_database::{
     CoreDbPool,
@@ -37,10 +40,6 @@ impl NodeDomain {
     }
 
     pub fn get_env_network_name() -> String {
-        if let Ok(ctx) = crate::context::get_context() {
-            return ctx.chain_network().as_str().to_owned();
-        }
-
         let mut env = "mainnet".to_owned();
         #[cfg(any(feature = "test", feature = "dev"))]
         {
@@ -115,7 +114,6 @@ impl NodeDomain {
     //         &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
     //     )?;
     //
-    //     let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
     //
     //     let backend_chains = backend_api
     //         .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
@@ -126,8 +124,10 @@ impl NodeDomain {
     //     Ok(backend_chains)
     // }
 
-    pub(crate) async fn init_sync_nodes() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+    pub(crate) async fn init_sync_nodes_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes: Vec<_> =
             local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
@@ -138,17 +138,19 @@ impl NodeDomain {
                 wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
                 &ChainRpcListReq::new(chain_codes),
             )?;
-            Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
+            Tasks::new().push(BackendApiTask::BackendApi(req)).send_with_ctx(ctx).await?;
         }
 
         Ok(())
     }
 
-    pub async fn init_load_default_nodes() -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_load_default_nodes_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let profile = crate::config::Config::active_feature_profile();
         let node_lists = Self::default_node_lists_for_feature(profile)?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
         tracing::info!(
             "initializing default nodes profile={}, visible_networks={:?}",
             profile,

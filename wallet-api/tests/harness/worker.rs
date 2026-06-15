@@ -6,16 +6,22 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use wallet_api::{ApiWalletBackend, dirs::Dirs, manager::WalletManager};
+use wallet_api::{ApiWalletBackend, Context, dirs::Dirs, manager::WalletManager};
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     request::{
-        KeysInitReq,
-        api_wallet::wallet::{
-            AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+        DeviceDeleteReq, KeysInitReq,
+        api_wallet::{
+            address::ExpandAddressCompleteReq,
+            swap::{ApiInitSwapReq, ApiInitSwapResponse},
+            wallet::{
+                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            },
         },
     },
-    response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
+    response_vo::api_wallet::wallet::{
+        AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
+    },
 };
 
 use super::next_unique_id;
@@ -159,6 +165,13 @@ impl ApiWalletBackend for NoopApiWalletBackend {
         ))
     }
 
+    async fn query_wallet_activation_info(
+        &self,
+        _uid: &str,
+    ) -> Result<QueryWalletActivationInfoResp, wallet_api::error::service::ServiceError> {
+        Ok(QueryWalletActivationInfoResp(Vec::new()))
+    }
+
     async fn appid_uid_usage(
         &self,
         _req: AppIdUidUsageReq,
@@ -167,6 +180,35 @@ impl ApiWalletBackend for NoopApiWalletBackend {
             wallet_api::error::system::SystemError::Internal("noop".to_string()),
         ))
     }
+
+    async fn expand_address_complete(
+        &self,
+        _req: ExpandAddressCompleteReq,
+    ) -> Result<(), wallet_api::error::service::ServiceError> {
+        Ok(())
+    }
+
+    async fn appid_withdrawal_wallet_change(
+        &self,
+        _withdrawal_uid: &str,
+        _org_app_id: &str,
+    ) -> Result<(), wallet_api::error::service::ServiceError> {
+        Ok(())
+    }
+
+    async fn init_swap(
+        &self,
+        _req: &ApiInitSwapReq,
+    ) -> Result<ApiInitSwapResponse, wallet_api::error::service::ServiceError> {
+        Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+    }
+
+    async fn device_delete(
+        &self,
+        _req: &DeviceDeleteReq,
+    ) -> Result<Option<()>, wallet_api::error::service::ServiceError> {
+        Ok(Some(()))
+    }
 }
 
 pub(crate) struct WorkerTestEnv {
@@ -174,6 +216,12 @@ pub(crate) struct WorkerTestEnv {
     pub(crate) backend_url: String,
     pub(crate) db_dir: PathBuf,
     pub(crate) recorder: MockBackendRecorder,
+}
+
+impl WorkerTestEnv {
+    pub(crate) fn ctx(&self) -> &'static Context {
+        self._manager.ctx()
+    }
 }
 
 fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)> {

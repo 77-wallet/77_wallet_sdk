@@ -7,6 +7,7 @@ use wallet_database::{
 };
 
 use crate::{
+    context::Context,
     domain::multisig::MultisigDomain,
     messaging::notify::{
         FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignServiceCompleteFrontend,
@@ -33,21 +34,22 @@ impl OrderMultiSignServiceComplete {
 }
 
 impl OrderMultiSignServiceComplete {
-    pub(crate) async fn exec(
+    pub(crate) async fn exec_with_ctx(
         &self,
         _msg_id: &str,
+        ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = ctx.get_global_sqlite_pool()?;
         tracing::info!(
             event_name = %event_name,
             ?self,
             "Starting to process OrderMultiSignServiceComplete"
         );
-
         let &OrderMultiSignServiceComplete { ref multisig_account_id, status, r#type } = self;
 
-        let account = Self::get_account_or_recover(multisig_account_id, &pool, &event_name).await?;
+        let account =
+            Self::get_account_or_recover(multisig_account_id, &pool, &event_name, ctx).await?;
 
         let multi_account_id = account.id;
 
@@ -64,7 +66,7 @@ impl OrderMultiSignServiceComplete {
 
         // 不是发起方更重新上报状态
         if account.owner != MultiAccountOwner::Participant.to_i8() {
-            let _r = MultisigDomain::update_raw_data(&multi_account_id, pool).await;
+            let _r = MultisigDomain::update_raw_data_with_ctx(ctx, &multi_account_id, pool).await;
         }
 
         let data =
@@ -73,15 +75,24 @@ impl OrderMultiSignServiceComplete {
                 status: self.status,
                 r#type: r#type,
             });
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
+    }
+
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.exec_with_ctx(_msg_id, ctx).await
     }
 
     async fn get_account_or_recover(
         multisig_account_id: &str,
         pool: &DbPool,
         event_name: &str,
+        ctx: &'static Context,
     ) -> Result<MultisigAccountEntity, crate::error::service::ServiceError> {
         // 第一次查询
         let mut account = MultisigAccountRepo::find_by_id(
@@ -90,7 +101,8 @@ impl OrderMultiSignServiceComplete {
         )
         .await?;
         if account.is_none() {
-            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
+            MultisigDomain::recover_multisig_account_by_id_with_ctx(ctx, multisig_account_id)
+                .await?;
 
             account = MultisigAccountRepo::find_by_id(
                 &wallet_database::CoreDbPool::new(pool.clone()),
@@ -114,7 +126,7 @@ impl OrderMultiSignServiceComplete {
                 event: event_name.to_string(),
                 message: err.to_string(),
             });
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
             Err(err)
         }
     }

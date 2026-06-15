@@ -30,7 +30,7 @@ impl ApiResourceApplication {
         req: FreezeBalanceReq,
         password: String,
     ) -> Result<FreezeResp, ServiceError> {
-        WalletApplication::validate_password(&password).await?;
+        WalletApplication::validate_password(self.ctx, &password).await?;
 
         let outcome = ApiResourceDomain::stake_withdraw_wallet_resource(self.ctx, &req).await?;
 
@@ -68,7 +68,7 @@ impl ApiResourceApplication {
         req: UnFreezeBalanceReq,
         password: String,
     ) -> Result<FreezeResp, ServiceError> {
-        WalletApplication::validate_password(&password).await?;
+        WalletApplication::validate_password(self.ctx, &password).await?;
 
         let outcome = ApiResourceDomain::unstake_withdraw_wallet_resource(self.ctx, &req).await?;
 
@@ -106,7 +106,7 @@ impl ApiResourceApplication {
         req: VoteWitnessReq,
         password: &str,
     ) -> Result<String, ServiceError> {
-        WalletApplication::validate_password(password).await?;
+        WalletApplication::validate_password(self.ctx, password).await?;
         ApiResourceDomain::withdraw_wallet_votes(self.ctx, req).await
     }
 
@@ -115,7 +115,7 @@ impl ApiResourceApplication {
         owner_address: &str,
     ) -> Result<VoterInfoResp, ServiceError> {
         ApiResourceDomain::withdraw_wallet_account_context(self.ctx, owner_address).await?;
-        StackService::new().await?.voter_info(&owner_address).await
+        StackService::new(self.ctx).await?.voter_info(&owner_address).await
     }
 
     pub(crate) async fn withdraw_wallet_votes_node_list(
@@ -125,7 +125,7 @@ impl ApiResourceApplication {
         if let Some(owner_address) = owner_address {
             ApiResourceDomain::withdraw_wallet_account_context(self.ctx, owner_address).await?;
         }
-        StackService::new().await?.vote_list(owner_address).await
+        StackService::new(self.ctx).await?.vote_list(owner_address).await
     }
 
     pub(crate) async fn withdraw_wallet_claim_votes_rewards(
@@ -133,7 +133,7 @@ impl ApiResourceApplication {
         req: WithdrawBalanceReq,
         password: &str,
     ) -> Result<String, ServiceError> {
-        WalletApplication::validate_password(password).await?;
+        WalletApplication::validate_password(self.ctx, password).await?;
         ApiResourceDomain::withdraw_wallet_claim_votes_rewards(self.ctx, req).await
     }
 

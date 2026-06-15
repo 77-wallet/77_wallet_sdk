@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::app::config::ConfigDomain;
 use crate::{
+    context::Context,
     infrastructure::parse_utc_datetime,
     response_vo::standard_wallet::{
         chain::ChainList,
@@ -35,6 +36,7 @@ mod chain_stable_coin {
 }
 
 pub struct CoinDomain {}
+
 impl Default for CoinDomain {
     fn default() -> Self {
         Self::new()
@@ -45,21 +47,22 @@ impl CoinDomain {
         Self {}
     }
 
-    pub async fn get_coin_by_token_key(
+    pub async fn get_coin_by_token_key_with_ctx(
+        ctx: &'static Context,
         chain_code: &str,
         token_key: AssetTokenKey,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = ctx.core_pool()?;
         let coin = CoinRepo::coin_by_chain_token_key(chain_code, token_key, &core_pool).await?;
 
         Ok(coin)
     }
 
-    /// 查询代币汇率
-    pub async fn get_token_currencies_v2()
-    -> Result<TokenCurrencies, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        let currency = ConfigDomain::get_currency().await?;
+    pub async fn get_token_currencies_v2_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<TokenCurrencies, crate::error::service::ServiceError> {
+        let core_pool = ctx.core_pool()?;
+        let currency = ConfigDomain::get_currency(ctx).await?;
 
         let coins = CoinRepo::coin_list_v2(core_pool.clone(), None, None).await?;
 
@@ -170,23 +173,6 @@ impl CoinDomain {
             Self::upsert_hot_coin_list(core_pool, list).await?;
         }
 
-        // let list = CoinRepo::default_coin_list(&pool).await?;
-
-        // let asset_calc_actor_manager =
-        //     crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
-        // for coin in list.iter() {
-        //     asset_calc_actor_manager
-        //         .update_price(
-        //             &coin.symbol,
-        //             &coin.chain_code,
-        //             coin.token_address.clone(),
-        //             wallet_utils::unit::string_to_f64(&coin.price)?,
-        //         )
-        //         .await?;
-        // }
-        // asset_calc_actor_manager.init_account_cache().await?;
-        // crate::infrastructure::asset_calc::init_assets().await?;
-
         Ok(())
     }
 
@@ -194,9 +180,10 @@ impl CoinDomain {
         if network.eq_ignore_ascii_case("testnet") { "testnet" } else { "mainnet" }
     }
 
-    pub async fn sync_default_coins_by_bound_nodes()
-    -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+    pub async fn sync_default_coins_by_bound_nodes_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = ctx.core_pool()?;
         let chains = ChainRepo::get_chain_list(&core_pool).await?;
 
         if chains.is_empty() {
@@ -276,11 +263,11 @@ impl CoinDomain {
         Ok(())
     }
 
-    // 每个链的主流 usdt代币合约地址
-    pub async fn get_stable_coin(
+    pub async fn get_stable_coin_with_ctx(
+        ctx: &'static Context,
         chain_code: ChainCode,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = ctx.core_pool()?;
         let chain_code_str = chain_code.to_string();
         let usdt_coins = CoinRepo::coin_list_v2(
             core_pool,
@@ -297,17 +284,19 @@ impl CoinDomain {
             return Ok(token);
         }
 
-        let network_kind = match crate::domain::chain::ChainDomain::network_kind_by_chain_code(
-            &chain_code_str,
-        )
-        .await
-        {
-            Ok(kind) => kind,
-            Err(err) => {
-                tracing::warn!(chain_code = %chain_code_str, error = ?err, "failed to resolve chain network by node, fallback to mainnet stable coin");
-                NetworkKind::Mainnet
-            }
-        };
+        let network_kind =
+            match crate::domain::chain::ChainDomain::network_kind_by_chain_code_with_ctx(
+                ctx,
+                &chain_code_str,
+            )
+            .await
+            {
+                Ok(kind) => kind,
+                Err(err) => {
+                    tracing::warn!(chain_code = %chain_code_str, error = ?err, "failed to resolve chain network by node, fallback to mainnet stable coin");
+                    NetworkKind::Mainnet
+                }
+            };
         match chain_code {
             ChainCode::Ethereum => Ok(chain_stable_coin::ETHEREUM.to_string()),
             ChainCode::BnbSmartChain => Ok(chain_stable_coin::BNB_SMART_CHAIN.to_string()),
@@ -323,11 +312,12 @@ impl CoinDomain {
         }
     }
 
-    pub async fn fetch_all_coin(
+    pub async fn fetch_all_coin_with_ctx(
+        ctx: &'static Context,
         pool: &CoreDbPool,
     ) -> Result<Vec<CoinInfo>, crate::error::service::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = ctx.get_global_backend_api();
         let mut coins = Vec::new();
 
         // TODO 1.5 版本验证币数量如果大于500说明已经同步过最新的币了,拉最新的。
@@ -349,11 +339,12 @@ impl CoinDomain {
         Ok(coins)
     }
 
-    pub(crate) async fn query_token_price(
+    pub(crate) async fn query_token_price_with_ctx(
+        ctx: &'static Context,
         req: &TokenQueryPriceReq,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let pool = crate::context::get_context()?.core_pool()?;
+        let backend_api = ctx.get_global_backend_api();
+        let pool = ctx.core_pool()?;
         let tokens = backend_api.token_query_price(req).await?.list;
         for token in tokens {
             let coin_id = CoinId {

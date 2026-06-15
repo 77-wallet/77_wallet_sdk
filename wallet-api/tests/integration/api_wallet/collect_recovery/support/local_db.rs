@@ -1,7 +1,9 @@
-use tempfile::TempDir;
-use wallet_api::testkit::collect::scan_collect_intent_labels_once;
+use wallet_api::testkit::{
+    collect::scan_collect_intent_labels_once,
+    context::{api_trans_test_ctx, api_trans_test_pool},
+};
 use wallet_database::{
-    ApiTransactionDbPool, SqliteContext,
+    ApiTransactionDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
@@ -9,19 +11,13 @@ use wallet_database::{
 use super::fixtures::CollectRecoveryFixture;
 
 pub(crate) struct LocalCollectRecoveryDb {
-    _dir: TempDir,
     pool: ApiTransactionDbPool,
 }
 
 impl LocalCollectRecoveryDb {
     pub(crate) async fn new() -> Self {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let ctx =
-            SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_transaction.db"))
-                .await
-                .expect("init api_transaction.db");
-        let pool = ctx.into_transaction_db_pool().expect("transaction pool");
-        Self { _dir: dir, pool }
+        let pool = api_trans_test_pool().await;
+        Self { pool }
     }
 
     pub(crate) async fn given_stale_blockhash_build(&self, fixture: &CollectRecoveryFixture) {
@@ -154,7 +150,7 @@ impl LocalCollectRecoveryDb {
     }
 
     pub(crate) async fn when_collect_scanner_runs(&self) -> Vec<String> {
-        scan_collect_intent_labels_once(self.pool.clone())
+        scan_collect_intent_labels_once(api_trans_test_ctx().await)
             .await
             .expect("scanner round should succeed")
     }

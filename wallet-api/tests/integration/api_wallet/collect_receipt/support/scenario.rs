@@ -1,7 +1,6 @@
 use crate::harness::{
     AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, WorkerTestEnv,
-    decrypt_captured_api_backend_body, ensure_worker_env, open_api_wallet_pool,
-    pop_request_with_retry,
+    decrypt_captured_api_backend_body, ensure_worker_env, pop_request_with_retry,
 };
 use serde_json::Value;
 use wallet_api::testkit::collect::{
@@ -9,7 +8,7 @@ use wallet_api::testkit::collect::{
     upload_collect_tx_exec_receipt_via_worker,
 };
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool, SqliteContext,
+    ApiTransactionDbPool, SqliteContext,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
@@ -29,7 +28,6 @@ use super::{
 pub(crate) struct CollectReceiptScenario {
     env: &'static WorkerTestEnv,
     collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
 }
 
 impl CollectReceiptScenario {
@@ -38,9 +36,8 @@ impl CollectReceiptScenario {
         env.recorder.reset();
 
         let collect_pool = open_collect_pool(env).await;
-        let core_pool = open_api_wallet_pool(&env.db_dir).await;
 
-        Self { env, collect_pool, core_pool }
+        Self { env, collect_pool }
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -160,27 +157,23 @@ pub(crate) trait CollectReceiptWhen {
 #[async_trait::async_trait(?Send)]
 impl CollectReceiptWhen for WhenRole<'_, CollectReceiptScenario> {
     async fn worker_uploads_receipt(&self, fixture: &CollectReceiptFixture) {
-        upload_collect_tx_exec_receipt_via_worker(
-            self.scenario().collect_pool.clone(),
-            self.scenario().core_pool.clone(),
-            &fixture.trade_no,
-        )
-        .await
-        .expect("upload tx exec receipt should succeed");
+        upload_collect_tx_exec_receipt_via_worker(self.scenario().env.ctx(), &fixture.trade_no)
+            .await
+            .expect("upload tx exec receipt should succeed");
     }
 
     async fn direct_backend_uploads_receipt(&self, fixture: &CollectReceiptFixture) {
         let req = fixture.receipt_entity();
 
-        upload_collect_tx_exec_receipt_via_backend(&req, &req.trade_no)
+        upload_collect_tx_exec_receipt_via_backend(self.scenario().env.ctx(), &req, &req.trade_no)
             .await
             .expect("direct backend upload should succeed");
     }
 
     async fn scanner_dispatches_receipt(&self) -> Option<String> {
         scan_and_dispatch_collect_tx_exec_receipt_once(
+            self.scenario().env.ctx(),
             self.scenario().collect_pool.clone(),
-            self.scenario().core_pool.clone(),
         )
         .await
         .expect("scanner-dispatcher flow should succeed")

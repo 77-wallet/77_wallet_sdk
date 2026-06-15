@@ -1,5 +1,7 @@
 use anyhow::Result;
-use wallet_api::{request::stake::FreezeBalanceReq, testkit::env::get_manager_with_config};
+use wallet_api::{
+    Context, request::stake::FreezeBalanceReq, testkit::env::get_manager_with_config,
+};
 use wallet_database::repositories::api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo};
 
 const MANUAL_WITHDRAW_UID: &str =
@@ -16,7 +18,8 @@ async fn stake_api_withdraw_wallet_resource_live_smoke() -> Result<()> {
     wallet_manager.init_api_swap().await?;
 
     let withdraw_wallet_uid = MANUAL_WITHDRAW_UID.to_string();
-    let owner_address = manual_withdraw_wallet_owner_address(&withdraw_wallet_uid).await?;
+    let owner_address =
+        manual_withdraw_wallet_owner_address(wallet_manager.ctx(), &withdraw_wallet_uid).await?;
     let resource = MANUAL_RESOURCE.to_string();
     let frozen_balance = MANUAL_FROZEN_BALANCE;
     let password = test_params
@@ -52,8 +55,8 @@ async fn stake_api_withdraw_wallet_resource_live_smoke() -> Result<()> {
     Ok(())
 }
 
-async fn manual_withdraw_wallet_owner_address(uid: &str) -> Result<String> {
-    let pool = wallet_api::testkit::mqtt::api_wallet_pool()?;
+async fn manual_withdraw_wallet_owner_address(ctx: &'static Context, uid: &str) -> Result<String> {
+    let pool = wallet_api::testkit::mqtt::api_wallet_pool(ctx)?;
     let wallet = ApiWalletRepo::find_by_uid(&pool, uid)
         .await?
         .ok_or_else(|| anyhow::anyhow!("manual withdrawal wallet uid not found"))?;

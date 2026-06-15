@@ -18,6 +18,7 @@ use wallet_transport_backend::{
 
 use crate::{
     api::ReturnType,
+    context::Context,
     domain::{
         api_wallet::wallet::ApiWalletDomain,
         app::{DeviceDomain, config::ConfigDomain},
@@ -29,11 +30,13 @@ use crate::{
     response_vo::standard_wallet::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 
-pub struct AppService;
+pub struct AppService {
+    ctx: &'static Context,
+}
 
 impl AppService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn get_official_website(
@@ -56,24 +59,24 @@ impl AppService {
         let url = config.url().clone();
         drop(config);
         if url.block_browser_url_list.is_empty() {
-            ConfigDomain::init_block_browser_url_list().await?;
+            ConfigDomain::init_block_browser_url_list(self.ctx).await?;
         }
         if url.official_website.is_none() {
-            ConfigDomain::init_official_website().await?;
+            ConfigDomain::init_official_website(self.ctx).await?;
         }
         if url.app_download_qr_code_url.is_none() {
-            ConfigDomain::init_app_install_download_url().await?;
+            ConfigDomain::init_app_install_download_url(self.ctx).await?;
         }
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let standard_wallet_list = WalletRepo::wallet_list(pool.clone())
             .await?
             .into_iter()
             .map(|wallet| wallet.into())
             .collect();
 
-        let api_wallet_list = ApiWalletDomain::get_config_api_wallet_list().await?;
+        let api_wallet_list = ApiWalletDomain::new(self.ctx).get_config_api_wallet_list().await?;
 
-        let sn = crate::context::get_context()?.get_sn();
+        let sn = self.ctx.get_sn();
         let device_info = DeviceRepo::get_device_info(pool.clone(), sn).await?;
 
         let unread_announcement_count = AnnouncementRepo::count_unread(&pool).await?;
@@ -100,7 +103,7 @@ impl AppService {
         crate::response_vo::standard_wallet::app::UnreadCount,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let unread_announcement_count = AnnouncementRepo::count_unread(&pool).await?;
         let unread_system_notification_count = SystemNotificationRepo::count_unread(&pool).await?;
         Ok(crate::response_vo::standard_wallet::app::UnreadCount {
@@ -114,10 +117,10 @@ impl AppService {
         language: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let val = wallet_database::entities::config::Language::new(language);
-        ConfigDomain::set_config(LANGUAGE, &val.to_json_str()?).await?;
+        ConfigDomain::set_config(self.ctx, LANGUAGE, &val.to_json_str()?).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let pool = self.ctx.core_pool()?;
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -125,7 +128,7 @@ impl AppService {
             .into());
         };
         let task = DeviceDomain::language_init(&device, language).await?;
-        Tasks::new().push(task).send().await?;
+        Tasks::new().push(task).send_with_ctx(self.ctx).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
         config.set_language(language);
 
@@ -143,7 +146,7 @@ impl AppService {
         r#type: &str,
     ) -> Result<AppVersionRes, crate::error::service::ServiceError> {
         let req = VersionViewReq::new(r#type);
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
 
         let res = backend.version_view(req).await?;
         Ok(res)
@@ -155,21 +158,21 @@ impl AppService {
         fiat: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let config = wallet_database::entities::config::Currency { currency: fiat.to_string() };
-        ConfigDomain::set_currency(Some(config)).await?;
+        ConfigDomain::set_currency(self.ctx, Some(config)).await?;
 
         Ok(())
     }
 
     pub async fn set_app_id(self, app_id: &str) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let pool = self.ctx.core_pool()?;
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
             .into());
         };
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = self.ctx.get_sn();
         DeviceRepo::update_app_id(pool.clone(), sn, app_id).await?;
 
         let req = wallet_transport_backend::request::UpdateAppIdReq::new(&device.sn, app_id);
@@ -177,7 +180,7 @@ impl AppService {
             wallet_transport_backend::consts::endpoint::DEVICE_UPDATE_APP_ID,
             &req,
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send_with_ctx(self.ctx).await?;
 
         Ok(())
     }
@@ -192,13 +195,13 @@ impl AppService {
         &mut self,
     ) -> Result<(), crate::error::service::ServiceError> {
         // let tx = &mut self.repo;
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
 
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(self.ctx).await?;
 
         let req = wallet_transport_backend::request::ChainListReq::new(app_version.app_version);
         let list = backend_api.chain_list(req).await?.list;
-        ConfigDomain::set_block_browser_url(&list).await?;
+        ConfigDomain::set_block_browser_url(self.ctx, &list).await?;
         Ok(())
     }
 
@@ -206,7 +209,7 @@ impl AppService {
         self,
         req: Vec<crate::request::app::UploadLogFileReq>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let oss_client = crate::context::CONTEXT.get().unwrap().get_global_oss_client();
+        let oss_client = self.ctx.get_global_oss_client();
         for req in req.into_iter() {
             oss_client.upload_local_file(&req.src_file_path, &req.dst_file_name).await?;
         }
@@ -220,10 +223,11 @@ impl AppService {
         qos: Option<u8>,
     ) -> Result<(), crate::error::service::ServiceError> {
         // 获取全局 topics
-        let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics();
+        let global_topics = self.ctx.get_global_mqtt_topics();
         let mut global_topics = global_topics.write().await;
+        let handles = self.ctx.get_handles_arc().await?;
 
-        global_topics.subscribe(topics, qos).await?;
+        global_topics.subscribe(topics, qos, &handles).await?;
 
         Ok(())
     }
@@ -233,20 +237,22 @@ impl AppService {
         topics: Vec<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
         // 获取全局已订阅的主题
-        let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics();
+        let global_topics = self.ctx.get_global_mqtt_topics();
         let mut global_topics = global_topics.write().await;
+        let handles = self.ctx.get_handles_arc().await?;
 
-        global_topics.unsubscribe(topics).await?;
+        global_topics.unsubscribe(topics, &handles).await?;
 
         Ok(())
     }
 
     pub async fn mqtt_resubscribe(self) -> Result<(), crate::error::service::ServiceError> {
         // 获取全局已订阅的主题
-        let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics();
+        let global_topics = self.ctx.get_global_mqtt_topics();
         let global_topics = global_topics.write().await;
+        let handles = self.ctx.get_handles_arc().await?;
 
-        global_topics.resubscribe().await?;
+        global_topics.resubscribe(&handles).await?;
 
         Ok(())
     }
@@ -254,7 +260,7 @@ impl AppService {
     pub async fn get_configs(
         self,
     ) -> Result<Vec<ConfigEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
         let res = ConfigRepo::list_v2(&pool).await?;
         Ok(res)
     }
@@ -264,28 +270,12 @@ impl AppService {
         key: String,
         value: String,
     ) -> Result<ConfigEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         // let min_config =
         //     wallet_database::entities::config::MinValueSwitchConfig::try_from(value.clone())?;
 
         let res = ConfigRepo::upsert(&key, &value, Some(0), &pool).await?;
-
-        // Report to the backend
-        // let cx = crate::Context::get_context()?;
-
-        // let sn = cx.device.sn.clone();
-        // tracing::warn!("report sn = {}", sn);
-        // let req = wallet_transport_backend::response_vo::app::SaveSendMsgAccount {
-        //     sn: sn.clone(),
-        //     amount: min_config.value,
-        //     is_open: min_config.switch,
-        // };
-
-        // let backend = crate::Context::get_global_backend_api()?;
-        // if let Err(e) = backend.save_send_msg_account(req).await {
-        //     tracing::warn!("filter min value report faild sn = {} error = {}", sn, e);
-        // }
 
         Ok(res)
     }
@@ -296,10 +286,9 @@ impl AppService {
         amount: f64,
         switch: bool,
     ) -> Result<MinValueSwitchConfig, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
-        let cx = crate::context::CONTEXT.get().unwrap();
-        let sn = cx.get_global_device().sn.clone();
+        let sn = self.ctx.get_global_device().sn.clone();
 
         let symbol = symbol.to_ascii_uppercase();
         let key = MinValueSwitchConfig::get_key(&symbol, &sn);
@@ -313,7 +302,7 @@ impl AppService {
             symbol,
             is_open: switch,
         };
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
 
         if let Err(e) = backend.save_send_msg_account(vec![req]).await {
             tracing::warn!("filter min value report faild sn = {} error = {}", sn, e);
@@ -326,11 +315,10 @@ impl AppService {
         self,
         symbol: String,
     ) -> Result<Option<MinValueSwitchConfig>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         let symbol = symbol.to_uppercase();
-        let cx = crate::context::CONTEXT.get().unwrap();
-        let sn = cx.get_global_device().sn.clone();
+        let sn = self.ctx.get_global_device().sn.clone();
 
         let key = MinValueSwitchConfig::get_key(&symbol, &sn);
 
@@ -347,15 +335,11 @@ impl AppService {
         channel: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let req = AppInstallSaveReq::new(sn, device_type, channel);
-        // let backend = crate::manager::Context::get_global_backend_api()?;
-        //
-        // backend.app_install_save(req).await?;
-
         // 1. 首先递增Epoch，切换世代，这是reset的核心事实
         // 确保reset开始后，所有后续操作都使用新世代的Epoch
-        ConfigDomain::bump_keys_reset_epoch().await?;
+        ConfigDomain::bump_keys_reset_epoch(self.ctx).await?;
         // 获取新的epoch值用于日志
-        let new_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let new_epoch = ConfigDomain::get_keys_reset_epoch(self.ctx).await?;
         tracing::info!(
             epoch = new_epoch,
             sn = sn,
@@ -375,7 +359,7 @@ impl AppService {
         Tasks::new()
             .push(BackendApiTask::BackendApi(app_install_save_data))
             .push(BackendApiTask::BackendApi(keys_reset_data))
-            .send()
+            .send_with_ctx(self.ctx)
             .await?;
         // backend.keys_reset(sn).await?;
         Ok(())
@@ -386,7 +370,7 @@ impl AppService {
         endpoint: &str,
         body: String,
     ) -> Result<serde_json::Value, crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
 
         let result = backend.post_req_string::<serde_json::Value>(endpoint, body).await?;
         Ok(result)
@@ -395,7 +379,7 @@ impl AppService {
     pub async fn global_msg(self) -> Result<GlobalMsg, crate::error::service::ServiceError> {
         let mut msg = GlobalMsg::default();
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         let queues = MultisigQueueRepo::pending_handle(&pool).await?;
         for queue in queues.iter() {
@@ -442,8 +426,8 @@ impl AppService {
         self,
         invite_code: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let pool = self.ctx.core_pool()?;
+        let sn = self.ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -457,12 +441,12 @@ impl AppService {
             invitee: is_invite,
         };
 
-        ConfigDomain::set_invite_code(Some(is_invite), invite_code).await?;
+        ConfigDomain::set_invite_code(self.ctx, Some(is_invite), invite_code).await?;
         let task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS,
             &req,
         )?;
-        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send_with_ctx(self.ctx).await?;
 
         Ok(())
     }
@@ -471,7 +455,7 @@ impl AppService {
         self,
     ) -> Result<std::collections::HashMap<String, String>, crate::error::service::ServiceError>
     {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         Ok(backend.all_config().await?.configs)
     }
 
@@ -479,10 +463,10 @@ impl AppService {
         self,
         wallet_type: ApiWalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        crate::context::CONTEXT.get().unwrap().set_current_wallet_type(wallet_type).await
+        self.ctx.set_current_wallet_type(wallet_type).await
     }
 
     pub async fn get_current_wallet_type(&self) -> ReturnType<ApiWalletType> {
-        crate::context::CONTEXT.get().unwrap().get_current_wallet_type().await
+        self.ctx.get_current_wallet_type().await
     }
 }

@@ -52,28 +52,32 @@ impl TaskTrait for CommonTask {
         Ok(res)
     }
 
-    async fn execute(&self, _id: &str) -> Result<(), ServiceError> {
+    async fn execute(
+        &self,
+        _id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), ServiceError> {
         match self {
             CommonTask::QueryCoinPrice(data) => {
-                CoinService::query_token_price(data).await?;
+                CoinService::new(ctx).query_token_price(data).await?;
             }
             CommonTask::QueryQueueResult(data) => {
-                MultisigQueueDomain::sync_queue_status(&data.id).await?
+                MultisigQueueDomain::sync_queue_status_with_ctx(ctx, &data.id).await?
             }
             CommonTask::RecoverMultisigAccountData(body) => {
-                MultisigDomain::recover_uid_multisig_data(&body.uid, None).await?;
+                MultisigDomain::recover_uid_multisig_data_with_ctx(ctx, &body.uid, None).await?;
                 if let Some(address) = &body.tron_address {
-                    PermissionDomain::recover_permission(vec![address.clone()]).await?;
+                    PermissionDomain::recover_permission(ctx, vec![address.clone()]).await?;
                 }
 
-                MultisigQueueDomain::recover_all_queue_data(&body.uid).await?;
+                MultisigQueueDomain::recover_all_queue_data_with_ctx(ctx, &body.uid).await?;
 
                 // 恢复完成后发送事件给前端
                 let data = NotifyEvent::RecoverComplete;
-                FrontendNotifyEvent::new(data).send().await?;
+                FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
             }
             CommonTask::CreateApiAccountDeferred(data) => {
-                ApiAccountDomain::create_api_account_deferred(data.clone()).await?;
+                ApiAccountDomain::create_api_account_deferred_with_ctx(ctx, data.clone()).await?;
             }
         }
         Ok(())

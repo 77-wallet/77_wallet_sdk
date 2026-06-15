@@ -32,7 +32,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
         asset_token_key::AssetTokenKey,
@@ -95,8 +95,7 @@ impl AddressLockManager {
 // 2. global semaphore
 #[derive(Clone)]
 struct CollectTxWorkerCtx {
-    api_wallet_pool: ApiWalletDbPool,
-    api_transaction_pool: ApiTransactionDbPool,
+    ctx: &'static crate::context::Context,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
     processing_trade: Arc<DashSet<String>>,
@@ -132,15 +131,13 @@ pub(super) struct ProcessCollectTx {
 
 impl ProcessCollectTx {
     pub(super) fn new(
-        api_wallet_pool: ApiWalletDbPool,
-        pool: ApiTransactionDbPool,
+        ctx: &'static crate::context::Context,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
         report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
     ) -> Self {
         let worker_ctx = CollectTxWorkerCtx {
-            api_wallet_pool,
-            api_transaction_pool: pool.clone(),
+            ctx,
             address_locks: Arc::new(AddressLockManager::new()),
             global_sem: Arc::new(Semaphore::new(32)), // 比 report 小一点
             processing_trade: Arc::new(DashSet::new()),
@@ -196,27 +193,26 @@ impl ProcessCollectTx {
         let trade_no = trade_no.to_string();
 
         tokio::spawn(async move {
-            let req = match ApiCollectRepo::get_api_collect_by_trade_no_status(
-                &ctx.api_transaction_pool,
-                &trade_no,
-                &[ApiCollectStatus::Init],
-            )
-            .await
-            {
-                Ok(res) => res,
-                Err(err) => {
-                    tracing::warn!(trade_no=%trade_no, "process collect tx not found: {}", err);
-                    return;
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = ctx.ctx.api_transaction_pool()?;
+                let req = ApiCollectRepo::get_api_collect_by_trade_no_status(
+                    &api_transaction_pool,
+                    &trade_no,
+                    &[ApiCollectStatus::Init],
+                )
+                .await?;
+                if !ctx.processing_trade.insert(req.trade_no.clone()) {
+                    tracing::warn!(trade_no=%req.trade_no, "collect tx already processing, skip");
+                    return Ok(());
                 }
-            };
-            if !ctx.processing_trade.insert(req.trade_no.clone()) {
-                tracing::warn!(trade_no=%req.trade_no, "collect tx already processing, skip");
-                return;
-            }
-            let _guard = TradeGuard::new(&req.trade_no, ctx.processing_trade.clone());
+                let _guard = TradeGuard::new(&req.trade_no, ctx.processing_trade.clone());
 
-            if let Err(e) = Self::process_collect_single_tx(ctx, req).await {
-                tracing::error!(trade_no=%trade_no, "collect_tx:send: 处理单个归集交易失败: {}", e);
+                Self::process_collect_single_tx(ctx, req).await?;
+                Ok(())
+            }
+            .await;
+            if let Err(err) = res {
+                tracing::error!(trade_no=%trade_no, "collect_tx:send: 处理单个归集交易失败: {}", err);
             }
         });
     }
@@ -236,34 +232,34 @@ impl ProcessCollectTx {
 
         tokio::spawn(async move {
             let _batch_guard = permit;
-            // 获取交易这里有问题
-            let res = ApiCollectRepo::page_api_collect_with_status(
-                &ctx.api_transaction_pool,
-                0,
-                1000,
-                &[ApiCollectStatus::Init],
-            )
-            .await;
-            let (_, collect_txs) = match res {
-                Ok(v) => v,
-                Err(err) => {
-                    tracing::warn!("process_collect_tx_send 查询待处理归集交易失败: {}", err);
-                    return;
-                }
-            };
-            tracing::info!("collect_tx:send: 找到 {} 笔待处理的归集交易", collect_txs.len());
-            for req in collect_txs {
-                let ctx = ctx.clone();
-                let trade_no = req.trade_no.clone(); // 提前克隆trade_no
-                if !ctx.processing_trade.insert(trade_no.clone()) {
-                    continue;
-                }
-                tokio::spawn(async move {
-                    let _guard = TradeGuard::new(&trade_no, ctx.processing_trade.clone());
-                    if let Err(err) = Self::process_collect_single_tx(ctx, req).await {
-                        tracing::error!(trade_no=%trade_no, "collect_tx:send: 处理单个归集交易失败: {}", err);
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = ctx.ctx.api_transaction_pool()?;
+                let (_, collect_txs) = ApiCollectRepo::page_api_collect_with_status(
+                    &api_transaction_pool,
+                    0,
+                    1000,
+                    &[ApiCollectStatus::Init],
+                )
+                .await?;
+                tracing::info!("collect_tx:send: 找到 {} 笔待处理的归集交易", collect_txs.len());
+                for req in collect_txs {
+                    let ctx = ctx.clone();
+                    let trade_no = req.trade_no.clone(); // 提前克隆trade_no
+                    if !ctx.processing_trade.insert(trade_no.clone()) {
+                        continue;
                     }
-                });
+                    tokio::spawn(async move {
+                        let _guard = TradeGuard::new(&trade_no, ctx.processing_trade.clone());
+                        if let Err(err) = Self::process_collect_single_tx(ctx, req).await {
+                            tracing::error!(trade_no=%trade_no, "collect_tx:send: 处理单个归集交易失败: {}", err);
+                        }
+                    });
+                }
+                Ok(())
+            }
+            .await;
+            if let Err(err) = res {
+                tracing::warn!("process_collect_tx_send 查询待处理归集交易失败: {}", err);
             }
         });
     }
@@ -295,6 +291,7 @@ impl ProcessCollectTx {
 
             // 使用通用的交易恢复逻辑
             match ApiTransDomain::process_recovered_tx(
+                &worker_ctx.ctx,
                 &req.chain_code,
                 &req.from_addr,
                 tx_hash,
@@ -325,8 +322,9 @@ impl ProcessCollectTx {
         let updated_to_addr = req.to_addr != exec_to_addr;
         if updated_to_addr {
             req.to_addr = exec_to_addr.clone();
+            let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
             ApiCollectRepo::update_api_collect_to_addr(
-                &worker_ctx.api_transaction_pool,
+                &api_transaction_pool,
                 &req.trade_no,
                 &exec_to_addr,
             )
@@ -358,7 +356,7 @@ impl ProcessCollectTx {
         }
 
         // 检查交易摘要 - 仍然使用后端原始 digest 语义，不依赖当前执行地址
-        if !Self::check_digest(&req).await {
+        if !Self::check_digest(&worker_ctx.ctx, &req).await {
             tracing::error!(trade_no=%trade_no, "collect_tx:send: 交易摘要验证失败");
             return Self::handle_collect_tx_failed(
                 &worker_ctx,
@@ -382,13 +380,14 @@ impl ProcessCollectTx {
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 开始发送归集交易, nonce={}", nonce);
 
                 // 通过Context获取Handles实例，然后获取私钥管理器
-                let handles = crate::context::get_context()?.get_handles_arc().await?;
+                let handles = worker_ctx.ctx.get_handles_arc().await?;
                 let private_key_manager = handles.get_global_private_key_manager();
                 let private_key =
                     private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 从私钥管理器获取私钥");
                 // 将私钥字符串转换为ChainPrivateKey类型
                 let (tx_hash, raw_tx, fee) = match ApiTransDomain::build_transfer_raw(
+                    &worker_ctx.ctx,
                     transfer_req,
                     Some(private_key),
                 )
@@ -417,8 +416,9 @@ impl ProcessCollectTx {
                 // 将RawTx转换为字符串进行存储
 
                 let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
+                let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
                 let update_res = ApiCollectRepo::update_after_build(
-                    &worker_ctx.api_transaction_pool,
+                    &api_transaction_pool,
                     &req.trade_no,
                     &tx_hash,
                     &raw_tx_str,
@@ -441,6 +441,7 @@ impl ProcessCollectTx {
                 // Step 3: 广播交易
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 开始广播交易");
                 let tx_resp = ApiTransDomain::broadcast_transfer(
+                    &worker_ctx.ctx,
                     &req.chain_code,
                     raw_tx,
                     Some(tx_hash.as_str()),
@@ -470,10 +471,10 @@ impl ProcessCollectTx {
         }
     }
 
-    async fn check_digest(req: &ApiCollectEntity) -> bool {
+    async fn check_digest(ctx: &crate::context::Context, req: &ApiCollectEntity) -> bool {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始验证交易摘要");
         // check digest
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = ctx.get_sn();
         let mut d = Decimal::from_str(req.value.as_str()).unwrap();
         d = d.normalize();
         // let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
@@ -487,11 +488,12 @@ impl ProcessCollectTx {
     }
 
     async fn get_eth_nonce(
-        pool: &ApiTransactionDbPool,
+        worker_ctx: &CollectTxWorkerCtx,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, ServiceError> {
         tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 获取以太坊nonce");
+        let pool = worker_ctx.ctx.api_transaction_pool()?;
         match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
             Ok(nonce) => {
                 let next_nonce = nonce + 1;
@@ -500,7 +502,7 @@ impl ProcessCollectTx {
             }
             Err(_) => {
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 本地缓存未找到nonce，从链上获取");
-                let nonce = ApiTransDomain::nonce(from_addr, chain_code).await?;
+                let nonce = ApiTransDomain::nonce(&worker_ctx.ctx, from_addr, chain_code).await?;
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 从链上获取nonce: {}", nonce);
                 Ok(nonce as i64)
             }
@@ -512,12 +514,13 @@ impl ProcessCollectTx {
         req: &ApiCollectEntity,
     ) -> Result<String, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始解析执行地址");
+        let api_wallet_pool = worker_ctx.ctx.api_wallet_pool()?;
 
         // 1. 根据from_addr + chain_code查询account
         let account = match ApiAccountRepo::find_one_by_address_chain_code(
             &req.from_addr,
             &req.chain_code,
-            &worker_ctx.api_wallet_pool,
+            &api_wallet_pool,
         )
         .await?
         {
@@ -535,11 +538,8 @@ impl ProcessCollectTx {
         };
 
         // 2. 根据account.wallet_address查询wallet
-        let wallet = match ApiWalletRepo::find_by_address(
-            &worker_ctx.api_wallet_pool.clone(),
-            &account.wallet_address,
-        )
-        .await?
+        let wallet = match ApiWalletRepo::find_by_address(&api_wallet_pool, &account.wallet_address)
+            .await?
         {
             Some(wallet) => wallet,
             None => {
@@ -556,7 +556,8 @@ impl ProcessCollectTx {
         };
 
         // 3. 查询用户归集策略
-        let strategy = StrategyDomain::query_collect_strategy(&wallet.uid).await?;
+        let strategy =
+            StrategyDomain::query_collect_strategy_with_ctx(worker_ctx.ctx, &wallet.uid).await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取归集策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
 
         // 4. 根据chain_code查询链配置
@@ -604,11 +605,12 @@ impl ProcessCollectTx {
         req: &ApiCollectEntity,
     ) -> Result<String, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 开始解析提币地址");
+        let api_wallet_pool = worker_ctx.ctx.api_wallet_pool()?;
         // 1. 根据from_addr + chain_code查询account
         let account = match ApiAccountRepo::find_one_by_address_chain_code(
             &req.from_addr,
             &req.chain_code,
-            &worker_ctx.api_wallet_pool,
+            &api_wallet_pool,
         )
         .await?
         {
@@ -626,11 +628,8 @@ impl ProcessCollectTx {
         };
 
         // 2. 根据account.wallet_address查询wallet
-        let wallet = match ApiWalletRepo::find_by_address(
-            &worker_ctx.api_wallet_pool,
-            &account.wallet_address,
-        )
-        .await?
+        let wallet = match ApiWalletRepo::find_by_address(&api_wallet_pool, &account.wallet_address)
+            .await?
         {
             Some(wallet) => wallet,
             None => {
@@ -658,7 +657,7 @@ impl ProcessCollectTx {
         };
 
         let Some(withdraw_wallet) =
-            ApiWalletRepo::find_by_address(&worker_ctx.api_wallet_pool, &bind_address).await?
+            ApiWalletRepo::find_by_address(&api_wallet_pool, &bind_address).await?
         else {
             tracing::warn!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 出款钱包不存在, bind_address={}", bind_address);
             return Err(ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
@@ -669,7 +668,9 @@ impl ProcessCollectTx {
         };
 
         // 3. 查询用户提币策略
-        let strategy = StrategyDomain::query_withdraw_strategy(&withdraw_wallet.uid).await?;
+        let strategy =
+            StrategyDomain::query_withdraw_strategy_with_ctx(worker_ctx.ctx, &withdraw_wallet.uid)
+                .await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 获取提现策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
 
         // 4. 根据chain_code查询链配置
@@ -708,8 +709,9 @@ impl ProcessCollectTx {
 
         // 获取币种信息
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            worker_ctx.ctx,
             &req.chain_code,
-            req.token_addr.clone().into(),
+            req.token_addr.clone(),
         )
         .await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
@@ -739,20 +741,10 @@ impl ProcessCollectTx {
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
-                Self::get_eth_nonce(
-                    &worker_ctx.api_transaction_pool,
-                    &req.from_addr,
-                    &req.chain_code,
-                )
-                .await?
+                Self::get_eth_nonce(&worker_ctx, &req.from_addr, &req.chain_code).await?
             }
             ChainCode::BnbSmartChain => {
-                Self::get_eth_nonce(
-                    &worker_ctx.api_transaction_pool,
-                    &req.from_addr,
-                    &req.chain_code,
-                )
-                .await?
+                Self::get_eth_nonce(&worker_ctx, &req.from_addr, &req.chain_code).await?
             }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
@@ -774,6 +766,7 @@ impl ProcessCollectTx {
         nonce: u64,
     ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 处理交易成功结果");
+        let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
 
         let resource_consume = if let Some(consumer) = tx.consumer {
             consumer.energy_used.to_string()
@@ -789,7 +782,7 @@ impl ProcessCollectTx {
         {
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 更新以太坊/BSC交易状态，包含nonce");
             ApiCollectRepo::update_api_collect_tx_status_nonce(
-                &worker_ctx.api_transaction_pool,
+                &api_transaction_pool,
                 &req.from_addr,
                 &req.chain_code,
                 &req.trade_no,
@@ -804,7 +797,7 @@ impl ProcessCollectTx {
             // 更新发送交易状态
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 更新非以太坊/BSC交易状态");
             ApiCollectRepo::update_api_collect_tx_status(
-                &worker_ctx.api_transaction_pool,
+                &api_transaction_pool,
                 &req.trade_no,
                 &tx.tx_hash,
                 &resource_consume,
@@ -841,10 +834,11 @@ impl ProcessCollectTx {
         err: ServiceError,
     ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%trade_no, "collect_tx:send: 处理交易失败结果, 错误: {}", err);
+        let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
 
         // 更新失败状态
         let res = ApiCollectRepo::update_api_collect_status_and_err(
-            &worker_ctx.api_transaction_pool,
+            &api_transaction_pool,
             trade_no,
             ApiCollectStatus::SendingTxFailed,
             ErrCode::SDKInternalError,
@@ -907,17 +901,19 @@ impl CheckFee for CollectTxWorkerCtx {
     async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
-
         // 查询主币信息
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(self.ctx, &req.chain_code).await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 主币信息: 币种={}, 小数位数={}", main_coin.symbol, main_coin.decimals);
 
         // 确定代币信息
         let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                    .await?;
+            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?;
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 代币信息: 币种={}, 代币地址={:?}, 小数位数={}", 
                 token_coin.symbol, token_coin.token_address, token_coin.decimals);
             (token_coin.symbol, token_coin.token_address, token_coin.decimals)
@@ -1003,7 +999,7 @@ impl CheckFee for CollectTxWorkerCtx {
                 };
             // 上传手续费记录
             let exec_from_addr = ProcessCollectTx::resolve_withdraw_from_addr(self, &req).await?;
-            let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let backend_api = self.ctx.get_global_backend_api();
             let upload_req = ServiceFeeUploadReq::new(
                 &req.trade_no,
                 &req.chain_code,
@@ -1020,8 +1016,9 @@ impl CheckFee for CollectTxWorkerCtx {
 
             // 更新交易状态为余额不足
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 更新交易状态为余额不足");
+            let api_transaction_pool = self.ctx.api_transaction_pool()?;
             ApiCollectRepo::update_api_collect_status_and_err(
-                &self.api_transaction_pool,
+                &api_transaction_pool,
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
                 ErrCode::SDKInternalError,
@@ -1047,8 +1044,11 @@ impl CheckFee for CollectTxWorkerCtx {
         tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_key.as_db_str(),
             "collect_tx:send: 查询余额");
 
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx,
+            &chain_code.to_string(),
+        )
+        .await?;
         let balance = adapter.balance_token_key(&owner_address, token_key.clone()).await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
@@ -1075,8 +1075,11 @@ impl CheckFee for CollectTxWorkerCtx {
             "collect_tx:send: 估算交易手续费开始");
 
         let adapter_start = std::time::Instant::now();
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx,
+            &chain_code.to_string(),
+        )
+        .await?;
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%adapter_start.elapsed().as_millis(), "collect_tx:send: 获取适配器完成");
 
         let params_start = std::time::Instant::now();
@@ -1136,7 +1139,7 @@ impl CheckFee for CollectTxWorkerCtx {
         tracing::info!(uid=%uid, chain_code=%chain_code, "collect_tx:send: 查询归集策略");
 
         // 查询策略
-        let strategy = StrategyDomain::query_collect_strategy(uid).await?;
+        let strategy = StrategyDomain::query_collect_strategy_with_ctx(self.ctx, uid).await?;
 
         tracing::info!(uid=%uid, "collect_tx:send: 获取归集策略成功，包含 {} 条链配置", strategy.chain_configs.len());
 

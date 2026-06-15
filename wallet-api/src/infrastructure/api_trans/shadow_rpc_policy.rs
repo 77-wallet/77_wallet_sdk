@@ -66,8 +66,12 @@ pub(crate) fn allow_recover_dispatch(key: &str) -> bool {
     true
 }
 
-pub(crate) async fn breaker_open_for_chain_code(chain_code: &str) -> Option<(String, Duration)> {
-    crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
+pub(crate) async fn breaker_open_for_chain_code(
+    ctx: &crate::context::Context,
+    chain_code: &str,
+) -> Option<(String, Duration)> {
+    crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(ctx, chain_code)
+        .await
 }
 
 pub(crate) fn should_emit_breaker_warn(key: &str) -> bool {

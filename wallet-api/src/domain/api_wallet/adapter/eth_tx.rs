@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -47,10 +48,23 @@ pub(crate) struct EthTx {
     provider: eth::Provider,
     rpc_url_for_log: String,
     rpc_header_for_query: Option<HashMap<String, String>>,
+    ctx: &'static Context,
 }
 
 impl EthTx {
-    pub(crate) fn new(
+    #[cfg(test)]
+    pub(crate) fn new_for_test(
+        ctx: &'static Context,
+        chain_code: ChainCode,
+        rpc_url: &str,
+        network: NetworkKind,
+        header_opt: Option<HashMap<String, String>>,
+    ) -> Result<Self, wallet_chain_interact::Error> {
+        Self::new_with_ctx(ctx, chain_code, rpc_url, network, header_opt)
+    }
+
+    pub(crate) fn new_with_ctx(
+        ctx: &'static Context,
         chain_code: ChainCode,
         rpc_url: &str,
         network: NetworkKind,
@@ -68,9 +82,9 @@ impl EthTx {
             provider: provider1,
             rpc_url_for_log: rpc_url.to_string(),
             rpc_header_for_query,
+            ctx,
         })
     }
-
     fn evm_raw_tx_hash_hex(raw: &[u8]) -> String {
         let digest = Keccak256::digest(raw);
         format!("0x{}", hex::encode(digest))
@@ -293,14 +307,18 @@ impl EthTx {
 
 #[async_trait::async_trait]
 impl Oracle for EthTx {
-    async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let gas_oracle = backend.gas_oracle(&self.chain.chain_code.to_string()).await;
+    async fn gas_oracle_with_ctx(
+        &self,
+        ctx: &crate::context::Context,
+    ) -> Result<GasOracle, ServiceError> {
+        let _ctx = ctx;
+        let gas_oracle =
+            self.ctx.get_global_backend_api().gas_oracle(&self.chain.chain_code.to_string()).await;
         tracing::info!("gas_oracle: {:?}", gas_oracle);
         match gas_oracle {
             Ok(gas_oracle) => Ok(gas_oracle),
             Err(err) => {
-                tracing::error!(error=?err, "gas_oracle failed");
+                tracing::error!(error = ?err, "gas_oracle failed");
                 // unit is wei need to gwei
                 let eth_fee = self.chain.provider.get_default_fee().await?;
 
@@ -308,17 +326,28 @@ impl Oracle for EthTx {
                 let propose = unit::format_to_string(propose, eth::consts::ETH_GWEI)?;
                 let base = unit::format_to_string(eth_fee.base_fee, eth::consts::ETH_GWEI)?;
 
-                let gas_oracle = GasOracle {
+                Ok(GasOracle {
                     safe_gas_price: None,
                     propose_gas_price: Some(propose),
                     fast_gas_price: None,
                     suggest_base_fee: Some(base),
                     gas_used_ratio: None,
-                };
-
-                Ok(gas_oracle)
+                })
             }
         }
+    }
+
+    async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
+        let gas_oracle =
+            self.ctx.get_global_backend_api().gas_oracle(&self.chain.chain_code.to_string()).await;
+        tracing::info!("gas_oracle: {:?}", gas_oracle);
+        if let Ok(gas_oracle) = gas_oracle {
+            return Ok(gas_oracle);
+        }
+        tracing::warn!(
+            "gas_oracle: fallback to on-chain fee because backend API is not configured or failed"
+        );
+        self.default_gas_oracle().await
     }
 
     async fn default_gas_oracle(&self) -> Result<GasOracle, ServiceError> {
@@ -540,7 +569,9 @@ impl Tx for EthTx {
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let pool = self.ctx.api_wallet_pool()?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &self.ctx.core_pool()?,
             currency,
             &req.chain_code,
             main_symbol,
@@ -942,7 +973,6 @@ impl Tx for EthTx {
 //             TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
 //                 .await?;
 //
-//         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 //         let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
 //         let multisig_account =
 //             MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;

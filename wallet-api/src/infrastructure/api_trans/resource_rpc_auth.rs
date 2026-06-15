@@ -1,4 +1,8 @@
-use crate::{domain::api_wallet::trans::ApiTransDomain, error::service::ServiceError};
+use crate::{
+    context::{Context, get_context},
+    domain::api_wallet::trans::ApiTransDomain,
+    error::service::ServiceError,
+};
 use std::future::Future;
 
 pub(crate) fn should_retry_after_rpc_auth_error(err: &ServiceError) -> bool {
@@ -6,18 +10,29 @@ pub(crate) fn should_retry_after_rpc_auth_error(err: &ServiceError) -> bool {
 }
 
 pub(crate) async fn refresh_and_prepare_retry(
+    ctx: &'static Context,
     chain_code: &str,
     operation: &'static str,
     resource_trade_no: &str,
     err: &ServiceError,
 ) -> Result<(), ServiceError> {
     ApiTransDomain::refresh_rpc_auth_and_prepare_retry(
+        ctx,
         chain_code,
         operation,
         Some(resource_trade_no),
         err,
     )
     .await
+}
+
+pub(crate) async fn refresh_and_prepare_retry_from_global(
+    chain_code: &str,
+    operation: &'static str,
+    resource_trade_no: &str,
+    err: &ServiceError,
+) -> Result<(), ServiceError> {
+    refresh_and_prepare_retry(get_context()?, chain_code, operation, resource_trade_no, err).await
 }
 
 pub(crate) async fn run_with_rpc_auth_retry<T, Fut>(
@@ -36,7 +51,13 @@ where
             Ok(value) => return Ok(value),
             Err(err) if !auth_retry_attempted && should_retry_after_rpc_auth_error(&err) => {
                 auth_retry_attempted = true;
-                refresh_and_prepare_retry(chain_code, operation, resource_trade_no, &err).await?;
+                refresh_and_prepare_retry_from_global(
+                    chain_code,
+                    operation,
+                    resource_trade_no,
+                    &err,
+                )
+                .await?;
             }
             Err(err) => return Err(err),
         }

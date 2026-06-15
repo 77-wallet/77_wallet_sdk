@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::{
             account::ApiAccountDomain,
@@ -375,6 +376,7 @@ impl ApiTransDomain {
     }
 
     pub(crate) async fn refresh_rpc_auth_and_prepare_retry(
+        ctx: &'static Context,
         chain_code: &str,
         op: &str,
         rpc: Option<&str>,
@@ -390,7 +392,6 @@ impl ApiTransDomain {
             "rpc auth unauthorized detected"
         );
 
-        let ctx = crate::context::get_context()?;
         ctx.invalidate_rpc_token_cache().await;
 
         tracing::warn!(
@@ -433,8 +434,18 @@ impl ApiTransDomain {
         Ok(())
     }
 
-    /// transfer
+    // transfer（显式上下文签名）
     pub async fn transfer(
+        ctx: &'static Context,
+        params: ApiTransferReq,
+        preloaded_private_key: Option<ChainPrivateKey>,
+    ) -> Result<TransferResp, ServiceError> {
+        Self::transfer_with_ctx(ctx, params, preloaded_private_key).await
+    }
+
+    /// transfer（显式上下文签名）
+    pub async fn transfer_with_ctx(
+        ctx: &'static Context,
         params: ApiTransferReq,
         preloaded_private_key: Option<ChainPrivateKey>,
     ) -> Result<TransferResp, ServiceError> {
@@ -451,8 +462,12 @@ impl ApiTransDomain {
         let private_key = match preloaded_private_key {
             Some(pk) => pk,
             None => {
-                ApiAccountDomain::get_private_key(&params.base.from, &params.base.chain_code)
-                    .await?
+                ApiAccountDomain::get_private_key_with_ctx(
+                    ctx,
+                    &params.base.from,
+                    &params.base.chain_code,
+                )
+                .await?
             }
         };
         tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
@@ -467,19 +482,20 @@ impl ApiTransDomain {
         );
 
         let adapter_time = Instant::now();
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code).await?;
         tracing::info!("transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
 
         tracing::info!("transfer: 执行转账");
         // TODO：可优化
         let transfer_time = Instant::now();
-        let resp = adapter.transfer(&params, private_key).await?;
+        let resp = adapter.transfer_with_ctx(ctx, &params, private_key).await?;
         tracing::info!("transfer: 转账操作完成, 耗时: {:?}", transfer_time.elapsed());
 
         if let Some(request_id) = params.base.request_resource_id {
             tracing::info!("transfer (委托完成): 开始, request_id: {}", request_id);
             let delegate_time = Instant::now();
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let backend = ctx.get_global_backend_api();
             let _ = backend.delegate_complete(&request_id).await;
             tracing::info!("transfer (委托完成): 结束, 耗时: {:?}", delegate_time.elapsed());
         }
@@ -495,6 +511,15 @@ impl ApiTransDomain {
     /// - 不处理Recover逻辑
     /// - 不负责从链上恢复交易状态
     pub async fn build_transfer_raw(
+        ctx: &'static Context,
+        params: ApiTransferReq,
+        preloaded_private_key: Option<ChainPrivateKey>,
+    ) -> Result<(String, RawTx, String), ServiceError> {
+        Self::build_transfer_raw_with_ctx(ctx, params, preloaded_private_key).await
+    }
+
+    pub async fn build_transfer_raw_with_ctx(
+        ctx: &'static Context,
         params: ApiTransferReq,
         preloaded_private_key: Option<ChainPrivateKey>,
     ) -> Result<(String, RawTx, String), ServiceError> {
@@ -511,8 +536,12 @@ impl ApiTransDomain {
         let private_key = match preloaded_private_key {
             Some(pk) => pk,
             None => {
-                ApiAccountDomain::get_private_key(&params.base.from, &params.base.chain_code)
-                    .await?
+                ApiAccountDomain::get_private_key_with_ctx(
+                    ctx,
+                    &params.base.from,
+                    &params.base.chain_code,
+                )
+                .await?
             }
         };
         tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
@@ -527,7 +556,8 @@ impl ApiTransDomain {
         );
 
         let adapter_time = Instant::now();
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code).await?;
         tracing::info!("transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
 
         tracing::info!("transfer: 执行转账");
@@ -559,6 +589,20 @@ impl ApiTransDomain {
     /// broadcast_transfer 在网络异常时返回 Ok(None)，
     /// 由 scanner / recover 决定最终状态。
     pub async fn broadcast_transfer(
+        ctx: &'static Context,
+        chain_code: &str,
+        raw: RawTx,
+        expected_tx_hash: Option<&str>,
+    ) -> Result<Option<TransferResp>, ServiceError> {
+        Self::broadcast_transfer_with_ctx(ctx, chain_code, raw, expected_tx_hash).await
+    }
+
+    /// ⚠️ 注意：
+    /// 网络错误不等于广播失败。
+    /// broadcast_transfer 在网络异常时返回 Ok(None)，
+    /// 由 scanner / recover 决定最终状态。
+    pub async fn broadcast_transfer_with_ctx(
+        ctx: &'static Context,
         chain_code: &str,
         raw: RawTx,
         expected_tx_hash: Option<&str>,
@@ -577,7 +621,7 @@ impl ApiTransDomain {
         }
 
         if let Some((host, remaining)) =
-            chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
+            chain_rpc_guard::breaker_open_for_chain_code_with_ctx(ctx, chain_code).await
         {
             if let Some(tx_hash) = tx_hash_hint.as_deref() {
                 tracing::warn!(
@@ -604,28 +648,32 @@ impl ApiTransDomain {
         let mut retry_raw_once =
             first_raw_attempt.as_ref().and_then(Self::clone_raw_for_single_retry);
         'auth_retry: loop {
-            let adapter = match ApiChainAdapterFactory::get_transaction_adapter(chain_code).await {
-                Ok(adapter) => adapter,
-                Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
-                    auth_retry_attempted = true;
-                    Self::refresh_rpc_auth_and_prepare_retry(
-                        chain_code,
-                        "broadcast_transfer:get_adapter",
-                        None,
-                        &e,
-                    )
-                    .await?;
-                    continue 'auth_retry;
-                }
-                Err(e) => {
-                    if e.is_delay_retryable() {
-                        tracing::warn!("broadcast_transfer: 延迟重试, 适配器创建失败: {}", e);
-                        return Ok(None);
+            let adapter =
+                match ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code)
+                    .await
+                {
+                    Ok(adapter) => adapter,
+                    Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
+                        auth_retry_attempted = true;
+                        Self::refresh_rpc_auth_and_prepare_retry(
+                            ctx,
+                            chain_code,
+                            "broadcast_transfer:get_adapter",
+                            None,
+                            &e,
+                        )
+                        .await?;
+                        continue 'auth_retry;
                     }
-                    tracing::error!("broadcast_transfer: 非延迟重试, 适配器创建失败: {}", e);
-                    return Err(e);
-                }
-            };
+                    Err(e) => {
+                        if e.is_delay_retryable() {
+                            tracing::warn!("broadcast_transfer: 延迟重试, 适配器创建失败: {}", e);
+                            return Ok(None);
+                        }
+                        tracing::error!("broadcast_transfer: 非延迟重试, 适配器创建失败: {}", e);
+                        return Err(e);
+                    }
+                };
             tracing::info!(
                 "broadcast_transfer (适配器创建): 完成, 耗时: {:?}",
                 adapter_time.elapsed()
@@ -650,6 +698,7 @@ impl ApiTransDomain {
                 Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                     auth_retry_attempted = true;
                     Self::refresh_rpc_auth_and_prepare_retry(
+                        ctx,
                         chain_code,
                         "broadcast_transfer:broadcast",
                         Some(&rpc),
@@ -723,6 +772,7 @@ impl ApiTransDomain {
                     Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                         auth_retry_attempted = true;
                         Self::refresh_rpc_auth_and_prepare_retry(
+                            ctx,
                             chain_code,
                             "broadcast_transfer:visibility_probe",
                             Some(&rpc),
@@ -792,7 +842,10 @@ impl ApiTransDomain {
                                 Some(*delay_ms),
                                 "hit",
                             );
-                            chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+                            chain_rpc_guard::record_success_for_chain_code_with_ctx(
+                                ctx, chain_code,
+                            )
+                            .await;
                             if auth_retry_attempted {
                                 tracing::info!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", "auth retry succeeded");
                             }
@@ -821,7 +874,10 @@ impl ApiTransDomain {
                                     visibility_kind = %visibility_kind,
                                     "broadcast visibility check hit"
                                 );
-                                chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+                                chain_rpc_guard::record_success_for_chain_code_with_ctx(
+                                    ctx, chain_code,
+                                )
+                                .await;
                                 if auth_retry_attempted {
                                     tracing::info!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", "auth retry succeeded");
                                 }
@@ -841,6 +897,7 @@ impl ApiTransDomain {
                             Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                                 auth_retry_attempted = true;
                                 Self::refresh_rpc_auth_and_prepare_retry(
+                                    ctx,
                                     chain_code,
                                     "broadcast_transfer:visibility_check",
                                     Some(&rpc),
@@ -883,7 +940,7 @@ impl ApiTransDomain {
                 return Ok(None);
             }
 
-            chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+            chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code).await;
             if auth_retry_attempted {
                 tracing::info!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", "auth retry succeeded");
             }
@@ -891,7 +948,19 @@ impl ApiTransDomain {
         }
     }
 
-    pub async fn nonce(from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
+    pub async fn nonce(
+        ctx: &'static Context,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<u64, ServiceError> {
+        Self::nonce_with_ctx(ctx, from_addr, chain_code).await
+    }
+
+    pub async fn nonce_with_ctx(
+        ctx: &'static Context,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<u64, ServiceError> {
         let start_time = Instant::now();
         tracing::info!(
             "nonce (开始): from_addr: {}, chain_code: {}, 时间: {:?}",
@@ -906,24 +975,28 @@ impl ApiTransDomain {
         let adapter_time = Instant::now();
         let mut auth_retry_attempted = false;
         loop {
-            let adapter = match ApiChainAdapterFactory::get_transaction_adapter(chain_code).await {
-                Ok(adapter) => adapter,
-                Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
-                    auth_retry_attempted = true;
-                    Self::refresh_rpc_auth_and_prepare_retry(
-                        chain_code,
-                        "nonce:get_adapter",
-                        None,
-                        &e,
-                    )
-                    .await?;
-                    continue;
-                }
-                Err(e) => {
-                    tracing::info!("nonce (结束): 总耗时: {:?}", start_time.elapsed());
-                    return Err(e);
-                }
-            };
+            let adapter =
+                match ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code)
+                    .await
+                {
+                    Ok(adapter) => adapter,
+                    Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
+                        auth_retry_attempted = true;
+                        Self::refresh_rpc_auth_and_prepare_retry(
+                            ctx,
+                            chain_code,
+                            "nonce:get_adapter",
+                            None,
+                            &e,
+                        )
+                        .await?;
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::info!("nonce (结束): 总耗时: {:?}", start_time.elapsed());
+                        return Err(e);
+                    }
+                };
             tracing::info!("nonce (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
             let rpc = adapter.rpc_endpoint_for_log().unwrap_or_else(|| "<unknown>".to_string());
 
@@ -938,6 +1011,7 @@ impl ApiTransDomain {
                 Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                     auth_retry_attempted = true;
                     Self::refresh_rpc_auth_and_prepare_retry(
+                        ctx,
                         chain_code,
                         "nonce:rpc_call",
                         Some(&rpc),
@@ -974,6 +1048,27 @@ impl ApiTransDomain {
     /// Err(_)          -> 已确认不可能成功，可推进失败
     /// Ok(None)        -> 不确定态（RPC/网络/索引问题），等待 scanner/recover
     pub async fn process_recovered_tx(
+        ctx: &'static Context,
+        chain_code: &str,
+        from_addr: &str,
+        tx_hash: &str,
+        // raw_tx: &str,
+        nonce: i64,
+        transaction_fee: &str,
+    ) -> Result<Option<TransferResp>, ServiceError> {
+        Self::process_recovered_tx_with_ctx(
+            &ctx,
+            chain_code,
+            from_addr,
+            tx_hash,
+            nonce,
+            transaction_fee,
+        )
+        .await
+    }
+
+    pub async fn process_recovered_tx_with_ctx(
+        ctx: &'static Context,
         chain_code: &str,
         from_addr: &str,
         tx_hash: &str,
@@ -984,7 +1079,7 @@ impl ApiTransDomain {
         tracing::info!(tx_hash=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
         if let Some((host, remaining)) =
-            chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
+            chain_rpc_guard::breaker_open_for_chain_code_with_ctx(ctx, chain_code).await
         {
             tracing::warn!(
                 chain_code = %chain_code,
@@ -998,29 +1093,36 @@ impl ApiTransDomain {
 
         let mut auth_retry_attempted = false;
         'recover_auth_retry: loop {
-            let adapter = match ApiChainAdapterFactory::get_transaction_adapter(chain_code).await {
-                Ok(adapter) => adapter,
-                Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
-                    auth_retry_attempted = true;
-                    Self::refresh_rpc_auth_and_prepare_retry(
-                        chain_code,
-                        "process_recovered_tx:get_adapter",
-                        None,
-                        &e,
-                    )
-                    .await?;
-                    continue 'recover_auth_retry;
-                }
-                Err(e) => {
-                    if e.is_delay_retryable() {
-                        tracing::warn!("process_recovered_tx: 延迟重试, 适配器创建失败: {}", e);
-                        return Ok(None);
-                    } else {
-                        tracing::error!("process_recovered_tx: 非延迟重试, 适配器创建失败: {}", e);
-                        return Err(e);
+            let adapter =
+                match ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code)
+                    .await
+                {
+                    Ok(adapter) => adapter,
+                    Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
+                        auth_retry_attempted = true;
+                        Self::refresh_rpc_auth_and_prepare_retry(
+                            ctx,
+                            chain_code,
+                            "process_recovered_tx:get_adapter",
+                            None,
+                            &e,
+                        )
+                        .await?;
+                        continue 'recover_auth_retry;
                     }
-                }
-            };
+                    Err(e) => {
+                        if e.is_delay_retryable() {
+                            tracing::warn!("process_recovered_tx: 延迟重试, 适配器创建失败: {}", e);
+                            return Ok(None);
+                        } else {
+                            tracing::error!(
+                                "process_recovered_tx: 非延迟重试, 适配器创建失败: {}",
+                                e
+                            );
+                            return Err(e);
+                        }
+                    }
+                };
             let rpc = adapter.rpc_endpoint_for_log().unwrap_or_else(|| "<unknown>".to_string());
 
             // 1. 查链上是否存在
@@ -1044,7 +1146,8 @@ impl ApiTransDomain {
 
                     if is_success {
                         tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
-                        chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+                        chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code)
+                            .await;
                         // 直接标记成功
                         let mut mock_resp = TransferResp {
                             tx_hash: tx_hash.to_string(),
@@ -1136,7 +1239,7 @@ impl ApiTransDomain {
                         return Ok(None);
                     }
 
-                    let chain_nonce = match Self::nonce(from_addr, chain_code).await {
+                    let chain_nonce = match Self::nonce_with_ctx(ctx, from_addr, chain_code).await {
                         Ok(chain_nonce) => chain_nonce,
                         Err(e) => {
                             if e.is_network_error() {
@@ -1193,6 +1296,7 @@ impl ApiTransDomain {
                     if !auth_retry_attempted && service_err.is_rpc_auth_unauthorized() {
                         auth_retry_attempted = true;
                         Self::refresh_rpc_auth_and_prepare_retry(
+                            ctx,
                             chain_code,
                             "process_recovered_tx:query_tx_res",
                             Some(&rpc),

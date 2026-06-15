@@ -195,6 +195,7 @@ impl TransactionAdapter {
     // 返回交易hash以及交易消耗的资源
     pub async fn transfer(
         &self,
+        ctx: &'static crate::context::Context,
         params: &transaction::TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, crate::error::service::ServiceError> {
@@ -243,6 +244,7 @@ impl TransactionAdapter {
             }
             Self::BitCoin(chain) => {
                 let account = domain::chain::transaction::ChainTransDomain::account(
+                    ctx,
                     &params.base.chain_code,
                     &params.base.from,
                 )
@@ -265,7 +267,8 @@ impl TransactionAdapter {
             }
             Self::Ltc(chain) => {
                 let account =
-                    ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
+                    ChainTransDomain::account(ctx, &params.base.chain_code, &params.base.from)
+                        .await?;
 
                 let address_type = LtcAddressType::try_from(account.address_type())?;
 
@@ -287,7 +290,8 @@ impl TransactionAdapter {
             }
             Self::Doge(chain) => {
                 let account =
-                    ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
+                    ChainTransDomain::account(ctx, &params.base.chain_code, &params.base.from)
+                        .await?;
 
                 let address_type = DogAddressType::try_from(account.address_type())?;
 
@@ -575,7 +579,8 @@ impl TransactionAdapter {
                 }
 
                 let account =
-                    ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
+                    ChainTransDomain::account(ctx, &params.base.chain_code, &params.base.from)
+                        .await?;
 
                 let address_type = match account.address_type() {
                     Some(ty) => TonAddressType::try_from(ty.as_str())?,
@@ -671,17 +676,30 @@ impl TransactionAdapter {
 
     pub async fn estimate_fee(
         &self,
+        ctx: &'static crate::context::Context,
         req: transaction::BaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError> {
+        let backend = ctx.get_global_backend_api();
+        self.estimate_fee_with_ctx(ctx, req, main_symbol, backend.as_ref()).await
+    }
+
+    pub async fn estimate_fee_with_ctx(
+        &self,
+        ctx: &'static crate::context::Context,
+        req: transaction::BaseTransferReq,
+        main_symbol: &str,
+        backend_api: &wallet_transport_backend::api::BackendApi,
+    ) -> Result<String, crate::error::service::ServiceError> {
         let token_address = req.token_address.to_chain_token_option();
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
+        let pool = ctx.core_pool()?;
 
         let token_currency =
-            domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key(
+            domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+                &pool,
                 currency,
                 &req.chain_code,
                 main_symbol,
@@ -709,12 +727,9 @@ impl TransactionAdapter {
                     ))?;
                 }
 
-                let gas_oracle = ChainTransDomain::gas_oracle(
-                    &req.chain_code,
-                    &chain.provider,
-                    backend.as_ref(),
-                )
-                .await?;
+                let gas_oracle =
+                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
+                        .await?;
 
                 let params = eth::operations::TransferOpt::new(
                     &req.from,
@@ -729,7 +744,7 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&fee)
             }
             Self::BitCoin(chain) => {
-                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+                let account = ChainTransDomain::account(ctx, &req.chain_code, &req.from).await?;
                 let params = btc::operations::transfer::TransferArg::new(
                     &req.from,
                     &req.to,
@@ -752,7 +767,7 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Ltc(chain) => {
-                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+                let account = ChainTransDomain::account(ctx, &req.chain_code, &req.from).await?;
 
                 let address_type = LtcAddressType::try_from(account.address_type())?;
 
@@ -778,7 +793,7 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Doge(chain) => {
-                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+                let account = ChainTransDomain::account(ctx, &req.chain_code, &req.from).await?;
 
                 let address_type = DogAddressType::try_from(account.address_type())?;
 
@@ -868,6 +883,7 @@ impl TransactionAdapter {
                 };
                 let token_currency =
                     domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key(
+                        ctx,
                         currency,
                         &req.chain_code,
                         main_symbol,
@@ -879,7 +895,7 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Ton(chain) => {
-                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+                let account = ChainTransDomain::account(ctx, &req.chain_code, &req.from).await?;
 
                 let address_type = match account.address_type() {
                     Some(ty) => TonAddressType::try_from(ty.as_str())?,
@@ -943,6 +959,7 @@ impl TransactionAdapter {
 
     pub async fn approve_fee(
         &self,
+        ctx: &'static crate::context::Context,
         req: &transaction::ApproveReq,
         value: alloy::primitives::U256,
         main_symbol: &str,
@@ -953,7 +970,8 @@ impl TransactionAdapter {
         };
 
         let token_currency =
-            domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key(
+            domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+                &ctx.core_pool()?,
                 &currency,
                 &req.chain_code,
                 main_symbol,
@@ -1063,12 +1081,26 @@ impl TransactionAdapter {
 
     pub async fn swap_quote(
         &self,
+        ctx: &'static crate::context::Context,
         req: &QuoteReq,
         quote_resp: &AggQuoteResp,
         symbol: &str,
         sol_instructions: Option<SolInstructResp>,
     ) -> Result<(U256, String, String), crate::error::service::ServiceError> {
-        // 考虑滑点计算最小金额
+        let backend = ctx.get_global_backend_api();
+        self.swap_quote_with_ctx(ctx, req, quote_resp, symbol, sol_instructions, backend.as_ref())
+            .await
+    }
+
+    pub async fn swap_quote_with_ctx(
+        &self,
+        ctx: &'static crate::context::Context,
+        req: &QuoteReq,
+        quote_resp: &AggQuoteResp,
+        symbol: &str,
+        sol_instructions: Option<SolInstructResp>,
+        backend_api: &wallet_transport_backend::api::BackendApi,
+    ) -> Result<(U256, String, String), crate::error::service::ServiceError> {
         let min_amount_out = U256::from(1);
 
         let currency = {
@@ -1076,6 +1108,7 @@ impl TransactionAdapter {
             currency.currency().to_string()
         };
         let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            ctx,
             &currency,
             &req.chain_code,
             symbol,
@@ -1097,14 +1130,9 @@ impl TransactionAdapter {
                 };
 
                 let resp = eth_tx::estimate_swap(swap_params, chain).await?;
-
-                let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-                let gas_oracle = ChainTransDomain::gas_oracle(
-                    &req.chain_code,
-                    &chain.provider,
-                    backend.as_ref(),
-                )
-                .await?;
+                let gas_oracle =
+                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
+                        .await?;
                 let fee = FeeDetails::try_from((gas_oracle, resp.consumer.to::<i64>()))?
                     .to_resp(token_currency, &currency);
 
@@ -1186,6 +1214,7 @@ impl TransactionAdapter {
 
     pub async fn deposit_fee(
         &self,
+        ctx: &'static crate::context::Context,
         req: DepositReq,
         main_coin: &CoinEntity,
     ) -> Result<(String, String), crate::error::service::ServiceError> {
@@ -1194,7 +1223,9 @@ impl TransactionAdapter {
             currency.currency().to_string()
         };
 
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let core_pool = ctx.core_pool()?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &core_pool,
             &currency,
             &req.chain_code,
             &main_coin.symbol,
@@ -1269,6 +1300,7 @@ impl TransactionAdapter {
 
     pub async fn withdraw_fee(
         &self,
+        ctx: &'static crate::context::Context,
         req: WithdrawReq,
         main_coin: &CoinEntity,
     ) -> Result<(String, String), crate::error::service::ServiceError> {
@@ -1277,7 +1309,9 @@ impl TransactionAdapter {
             currency.currency().to_string()
         };
 
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let core_pool = ctx.core_pool()?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &core_pool,
             &currency,
             &req.chain_code,
             &main_coin.symbol,
