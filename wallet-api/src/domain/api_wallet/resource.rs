@@ -12,6 +12,11 @@ use crate::{
         },
         service::ServiceError,
     },
+    messaging::notify::{
+        FrontendNotifyEvent,
+        event::NotifyEvent,
+        other::{Process, TransactionProcessFrontend},
+    },
     request::{
         stake::{FreezeBalanceReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq},
         transaction::Signer,
@@ -73,6 +78,7 @@ impl ApiResourceDomain {
             owner_ctx.owner_address,
             frozen_balance_trx,
             args,
+            bill_kind,
             &req.signer,
             ctx,
         )
@@ -114,6 +120,7 @@ impl ApiResourceDomain {
             owner_ctx.owner_address,
             0,
             args,
+            bill_kind,
             &req.signer,
             ctx,
         )
@@ -147,6 +154,7 @@ impl ApiResourceDomain {
             req.owner_address.clone(),
             0,
             args,
+            BillKind::Vote,
             &req.signer,
             ctx,
         )
@@ -173,6 +181,7 @@ impl ApiResourceDomain {
             req.owner_address.clone(),
             0,
             args,
+            BillKind::WithdrawReward,
             &req.signer,
             ctx,
         )
@@ -247,6 +256,7 @@ impl ApiResourceDomain {
         owner_address: String,
         stake_amount_trx: i64,
         args: impl TronTxOperation<T>,
+        bill_kind: BillKind,
         signer: &Option<Signer>,
         ctx: &'static Context,
     ) -> Result<ApiResourceBroadcastOutcome, ServiceError>
@@ -254,6 +264,12 @@ impl ApiResourceDomain {
         T: Send + 'static,
     {
         let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            bill_kind,
+            Process::Building,
+        ));
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
+
         let raw_tx = args.build_raw_transaction(&chain.provider).await?;
         let balance = chain.balance(&owner_address, None).await?;
         let consumer = chain
@@ -287,6 +303,12 @@ impl ApiResourceDomain {
         let RawTx::Tron(raw_tx, ..) = raw_tx else {
             unreachable!("resource operation builds tron tx")
         };
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            bill_kind,
+            Process::Broadcast,
+        ));
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
+
         let broadcast_hash = chain.get_provider().exec_raw_transaction(raw_tx).await?.tx_id;
         if broadcast_hash != tx_hash {
             return Err(ServiceError::System(crate::error::system::SystemError::Internal(
