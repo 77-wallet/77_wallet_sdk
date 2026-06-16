@@ -48,6 +48,7 @@ pub enum ApiResourceOperationType {
     Unstake = 2,
     Vote = 3,
     WithdrawReward = 4,
+    WithdrawUnfreeze = 5,
 }
 
 impl ApiResourceOperationType {
@@ -57,6 +58,7 @@ impl ApiResourceOperationType {
             Self::Unstake => 2,
             Self::Vote => 3,
             Self::WithdrawReward => 4,
+            Self::WithdrawUnfreeze => 5,
         }
     }
 }

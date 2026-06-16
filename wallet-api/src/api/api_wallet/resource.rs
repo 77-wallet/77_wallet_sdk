@@ -2,7 +2,9 @@ use crate::{
     api::ReturnType,
     manager::WalletManager,
     request::stake::{FreezeBalanceReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq},
-    response_vo::standard_wallet::stake::{FreezeResp, VoteListResp, VoterInfoResp},
+    response_vo::standard_wallet::stake::{
+        FreezeResp, VoteListResp, VoterInfoResp, WithdrawUnfreezeResp,
+    },
     service::api_wallet::resource::ApiResourceService,
 };
 
@@ -51,5 +53,13 @@ impl WalletManager {
         password: &str,
     ) -> ReturnType<String> {
         ApiResourceService::new(self.ctx).withdraw_wallet_claim_votes_rewards(req, password).await
+    }
+
+    pub async fn api_withdraw_wallet_unfreeze(
+        &self,
+        req: WithdrawBalanceReq,
+        password: String,
+    ) -> ReturnType<WithdrawUnfreezeResp> {
+        ApiResourceService::new(self.ctx).withdraw_wallet_unfreeze(req, password).await
     }
 }

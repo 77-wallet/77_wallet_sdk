@@ -3,7 +3,9 @@ use crate::{
     context::Context,
     error::service::ServiceError,
     request::stake::{FreezeBalanceReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq},
-    response_vo::standard_wallet::stake::{FreezeResp, VoteListResp, VoterInfoResp},
+    response_vo::standard_wallet::stake::{
+        FreezeResp, VoteListResp, VoterInfoResp, WithdrawUnfreezeResp,
+    },
 };
 
 pub(crate) struct ApiResourceService {
@@ -61,5 +63,13 @@ impl ApiResourceService {
         ApiResourceApplication::new(self.ctx)
             .withdraw_wallet_claim_votes_rewards(req, password)
             .await
+    }
+
+    pub async fn withdraw_wallet_unfreeze(
+        &self,
+        req: WithdrawBalanceReq,
+        password: String,
+    ) -> Result<WithdrawUnfreezeResp, ServiceError> {
+        ApiResourceApplication::new(self.ctx).withdraw_wallet_unfreeze(req, password).await
     }
 }

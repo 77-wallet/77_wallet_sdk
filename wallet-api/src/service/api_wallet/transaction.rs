@@ -647,6 +647,7 @@ impl ApiTransService {
             },
             ApiResourceOperationType::Vote => BillKind::Vote,
             ApiResourceOperationType::WithdrawReward => BillKind::WithdrawReward,
+            ApiResourceOperationType::WithdrawUnfreeze => BillKind::WithdrawUnFreeze,
         };
 
         BillEntity {
@@ -1047,6 +1048,49 @@ mod transfer_token_tests {
         assert_eq!(bill.value, "12.5");
         assert_eq!(bill.status, 2);
         assert_eq!(bill.queue_id, "reward_trade_1");
+    }
+
+    #[test]
+    fn api_resource_withdraw_unfreeze_operation_maps_to_withdraw_unfreeze_bill_detail_entity() {
+        let now = chrono::Utc::now();
+        let operation = test_resource_operation(
+            ApiResourceOperationType::WithdrawUnfreeze,
+            ApiResourceType::Bandwidth,
+            "withdraw_unfreeze_hash",
+            "withdraw_unfreeze_trade_1",
+            "10",
+            now,
+        );
+
+        let bill = ApiTransService::convert_resource_operation_to_bill_entity(&operation);
+
+        assert_eq!(bill.hash, "withdraw_unfreeze_hash");
+        assert_eq!(bill.owner, "TWithdrawOwner");
+        assert_eq!(bill.tx_kind, BillKind::WithdrawUnFreeze.to_i8());
+        assert_eq!(bill.value, "10");
+        assert_eq!(bill.status, 2);
+        assert_eq!(bill.queue_id, "withdraw_unfreeze_trade_1");
+    }
+
+    #[test]
+    fn api_resource_withdraw_unfreeze_operation_stays_confirming_after_broadcast_only() {
+        let now = chrono::Utc::now();
+        let mut operation = test_resource_operation(
+            ApiResourceOperationType::WithdrawUnfreeze,
+            ApiResourceType::Bandwidth,
+            "withdraw_unfreeze_hash",
+            "withdraw_unfreeze_trade_1",
+            "10",
+            now,
+        );
+        operation.tx_status = None;
+        operation.result_status = None;
+
+        let bill = ApiTransService::convert_resource_operation_to_bill_entity(&operation);
+
+        assert_eq!(bill.tx_kind, BillKind::WithdrawUnFreeze.to_i8());
+        assert_eq!(bill.hash, "withdraw_unfreeze_hash");
+        assert_eq!(bill.status, 1);
     }
 
     fn test_resource_operation(

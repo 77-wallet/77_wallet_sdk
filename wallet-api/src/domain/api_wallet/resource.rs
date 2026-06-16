@@ -21,7 +21,7 @@ use crate::{
         stake::{FreezeBalanceReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq},
         transaction::Signer,
     },
-    response_vo::standard_wallet::stake::{FreezeResp, ResourceResp},
+    response_vo::standard_wallet::stake::{FreezeResp, ResourceResp, WithdrawUnfreezeResp},
 };
 use wallet_chain_interact::{
     BillResourceConsume,
@@ -31,7 +31,7 @@ use wallet_chain_interact::{
             TronTxOperation,
             stake::{
                 FreezeBalanceArgs, ResourceType, UnFreezeBalanceArgs, VoteWitnessArgs,
-                WithdrawBalanceArgs,
+                WithdrawBalanceArgs, WithdrawUnfreezeArgs,
             },
         },
     },
@@ -52,6 +52,7 @@ pub(crate) struct ApiResourceBroadcastOutcome {
     pub(crate) raw_tx: String,
     pub(crate) transaction_fee: String,
     pub(crate) resp: Option<FreezeResp>,
+    pub(crate) withdraw_unfreeze_resp: Option<WithdrawUnfreezeResp>,
 }
 
 pub(crate) struct ApiWithdrawWalletAccountContext {
@@ -192,6 +193,51 @@ impl ApiResourceDomain {
         Ok(outcome)
     }
 
+    pub(crate) async fn withdraw_wallet_unfreeze(
+        ctx: &'static Context,
+        req: WithdrawBalanceReq,
+        withdraw_amount_sun: i64,
+    ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
+        let owner_ctx = Self::withdraw_wallet_account_context(ctx, &req.owner_address).await?;
+
+        let args = WithdrawUnfreezeArgs {
+            owner_address: req.owner_address.clone(),
+            permission_id: req.signer.clone().map(|s| s.permission_id),
+        };
+        let mut outcome = Self::execute_tron_resource_operation(
+            req.owner_address.clone(),
+            0,
+            args,
+            BillKind::WithdrawUnFreeze,
+            &req.signer,
+            ctx,
+        )
+        .await?;
+        outcome.uid = Some(owner_ctx.uid);
+        outcome.resource_type = Some(ResourceType::BANDWIDTH);
+        outcome.amount = Some(withdraw_amount_sun.to_string());
+        outcome.withdraw_unfreeze_resp = Some(WithdrawUnfreezeResp {
+            amount: withdraw_amount_sun,
+            owner_address: outcome.owner_address.clone(),
+            tx_hash: outcome.tx_hash.clone(),
+        });
+        Ok(outcome)
+    }
+
+    pub(crate) async fn withdraw_wallet_unfreeze_amount(
+        ctx: &'static Context,
+        owner_address: &str,
+    ) -> Result<i64, ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
+        let can_withdraw = chain.get_provider().can_withdraw_unfreeze_amount(owner_address).await?;
+        if can_withdraw.amount <= 0 {
+            return Err(ServiceError::Business(BusinessError::Stake(
+                crate::error::business::stake::StakeError::NoWithdrawableAmount,
+            )));
+        }
+        Ok(can_withdraw.to_sun())
+    }
+
     pub(crate) async fn withdraw_wallet_account_context(
         ctx: &'static Context,
         owner_address: &str,
@@ -264,11 +310,6 @@ impl ApiResourceDomain {
         T: Send + 'static,
     {
         let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
-        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
-            bill_kind,
-            Process::Building,
-        ));
-        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         let raw_tx = args.build_raw_transaction(&chain.provider).await?;
         let balance = chain.balance(&owner_address, None).await?;
@@ -332,6 +373,7 @@ impl ApiResourceDomain {
             raw_tx: raw_tx_str,
             transaction_fee,
             resp: None,
+            withdraw_unfreeze_resp: None,
         })
     }
 

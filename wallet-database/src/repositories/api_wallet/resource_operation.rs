@@ -852,8 +852,8 @@ mod tests {
         assert_eq!(got.raw_tx.as_deref(), Some("{\"raw\":\"tx_1\"}"));
         assert_eq!(got.transaction_fee.as_deref(), Some("10"));
         assert!(got.last_broadcast_at.is_some());
-        assert_eq!(got.tx_status.as_deref(), Some("success"));
-        assert_eq!(got.result_status.as_deref(), Some("success"));
+        assert!(got.tx_status.is_none());
+        assert!(got.result_status.is_none());
 
         assert!(ApiResourceOperationRepo::scan_need_task_ack(&pool, 100).await.unwrap().is_empty());
         assert!(ApiResourceOperationRepo::scan_can_build(&pool, 100).await.unwrap().is_empty());

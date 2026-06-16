@@ -3,8 +3,15 @@ use crate::{
     context::Context,
     domain::api_wallet::resource::ApiResourceDomain,
     error::service::ServiceError,
+    messaging::notify::{
+        FrontendNotifyEvent,
+        event::NotifyEvent,
+        other::{Process, TransactionProcessFrontend},
+    },
     request::stake::{FreezeBalanceReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq},
-    response_vo::standard_wallet::stake::{FreezeResp, VoteListResp, VoterInfoResp},
+    response_vo::standard_wallet::stake::{
+        FreezeResp, VoteListResp, VoterInfoResp, WithdrawUnfreezeResp,
+    },
     service::stake::StackService,
 };
 use wallet_chain_interact::tron::operations::stake::ResourceType;
@@ -12,6 +19,7 @@ use wallet_database::{
     entities::{
         api_resource_operation::{ApiResourceOperationType, NewApiResourceOperation},
         api_resource_type::ApiResourceType as DbApiResourceType,
+        bill::BillKind,
     },
     repositories::api_wallet::resource_operation::ApiResourceOperationRepo,
 };
@@ -32,10 +40,16 @@ impl ApiResourceApplication {
     ) -> Result<FreezeResp, ServiceError> {
         WalletApplication::validate_password(self.ctx, &password).await?;
 
+        let resource = ResourceType::try_from(req.resource.as_str())?;
+        let bill_kind = match resource {
+            ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
+        self.notify_transaction_process(bill_kind, Process::Building).await?;
+
         let owner_ctx =
             ApiResourceDomain::withdraw_wallet_account_context(self.ctx, &req.owner_address)
                 .await?;
-        let resource = ResourceType::try_from(req.resource.as_str())?;
         let resource_trade_no = Self::client_resource_trade_no();
         self.create_client_resource_operation_pending(
             &owner_ctx.uid,
@@ -72,10 +86,16 @@ impl ApiResourceApplication {
     ) -> Result<FreezeResp, ServiceError> {
         WalletApplication::validate_password(self.ctx, &password).await?;
 
+        let resource = ResourceType::try_from(req.resource.as_str())?;
+        let bill_kind = match resource {
+            ResourceType::BANDWIDTH => BillKind::UnFreezeBandwidth,
+            ResourceType::ENERGY => BillKind::UnFreezeEnergy,
+        };
+        self.notify_transaction_process(bill_kind, Process::Building).await?;
+
         let owner_ctx =
             ApiResourceDomain::withdraw_wallet_account_context(self.ctx, &req.owner_address)
                 .await?;
-        let resource = ResourceType::try_from(req.resource.as_str())?;
         let resource_trade_no = Self::client_resource_trade_no();
         self.create_client_resource_operation_pending(
             &owner_ctx.uid,
@@ -111,6 +131,8 @@ impl ApiResourceApplication {
         password: &str,
     ) -> Result<String, ServiceError> {
         WalletApplication::validate_password(self.ctx, password).await?;
+        self.notify_transaction_process(BillKind::Vote, Process::Building).await?;
+
         let owner_ctx =
             ApiResourceDomain::withdraw_wallet_account_context(self.ctx, &req.owner_address)
                 .await?;
@@ -161,6 +183,8 @@ impl ApiResourceApplication {
         password: &str,
     ) -> Result<String, ServiceError> {
         WalletApplication::validate_password(self.ctx, password).await?;
+        self.notify_transaction_process(BillKind::WithdrawReward, Process::Building).await?;
+
         let owner_ctx =
             ApiResourceDomain::withdraw_wallet_account_context(self.ctx, &req.owner_address)
                 .await?;
@@ -185,6 +209,59 @@ impl ApiResourceApplication {
         )
         .await?;
         Ok(outcome.tx_hash)
+    }
+
+    pub(crate) async fn withdraw_wallet_unfreeze(
+        &self,
+        req: WithdrawBalanceReq,
+        password: String,
+    ) -> Result<WithdrawUnfreezeResp, ServiceError> {
+        WalletApplication::validate_password(self.ctx, &password).await?;
+        self.notify_transaction_process(BillKind::WithdrawUnFreeze, Process::Building).await?;
+
+        let owner_ctx =
+            ApiResourceDomain::withdraw_wallet_account_context(self.ctx, &req.owner_address)
+                .await?;
+        let withdraw_amount_sun =
+            ApiResourceDomain::withdraw_wallet_unfreeze_amount(self.ctx, &req.owner_address)
+                .await?;
+        let resource_trade_no = Self::client_resource_trade_no();
+        self.create_client_resource_operation_pending(
+            &owner_ctx.uid,
+            &resource_trade_no,
+            owner_ctx.owner_address,
+            ResourceType::BANDWIDTH,
+            withdraw_amount_sun.to_string(),
+            ApiResourceOperationType::WithdrawUnfreeze,
+        )
+        .await?;
+
+        let outcome =
+            ApiResourceDomain::withdraw_wallet_unfreeze(self.ctx, req, withdraw_amount_sun).await?;
+        self.complete_client_resource_operation_broadcast(
+            &resource_trade_no,
+            outcome.amount.clone(),
+            &outcome.tx_hash,
+            &outcome.raw_tx,
+            &outcome.transaction_fee,
+        )
+        .await?;
+
+        outcome.withdraw_unfreeze_resp.ok_or_else(|| {
+            ServiceError::System(crate::error::system::SystemError::Internal(
+                "api wallet withdraw unfreeze response missing".to_string(),
+            ))
+        })
+    }
+
+    async fn notify_transaction_process(
+        &self,
+        bill_kind: BillKind,
+        process: Process,
+    ) -> Result<(), ServiceError> {
+        let data =
+            NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(bill_kind, process));
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await
     }
 
     #[allow(clippy::too_many_arguments)]
