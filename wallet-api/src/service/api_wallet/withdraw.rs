@@ -1,9 +1,7 @@
 use crate::{
     application::api_wallet_withdraw::ApiWithdrawApplication,
     context::Context,
-    domain::api_wallet::trans::withdraw::ApiWithdrawDomain,
     error::service::ServiceError,
-    request::api_wallet::trans::ApiWithdrawReq,
     response_vo::api_wallet::withdraw::{ApiWithdrawOrderDetailVo, ApiWithdrawOrderVo},
 };
 use wallet_database::{
@@ -108,30 +106,12 @@ impl WithdrawService {
         uid: &str,
         audit: u32,
     ) -> Result<(), ServiceError> {
-        let req = ApiWithdrawReq {
-            from: from.to_string(),
-            to: to.to_string(),
-            value: value.to_string(),
-            validate: validate.to_string(),
-            chain_code: chain_code.to_string(),
-            token_address: token_key,
-            symbol: symbol.to_string(),
-            trade_no: trade_no.to_string(),
-            trade_type,
-            uid: uid.to_string(),
-            audit: audit,
-            out_order_id: None,
-            client_id: None,
-            create_time: None,
-        };
-        let res = ApiWithdrawDomain::withdraw_with_ctx(self.ctx, &req).await;
-        match res {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                tracing::error!("withdrawal_order failed with {:?}", e);
-                Err(e.into())
-            }
-        }
+        ApiWithdrawApplication::new(self.ctx)
+            .withdrawal_order(
+                from, to, value, validate, chain_code, token_key, symbol, trade_no, trade_type,
+                uid, audit,
+            )
+            .await
     }
 
     pub async fn sign_withdrawal_order(&self, trade_no: &str) -> Result<(), ServiceError> {
