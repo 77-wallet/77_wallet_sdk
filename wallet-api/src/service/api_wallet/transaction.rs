@@ -1,20 +1,15 @@
 use crate::{
+    application::api_wallet_transfer::ApiTransferApplication,
     context::Context,
     domain::{
         api_wallet::{
             adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain,
-            trans::ApiTransDomain,
         },
         app::config::ConfigDomain,
         bill::BillDomain,
-        wallet::WalletDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx,
-    request::api_wallet::{
-        trans::{ApiBaseTransferReq, ApiTransferReq},
-        transfer::ApiTransferExReq,
-    },
+    request::api_wallet::transfer::ApiTransferExReq,
     response_vo::standard_wallet::transaction::{BillDetailVo, TransactionResult},
 };
 use chrono::Utc;
@@ -24,9 +19,11 @@ use wallet_chain_interact::{BillResourceConsume, types::ChainPrivateKey};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool,
     entities::{
+        api_account::ApiAccountEntity,
         api_resource_operation::{ApiResourceOperationEntity, ApiResourceOperationType},
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
+        api_wallet::ApiWalletEntity,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
         asset_token_key::AssetTokenKey,
         bill::{BillEntity, BillKind, RecentBillListVo, SyncBillEntity},
@@ -34,14 +31,13 @@ use wallet_database::{
     pagination::Pagination,
     repositories::{
         api_wallet::{
-            account::ApiAccountRepo, coin::ApiCoinRepo, nonce::ApiNonceRepo,
+            account::ApiAccountRepo, coin::ApiCoinRepo,
             resource_operation::ApiResourceOperationRepo, wallet::ApiWalletRepo,
             withdraw::ApiWithdrawRepo,
         },
         bill::BillRepo,
     },
 };
-use wallet_types::chain::chain::ChainCode;
 use wallet_utils::unit;
 
 pub struct ApiTransService {
@@ -53,61 +49,12 @@ impl ApiTransService {
         Self { ctx }
     }
 
-    pub(crate) fn build_api_transfer_base(
-        params: &ApiTransferExReq,
-        token_key: &AssetTokenKey,
-        decimals: u8,
-    ) -> ApiBaseTransferReq {
-        ApiBaseTransferReq {
-            from: params.base.from.clone(),
-            to: params.base.to.clone(),
-            value: params.base.value.clone(),
-            chain_code: params.base.chain_code.clone(),
-            token_address: token_key.clone(),
-            decimals,
-            symbol: params.base.symbol.clone(),
-            request_resource_id: params.base.request_resource_id.clone(),
-            spend_all: params.base.spend_all,
-            notes: params.base.notes.clone(),
-            metadata: Some(params.fee_setting.clone()),
-        }
-    }
-
-    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
-        let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-        let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
-        Ok(nonce as i64)
-    }
-
-    pub(crate) async fn get_transfer_nonce(
-        &self,
-        from_addr: &str,
-        chain_code: &str,
-        chain_code_enum: ChainCode,
-    ) -> Result<i64, ServiceError> {
-        match chain_code_enum {
-            ChainCode::Ethereum | ChainCode::BnbSmartChain => {
-                self.get_eth_nonce(from_addr, chain_code).await
-            }
-            _ => Ok(0),
-        }
-    }
-
     pub async fn transfer(
         &self,
         params: ApiTransferExReq,
         _bill_kind: BillKind,
     ) -> Result<TransactionResult, ServiceError> {
-        WalletDomain::validate_password_with_context(self.ctx, &params.password).await?;
-
-        let private_key =
-            crate::domain::api_wallet::account::ApiAccountDomain::get_private_key_with_ctx(
-                self.ctx,
-                &params.base.from,
-                &params.base.chain_code,
-            )
-            .await?;
-        self.transfer_with_private_key(params, private_key).await
+        ApiTransferApplication::new(self.ctx).transfer(params).await
     }
 
     pub(crate) async fn transfer_with_private_key(
@@ -115,85 +62,7 @@ impl ApiTransService {
         params: ApiTransferExReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransactionResult, ServiceError> {
-        let from_addr = params.base.from.clone();
-        let _gate =
-            crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?
-                .acquire_transfer_gate(&from_addr, &params.base.chain_code)
-                .await;
-
-        let pool = self.ctx.api_wallet_pool()?;
-        let api_transaction_pool = self.ctx.api_transaction_pool()?;
-        let account = ApiAccountRepo::find_one_by_address_chain_code(
-            &params.base.from,
-            &params.base.chain_code,
-            &pool,
-        )
-        .await?
-        .ok_or(ServiceError::Business(ApiWalletError::NotFoundAccount.into()))?;
-        let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address).await?.ok_or(
-            ServiceError::Business(
-                ApiWalletError::Wallet(
-                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-                )
-                .into(),
-            ),
-        )?;
-
-        let token_key = params.base.token_address.clone();
-        let coin = ApiCoinDomain::get_coin_by_token_key_exact_with_ctx(
-            self.ctx,
-            &params.base.chain_code,
-            token_key.clone(),
-        )
-        .await?;
-
-        let chain_code = params.base.chain_code.as_str();
-        let chain_code: ChainCode = chain_code.try_into()?;
-        let nonce =
-            self.get_transfer_nonce(&params.base.from, &params.base.chain_code, chain_code).await?;
-
-        let req = ApiTransferReq {
-            base: Self::build_api_transfer_base(&params, &token_key, coin.decimals),
-            password: params.password.to_string(),
-            nonce: nonce as u64,
-        };
-        let res = ApiTransDomain::transfer_with_ctx(self.ctx, req, Some(private_key)).await?;
-        let resource_consume = res.resource_consume().unwrap_or_else(|_| "".to_string());
-        let trade_no = uuid::Uuid::new_v4().to_string();
-        ApiWithdrawRepo::upsert_api_withdraw(
-            &api_transaction_pool,
-            &wallet.uid,
-            &wallet.name,
-            &params.base.from,
-            &params.base.to,
-            &params.base.value,
-            "",
-            &params.base.chain_code,
-            token_key,
-            &params.base.symbol,
-            &trade_no,
-            None,
-            None,
-            None,
-            ApiTradeType::SelfWithdraw,
-            nonce,
-            Some(res.tx_hash.clone()),
-            ApiWithdrawStatus::Init,
-            ApiWithdrawStatus::Init,
-            resource_consume.as_str(),
-            res.fee.as_str(),
-            None,
-            None,
-        )
-        .await?;
-        ApiNonceRepo::set_nonce_floor(
-            &api_transaction_pool,
-            &params.base.from,
-            &params.base.chain_code,
-            nonce,
-        )
-        .await?;
-        Ok(TransactionResult { tx_hash: res.tx_hash })
+        ApiTransferApplication::new(self.ctx).transfer_with_private_key(params, private_key).await
     }
 
     pub async fn bill_detail(
@@ -313,15 +182,15 @@ impl ApiTransService {
         let api_transaction_pool = self.ctx.api_transaction_pool()?;
         let uid = match root_addr.clone() {
             Some(addr) => {
-                let wallet = ApiWalletRepo::find_by_address(&pool, addr.as_str()).await?.ok_or(
-                    ServiceError::Business(
+                let wallet: ApiWalletEntity = ApiWalletRepo::find_by_address(&pool, addr.as_str())
+                    .await?
+                    .ok_or(ServiceError::Business(
                         ApiWalletError::Wallet(
                             crate::error::business::api_wallet::wallet::WalletError::NotFound
                                 .into(),
                         )
                         .into(),
-                    ),
-                )?;
+                    ))?;
                 wallet
             }
             None => {
@@ -708,7 +577,7 @@ impl ApiTransService {
             chain_count = chain_codes.len(),
             "api_bill_lists.build_reference_addrs -> api_account_list"
         );
-        let accounts =
+        let accounts: Vec<ApiAccountEntity> =
             ApiAccountRepo::api_account_list(pool, root_addr, account_id, chain_codes).await?;
         let fallback_addrs = accounts.into_iter().map(|item| item.address).collect::<Vec<_>>();
         Ok(Self::resolve_reference_addrs(None, fallback_addrs))
@@ -782,7 +651,10 @@ impl ApiTransService {
 #[cfg(test)]
 mod transfer_token_tests {
     use super::ApiTransService;
-    use crate::request::api_wallet::{trans::ApiBaseTransferReq, transfer::ApiTransferExReq};
+    use crate::{
+        application::api_wallet_transfer::ApiTransferApplication,
+        request::api_wallet::{trans::ApiBaseTransferReq, transfer::ApiTransferExReq},
+    };
     use wallet_database::entities::{
         api_resource_operation::{
             ApiResourceOperationEntity, ApiResourceOperationStatus, ApiResourceOperationTaskSource,
@@ -817,7 +689,8 @@ mod transfer_token_tests {
     #[test]
     fn build_api_transfer_base_native_token_uses_none_for_chain() {
         let params = make_transfer_ex_req(Some(""));
-        let base = ApiTransService::build_api_transfer_base(&params, &AssetTokenKey::Native, 6);
+        let base =
+            ApiTransferApplication::build_api_transfer_base(&params, &AssetTokenKey::Native, 6);
         assert_eq!(base.token_address, AssetTokenKey::Native);
     }
 
@@ -825,7 +698,7 @@ mod transfer_token_tests {
     fn build_api_transfer_base_contract_token_preserved_for_chain() {
         let params = make_transfer_ex_req(Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
         let token = AssetTokenKey::from_raw(Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
-        let base = ApiTransService::build_api_transfer_base(&params, &token, 6);
+        let base = ApiTransferApplication::build_api_transfer_base(&params, &token, 6);
         assert_eq!(base.token_address, token);
     }
 
