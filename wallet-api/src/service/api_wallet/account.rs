@@ -252,8 +252,9 @@ impl ApiAccountService {
         chain_code: &str,
         password: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
-        WalletDomain::validate_password_with_context(self.ctx, password).await?;
-        Ok(ApiAccountDomain::get_private_key_with_ctx(self.ctx, address, chain_code).await?)
+        ApiAccountApplication::new(self.ctx)
+            .get_account_private_key(address, chain_code, password)
+            .await
     }
 
     pub async fn address_used(
