@@ -26,6 +26,14 @@ impl WalletManager {
     ) -> ReturnType<Vec<crate::response_vo::standard_wallet::chain::NodeDynData>> {
         NodeService::new(self.ctx).get_node_dynamic_data(chain_code).await
     }
+
+    pub async fn get_node_dynamic_data_by_id(
+        &self,
+        chain_code: &str,
+        node_id: &str,
+    ) -> ReturnType<crate::response_vo::standard_wallet::chain::NodeDynData> {
+        NodeService::new(self.ctx).get_node_dynamic_data_by_id(chain_code, node_id).await
+    }
 }
 
 #[cfg(all(test, feature = "integration-tests"))]

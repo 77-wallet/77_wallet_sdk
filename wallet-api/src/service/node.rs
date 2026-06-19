@@ -1,11 +1,4 @@
-use crate::{
-    context::Context,
-    domain::{self, node::NodeDomain},
-};
-use wallet_database::{
-    entities::node::NodeCreateVo,
-    repositories::{chain::ChainRepo, node::NodeRepo},
-};
+use crate::{application::node::NodeApplication, context::Context};
 
 pub struct NodeService {
     ctx: &'static Context,
@@ -15,7 +8,9 @@ impl NodeService {
     pub fn new(ctx: &'static Context) -> Self {
         Self { ctx }
     }
+}
 
+impl NodeService {
     pub async fn add_node(
         &self,
         name: &str,
@@ -24,13 +19,7 @@ impl NodeService {
         _ws_url: &str,
         http_url: Option<String>,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let core_pool = self.ctx.core_pool()?;
-        let id = NodeDomain::gen_node_id(name, chain_code);
-        let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
-        let res = NodeRepo::upsert(&core_pool, req)
-            .await
-            .map_err(crate::error::service::ServiceError::Database)?;
-        Ok(res.node_id)
+        NodeApplication::new(self.ctx).add_node(name, chain_code, rpc_url, http_url).await
     }
 
     // // 首先在没有请求后端接口的情况下，只需要初始化默认的链信息和节点信息
@@ -56,35 +45,7 @@ impl NodeService {
         Vec<crate::response_vo::standard_wallet::chain::NodeListRes>,
         crate::error::service::ServiceError,
     > {
-        let core_pool = self.ctx.core_pool()?;
-        let Some(chain) = ChainRepo::detail(&core_pool, chain_code).await? else {
-            return Err(crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-                ),
-            ));
-        };
-
-        let node_list =
-            NodeRepo::get_node_list_in_chain_codes(&core_pool, &[chain_code.to_string()], Some(1))
-                .await?;
-
-        let res = node_list
-            .into_iter()
-            .map(|node| {
-                let status = if chain.node_id == Some(node.node_id.clone()) { 1 } else { 0 };
-                crate::response_vo::standard_wallet::chain::NodeListRes {
-                    node_id: node.node_id,
-                    name: node.name,
-                    chain_code: node.chain_code,
-                    rpc_url: node.rpc_url,
-                    ws_url: node.ws_url,
-                    status,
-                }
-            })
-            .collect();
-
-        Ok(res)
+        NodeApplication::new(self.ctx).get_node_list(chain_code).await
     }
 
     // 包括块高、延迟
@@ -95,44 +56,17 @@ impl NodeService {
         Vec<crate::response_vo::standard_wallet::chain::NodeDynData>,
         crate::error::service::ServiceError,
     > {
-        // let node_list = self.get_node_list(chain_code).await?;
-        let core_pool = self.ctx.core_pool()?;
-        // let list_with_node =
-        //     wallet_database::dao::node::NodeDao::get_node_list_in_chain_codes(
-        //         &*pool,
-        //         vec![chain_code],
-        //     )
-        //     .await?;
-        let list_with_node =
-            NodeRepo::get_node_list_in_chain_codes(&core_pool, &[chain_code.to_string()], Some(1))
-                .await?;
+        NodeApplication::new(self.ctx).get_node_dynamic_data(chain_code).await
+    }
 
-        let mut res = Vec::new();
-        for node in list_with_node {
-            let name = node.name.clone();
-            let node_id = node.node_id.clone();
-            let chain_instance =
-                domain::chain::adapter::ChainAdapterFactory::get_node_transaction_adapter_with_ctx(
-                    &self.ctx,
-                    chain_code,
-                    &node.rpc_url,
-                    &node.network,
-                )
-                .await?;
-
-            let start = std::time::Instant::now();
-            let block_height =
-                chain_instance.block_num().await.ok().map(|h| h as i64).unwrap_or(-1);
-            let delay = (start.elapsed().as_millis() / 2) as u64;
-            res.push(crate::response_vo::standard_wallet::chain::NodeDynData {
-                chain_code: chain_code.to_string(),
-                node_id,
-                name,
-                delay,
-                block_height,
-            })
-        }
-
-        Ok(res)
+    pub async fn get_node_dynamic_data_by_id(
+        &self,
+        chain_code: &str,
+        node_id: &str,
+    ) -> Result<
+        crate::response_vo::standard_wallet::chain::NodeDynData,
+        crate::error::service::ServiceError,
+    > {
+        NodeApplication::new(self.ctx).get_node_dynamic_data_by_id(chain_code, node_id).await
     }
 }
