@@ -218,6 +218,24 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: fee-result ACK must be sent before build is allowed after a
   completed fee upload.
 
+### Collect Pre-Broadcast Backend Failure Finish
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  src/domain/api_wallet/trans/confirm_tx_tests.rs
+  collect_pre_broadcast_fee_fail_should_finish_without_tx_exec_receipt
+  ```
+
+- Backend: none.
+- DB facts: `transaction_time = NULL`, `status = Failure`, fee-insufficient
+  error facts are retained, `finished_at IS NOT NULL`, and
+  `tx_exec_receipt_uploaded_at = NULL`.
+- Invariant: when backend has already confirmed a collect failure before any
+  broadcast evidence exists, SDK must finish locally and must not upload a
+  failed TxExecReceipt back to backend.
+
 ### Collect Fee Check
 
 - Layer: integration.

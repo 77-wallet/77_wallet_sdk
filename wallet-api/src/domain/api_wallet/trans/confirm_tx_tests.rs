@@ -78,7 +78,7 @@ async fn collect_not_found_should_error() {
 }
 
 #[tokio::test]
-async fn collect_pre_broadcast_fee_fail_should_not_write_transaction_time() {
+async fn collect_pre_broadcast_fee_fail_should_finish_without_tx_exec_receipt() {
     let db = TestFundsDb::new().await;
     let trade_no = "T_collect_pre_broadcast_fee_fail";
 
@@ -120,6 +120,14 @@ async fn collect_pre_broadcast_fee_fail_should_not_write_transaction_time() {
     );
     assert_eq!(after.status, ApiCollectStatus::Failure);
     assert_eq!(after.err_code, Some(ApiCollectErrCode::FeeInsufficient));
+    assert!(
+        after.finished_at.is_some(),
+        "pre-broadcast backend failure should finish locally without waiting for receipt upload"
+    );
+    assert!(
+        after.tx_exec_receipt_uploaded_at.is_none(),
+        "pre-broadcast backend failure must not upload a tx execution receipt"
+    );
 }
 
 #[tokio::test]

@@ -1929,6 +1929,7 @@ impl ApiCollectDao {
     ///
     /// ⚠️ 调用约束：
     /// - 仅允许在链上事实已确认的前提下调用（transaction_time IS NOT NULL）
+    /// - 或后端已确认预广播失败，且本地已有终止错误事实
     /// - 仅允许调用一次（finished_at IS NULL）
     /// - 任何 ACK / upload / retry / worker 都不得写 finished_at
     /// - 只有“链终态确认模块”能调用此方法
@@ -1953,7 +1954,16 @@ impl ApiCollectDao {
                     OR (
                         transaction_time IS NULL
                         AND err_code IS NOT NULL
-                        AND tx_exec_receipt_uploaded_at IS NOT NULL
+                        AND (
+                            tx_exec_receipt_uploaded_at IS NOT NULL
+                            OR (
+                                last_broadcast_at IS NULL
+                                AND (
+                                    tx_hash IS NULL
+                                    OR trim(tx_hash) = ''
+                                )
+                            )
+                        )
                     )
               )
         "#;
@@ -3444,6 +3454,94 @@ mod tests {
         let records =
             ApiCollectDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
         assert!(records.iter().any(|r| r.trade_no == "C_RECEIPT_FAIL_EMPTY_HASH_ALLOWED"));
+    }
+
+    #[tokio::test]
+    async fn mark_chain_finished_allows_pre_broadcast_failure_only() {
+        let dir = make_temp_dir("wallet_db_api_collect_finish_pre_broadcast_fail");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for trade_no in [
+            "C_FINISH_NO_FACT",
+            "C_FINISH_PRE_BROADCAST_FAIL",
+            "C_FINISH_BROADCAST_FAIL_WITHOUT_RECEIPT",
+        ] {
+            ApiCollectRepo::upsert_api_collect(
+                &pool,
+                "uid",
+                "n",
+                "from",
+                "to",
+                "0",
+                "v",
+                "tron",
+                None,
+                "USDT",
+                trade_no,
+                2,
+                ApiCollectStatus::Init,
+                0,
+            )
+            .await
+            .unwrap();
+        }
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET err_code = 6002,
+                 err_msg = 'confirm transfer fee failed insufficient balance'
+             WHERE trade_no = ?",
+        )
+        .bind("C_FINISH_PRE_BROADCAST_FAIL")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET err_code = 6099,
+                 tx_hash = '0xbroadcasted',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_FINISH_BROADCAST_FAIL_WITHOUT_RECEIPT")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let no_fact_rows =
+            ApiCollectDao::mark_chain_finished(pool.as_ref(), "C_FINISH_NO_FACT").await.unwrap();
+        assert_eq!(no_fact_rows, 0);
+
+        let pre_broadcast_rows =
+            ApiCollectDao::mark_chain_finished(pool.as_ref(), "C_FINISH_PRE_BROADCAST_FAIL")
+                .await
+                .unwrap();
+        assert_eq!(pre_broadcast_rows, 1);
+
+        let broadcast_without_receipt_rows = ApiCollectDao::mark_chain_finished(
+            pool.as_ref(),
+            "C_FINISH_BROADCAST_FAIL_WITHOUT_RECEIPT",
+        )
+        .await
+        .unwrap();
+        assert_eq!(broadcast_without_receipt_rows, 0);
+
+        let rec = ApiCollectDao::get_api_collect_by_trade_no(
+            pool.as_ref(),
+            "C_FINISH_PRE_BROADCAST_FAIL",
+        )
+        .await
+        .unwrap();
+        assert!(rec.finished_at.is_some());
+        assert!(rec.tx_exec_receipt_uploaded_at.is_none());
+
+        let receipt_candidates =
+            ApiCollectDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(!receipt_candidates
+            .iter()
+            .any(|r| r.trade_no == "C_FINISH_PRE_BROADCAST_FAIL"));
     }
 
     #[tokio::test]

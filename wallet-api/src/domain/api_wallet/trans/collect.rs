@@ -335,6 +335,15 @@ impl ApiCollectDomain {
                     // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
                 }
                 tracing::info!(trade_no=%trade_no, "交易状态更新成功");
+
+                let finished_rows = ApiCollectRepo::mark_chain_finished(pool, trade_no).await?;
+                if finished_rows != 1 {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        rows_affected = finished_rows,
+                        "pre-broadcast collect failure did not mark lifecycle finished"
+                    );
+                }
             } else {
                 tracing::info!(trade_no=%trade_no, "更新交易状态为失败");
                 let rows_affected = ApiCollectRepo::update_api_collect_next_status(
