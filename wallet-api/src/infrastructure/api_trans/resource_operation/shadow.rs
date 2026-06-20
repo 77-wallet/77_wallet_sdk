@@ -1054,6 +1054,15 @@ impl ResourceOperationWorker {
         resource_trade_no: &str,
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
+        if err.is_transient_db_pool_timeout() {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                error = %err,
+                "Skip marking resource operation failed: local DB pool timeout is retryable infrastructure noise"
+            );
+            return Ok(());
+        }
+
         let (err_code, err_msg) = Self::failure_fact_from_error(err);
         let affected = ApiResourceOperationRepo::mark_failed_if_unfinished(
             &self.ctx.api_transaction_pool()?,
