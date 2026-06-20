@@ -443,6 +443,9 @@ impl PlatformResourceDelegateWorker {
         let Err(err) = result else {
             return Ok(());
         };
+        if err.is_transient_db_pool_timeout() {
+            return self.schedule_retry(resource_trade_no, &err).await;
+        }
         match err.retry_policy() {
             wallet_utils::RetryPolicy::Never => {
                 let (err_code, err_msg) = resource_delegation_failure_fact(&err);

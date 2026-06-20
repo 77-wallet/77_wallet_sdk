@@ -637,6 +637,16 @@ impl ShadowCollectWorker {
         resource_trade_no: &str,
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
+        if err.is_transient_db_pool_timeout() {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Skip marking resource delegation failed: local DB pool timeout is retryable infrastructure noise"
+            );
+            return Ok(());
+        }
+
         // 统一失败 fact 映射，保持与其他 resource delegation 统一上报约定。
         let (err_code, err_msg) = resource_delegation_failure_fact(err);
         let affected = ApiResourceDelegationRepo::mark_failed_if_unfinished(
@@ -3055,6 +3065,16 @@ impl ShadowCollectWorker {
         err: ServiceError,
     ) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, error = %err, source = "shadow_worker_v2", "Handling collect tx failed");
+
+        if err.is_transient_db_pool_timeout() {
+            warn!(
+                trade_no = %trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Skip marking collect tx failed: local DB pool timeout is retryable infrastructure noise"
+            );
+            return Ok(());
+        }
 
         // 🔒 事实保护：检查是否已存在成功事实
         // 规则：一旦成功事实（transaction_time）成立，失败事实永远不能覆盖它
