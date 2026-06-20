@@ -1,7 +1,6 @@
 use crate::{
     application::account::ApiAccountApplication,
     context::Context,
-    domain::{account::AccountDomain, api_wallet::account::ApiAccountDomain},
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     response_vo::{
@@ -12,11 +11,7 @@ use crate::{
     },
 };
 use wallet_chain_interact::types::ChainPrivateKey;
-use wallet_database::{
-    entities::api_wallet::ApiWalletType, pagination::Pagination,
-    repositories::api_wallet::account::ApiAccountRepo,
-};
-use wallet_types::chain::address::category::AddressCategory;
+use wallet_database::{entities::api_wallet::ApiWalletType, pagination::Pagination};
 
 pub struct ApiAccountService {
     ctx: &'static Context,
@@ -55,23 +50,9 @@ impl ApiAccountService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-        tracing::info!(
-            wallet_address = %wallet_address,
-            account_id = ?account_id,
-            chain_code = ?chain_code,
-            page,
-            page_size,
-            "api_wallet.account.list_api_accounts_v2 requested"
-        );
-        ApiAccountDomain::list_api_accounts_v2_with_ctx(
-            self.ctx,
-            wallet_address,
-            account_id,
-            chain_code,
-            page,
-            page_size,
-        )
-        .await
+        ApiAccountApplication::new(self.ctx)
+            .list_api_accounts_v2(wallet_address, account_id, chain_code, page, page_size)
+            .await
     }
 
     pub async fn expand_address(
@@ -157,7 +138,7 @@ impl ApiAccountService {
         index: i32,
         uid: &str,
     ) -> Result<(), ServiceError> {
-        Ok(ApiAccountDomain::address_used_with_ctx(self.ctx, chain_code, index, uid).await?)
+        ApiAccountApplication::new(self.ctx).address_used(chain_code, index, uid).await
     }
 
     pub async fn edit_account_name(
@@ -199,29 +180,9 @@ impl ApiAccountService {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<QueryApiAccountDerivationPath>, ServiceError> {
-        let pool = self.ctx.api_wallet_pool()?;
-        let results = ApiAccountRepo::list_by_wallet_address_account_id(
-            &pool,
-            Some(wallet_address),
-            Some(account_id),
-        )
-        .await?;
-        let r = results
-            .into_iter()
-            .map(|o| {
-                let address_type =
-                    AccountDomain::get_show_address_type(&o.chain_code, o.address_type())
-                        .unwrap_or(AddressCategory::Other);
-
-                QueryApiAccountDerivationPath::new(
-                    o.wallet_address.as_str(),
-                    o.derivation_path.as_str(),
-                    o.chain_code.as_str(),
-                    address_type,
-                )
-            })
-            .collect();
-        Ok(r)
+        ApiAccountApplication::new(self.ctx)
+            .get_account_derivation_path(wallet_address, account_id)
+            .await
     }
 
     /// 地址搜索：在指定 API 钱包 uid 范围内搜索账户地址
