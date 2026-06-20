@@ -3539,9 +3539,7 @@ mod tests {
 
         let receipt_candidates =
             ApiCollectDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
-        assert!(!receipt_candidates
-            .iter()
-            .any(|r| r.trade_no == "C_FINISH_PRE_BROADCAST_FAIL"));
+        assert!(!receipt_candidates.iter().any(|r| r.trade_no == "C_FINISH_PRE_BROADCAST_FAIL"));
     }
 
     #[tokio::test]

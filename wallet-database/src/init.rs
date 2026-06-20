@@ -217,6 +217,14 @@ mod tests {
         assert!(created);
     }
 
+    #[test]
+    fn default_sqlite_pool_config_keeps_single_sqlite_writer() {
+        let config = SqlitePoolConfig::default();
+
+        assert_eq!(config.reader_max_connections, 4);
+        assert_eq!(config.writer_max_connections, 1);
+    }
+
     #[tokio::test]
     async fn analyze_is_due_uses_user_version_watermark() {
         let pool = Arc::new(

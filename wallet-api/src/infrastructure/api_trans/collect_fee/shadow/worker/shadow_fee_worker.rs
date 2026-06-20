@@ -1128,6 +1128,16 @@ impl ShadowFeeWorker {
     ) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "Handling fee tx failed");
 
+        if err.is_transient_db_pool_timeout() {
+            warn!(
+                trade_no = %trade_no,
+                error = %err,
+                source = "shadow_fee_worker",
+                "Skip marking fee tx failed: local DB pool timeout is retryable infrastructure noise"
+            );
+            return Ok(());
+        }
+
         if Self::is_solana_recipient_rent_error(&err) {
             warn!(
                 trade_no = %trade_no,
@@ -1368,6 +1378,15 @@ mod tests {
     use wallet_database::{
         ApiWalletDbPool, SqliteContext, repositories::api_wallet::fee::ApiFeeRepo,
     };
+
+    #[test]
+    fn transient_db_pool_error_is_not_terminal_fee_failure() {
+        let err = ServiceError::Database(wallet_database::Error::Database(
+            wallet_database::DatabaseError::Sqlx(sqlx::Error::PoolTimedOut),
+        ));
+
+        assert!(err.is_transient_db_pool_timeout());
+    }
 
     async fn test_ctx() -> &'static crate::context::Context {
         static CTX: tokio::sync::OnceCell<&'static crate::context::Context> =

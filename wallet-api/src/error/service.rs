@@ -46,6 +46,15 @@ pub enum ServiceError {
 }
 
 impl ServiceError {
+    pub(crate) fn is_transient_db_pool_timeout(&self) -> bool {
+        matches!(
+            self,
+            ServiceError::Database(wallet_database::Error::Database(
+                wallet_database::DatabaseError::Sqlx(sqlx::Error::PoolTimedOut)
+            ))
+        )
+    }
+
     fn rpc_auth_unauthorized_marker(msg: &str) -> bool {
         let lower = msg.to_ascii_lowercase();
         lower.contains("code=401")
@@ -109,6 +118,16 @@ mod tests {
         ));
 
         assert!(err.is_rpc_auth_unauthorized());
+    }
+
+    #[test]
+    fn db_pool_timeout_matches_structured_error() {
+        let err = ServiceError::Database(wallet_database::Error::Database(
+            wallet_database::DatabaseError::Sqlx(sqlx::Error::PoolTimedOut),
+        ));
+
+        assert!(err.is_transient_db_pool_timeout());
+        assert!(!ServiceError::Parameter("timeout".to_string()).is_transient_db_pool_timeout());
     }
 }
 
