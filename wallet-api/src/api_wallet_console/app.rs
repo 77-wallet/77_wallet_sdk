@@ -511,6 +511,17 @@ impl ApiWalletConsoleApp {
                     "{client_name}: loaded {} api wallets from local DB",
                     wallets.len()
                 ));
+                self.is_busy = false;
+            }
+            ConsoleEvent::BindFinished { client_id } => {
+                let client_name = self
+                    .clients
+                    .iter()
+                    .find(|client| client.id == client_id)
+                    .map(|client| client.name.clone())
+                    .unwrap_or_else(|| "client".to_string());
+                self.append_log(format!("{client_name}: bind command finished"));
+                self.is_busy = false;
             }
             ConsoleEvent::AccountAddressesLoaded { client_id, wallet_address, rows } => {
                 let loaded_count = rows.len();

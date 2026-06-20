@@ -13,6 +13,7 @@ pub enum WorkerEvent {
     ImportFinished { messages: Vec<String> },
     RuntimeInfoLoaded { info: ClientRuntimeInfo },
     WalletsLoaded { wallets: Vec<ApiWalletRow> },
+    BindFinished,
     AccountAddressesLoaded { wallet_address: String, rows: Vec<AccountAddressRow> },
     BalanceAssetsLoaded { wallet_address: String, rows: Vec<BalanceAssetRow> },
     WithdrawOrdersLoaded { rows: Vec<WithdrawOrderRow> },

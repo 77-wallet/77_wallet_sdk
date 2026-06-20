@@ -82,6 +82,9 @@ pub enum ConsoleEvent {
         client_id: ClientId,
         info: ClientRuntimeInfo,
     },
+    BindFinished {
+        client_id: ClientId,
+    },
     AccountAddressesLoaded {
         client_id: ClientId,
         wallet_address: String,

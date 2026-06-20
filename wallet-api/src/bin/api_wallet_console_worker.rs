@@ -211,7 +211,8 @@ async fn handle_command(
                 .await;
             match res {
                 Ok(resp) => {
-                    emit(&WorkerEvent::Log { message: format!("import_bind ok: {resp:?}") })
+                    emit(&WorkerEvent::Log { message: format!("import_bind ok: {resp:?}") });
+                    emit(&WorkerEvent::BindFinished);
                 }
                 Err(err) => emit(&WorkerEvent::Failed { error: err.to_string() }),
             }
@@ -220,12 +221,16 @@ async fn handle_command(
             let res =
                 wallet_manager.scan_bind(&app_id, &org_id, &subaccount_uid, &withdrawal_uid).await;
             match res {
-                Ok(resp) => emit(&WorkerEvent::Log { message: format!("scan_bind ok: {resp:?}") }),
+                Ok(resp) => {
+                    emit(&WorkerEvent::Log { message: format!("scan_bind ok: {resp:?}") });
+                    emit(&WorkerEvent::BindFinished);
+                }
                 Err(err) => {
                     let normalized: (i64, String) = err.into();
                     emit(&WorkerEvent::Log {
                         message: format!("scan_bind failed: {normalized:?}"),
                     });
+                    emit(&WorkerEvent::BindFinished);
                 }
             }
         }

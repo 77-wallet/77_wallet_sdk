@@ -132,6 +132,7 @@ fn forward_worker_event(
         WorkerEvent::WalletsLoaded { wallets } => {
             ConsoleEvent::WalletsLoaded { client_id, wallets }
         }
+        WorkerEvent::BindFinished => ConsoleEvent::BindFinished { client_id },
         WorkerEvent::AccountAddressesLoaded { wallet_address, rows } => {
             ConsoleEvent::AccountAddressesLoaded { client_id, wallet_address, rows }
         }
