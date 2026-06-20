@@ -107,20 +107,17 @@ impl ApiAccountService {
         serial_no: &str,
         batch_id: &str,
     ) -> Result<(), ServiceError> {
-        ApiWalletDomain::new(self.ctx)
+        ApiAccountApplication::new(self.ctx)
             .expand_address(
-                "1",
-                &address_allock_type,
+                address_allock_type,
+                chain_code,
                 index,
-                &uid,
-                &chain_code,
+                uid,
                 number,
                 serial_no,
-                &batch_id,
+                batch_id,
             )
-            .await?;
-
-        Ok(())
+            .await
     }
 
     pub async fn create_account(
@@ -133,28 +130,16 @@ impl ApiAccountService {
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
-        // 根据钱包地址查询是否有钱包
-        let pool = self.ctx.api_wallet_pool()?;
-        let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
-        let chains: Vec<String> =
-            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        ApiAccountDomain::create_api_account_with_ctx(
-            self.ctx,
-            wallet_address,
-            chains,
-            &indices,
-            name,
-            is_default_name,
-            api_wallet_type,
-            None,
-            false,
-            false, // ⭐ 添加：是否最后一页，非恢复场景设为 false
-            0,     // ⭐ 添加：当前页码，非恢复场景设为 0
-        )
-        .await?;
-
-        Ok(())
+        ApiAccountApplication::new(self.ctx)
+            .create_account(
+                wallet_address,
+                wallet_password,
+                indices,
+                name,
+                is_default_name,
+                api_wallet_type,
+            )
+            .await
     }
 
     pub async fn create_withdrawal_account(
@@ -166,84 +151,16 @@ impl ApiAccountService {
         name: &str,
         is_default_name: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
-        // 根据钱包地址查询是否有钱包
-        let pool = self.ctx.api_wallet_pool()?;
-        let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
-
-        let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ),
-        )?;
-        // 根据派生路径
-        let hd_path = if let Some(derivation_path) = &derivation_path {
-            let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
+        ApiAccountApplication::new(self.ctx)
+            .create_withdrawal_account(
+                wallet_address,
+                wallet_password,
                 derivation_path,
-            )?;
-            Some(hd_path)
-        } else {
-            None
-        };
-
-        // 如果有指定派生路径，就获取该链的所有chain_code
-        let chains: Vec<String> = if let Some(hd_path) = &hd_path {
-            hd_path.get_chain_codes()?.0.into_iter().map(|path| path.to_string()).collect()
-        }
-        // 或者使用默认链的链码
-        else {
-            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect()
-        };
-
-        // 获取该账户的最大索引，并加一
-        let account_index_map = if let Some(index) = index {
-            let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
-            if ApiAccountRepo::has_account_id(
-                &pool,
-                &api_wallet.address,
-                index.account_id,
-                ApiWalletType::Withdrawal,
+                index,
+                name,
+                is_default_name,
             )
-            .await?
-            {
-                return Err(crate::error::service::ServiceError::Business(
-                    crate::error::business::BusinessError::Account(
-                        crate::error::business::account::AccountError::AlreadyExist,
-                    ),
-                ));
-            };
-            index
-        } else if let Some(hd_path) = hd_path {
-            wallet_utils::address::AccountIndexMap::from_index(hd_path.get_account_id()?)?
-        } else if let Some(max_account) =
-            ApiAccountRepo::account_detail_by_max_id_and_wallet_address(
-                &pool,
-                &api_wallet.address,
-                ApiWalletType::Withdrawal,
-            )
-            .await?
-        {
-            wallet_utils::address::AccountIndexMap::from_account_id(max_account.account_id + 1)?
-        } else {
-            wallet_utils::address::AccountIndexMap::from_account_id(1)?
-        };
-
-        ApiAccountDomain::create_api_account_with_ctx(
-            self.ctx,
-            wallet_address,
-            chains,
-            &[account_index_map.input_index],
-            name,
-            is_default_name,
-            ApiWalletType::Withdrawal,
-            None,
-            false,
-            false, // ⭐ 添加：是否最后一页，非恢复场景设为 false
-            0,     // ⭐ 添加：当前页码，非恢复场景设为 0
-        )
-        .await?;
-
-        Ok(())
+            .await
     }
 
     pub async fn get_account_private_key(
@@ -272,30 +189,9 @@ impl ApiAccountService {
         wallet_address: &str,
         name: &str,
     ) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_wallet_pool()?;
-        ApiAccountRepo::edit_account_name(&pool, wallet_address, account_id, name).await?;
-
-        let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?;
-        if wallet.is_none() {
-            return Err(crate::error::business::BusinessError::Wallet(
-                crate::error::business::wallet::WalletError::NotFound,
-            )
-            .into());
-        }
-        let wallet = wallet.unwrap();
-
-        let account_index_map =
-            wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
-
-        let req =
-            AddressUpdateAccountNameReq::new(&wallet.uid, account_index_map.input_index, name);
-        let req = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
-            &req,
-        )?;
-        Tasks::new().push(BackendApiTask::BackendApi(req)).send_with_ctx(self.ctx).await?;
-
-        Ok(())
+        ApiAccountApplication::new(self.ctx)
+            .edit_account_name(account_id, wallet_address, name)
+            .await
     }
 
     pub async fn physical_delete_account(
