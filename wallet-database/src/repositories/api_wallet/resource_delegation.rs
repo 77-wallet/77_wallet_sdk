@@ -381,6 +381,23 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn scan_failed_for_origin_type_source_and_operation(
+        pool: &ApiTransactionDbPool,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_failed_by_origin_type_source_and_operation(
+            pool.read_ref(),
+            origin_trade_type,
+            source,
+            operation_type,
+            limit,
+        )
+        .await
+    }
+
     pub async fn mark_result_ack_sent(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,

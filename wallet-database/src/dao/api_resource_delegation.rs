@@ -396,6 +396,36 @@ impl ApiResourceDelegationDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_failed_by_origin_type_source_and_operation<'a, E>(
+        exec: E,
+        origin_trade_type: i64,
+        source: ApiResourceDelegationSource,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = ?
+              AND operation_type = ?
+              AND origin_trade_type = ?
+              AND err_code IS NOT NULL
+            ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(source.as_i64())
+        .bind(operation_type.as_i64())
+        .bind(origin_trade_type)
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn scan_can_recover_local_undelegation_by_origin_type<'a, E>(
         exec: E,
         origin_trade_type: i64,

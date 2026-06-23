@@ -23,12 +23,15 @@ use wallet_database::ApiTransactionDbPool;
 
 use crate::{
     error::service::ServiceError,
-    infrastructure::api_trans::collect::{
-        legacy::AddressLockManager,
-        shadow::{
-            dispatcher::ShadowDispatcher,
-            worker::{ShadowCollectWorker, SideEffectWorker},
+    infrastructure::api_trans::{
+        collect::{
+            legacy::AddressLockManager,
+            shadow::{
+                dispatcher::ShadowDispatcher,
+                worker::{ShadowCollectWorker, SideEffectWorker},
+            },
         },
+        shadow_rpc_policy,
     },
 };
 
@@ -37,6 +40,10 @@ use crate::infrastructure::api_trans::collect::diagnose::{
     CachedDiagnoser,
     event::DiagnoseEvent,
     stuck_monitor::{CURRENT_BURST, CollectStuckMonitor, LAST_SUCCESS_SEND_AT},
+};
+use wallet_database::entities::{
+    api_resource_delegation::{ApiResourceDelegationOperationType, ApiResourceDelegationSource},
+    api_trade_type::ApiTradeType,
 };
 
 const DIAGNOSE_EVENT_IDLE_THRESHOLD: Duration = Duration::from_secs(30);
@@ -95,21 +102,27 @@ pub enum DispatcherActorMessage {
 
 /// Scanner Actor
 pub struct CollectorShadowScannerActor {
+    ctx: &'static crate::context::Context,
     scanner: Arc<ShadowScanner>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
 }
 
 impl CollectorShadowScannerActor {
     pub fn new(
+        ctx: &'static crate::context::Context,
         scanner: Arc<ShadowScanner>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     ) -> Self {
-        Self { scanner, shutdown_rx }
+        Self { ctx, scanner, shutdown_rx }
     }
 
     pub async fn run(mut self) {
         crate::infrastructure::system_ready::wait_system_ready().await;
         info!("Collector Shadow Scanner Actor running");
+
+        if let Err(error) = log_startup_failed_local_delegate_diagnostics(self.ctx).await {
+            warn!(%error, "Collect shadow startup local delegate diagnostic failed");
+        }
 
         // 自定义扫描循环，支持shutdown信号
         let mut interval = new_production_interval(self.scanner.config.scan_interval);
@@ -131,6 +144,41 @@ impl CollectorShadowScannerActor {
 
         info!("Collector Shadow Scanner Actor stopped");
     }
+}
+
+async fn log_startup_failed_local_delegate_diagnostics(
+    ctx: &'static crate::context::Context,
+) -> Result<(), ServiceError> {
+    let pool = ctx.api_transaction_pool()?;
+    let limit =
+        shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_STARTUP_DIAG_MAX_ITEMS", 20, 1, 200);
+    let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_failed_for_origin_type_source_and_operation(
+        &pool,
+        ApiTradeType::Collect as i64,
+        ApiResourceDelegationSource::Local,
+        ApiResourceDelegationOperationType::Delegate,
+        limit,
+    ).await?;
+
+    for record in records {
+        warn!(
+            resource_trade_no = %record.resource_trade_no,
+            origin_trade_no = ?record.origin_trade_no,
+            err_code = ?record.err_code,
+            err_msg = ?record.err_msg,
+            owner_address = %record.owner_address,
+            receiver_address = %record.receiver_address,
+            native_amount = %record.native_amount,
+            amount = %record.amount,
+            tx_hash = ?record.tx_hash,
+            tx_status = ?record.tx_status,
+            updated_at = ?record.updated_at,
+            source = "collect_shadow_startup",
+            "Historical collect local resource delegation failure"
+        );
+    }
+
+    Ok(())
 }
 
 /// Dispatcher Actor
@@ -318,7 +366,7 @@ impl CollectorShadowActorSystem {
         );
 
         // 创建Scanner Actor
-        let scanner_actor = CollectorShadowScannerActor::new(scanner.clone(), shutdown_rx1);
+        let scanner_actor = CollectorShadowScannerActor::new(ctx, scanner.clone(), shutdown_rx1);
         let scanner_handle = Some(tokio::spawn(async move {
             scanner_actor.run().await;
         }));
