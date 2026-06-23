@@ -496,6 +496,12 @@ impl ShadowCollectWorker {
 
         match err.retry_policy() {
             wallet_utils::RetryPolicy::Never => {
+                warn!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %err,
+                    source = "shadow_worker_v2",
+                    "Resource delegation execution failed permanently"
+                );
                 self.mark_local_resource_delegation_failed(resource_trade_no, &err).await?;
                 self.release_collect_gate_after_local_delegation_failure(resource_trade_no).await?;
                 Ok(())
@@ -662,6 +668,7 @@ impl ShadowCollectWorker {
             info!(
                 resource_trade_no = %resource_trade_no,
                 err_code = %err_code,
+                err_msg = %err_msg,
                 source = "shadow_worker_v2",
                 "Resource delegation failure fact already committed or no longer eligible"
             );
@@ -669,6 +676,7 @@ impl ShadowCollectWorker {
             info!(
                 resource_trade_no = %resource_trade_no,
                 err_code = %err_code,
+                err_msg = %err_msg,
                 source = "shadow_worker_v2",
                 "Resource delegation failure fact committed"
             );
