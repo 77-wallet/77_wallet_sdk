@@ -99,6 +99,18 @@ pub(crate) async fn seed_resource_result(
     .execute(collect_pool.as_ref())
     .await
     .expect("seed resource delegation row for result ack");
+
+    if !success && origin_trade_type == ApiTradeType::Collect {
+        ApiCollectRepo::mark_resource_blocked(
+            collect_pool,
+            trade_no,
+            ApiResourceBlockReason::NeedLocalDelegate,
+            None,
+            Some(ApiResourceDependencyType::LocalDelegate),
+        )
+        .await
+        .expect("seed collect local delegate fallback");
+    }
 }
 
 pub(crate) async fn seed_failed_resource_receipt_row(

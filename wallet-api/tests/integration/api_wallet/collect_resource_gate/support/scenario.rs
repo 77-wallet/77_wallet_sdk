@@ -206,16 +206,13 @@ pub(crate) trait CollectResourceGateThen {
         fixture: &CollectResourceGateFixture,
     );
 
-    async fn origin_collect_gate_is_released_by_failed_bypass(
-        &self,
-        fixture: &CollectResourceGateFixture,
-    );
-
     async fn origin_collect_gate_is_not_released(&self, fixture: &CollectResourceGateFixture);
 
     async fn collect_can_build(&self, fixture: &CollectResourceGateFixture);
 
     async fn collect_cannot_build(&self, fixture: &CollectResourceGateFixture);
+
+    async fn collect_waits_for_local_delegate(&self, fixture: &CollectResourceGateFixture);
 
     async fn collect_still_waits_for_platform_delegate(&self, fixture: &CollectResourceGateFixture);
 }
@@ -230,17 +227,6 @@ impl CollectResourceGateThen for ThenRole<'_, CollectResourceGateScenario> {
         self.scenario().assert().origin_collect_gate_is_released(
             &collect,
             ApiResourceGateResult::ResourceDelegationSuccess,
-        );
-    }
-
-    async fn origin_collect_gate_is_released_by_failed_bypass(
-        &self,
-        fixture: &CollectResourceGateFixture,
-    ) {
-        let collect = self.scenario().load().collect(&fixture.trade_no).await;
-        self.scenario().assert().origin_collect_gate_is_released(
-            &collect,
-            ApiResourceGateResult::ResourceDelegationFailedBypass,
         );
     }
 
@@ -259,6 +245,11 @@ impl CollectResourceGateThen for ThenRole<'_, CollectResourceGateScenario> {
         let is_candidate =
             self.scenario().load().is_collect_build_candidate(&fixture.trade_no).await;
         self.scenario().assert().collect_cannot_build(is_candidate);
+    }
+
+    async fn collect_waits_for_local_delegate(&self, fixture: &CollectResourceGateFixture) {
+        let collect = self.scenario().load().collect(&fixture.trade_no).await;
+        self.scenario().assert().collect_waits_for_local_delegate(&collect);
     }
 
     async fn collect_still_waits_for_platform_delegate(
@@ -307,6 +298,8 @@ trait CollectResourceGateAssert {
 
     fn collect_cannot_build(&self, is_candidate: bool);
 
+    fn collect_waits_for_local_delegate(&self, collect: &ApiCollectEntity);
+
     fn collect_still_waits_for_platform_delegate(
         &self,
         collect: &ApiCollectEntity,
@@ -325,7 +318,14 @@ impl CollectResourceGateAssert for AssertRole<'_, CollectResourceGateScenario> {
     }
 
     fn origin_collect_gate_is_not_released(&self, collect: &ApiCollectEntity) {
-        assert!(collect.resource_gate_released_at.is_none());
+        assert!(
+            collect.resource_gate_released_at.is_none(),
+            "collect unexpectedly released: result={:?}, block_reason={:?}, dependency_trade_no={:?}, dependency_type={:?}",
+            collect.resource_gate_result,
+            collect.resource_block_reason,
+            collect.resource_dependency_trade_no,
+            collect.resource_dependency_type
+        );
         assert!(collect.resource_gate_result.is_none());
     }
 
@@ -338,6 +338,23 @@ impl CollectResourceGateAssert for AssertRole<'_, CollectResourceGateScenario> {
             !is_candidate,
             "blocked collect should not be eligible for BuildTx before local delegation fallback"
         );
+    }
+
+    fn collect_waits_for_local_delegate(&self, collect: &ApiCollectEntity) {
+        assert!(
+            collect.resource_gate_released_at.is_none(),
+            "collect unexpectedly released: result={:?}, block_reason={:?}, dependency_trade_no={:?}, dependency_type={:?}",
+            collect.resource_gate_result,
+            collect.resource_block_reason,
+            collect.resource_dependency_trade_no,
+            collect.resource_dependency_type
+        );
+        assert!(collect.resource_dependency_trade_no.is_none());
+        assert_eq!(
+            collect.resource_dependency_type,
+            Some(ApiResourceDependencyType::LocalDelegate)
+        );
+        assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
     }
 
     fn collect_still_waits_for_platform_delegate(

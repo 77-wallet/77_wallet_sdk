@@ -727,9 +727,7 @@ impl SideEffectWorker {
                 Some(ApiResourceDelegationResultStatus::Success) => {
                     ApiResourceGateResult::ResourceDelegationSuccess
                 }
-                Some(ApiResourceDelegationResultStatus::Fail) => {
-                    ApiResourceGateResult::ResourceDelegationFailedBypass
-                }
+                Some(ApiResourceDelegationResultStatus::Fail) => return None,
                 None => return None,
             }
         } else if resource_task.err_code.is_none()

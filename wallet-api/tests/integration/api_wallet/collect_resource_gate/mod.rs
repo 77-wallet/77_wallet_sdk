@@ -39,9 +39,9 @@ async fn collect_resource_result_ack_releases_origin_collect_gate() {
 
 #[tokio::test]
 #[serial]
-async fn collect_failed_resource_result_ack_bypasses_gate() {
+async fn collect_failed_resource_result_ack_keeps_local_fallback_gate() {
     let scenario = CollectResourceGateScenario::new().await;
-    let fixture = CollectResourceGateFixture::origin_case("C_RSC_FAIL");
+    let fixture = CollectResourceGateFixture::original_order_result_case("C_RSC_FAIL");
     let given = scenario.given();
     let when = scenario.when();
     let then = scenario.then();
@@ -51,8 +51,9 @@ async fn collect_failed_resource_result_ack_bypasses_gate() {
 
     when.resource_result_ack_is_sent(&fixture).await;
 
-    then.origin_collect_gate_is_released_by_failed_bypass(&fixture).await;
-    then.collect_can_build(&fixture).await;
+    then.origin_collect_gate_is_not_released(&fixture).await;
+    then.collect_waits_for_local_delegate(&fixture).await;
+    then.collect_cannot_build(&fixture).await;
 }
 
 #[tokio::test]
