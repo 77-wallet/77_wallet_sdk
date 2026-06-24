@@ -48,6 +48,8 @@ use wallet_database::entities::{
 
 const DIAGNOSE_EVENT_IDLE_THRESHOLD: Duration = Duration::from_secs(30);
 const DIAGNOSE_HEALTH_LOG_COOLDOWN: Duration = Duration::from_secs(30);
+const STARTUP_FAILED_LOCAL_DELEGATE_DIAG_DEFAULT_LIMIT: usize = 10_000;
+const STARTUP_FAILED_LOCAL_DELEGATE_DIAG_MAX_LIMIT: usize = 100_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DiagnoseActorHealth {
@@ -150,8 +152,12 @@ async fn log_startup_failed_local_delegate_diagnostics(
     ctx: &'static crate::context::Context,
 ) -> Result<(), ServiceError> {
     let pool = ctx.api_transaction_pool()?;
-    let limit =
-        shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_STARTUP_DIAG_MAX_ITEMS", 20, 1, 200);
+    let limit = shadow_rpc_policy::read_usize_env(
+        "COLLECT_SHADOW_STARTUP_DIAG_MAX_ITEMS",
+        STARTUP_FAILED_LOCAL_DELEGATE_DIAG_DEFAULT_LIMIT,
+        1,
+        STARTUP_FAILED_LOCAL_DELEGATE_DIAG_MAX_LIMIT,
+    );
     let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_failed_for_origin_type_source_and_operation(
         &pool,
         ApiTradeType::Collect as i64,
