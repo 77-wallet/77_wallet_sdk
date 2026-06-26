@@ -21,12 +21,12 @@ use wallet_database::entities::{
 };
 use wallet_utils::RetryableError as _;
 
-/// 资源代理重试退避：指数退避上限 1 小时。
+/// 资源代理重试退避：指数退避上限 5 分钟。
 /// - 第 0 次：60s
-/// - 之后每次翻倍，最终上限 3600s
+/// - 之后每次翻倍，最终上限 300s
 pub(crate) fn resource_delegation_retry_wait_secs(retry_count: i64) -> i64 {
-    let exponent = retry_count.clamp(0, 6) as u32;
-    (60_i64 * (1_i64 << exponent)).min(3600)
+    let exponent = retry_count.clamp(0, 3) as u32;
+    (60_i64 * (1_i64 << exponent)).min(300)
 }
 
 /// 资源代理失败 fact 的统一映射。
@@ -170,10 +170,10 @@ mod tests {
         assert_eq!(resource_delegation_retry_wait_secs(0), 60);
         assert_eq!(resource_delegation_retry_wait_secs(1), 120);
         assert_eq!(resource_delegation_retry_wait_secs(2), 240);
-        assert_eq!(resource_delegation_retry_wait_secs(3), 480);
-        assert_eq!(resource_delegation_retry_wait_secs(5), 1920);
-        assert_eq!(resource_delegation_retry_wait_secs(6), 3600);
-        assert_eq!(resource_delegation_retry_wait_secs(10), 3600);
+        assert_eq!(resource_delegation_retry_wait_secs(3), 300);
+        assert_eq!(resource_delegation_retry_wait_secs(5), 300);
+        assert_eq!(resource_delegation_retry_wait_secs(6), 300);
+        assert_eq!(resource_delegation_retry_wait_secs(10), 300);
     }
 
     #[test]

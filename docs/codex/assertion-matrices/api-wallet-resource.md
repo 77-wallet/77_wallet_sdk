@@ -2,6 +2,16 @@
 
 Scope: `wallet-api` API wallet foreground resource and governance operations.
 
+## Resource Delegation Retry Backoff
+
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_delegation.rs`
+  `retry_wait_secs_follows_exp_backoff_with_cap`
+- Entry point: shared resource delegation retry wait calculation.
+- Runtime facts: retry waits are `60s`, `120s`, `240s`, then capped at `300s`.
+- Invariant: transient RPC failures must not push resource delegation fallback
+  into long waits approaching one hour.
+
 ## API Withdraw Wallet Unfreeze Extraction
 
 - Test:
