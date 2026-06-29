@@ -68,7 +68,7 @@ use crate::{
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-    response_vo::TronFeeDetails,
+    response_vo::{TronFeeDetails, api_wallet::transaction::ApiWalletResourceConsume},
 };
 use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_utils::{RetryableError as _, conversion, unit};
@@ -310,12 +310,11 @@ impl ShadowWithdrawWorker {
         if text == "-0" { "0".to_string() } else { text }
     }
 
-    fn tron_fee_estimate_resource_json(energy: u64, bandwidth: u64) -> String {
-        serde_json::json!({
-            "bandwidth": bandwidth,
-            "energy": energy,
-        })
-        .to_string()
+    fn tron_fee_estimate_resource_json(
+        energy: u64,
+        bandwidth: u64,
+    ) -> Result<String, ServiceError> {
+        ApiWalletResourceConsume::new(bandwidth, energy).to_json_string()
     }
 
     fn tron_resource_ready(
@@ -400,7 +399,7 @@ impl ShadowWithdrawWorker {
         let estimated_transaction_fee =
             Self::format_estimated_fee_amount(fee_details.estimate_fee.amount);
         let estimated_resource_consume =
-            Self::tron_fee_estimate_resource_json(fee_details.energy, fee_details.bandwidth);
+            Self::tron_fee_estimate_resource_json(fee_details.energy, fee_details.bandwidth)?;
 
         let rows = ApiWithdrawRepo::update_fee_estimate(
             &self.ctx.api_transaction_pool()?,
@@ -2500,7 +2499,8 @@ oss:
 
     #[test]
     fn withdraw_fee_estimate_snapshot_resource_json_uses_product_keys() {
-        let json = ShadowWithdrawWorker::tron_fee_estimate_resource_json(345, 210);
+        let json = ShadowWithdrawWorker::tron_fee_estimate_resource_json(345, 210)
+            .expect("serialize resource consume");
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         assert_eq!(value["energy"], 345);

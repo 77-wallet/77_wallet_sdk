@@ -11,7 +11,7 @@ use wallet_database::{
 use crate::harness;
 
 #[tokio::test]
-async fn api_bill_detail_fails_when_current_api_resource_payload_uses_bandwidth_energy() {
+async fn api_bill_detail_accepts_current_api_resource_payload() {
     // Given an API withdraw row matching the device log shape.
     let env = harness::ensure_env().await;
     let api_wallet_pool = harness::open_api_wallet_pool(&env.db_dir).await;
@@ -49,16 +49,18 @@ async fn api_bill_detail_fails_when_current_api_resource_payload_uses_bandwidth_
     .expect("seed api withdraw");
 
     // When the public API wallet detail entrypoint is called.
-    let err = env
+    let detail = env
         .manager
         .api_bill_detail(&tx_hash, &owner)
         .await
-        .expect_err("api_bill_detail should reproduce the resource parser failure");
+        .expect("api_bill_detail should accept API resource payload");
 
-    // Then it fails with the same missing net_used shape observed in the log.
-    let err = err.to_string();
-    assert!(err.contains("missing field `net_used`"), "{err}");
-    assert!(err.contains(r#"{"bandwidth":0,"energy":0}"#), "{err}");
+    // Then it returns API wallet resource fields instead of standard wallet fields.
+    let json = serde_json::to_value(detail).expect("serialize detail");
+    assert_eq!(json["resourceConsume"]["bandwidth"].as_u64(), Some(0));
+    assert_eq!(json["resourceConsume"]["energy"].as_u64(), Some(0));
+    assert!(json["resourceConsume"].get("netUsed").is_none());
+    assert!(json["resourceConsume"].get("energyUsed").is_none());
 }
 
 async fn ensure_tron_main_coin(pool: &wallet_database::ApiWalletDbPool) {

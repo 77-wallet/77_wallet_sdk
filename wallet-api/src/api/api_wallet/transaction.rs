@@ -5,7 +5,9 @@ use crate::{
         api_wallet::transfer::ApiTransferExReq,
         transaction::{self},
     },
-    response_vo::standard_wallet::transaction::{BillDetailVo, TransactionResult},
+    response_vo::{
+        api_wallet::transaction::ApiBillDetailVo, standard_wallet::transaction::TransactionResult,
+    },
     service::{api_wallet::transaction::ApiTransService, transaction::TransactionService},
 };
 use serde_json;
@@ -42,7 +44,7 @@ impl WalletManager {
         ApiTransService::new(self.ctx).transfer_with_private_key(req, private_key).await
     }
 
-    pub async fn api_bill_detail(&self, tx_hash: &str, owner: &str) -> ReturnType<BillDetailVo> {
+    pub async fn api_bill_detail(&self, tx_hash: &str, owner: &str) -> ReturnType<ApiBillDetailVo> {
         ApiTransService::new(self.ctx).bill_detail(tx_hash, owner).await
     }
 

@@ -10,12 +10,17 @@ use crate::{
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::api_wallet::transfer::ApiTransferExReq,
-    response_vo::standard_wallet::transaction::{BillDetailVo, TransactionResult},
+    response_vo::{
+        api_wallet::transaction::{
+            ApiBillDetailVo, ApiWalletResourceConsume, api_wallet_resource_consume,
+        },
+        standard_wallet::transaction::TransactionResult,
+    },
 };
 use chrono::Utc;
 use futures::future::join_all;
 use std::collections::HashSet;
-use wallet_chain_interact::{BillResourceConsume, types::ChainPrivateKey};
+use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool,
     entities::{
@@ -69,7 +74,7 @@ impl ApiTransService {
         &self,
         tx_hash: &str,
         owner: &str,
-    ) -> Result<BillDetailVo, ServiceError> {
+    ) -> Result<ApiBillDetailVo, ServiceError> {
         let tx_hash = BillDomain::handle_hash(tx_hash);
 
         let api_transaction_pool = self.ctx.api_transaction_pool()?;
@@ -91,15 +96,10 @@ impl ApiTransService {
             };
 
         let main_coin = ApiCoinRepo::main_coin(&bill.chain_code, &core_pool).await?;
-        let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
-        {
-            Some(BillResourceConsume::from_json_str(&bill.resource_consume)?)
-        } else {
-            None
-        };
+        let resource_consume = api_wallet_resource_consume(&bill.resource_consume);
         let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
         let e = self.convert_to_bill_entity(&bill, transfer_type);
-        Ok(BillDetailVo {
+        Ok(ApiBillDetailVo {
             bill: e,
             resource_consume,
             fee_symbol: main_coin.symbol.to_string(),
@@ -113,7 +113,7 @@ impl ApiTransService {
         api_transaction_pool: &ApiTransactionDbPool,
         owner: &str,
         tx_hash: &str,
-    ) -> Result<BillDetailVo, ServiceError> {
+    ) -> Result<ApiBillDetailVo, ServiceError> {
         let operation =
             ApiResourceOperationRepo::get_by_hash_and_owner(api_transaction_pool, tx_hash, owner)
                 .await?
@@ -123,7 +123,7 @@ impl ApiTransService {
                 )))?;
         let resource_consume = Self::operation_resource_consume(&operation)?;
         let bill = Self::convert_resource_operation_to_bill_entity(&operation);
-        Ok(BillDetailVo {
+        Ok(ApiBillDetailVo {
             bill,
             resource_consume,
             fee_symbol: "TRX".to_string(),
@@ -477,13 +477,15 @@ impl ApiTransService {
 
     fn operation_resource_consume(
         operation: &ApiResourceOperationEntity,
-    ) -> Result<Option<BillResourceConsume>, ServiceError> {
+    ) -> Result<Option<ApiWalletResourceConsume>, ServiceError> {
         let Some(raw_tx) = operation.raw_tx.as_deref().filter(|value| !value.is_empty()) else {
             return Ok(None);
         };
         let raw_tx = wallet_utils::serde_func::serde_from_str::<RawTx>(raw_tx)?;
         match raw_tx {
-            RawTx::Tron(_, resource_consume, _) => Ok(Some(resource_consume)),
+            RawTx::Tron(_, resource_consume, _) => {
+                Ok(Some(ApiWalletResourceConsume::from_bill_resource_consume(resource_consume)))
+            }
             _ => Ok(None),
         }
     }
