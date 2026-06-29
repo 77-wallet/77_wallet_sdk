@@ -9,6 +9,7 @@ mod collect_recovery;
 mod collect_resource_gate;
 mod import_bind;
 mod sync;
+mod transaction;
 mod transfer_nonce;
 mod withdraw_notification;
 mod withdraw_resource_gate;
