@@ -1906,4 +1906,63 @@ mod tests {
             1
         );
     }
+
+    #[tokio::test]
+    async fn stale_platform_delegation_build_slot_can_be_reclaimed() {
+        let pool =
+            setup_api_transaction_pool("resource_delegation_platform_delegation_stale").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "rsc_platform_delegate_stale",
+                crate::entities::api_trade_type::ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_platform_delegate_stale")
+            .await
+            .unwrap();
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_delegate_stale")
+            .await
+            .unwrap();
+        sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-10 minutes')
+            WHERE resource_trade_no = ?
+            "#,
+        )
+        .bind("rsc_platform_delegate_stale")
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+        let rows =
+            ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+                &pool,
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Delegate,
+                100,
+            )
+            .await
+            .unwrap();
+        assert!(rows.iter().any(|row| row.resource_trade_no == "rsc_platform_delegate_stale"));
+
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_delegate_stale")
+                .await
+                .unwrap(),
+            1
+        );
+    }
 }
