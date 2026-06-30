@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool,
@@ -85,6 +85,7 @@ impl ShadowFeeWorker {
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
     const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
     const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
+    const BUILD_SLOT_STALE_SECS: i64 = 30;
 
     fn is_evm_chain_code(chain_code: &str) -> bool {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
@@ -108,6 +109,14 @@ impl ShadowFeeWorker {
     fn evm_uncertain_elapsed_secs(req: &ApiFeeEntity, now: chrono::DateTime<Utc>) -> Option<i64> {
         req.broadcast_uncertain_since_at
             .map(|since| now.signed_duration_since(since).num_seconds().max(0))
+    }
+
+    fn is_stale_build_slot(building_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
+        let Some(building_at) = building_at else {
+            return false;
+        };
+
+        now.signed_duration_since(building_at).num_seconds() >= Self::BUILD_SLOT_STALE_SECS
     }
 
     fn should_nudge_advance_after_recover_skip(req: &ApiFeeEntity) -> bool {
@@ -668,12 +677,32 @@ impl ShadowFeeWorker {
         let build_slot_rows =
             ApiFeeRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no).await?;
         if build_slot_rows == 0 {
-            info!(
-                trade_no = %trade_no,
-                source = "shadow_fee_worker",
-                "Build slot already claimed or recently updated, skipping BuildTx"
-            );
-            return Ok(());
+            if self.reclaim_stale_build_slot(trade_no, fee.building_at).await? {
+                let reclaimed_build_slot_rows =
+                    ApiFeeRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+                        .await?;
+                if reclaimed_build_slot_rows > 0 {
+                    info!(
+                        trade_no = %trade_no,
+                        source = "shadow_fee_worker",
+                        "Reclaimed stale build slot, continuing BuildTx"
+                    );
+                } else {
+                    info!(
+                        trade_no = %trade_no,
+                        source = "shadow_fee_worker",
+                        "Build slot still unavailable after stale reclaim attempt, skipping BuildTx"
+                    );
+                    return Ok(());
+                }
+            } else {
+                info!(
+                    trade_no = %trade_no,
+                    source = "shadow_fee_worker",
+                    "Build slot already claimed or recently updated, skipping BuildTx"
+                );
+                return Ok(());
+            }
         }
 
         // ====== phase 2: 锁外 · 网络执行 ======
@@ -1361,6 +1390,33 @@ impl ShadowFeeWorker {
 
         Ok(())
     }
+
+    async fn reclaim_stale_build_slot(
+        &self,
+        trade_no: &str,
+        building_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, ServiceError> {
+        if !Self::is_stale_build_slot(building_at, Utc::now()) {
+            return Ok(false);
+        }
+
+        let rows_affected = ApiFeeRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+            .await
+            .map_err(|db_err: wallet_database::Error| {
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to clear stale build slot");
+                ServiceError::Database(db_err.into())
+            })?;
+
+        info!(
+            trade_no = %trade_no,
+            rows_affected = %rows_affected,
+            building_at = ?building_at,
+            source = "shadow_fee_worker",
+            "Cleared stale build slot before retrying BuildTx"
+        );
+
+        Ok(rows_affected > 0)
+    }
 }
 
 #[cfg(test)]
@@ -1371,6 +1427,7 @@ mod tests {
         domain::api_wallet::adapter::tx::RawTx,
         error::{service::ServiceError, system::SystemError},
     };
+    use chrono::Utc;
     use std::{fs, path::PathBuf, sync::Arc};
     use tempfile::tempdir;
     use tokio::sync::mpsc;
@@ -1526,5 +1583,138 @@ oss:
         let persisted =
             ApiFeeRepo::get_api_fee_by_trade_no(&collect_pool, trade_no).await.expect("load fee");
         assert!(persisted.building_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn fee_reclaim_stale_build_slot_clears_and_allows_reclaim() {
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner =
+            Arc::new(crate::infrastructure::api_trans::collect_fee::shadow::ShadowScanner::new(
+                test_ctx().await,
+                crate::infrastructure::api_trans::collect_fee::shadow::ScannerConfig::default(),
+                intent_tx,
+                None,
+            ));
+        let worker = ShadowFeeWorker::new(
+            test_ctx().await,
+            Arc::new(
+                crate::infrastructure::api_trans::collect_fee::legacy::AddressLockManager::new(),
+            ),
+            scanner,
+        );
+        let collect_pool = test_ctx().await.api_transaction_pool().expect("transaction pool");
+
+        let trade_no = "F_reclaim_stale_build_slot";
+        ApiFeeRepo::upsert_api_fee(
+            &collect_pool,
+            "uid",
+            "name",
+            "from",
+            "to",
+            "1",
+            "digest",
+            "eth",
+            None,
+            "ETH",
+            trade_no,
+            0,
+        )
+        .await
+        .expect("insert fee");
+        sqlx::query(
+            "UPDATE api_fee
+             SET building_at = datetime('now', '-31 seconds')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(collect_pool.as_ref())
+        .await
+        .expect("seed stale slot");
+
+        let fee =
+            ApiFeeRepo::get_api_fee_by_trade_no(&collect_pool, trade_no).await.expect("load fee");
+        assert_eq!(
+            fee.building_at.map(|ts| Utc::now().signed_duration_since(ts).num_seconds() >= 30),
+            Some(true)
+        );
+
+        let reclaimed = worker
+            .reclaim_stale_build_slot(trade_no, fee.building_at)
+            .await
+            .expect("reclaim stale slot");
+        assert!(reclaimed);
+
+        let persisted =
+            ApiFeeRepo::get_api_fee_by_trade_no(&collect_pool, trade_no).await.expect("load fee");
+        assert!(persisted.building_at.is_none());
+
+        let claimed = ApiFeeRepo::update_building_at(&collect_pool, trade_no)
+            .await
+            .expect("reclaim build slot");
+        assert_eq!(claimed, 1);
+    }
+
+    #[tokio::test]
+    async fn fee_fresh_build_slot_is_not_reclaimed() {
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner =
+            Arc::new(crate::infrastructure::api_trans::collect_fee::shadow::ShadowScanner::new(
+                test_ctx().await,
+                crate::infrastructure::api_trans::collect_fee::shadow::ScannerConfig::default(),
+                intent_tx,
+                None,
+            ));
+        let worker = ShadowFeeWorker::new(
+            test_ctx().await,
+            Arc::new(
+                crate::infrastructure::api_trans::collect_fee::legacy::AddressLockManager::new(),
+            ),
+            scanner,
+        );
+        let collect_pool = test_ctx().await.api_transaction_pool().expect("transaction pool");
+
+        let trade_no = "F_fresh_build_slot";
+        ApiFeeRepo::upsert_api_fee(
+            &collect_pool,
+            "uid",
+            "name",
+            "from",
+            "to",
+            "1",
+            "digest",
+            "eth",
+            None,
+            "ETH",
+            trade_no,
+            0,
+        )
+        .await
+        .expect("insert fee");
+        sqlx::query(
+            "UPDATE api_fee
+             SET building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(collect_pool.as_ref())
+        .await
+        .expect("seed fresh slot");
+
+        let fee =
+            ApiFeeRepo::get_api_fee_by_trade_no(&collect_pool, trade_no).await.expect("load fee");
+        let reclaimed = worker
+            .reclaim_stale_build_slot(trade_no, fee.building_at)
+            .await
+            .expect("reclaim fresh slot");
+        assert!(!reclaimed);
+
+        let persisted =
+            ApiFeeRepo::get_api_fee_by_trade_no(&collect_pool, trade_no).await.expect("load fee");
+        assert!(persisted.building_at.is_some());
+
+        let claimed = ApiFeeRepo::update_building_at(&collect_pool, trade_no)
+            .await
+            .expect("claim build slot");
+        assert_eq!(claimed, 0);
     }
 }
