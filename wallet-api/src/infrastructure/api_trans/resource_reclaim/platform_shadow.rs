@@ -570,6 +570,15 @@ impl PlatformResourceReclaimWorker {
             return Ok(());
         }
 
+        if resource_task.tx_res_received_at.is_none() {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_reclaim_shadow",
+                "Platform undelegation result ACK skipped because MQTT result is not received"
+            );
+            return Ok(());
+        }
+
         let backend_api = self.ctx.get_global_backend_api();
         if let Err(e) = backend_api
             .trans_event_ack(&TransEventAckReq::new(
@@ -1953,7 +1962,7 @@ mod tests {
             )
             .await
             .expect("insert platform undelegate result candidate");
-            ApiResourceDelegationRepo::mark_result_received(
+            ApiResourceDelegationRepo::mark_backend_result_received(
                 &pool,
                 trade_no,
                 ApiResourceDelegationResultStatus::Success,
@@ -2000,6 +2009,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn platform_undelegation_recover_does_not_send_result_ack_before_mqtt_result() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let pool = ctx.api_transaction_pool().expect("transaction pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_undelegate_recovered_result",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Undelegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert platform undelegate result candidate");
+
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_platform_undelegate_recovered_result",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            Some("platform_undelegation_recovered:tx_hash"),
+        )
+        .await
+        .expect("mark recovered result");
+
+        let scanner = PlatformResourceReclaimScanner::with_config(
+            pool,
+            PlatformResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+
+        let intents = scanner.scan_round().await;
+        assert!(!intents.iter().any(|intent| matches!(
+            intent,
+            PlatformResourceReclaimIntent::SendPlatformUndelegationResultAck(trade_no)
+                if trade_no == "rsc_platform_undelegate_recovered_result"
+        )));
+    }
+
+    #[tokio::test]
     async fn platform_undelegation_receipt_payload_uses_reclaim_trans_type() {
         let task = ApiResourceDelegationEntity {
             id: 1,
@@ -2024,6 +2084,7 @@ mod tests {
             tx_status: Some("success".to_string()),
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
+            tx_res_received_at: None,
             result_received_at: Some(chrono::Utc::now()),
             result_ack_sent_at: None,
             result_payload: None,
@@ -2074,6 +2135,7 @@ mod tests {
             tx_status: None,
             tx_exec_receipt_uploaded_at: None,
             result_status: None,
+            tx_res_received_at: None,
             result_received_at: None,
             result_ack_sent_at: None,
             result_payload: None,
@@ -2122,6 +2184,7 @@ mod tests {
             tx_status: Some("success".to_string()),
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
+            tx_res_received_at: Some(chrono::Utc::now()),
             result_received_at: Some(chrono::Utc::now()),
             result_ack_sent_at: None,
             result_payload: Some("payload".to_string()),

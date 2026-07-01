@@ -308,6 +308,7 @@ mod tests {
             tx_status: None,
             tx_exec_receipt_uploaded_at: None,
             result_status: None,
+            tx_res_received_at: None,
             result_received_at: None,
             result_ack_sent_at: None,
             result_payload: None,

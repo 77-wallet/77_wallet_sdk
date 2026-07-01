@@ -189,6 +189,7 @@ impl ApiResourceDelegationDao {
               AND origin_trade_type = ?
               AND result_received_at IS NOT NULL
               AND result_payload IS NOT NULL
+              AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
               AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ORDER BY result_received_at ASC
@@ -219,6 +220,7 @@ impl ApiResourceDelegationDao {
               AND origin_trade_no = ?
               AND result_received_at IS NOT NULL
               AND result_payload IS NOT NULL
+              AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
               AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ORDER BY result_received_at ASC, id ASC
@@ -248,6 +250,7 @@ impl ApiResourceDelegationDao {
               AND operation_type = ?
               AND result_received_at IS NOT NULL
               AND result_payload IS NOT NULL
+              AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
               AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ORDER BY result_received_at ASC
@@ -799,6 +802,7 @@ impl ApiResourceDelegationDao {
             WHERE resource_trade_no = ?1
               AND result_received_at IS NOT NULL
               AND result_payload IS NOT NULL
+              AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
             "#,
         )
@@ -825,6 +829,7 @@ impl ApiResourceDelegationDao {
             WHERE resource_trade_no = ?
               AND result_received_at IS NOT NULL
               AND result_payload IS NOT NULL
+              AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
             "#,
         )
@@ -856,13 +861,14 @@ impl ApiResourceDelegationDao {
                  resource_trade_no, chain_code, owner_address, receiver_address,
                  delegation_mode, permission_id, resource_type, native_amount, amount,
                  status, task_ack_sent_at,
-                 result_status, result_received_at, result_payload, fail_type,
+                 result_status, result_received_at, tx_res_received_at, result_payload, fail_type,
                  created_at, updated_at)
             VALUES
                 (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
                  ?15,
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                  ?16,
+                 strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                  ?17, ?18,
                  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
@@ -890,6 +896,10 @@ impl ApiResourceDelegationDao {
                 result_received_at = COALESCE(
                     api_resource_delegation.result_received_at,
                     excluded.result_received_at
+                ),
+                tx_res_received_at = COALESCE(
+                    api_resource_delegation.tx_res_received_at,
+                    excluded.tx_res_received_at
                 ),
                 result_payload = COALESCE(excluded.result_payload, api_resource_delegation.result_payload),
                 fail_type = excluded.fail_type,
@@ -938,6 +948,53 @@ impl ApiResourceDelegationDao {
             UPDATE api_resource_delegation
             SET result_status = ?2,
                 result_received_at = COALESCE(result_received_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                result_payload = COALESCE(?6, result_payload),
+                fail_type = ?3,
+                err_code = ?4,
+                err_msg = ?5,
+                status = ?7,
+                recover_status = NULL,
+                next_retry_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(result_status.as_i64())
+        .bind(fail_type)
+        .bind(err_code)
+        .bind(err_msg)
+        .bind(result_payload)
+        .bind(match result_status {
+            ApiResourceDelegationResultStatus::Success => {
+                ApiResourceDelegationStatus::Success.as_i64()
+            }
+            ApiResourceDelegationResultStatus::Fail => ApiResourceDelegationStatus::Fail.as_i64(),
+        })
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_backend_result_received<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        result_status: ApiResourceDelegationResultStatus,
+        fail_type: Option<i64>,
+        err_code: Option<&str>,
+        err_msg: Option<&str>,
+        result_payload: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET result_status = ?2,
+                result_received_at = COALESCE(result_received_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                tx_res_received_at = COALESCE(tx_res_received_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 result_payload = COALESCE(?6, result_payload),
                 fail_type = ?3,
                 err_code = ?4,

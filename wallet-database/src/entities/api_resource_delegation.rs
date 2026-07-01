@@ -184,6 +184,11 @@ pub struct ApiResourceDelegationEntity {
     pub tx_status: Option<String>,
     pub tx_exec_receipt_uploaded_at: Option<DateTime<Utc>>,
     pub result_status: Option<ApiResourceDelegationResultStatus>,
+    /// Backend MQTT final result received timestamp.
+    ///
+    /// Hard gate: platform resource TX_RES ACK must not be sent before this
+    /// fact exists. SDK chain recovery facts must not populate it.
+    pub tx_res_received_at: Option<DateTime<Utc>>,
     pub result_received_at: Option<DateTime<Utc>>,
     pub result_ack_sent_at: Option<DateTime<Utc>>,
     pub result_payload: Option<String>,

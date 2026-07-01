@@ -446,6 +446,27 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn mark_backend_result_received(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        result_status: ApiResourceDelegationResultStatus,
+        fail_type: Option<i64>,
+        err_code: Option<&str>,
+        err_msg: Option<&str>,
+        result_payload: Option<&str>,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_backend_result_received(
+            pool.write_ref(),
+            resource_trade_no,
+            result_status,
+            fail_type,
+            err_code,
+            err_msg,
+            result_payload,
+        )
+        .await
+    }
+
     pub async fn mark_recover_retry_wait(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -1202,7 +1223,7 @@ mod tests {
             )
             .await
             .unwrap();
-            ApiResourceDelegationRepo::mark_result_received(
+            ApiResourceDelegationRepo::mark_backend_result_received(
                 &pool,
                 trade_no,
                 ApiResourceDelegationResultStatus::Success,
@@ -1235,6 +1256,95 @@ mod tests {
         assert!(trade_nos.contains(&"rsc_withdraw_reclaim_result_ready".to_string()));
         assert!(!trade_nos.contains(&"rsc_reclaim_result_acked".to_string()));
         assert!(!trade_nos.contains(&"rsc_delegate_result_ready".to_string()));
+    }
+
+    #[tokio::test]
+    async fn platform_undelegation_result_ack_requires_tx_res_received_at() {
+        let pool = setup_api_transaction_pool("platform_undelegation_result_ack_tx_res_gate").await;
+
+        for trade_no in ["rsc_reclaim_recovered", "rsc_reclaim_backend_result"] {
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::platform_delegate_task(
+                    "uid_1",
+                    trade_no,
+                    ApiTradeType::Collect,
+                    ApiResourceDelegationOperationType::Undelegate,
+                    "tron",
+                    "owner",
+                    "receiver",
+                    ApiResourceType::Energy,
+                    "1",
+                    "100",
+                ),
+            )
+            .await
+            .unwrap();
+        }
+
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_reclaim_recovered",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            Some("platform_undelegation_recovered:tx_hash"),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_backend_result_received(
+            &pool,
+            "rsc_reclaim_backend_result",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            Some(r#"{"tradeNo":"rsc_reclaim_backend_result","status":true}"#),
+        )
+        .await
+        .unwrap();
+
+        let recovered =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_reclaim_recovered")
+                .await
+                .unwrap();
+        assert!(recovered.result_received_at.is_some());
+        assert!(recovered.tx_res_received_at.is_none());
+
+        let backend_result = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_reclaim_backend_result",
+        )
+        .await
+        .unwrap();
+        assert!(backend_result.result_received_at.is_some());
+        assert!(backend_result.tx_res_received_at.is_some());
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+            &pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Undelegate,
+            100,
+        )
+        .await
+        .unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+        assert!(!trade_nos.contains(&"rsc_reclaim_recovered".to_string()));
+        assert!(trade_nos.contains(&"rsc_reclaim_backend_result".to_string()));
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "rsc_reclaim_recovered")
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "rsc_reclaim_backend_result")
+                .await
+                .unwrap(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -1406,7 +1516,7 @@ mod tests {
         .await
         .unwrap();
 
-        ApiResourceDelegationRepo::mark_result_received(
+        ApiResourceDelegationRepo::mark_backend_result_received(
             &pool,
             "rsc_ack",
             ApiResourceDelegationResultStatus::Success,
@@ -1552,7 +1662,7 @@ mod tests {
         )
         .await
         .unwrap();
-        ApiResourceDelegationRepo::mark_result_received(
+        ApiResourceDelegationRepo::mark_backend_result_received(
             &pool,
             "rsc_ack_retry",
             ApiResourceDelegationResultStatus::Fail,

@@ -12,6 +12,23 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Invariant: transient RPC failures must not push resource delegation fallback
   into long waits approaching one hour.
 
+## Platform Resource Reclaim TX_RES Gate
+
+- Test:
+  `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
+  `platform_undelegation_result_ack_requires_tx_res_received_at`
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_reclaim/platform_shadow.rs`
+  `platform_undelegation_recover_does_not_send_result_ack_before_mqtt_result`
+- Entry point: platform resource reclaim result ACK scan and worker.
+- DB facts: SDK chain recovery writes `result_received_at/result_payload`, but
+  leaves `tx_res_received_at` empty; MQTT final result writes
+  `tx_res_received_at`.
+- UI/API facts: `TX_RES` ACK is sent only after backend final-result MQTT is
+  received, keeping the flow display in backend-result-before-ACK order.
+- Invariant: platform resource reclaim must not ACK `TX_RES` from SDK chain
+  recovery facts alone.
+
 ## API Withdraw Wallet Unfreeze Extraction
 
 - Test:

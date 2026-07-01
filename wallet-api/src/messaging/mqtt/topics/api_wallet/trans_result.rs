@@ -288,7 +288,7 @@ impl AwmOrderTransResMsg {
             // Platform wallet: the message trade number is the real resource
             // delegation task (for example CD...), so this fact is ACKed later
             // as a resource task result with TX_RES.
-            ApiResourceDelegationRepo::mark_result_received(
+            ApiResourceDelegationRepo::mark_backend_result_received(
                 api_transaction_pool,
                 &self.trade_no,
                 result_status,
@@ -391,7 +391,7 @@ impl AwmOrderTransResMsg {
             // Platform wallet: the message trade number is the real resource
             // delegation task (for example CD...), so this fact is ACKed later
             // as a resource task result with TX_RES.
-            ApiResourceDelegationRepo::mark_result_received(
+            ApiResourceDelegationRepo::mark_backend_result_received(
                 api_transaction_pool,
                 &self.trade_no,
                 result_status,
@@ -550,7 +550,7 @@ impl AwmOrderTransResMsg {
             ApiResourceDelegationResultStatus::Fail
         };
         let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
-        ApiResourceDelegationRepo::mark_result_received(
+        ApiResourceDelegationRepo::mark_backend_result_received(
             api_transaction_pool,
             &self.trade_no,
             result_status,
