@@ -62,6 +62,9 @@ use crate::{
                 execute_resource_delegation, resource_delegation_failure_fact,
                 resource_delegation_retry_wait_secs,
             },
+            resource_reservation::{
+                ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
+            },
             resource_rpc_auth,
             withdraw::shadow::ShadowScanner,
         },
@@ -104,6 +107,7 @@ pub struct ShadowWithdrawWorker {
     ctx: &'static crate::context::Context,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
+    resource_reservations: WithdrawResourceReservationManager,
 }
 
 impl ShadowWithdrawWorker {
@@ -347,7 +351,7 @@ impl ShadowWithdrawWorker {
     }
 
     pub fn new(ctx: &'static crate::context::Context, scanner: Arc<ShadowScanner>) -> Self {
-        Self { ctx, scanner }
+        Self { ctx, scanner, resource_reservations: WithdrawResourceReservationManager::default() }
     }
     /// 处理命令
     pub async fn handle(&self, command: super::ShadowWithdrawCommand) -> Result<(), ServiceError> {
@@ -556,13 +560,18 @@ impl ShadowWithdrawWorker {
         let resource = adapter.account_resource(&req.from_addr).await?;
         let available_energy = resource.available_energy();
         let available_bandwidth = resource.available_bandwidth();
+        let required = ResourceBudget::new(fee_details.energy, fee_details.bandwidth);
+        let available =
+            ResourceBudget::new(available_energy.max(0) as u64, available_bandwidth.max(0) as u64);
 
-        if Self::tron_resource_ready(
-            available_energy,
-            available_bandwidth,
-            fee_details.energy,
-            fee_details.bandwidth,
-        ) {
+        let decision = self.resource_reservations.reserve_if_available(
+            &req.from_addr,
+            trade_no.to_string(),
+            required,
+            available,
+        );
+
+        if let ResourceReservationDecision::Reserved { effective_available, reserved } = decision {
             let rows = ApiWithdrawRepo::mark_resource_released(
                 &self.ctx.api_transaction_pool()?,
                 trade_no,
@@ -573,18 +582,40 @@ impl ShadowWithdrawWorker {
             if rows > 0 {
                 self.scanner.try_advance(trade_no).await;
             }
+            info!(
+                trade_no = %trade_no,
+                required_energy = %fee_details.energy,
+                required_bandwidth = %fee_details.bandwidth,
+                available_energy = %available_energy,
+                available_bandwidth = %available_bandwidth,
+                reserved_energy = %reserved.energy,
+                reserved_bandwidth = %reserved.bandwidth,
+                effective_energy = %effective_available.energy,
+                effective_bandwidth = %effective_available.bandwidth,
+                source = "shadow_withdraw_worker",
+                "TRON withdraw resource gate reserved local resource budget"
+            );
             return Ok(());
         }
 
-        self.commit_platform_delegation_block(
-            trade_no,
-            &req,
-            fee_details.energy,
-            fee_details.bandwidth,
-            available_energy,
-            available_bandwidth,
-        )
-        .await
+        let ResourceReservationDecision::NeedMore(shortfall) = decision else {
+            unreachable!("reserved decision returned early")
+        };
+
+        let result = self
+            .commit_platform_delegation_block(
+                trade_no,
+                &req,
+                fee_details.energy,
+                fee_details.bandwidth,
+                shortfall.effective_available.energy as i64,
+                shortfall.effective_available.bandwidth as i64,
+            )
+            .await;
+        if result.is_err() {
+            self.resource_reservations.release(trade_no);
+        }
+        result
     }
 
     async fn commit_platform_delegation_block(
@@ -1160,6 +1191,7 @@ impl ShadowWithdrawWorker {
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_build_tx_inner(&trade_no).await {
             error!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "BuildTx inner failed, handling error");
+            self.resource_reservations.release(&trade_no);
             self.handle_withdraw_tx_failed(&trade_no, WithdrawFailureStage::Build, err).await?;
         }
 
@@ -1532,6 +1564,7 @@ impl ShadowWithdrawWorker {
                         // 直接调用 try_advance 进行点对点唤醒
                         self.scanner.try_advance(&withdraw.trade_no).await;
                     }
+                    self.resource_reservations.release(&withdraw.trade_no);
                 }
 
                 Ok(())
@@ -2074,6 +2107,7 @@ impl ShadowWithdrawWorker {
                 source = "shadow_withdraw_worker",
                 "Duplicate broadcast detected, treat as idempotent success and continue"
             );
+            self.resource_reservations.release(trade_no);
             self.scanner.try_advance(trade_no).await;
             return Ok(());
         }
@@ -2115,6 +2149,7 @@ impl ShadowWithdrawWorker {
                 source = "shadow_withdraw_worker",
                 "Nonce too low broadcast conflict treated as idempotent success"
             );
+            self.resource_reservations.release(trade_no);
             self.scanner.try_advance(trade_no).await;
             return Ok(());
         }

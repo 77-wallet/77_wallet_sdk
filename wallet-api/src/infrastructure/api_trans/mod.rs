@@ -189,6 +189,7 @@ pub(crate) mod resource_delegate;
 pub(crate) mod resource_delegation;
 pub(crate) mod resource_operation;
 pub(crate) mod resource_reclaim;
+pub(crate) mod resource_reservation;
 pub(crate) mod resource_rpc_auth;
 pub(crate) mod shadow_rpc_policy;
 pub(crate) mod withdraw;
