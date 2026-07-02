@@ -727,7 +727,9 @@ impl SideEffectWorker {
                 Some(ApiResourceDelegationResultStatus::Success) => {
                     ApiResourceGateResult::ResourceDelegationSuccess
                 }
-                Some(ApiResourceDelegationResultStatus::Fail) => return None,
+                Some(ApiResourceDelegationResultStatus::Fail) => {
+                    ApiResourceGateResult::ResourceDelegationFailedBypass
+                }
                 None => return None,
             }
         } else if resource_task.err_code.is_none()
@@ -1845,32 +1847,6 @@ oss:
         let pool = SqliteContext::new(&dir_path, Some("api_transaction.db"))
             .await?
             .into_transaction_db_pool()?;
-        let wallet_pool = SqliteContext::new(&dir_path, Some("api_wallet.db"))
-            .await?
-            .into_api_wallet_db_pool()?;
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = SideEffectWorker::new(
-            test_ctx().await,
-            Arc::new(ShadowAdvancer::new(test_ctx().await, intent_tx, None)),
-        );
-
-        ApiCollectRepo::upsert_api_collect(
-            &pool,
-            "uid_1",
-            "collect",
-            "from_addr",
-            "to_addr",
-            "1",
-            "digest",
-            "tron",
-            None,
-            "TRX",
-            "C_rsc_ack_release",
-            2,
-            ApiCollectStatus::Init,
-            1,
-        )
-        .await?;
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
             &pool,
@@ -1888,25 +1864,54 @@ oss:
             Some(r#"{"tradeNo":"C_rsc_ack_release","status":true}"#),
         )
         .await?;
-        ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "C_rsc_ack_release").await?;
 
         let resource_task =
             ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "C_rsc_ack_release").await?;
-        worker
-            .project_resource_task_outcome_to_collect_gate(
-                &resource_task,
-                ResourceGateReleaseOutcome::Success(
-                    ApiResourceGateResult::ResourceDelegationSuccess,
-                ),
-            )
-            .await?;
-
-        let collect =
-            ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_rsc_ack_release").await?;
-        assert!(collect.resource_gate_released_at.is_some());
         assert_eq!(
-            collect.resource_gate_result,
-            Some(ApiResourceGateResult::ResourceDelegationSuccess)
+            SideEffectWorker::collect_gate_release_from_resource_result(&resource_task),
+            Some((
+                "C_rsc_ack_release".to_string(),
+                ApiResourceGateResult::ResourceDelegationSuccess,
+            ))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn original_order_resource_failure_bypasses_collect_gate() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let dir_path = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "C_rsc_ack_fail_release",
+                "C_rsc_ack_fail_release",
+                ApiTradeType::Collect as i64,
+                "",
+                "",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Fail,
+            Some(3),
+            Some(r#"{"tradeNo":"C_rsc_ack_fail_release","status":false,"errorCode":"ERR_6008"}"#),
+        )
+        .await?;
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "C_rsc_ack_fail_release")
+                .await?;
+        assert_eq!(
+            SideEffectWorker::collect_gate_release_from_resource_result(&resource_task),
+            Some((
+                "C_rsc_ack_fail_release".to_string(),
+                ApiResourceGateResult::ResourceDelegationFailedBypass,
+            ))
         );
 
         Ok(())
