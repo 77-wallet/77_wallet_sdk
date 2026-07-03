@@ -126,7 +126,7 @@ where
             return Ok(cached);
         }
 
-        match query_fn().await.map_err(|e| e.to_string()) {
+        match query_fn().await {
             Ok(balance) => {
                 set_cached_wallet_total_assets(cache_key, &balance);
                 Ok(balance)
@@ -148,7 +148,7 @@ where
         );
     }
 
-    result.map_err(crate::error::service::ServiceError::Parameter)
+    result
 }
 
 impl ApiAssetsDomain {
@@ -337,7 +337,20 @@ mod tests {
         .await
         .expect_err("should propagate failure");
 
-        assert!(matches!(err, ServiceError::Parameter(_)));
+        assert!(matches!(err, ServiceError::Timeout));
+    }
+
+    #[tokio::test]
+    async fn total_assets_query_preserves_parameter_failure() {
+        let key = unique_key("assets-parameter-fail");
+
+        let err = load_total_assets_with_cache(&key, Duration::from_millis(0), || async {
+            Err(ServiceError::Parameter("invalid wallet address".to_string()))
+        })
+        .await
+        .expect_err("should propagate failure");
+
+        assert!(matches!(err, ServiceError::Parameter(msg) if msg == "invalid wallet address"));
     }
 
     #[tokio::test]
