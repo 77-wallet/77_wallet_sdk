@@ -1,6 +1,6 @@
 //! Test-only entrypoints for local resource reclaim scanner steps.
 
-use wallet_database::ApiTransactionDbPool;
+use wallet_database::ApiResourceDbPool;
 
 use crate::{
     error::service::ServiceError,
@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub async fn scan_local_reclaim_intent_labels_once(
-    collect_pool: ApiTransactionDbPool,
+    collect_pool: ApiResourceDbPool,
 ) -> Result<Vec<String>, ServiceError> {
     let scanner = LocalResourceReclaimScanner::with_config(
         collect_pool,

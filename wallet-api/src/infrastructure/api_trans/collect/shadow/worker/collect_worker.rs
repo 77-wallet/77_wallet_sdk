@@ -548,7 +548,7 @@ impl ShadowCollectWorker {
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
         )
         .await
@@ -562,7 +562,7 @@ impl ShadowCollectWorker {
         };
 
         let affected = ApiResourceDelegationRepo::reset_for_retry(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             next_status,
             &next_retry_at.to_rfc3339(),
@@ -597,7 +597,7 @@ impl ShadowCollectWorker {
         );
 
         let affected = ApiResourceDelegationRepo::claim_build_slot(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -612,7 +612,7 @@ impl ShadowCollectWorker {
         }
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -632,7 +632,7 @@ impl ShadowCollectWorker {
             execute_resource_delegation(self.ctx, &delegation, "collect_resource_delegation")
                 .await?;
         let affected = ApiResourceDelegationRepo::mark_broadcast_success(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
             &tx_hash,
         )
@@ -678,7 +678,7 @@ impl ShadowCollectWorker {
         // 统一失败 fact 映射，保持与其他 resource delegation 统一上报约定。
         let (err_code, err_msg) = resource_delegation_failure_fact(err);
         let affected = ApiResourceDelegationRepo::mark_failed_if_unfinished(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             &err_code,
             &err_msg,
@@ -959,7 +959,7 @@ impl ShadowCollectWorker {
         }
 
         let delegations = ApiResourceDelegationRepo::list_by_origin_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             origin_trade_no,
         )
         .await
@@ -1200,7 +1200,7 @@ impl ShadowCollectWorker {
             native_amount,
             amount,
         );
-        ApiResourceDelegationRepo::upsert(&self.ctx.api_transaction_pool()?, delegation)
+        ApiResourceDelegationRepo::upsert(&self.ctx.api_resource_pool()?, delegation)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
         let rows = ApiCollectRepo::mark_resource_blocked(
@@ -1234,7 +1234,7 @@ impl ShadowCollectWorker {
             return Ok(());
         }
         ApiResourceDelegationRepo::mark_result_received(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &delegation.resource_trade_no,
             ApiResourceDelegationResultStatus::Success,
             None,
@@ -1259,7 +1259,7 @@ impl ShadowCollectWorker {
         resource_trade_no: &str,
     ) -> Result<(), ServiceError> {
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
         )
         .await
@@ -1271,7 +1271,7 @@ impl ShadowCollectWorker {
             return Ok(());
         }
         let _ = ApiResourceDelegationRepo::mark_result_received(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &delegation.resource_trade_no,
             ApiResourceDelegationResultStatus::Fail,
             None,
@@ -3816,6 +3816,10 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
 
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
@@ -3870,6 +3874,10 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
 
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
@@ -3946,6 +3954,10 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
 
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
@@ -4133,6 +4145,10 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             test_ctx().await,
@@ -4183,6 +4199,10 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             test_ctx().await,
@@ -4243,7 +4263,7 @@ oss:
         );
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &collect_pool,
+            &resource_pool,
             "rsc_local_delegate_C_local_block_once",
         )
         .await
@@ -4265,6 +4285,10 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             test_ctx().await,
@@ -4305,7 +4329,7 @@ oss:
         .await
         .expect("block collect");
         ApiResourceDelegationRepo::upsert(
-            &collect_pool,
+            &resource_pool,
             NewApiResourceDelegation::local_delegate(
                 "uid",
                 "rsc_local_delegate_C_local_release",
@@ -4320,7 +4344,7 @@ oss:
         .await
         .expect("insert local delegation");
         ApiResourceDelegationRepo::mark_failed_if_unfinished(
-            &collect_pool,
+            &resource_pool,
             "rsc_local_delegate_C_local_release",
             "ERR_6008",
             "local delegate failed",
@@ -4354,6 +4378,10 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             test_ctx().await,
@@ -4366,7 +4394,7 @@ oss:
         );
 
         ApiResourceDelegationRepo::upsert(
-            &collect_pool,
+            &resource_pool,
             NewApiResourceDelegation::platform_delegate_task(
                 "uid",
                 "rsc_platform_failed",
@@ -4383,7 +4411,7 @@ oss:
         .await
         .expect("insert platform delegation");
         ApiResourceDelegationRepo::mark_failed_if_unfinished(
-            &collect_pool,
+            &resource_pool,
             "rsc_platform_failed",
             "ERR_6008",
             "platform delegate failed locally",
@@ -4397,7 +4425,7 @@ oss:
             .expect("ignore platform failure");
 
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &collect_pool,
+            &resource_pool,
             "rsc_platform_failed",
         )
         .await
@@ -4405,7 +4433,7 @@ oss:
         assert!(task.result_received_at.is_none());
         assert!(task.result_ack_sent_at.is_none());
 
-        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&collect_pool, 100)
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&resource_pool, 100)
             .await
             .expect("scan result ack");
         assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_platform_failed"));
@@ -4420,6 +4448,10 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             test_ctx().await,
@@ -4432,7 +4464,7 @@ oss:
         );
 
         ApiResourceDelegationRepo::upsert(
-            &collect_pool,
+            &resource_pool,
             NewApiResourceDelegation::platform_delegate_task(
                 "uid",
                 "rsc_platform_delegate_retry",
@@ -4448,10 +4480,13 @@ oss:
         )
         .await
         .expect("insert platform delegation");
-        ApiResourceDelegationRepo::mark_task_ack_sent(&collect_pool, "rsc_platform_delegate_retry")
-            .await
-            .expect("mark ack");
-        ApiResourceDelegationRepo::claim_build_slot(&collect_pool, "rsc_platform_delegate_retry")
+        ApiResourceDelegationRepo::mark_task_ack_sent(
+            &resource_pool,
+            "rsc_platform_delegate_retry",
+        )
+        .await
+        .expect("mark ack");
+        ApiResourceDelegationRepo::claim_build_slot(&resource_pool, "rsc_platform_delegate_retry")
             .await
             .expect("claim build slot");
 
@@ -4464,7 +4499,7 @@ oss:
             .expect("schedule retry");
 
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &collect_pool,
+            &resource_pool,
             "rsc_platform_delegate_retry",
         )
         .await
@@ -4485,6 +4520,10 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             test_ctx().await,
@@ -4525,11 +4564,11 @@ oss:
             "10",
             "10",
         );
-        ApiResourceDelegationRepo::upsert(&collect_pool, input)
+        ApiResourceDelegationRepo::upsert(&resource_pool, input)
             .await
             .expect("insert local delegation");
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &collect_pool,
+            &resource_pool,
             "rsc_local_delegate_C_local_success",
         )
         .await

@@ -26,7 +26,7 @@
 
 use crate::{
     ApiTransactionDbPool,
-    dao::{api_resource_delegation::ApiResourceDelegationDao, api_withdraw::ApiWithdrawDao},
+    dao::api_withdraw::ApiWithdrawDao,
     entities::{
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
@@ -175,29 +175,6 @@ impl ApiWithdrawRepo {
         gate_result: ApiResourceGateResult,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::mark_resource_released(pool.write_ref(), trade_no, gate_result).await
-    }
-
-    pub async fn mark_resource_result_ack_sent_and_release_gate(
-        pool: &ApiTransactionDbPool,
-        resource_trade_no: &str,
-        origin_trade_no: Option<&str>,
-        gate_result: Option<ApiResourceGateResult>,
-    ) -> Result<u64, crate::Error> {
-        let mut tx =
-            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
-
-        let ack_rows =
-            ApiResourceDelegationDao::mark_result_ack_sent(&mut *tx, resource_trade_no).await?;
-
-        if ack_rows > 0 {
-            if let (Some(origin_trade_no), Some(gate_result)) = (origin_trade_no, gate_result) {
-                ApiWithdrawDao::mark_resource_released(&mut *tx, origin_trade_no, gate_result)
-                    .await?;
-            }
-        }
-
-        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(ack_rows)
     }
 
     pub async fn scan_need_resource_gate(
@@ -1591,7 +1568,7 @@ mod tests {
         error::Error,
         repositories::{
             api_wallet::resource_delegation::ApiResourceDelegationRepo,
-            test_helper::setup_api_transaction_pool,
+            test_helper::{setup_api_resource_pool, setup_api_transaction_pool},
         },
     };
 
@@ -1931,6 +1908,8 @@ mod tests {
     async fn mark_resource_result_ack_sent_and_release_gate_updates_facts_together() {
         let pool =
             setup_api_transaction_pool("wallet_db_withdraw_resource_result_ack_release").await;
+        let resource_pool =
+            setup_api_resource_pool("wallet_db_withdraw_resource_result_ack_release").await;
         let trade_no = "withdraw_resource_result_ack_release_1";
 
         ApiWithdrawRepo::upsert_api_withdraw(
@@ -1972,7 +1951,7 @@ mod tests {
         .unwrap();
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            &pool,
+            &resource_pool,
             NewApiResourceDelegation::platform_delegate(
                 "uid",
                 trade_no,
@@ -1989,18 +1968,24 @@ mod tests {
         .await
         .unwrap();
 
-        let rows = ApiWithdrawRepo::mark_resource_result_ack_sent_and_release_gate(
+        let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(&resource_pool, trade_no)
+            .await
+            .unwrap();
+        assert_eq!(ack_rows, 1);
+
+        let release_rows = ApiWithdrawRepo::mark_resource_released(
             &pool,
             trade_no,
-            Some(trade_no),
-            Some(ApiResourceGateResult::ResourceDelegationFailedBypass),
+            ApiResourceGateResult::ResourceDelegationFailedBypass,
         )
         .await
         .unwrap();
-        assert_eq!(rows, 1);
+        assert_eq!(release_rows, 1);
 
         let resource_task =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, trade_no).await.unwrap();
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, trade_no)
+                .await
+                .unwrap();
         assert!(resource_task.result_ack_sent_at.is_some());
 
         let released =
@@ -2014,15 +1999,10 @@ mod tests {
         );
         assert!(released.resource_block_reason.is_none());
 
-        let rows = ApiWithdrawRepo::mark_resource_result_ack_sent_and_release_gate(
-            &pool,
-            trade_no,
-            Some(trade_no),
-            Some(ApiResourceGateResult::ResourceDelegationFailedBypass),
-        )
-        .await
-        .unwrap();
-        assert_eq!(rows, 0);
+        let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(&resource_pool, trade_no)
+            .await
+            .unwrap();
+        assert_eq!(ack_rows, 0);
 
         let still_released =
             ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)

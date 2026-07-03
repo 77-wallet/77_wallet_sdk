@@ -22,6 +22,9 @@ pub struct ApiTransactionDbPool(std::sync::Arc<SplitDbPool>);
 #[derive(Clone, Debug)]
 pub struct ApiWalletDbPool(std::sync::Arc<SplitDbPool>);
 
+#[derive(Clone, Debug)]
+pub struct ApiResourceDbPool(std::sync::Arc<SplitDbPool>);
+
 macro_rules! impl_split_pool_wrapper {
     ($name:ident) => {
         impl $name {
@@ -91,3 +94,4 @@ impl_split_pool_wrapper!(CoreDbPool);
 impl_split_pool_wrapper!(TaskDbPool);
 impl_split_pool_wrapper!(ApiTransactionDbPool);
 impl_split_pool_wrapper!(ApiWalletDbPool);
+impl_split_pool_wrapper!(ApiResourceDbPool);

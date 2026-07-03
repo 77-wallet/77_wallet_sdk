@@ -68,8 +68,10 @@ impl Handles {
         let resource_operation_shadow =
             infrastructure::api_trans::resource_operation::shadow::init(context).await?;
         let platform_resource_delegate_shadow = {
+            let api_resource_pool = context.api_resource_pool()?;
             let api_transaction_pool = context.api_transaction_pool()?;
             infrastructure::api_trans::resource_delegate::platform_shadow::init(
+                api_resource_pool,
                 api_transaction_pool,
             )
             .await

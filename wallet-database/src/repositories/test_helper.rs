@@ -1,5 +1,5 @@
 use crate::{
-    ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool, SqlitePoolConfig,
+    ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool, SqlitePoolConfig,
     dao::assets::CreateAssetsVo,
     entities::{account::CreateAccountVo, assets::AssetsId, wallet::WalletEntity},
     repositories::{account::AccountRepo, assets::AssetsRepo, wallet::WalletRepo},
@@ -29,6 +29,12 @@ pub(crate) async fn setup_api_transaction_pool(prefix: &str) -> ApiTransactionDb
     let dir = make_temp_dir(prefix);
     let ctx = crate::SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
     ctx.into_transaction_db_pool().unwrap()
+}
+
+pub(crate) async fn setup_api_resource_pool(prefix: &str) -> ApiResourceDbPool {
+    let dir = make_temp_dir(prefix);
+    let ctx = crate::SqliteContext::new(&dir, Some("api_resource.db")).await.unwrap();
+    ctx.into_api_resource_db_pool().unwrap()
 }
 
 pub(crate) async fn setup_api_transaction_pool_with_config(

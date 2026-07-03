@@ -1,5 +1,5 @@
 use crate::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool,
     dao::api_resource_operation::ApiResourceOperationDao,
     entities::api_resource_operation::{ApiResourceOperationEntity, NewApiResourceOperation},
 };
@@ -8,21 +8,21 @@ pub struct ApiResourceOperationRepo;
 
 impl ApiResourceOperationRepo {
     pub async fn upsert(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         input: NewApiResourceOperation,
     ) -> Result<(), crate::Error> {
         ApiResourceOperationDao::upsert(pool.write_ref(), input).await
     }
 
     pub async fn get_by_resource_trade_no(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<ApiResourceOperationEntity, crate::Error> {
         ApiResourceOperationDao::get_by_resource_trade_no(pool.read_ref(), resource_trade_no).await
     }
 
     pub async fn get_by_hash_and_owner(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         tx_hash: &str,
         owner_address: &str,
     ) -> Result<Option<ApiResourceOperationEntity>, crate::Error> {
@@ -31,7 +31,7 @@ impl ApiResourceOperationRepo {
     }
 
     pub async fn record_client_broadcast_success(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         input: NewApiResourceOperation,
         tx_hash: &str,
         raw_tx: &str,
@@ -48,63 +48,63 @@ impl ApiResourceOperationRepo {
     }
 
     pub async fn mark_task_ack_sent(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::mark_task_ack_sent(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn scan_need_task_ack(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
         ApiResourceOperationDao::scan_need_task_ack(pool.read_ref(), limit).await
     }
 
     pub async fn scan_can_build(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
         ApiResourceOperationDao::scan_can_build(pool.read_ref(), limit).await
     }
 
     pub async fn scan_can_broadcast(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
         ApiResourceOperationDao::scan_can_broadcast(pool.read_ref(), limit).await
     }
 
     pub async fn scan_need_recover(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
         ApiResourceOperationDao::scan_need_recover(pool.read_ref(), limit).await
     }
 
     pub async fn scan_need_tx_exec_receipt_upload(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
         ApiResourceOperationDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
     }
 
     pub async fn scan_need_result_ack(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
         ApiResourceOperationDao::scan_need_result_ack(pool.read_ref(), limit).await
     }
 
     pub async fn claim_building_at(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::claim_building_at(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn update_after_build(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         tx_hash: &str,
         raw_tx: &str,
@@ -121,21 +121,21 @@ impl ApiResourceOperationRepo {
     }
 
     pub async fn clear_building_at(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::clear_building_at(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn mark_broadcast_executed(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::mark_broadcast_executed(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn confirm_transaction_time_if_absent(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         transaction_time: &str,
     ) -> Result<u64, crate::Error> {
@@ -148,7 +148,7 @@ impl ApiResourceOperationRepo {
     }
 
     pub async fn mark_tx_exec_receipt_uploaded(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), resource_trade_no)
@@ -156,7 +156,7 @@ impl ApiResourceOperationRepo {
     }
 
     pub async fn mark_result_received(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         result_status: &str,
         fail_type: Option<i64>,
@@ -177,14 +177,14 @@ impl ApiResourceOperationRepo {
     }
 
     pub async fn mark_result_ack_sent(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::mark_result_ack_sent(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn mark_failed_if_unfinished(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         err_code: &str,
         err_msg: &str,
@@ -199,7 +199,7 @@ impl ApiResourceOperationRepo {
     }
 
     pub async fn mark_broadcast_uncertain_attempt(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::mark_broadcast_uncertain_attempt(
@@ -210,7 +210,7 @@ impl ApiResourceOperationRepo {
     }
 
     pub async fn invalidate_raw_tx(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::invalidate_raw_tx(pool.write_ref(), resource_trade_no).await
@@ -228,12 +228,12 @@ mod tests {
             },
             api_resource_type::ApiResourceType,
         },
-        repositories::test_helper::setup_api_transaction_pool,
+        repositories::test_helper::setup_api_resource_pool,
     };
 
     #[tokio::test]
     async fn resource_operation_upsert_supports_backend_stake_task() {
-        let pool = setup_api_transaction_pool("resource_operation_upsert").await;
+        let pool = setup_api_resource_pool("resource_operation_upsert").await;
         let input = NewApiResourceOperation::backend_stake("uid_1", "op_trade_1", "owner", "1000");
 
         ApiResourceOperationRepo::upsert(&pool, input.clone()).await.unwrap();
@@ -250,7 +250,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_records_client_vote_for_hash_detail_lookup() {
-        let pool = setup_api_transaction_pool("resource_operation_client_vote_lookup").await;
+        let pool = setup_api_resource_pool("resource_operation_client_vote_lookup").await;
         let input = NewApiResourceOperation::client_vote("uid_1", "vote_trade_1", "owner", "1010");
 
         ApiResourceOperationRepo::record_client_broadcast_success(
@@ -286,7 +286,7 @@ mod tests {
     #[tokio::test]
     async fn resource_operation_records_client_withdraw_reward_for_hash_detail_lookup() {
         let pool =
-            setup_api_transaction_pool("resource_operation_client_withdraw_reward_lookup").await;
+            setup_api_resource_pool("resource_operation_client_withdraw_reward_lookup").await;
         let input = NewApiResourceOperation::client_withdraw_reward(
             "uid_1",
             "reward_trade_1",
@@ -319,7 +319,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_task_ack_is_idempotent() {
-        let pool = setup_api_transaction_pool("resource_operation_ack").await;
+        let pool = setup_api_resource_pool("resource_operation_ack").await;
         let input = NewApiResourceOperation::backend_stake("uid_1", "op_trade_ack", "owner", "1");
         ApiResourceOperationRepo::upsert(&pool, input).await.unwrap();
 
@@ -335,7 +335,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_task_ack_scan_selects_unsent_backend_tasks() {
-        let pool = setup_api_transaction_pool("resource_operation_ack_scan").await;
+        let pool = setup_api_resource_pool("resource_operation_ack_scan").await;
         ApiResourceOperationRepo::upsert(
             &pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_need_ack", "owner", "1"),
@@ -358,7 +358,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_can_build_requires_task_ack_and_claims_once() {
-        let pool = setup_api_transaction_pool("resource_operation_can_build").await;
+        let pool = setup_api_resource_pool("resource_operation_can_build").await;
         ApiResourceOperationRepo::upsert(
             &pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_no_ack", "owner", "1"),
@@ -397,7 +397,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_update_after_build_persists_raw_tx_once() {
-        let pool = setup_api_transaction_pool("resource_operation_after_build").await;
+        let pool = setup_api_resource_pool("resource_operation_after_build").await;
         ApiResourceOperationRepo::upsert(
             &pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_after_build", "owner", "1"),
@@ -447,7 +447,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_can_broadcast_after_build_and_marks_once() {
-        let pool = setup_api_transaction_pool("resource_operation_can_broadcast").await;
+        let pool = setup_api_resource_pool("resource_operation_can_broadcast").await;
         ApiResourceOperationRepo::upsert(
             &pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_can_broadcast", "owner", "1"),
@@ -499,7 +499,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_need_recover_after_broadcast_and_confirms_once() {
-        let pool = setup_api_transaction_pool("resource_operation_recover").await;
+        let pool = setup_api_resource_pool("resource_operation_recover").await;
         ApiResourceOperationRepo::upsert(
             &pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_recover", "owner", "1"),
@@ -557,7 +557,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_receipt_upload_scan_and_mark_are_idempotent() {
-        let pool = setup_api_transaction_pool("resource_operation_receipt_upload").await;
+        let pool = setup_api_resource_pool("resource_operation_receipt_upload").await;
         ApiResourceOperationRepo::upsert(
             &pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_receipt", "owner", "1"),
@@ -613,7 +613,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_failure_fact_is_idempotent_and_receiptable() {
-        let pool = setup_api_transaction_pool("resource_operation_failure_fact").await;
+        let pool = setup_api_resource_pool("resource_operation_failure_fact").await;
         ApiResourceOperationRepo::upsert(
             &pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_failed", "owner", "1"),
@@ -662,7 +662,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_result_ack_scan_and_mark_are_idempotent() {
-        let pool = setup_api_transaction_pool("resource_operation_result_ack").await;
+        let pool = setup_api_resource_pool("resource_operation_result_ack").await;
         ApiResourceOperationRepo::upsert(
             &pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_result_ack", "owner", "1"),
@@ -712,7 +712,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_shadow_scans_ignore_client_source_tasks() {
-        let pool = setup_api_transaction_pool("resource_operation_client_source_guard").await;
+        let pool = setup_api_resource_pool("resource_operation_client_source_guard").await;
         let client_input = NewApiResourceOperation {
             uid: "uid_1".to_string(),
             task_source: ApiResourceOperationTaskSource::Client,
@@ -812,7 +812,7 @@ mod tests {
 
     #[tokio::test]
     async fn client_resource_operation_broadcast_persists_fact() {
-        let pool = setup_api_transaction_pool("client_resource_operation_broadcast").await;
+        let pool = setup_api_resource_pool("client_resource_operation_broadcast").await;
         let input = NewApiResourceOperation::client(
             "uid_1",
             "client_resource_1",
@@ -865,7 +865,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_operation_clear_building_at_releases_pre_raw_tx_slot() {
-        let pool = setup_api_transaction_pool("resource_operation_clear_building").await;
+        let pool = setup_api_resource_pool("resource_operation_clear_building").await;
         ApiResourceOperationRepo::upsert(
             &pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_clear_building", "owner", "1"),

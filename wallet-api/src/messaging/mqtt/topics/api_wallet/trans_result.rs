@@ -138,7 +138,9 @@ impl AwmOrderTransResMsg {
 
         if self.uid_exists(ctx).await? {
             let api_transaction_pool = ctx.api_transaction_pool()?;
-            self.resource_result_with_ctx(&api_transaction_pool, Some(ctx)).await?;
+            let api_resource_pool = ctx.api_resource_pool()?;
+            self.resource_result_with_ctx(&api_transaction_pool, &api_resource_pool, Some(ctx))
+                .await?;
         } else {
             tracing::warn!("AwmCmdRscResMsg uid not found: {}", self.uid);
         }
@@ -168,6 +170,7 @@ impl AwmOrderTransResMsg {
         // ✅ 强顺序屏障：先持久化“已收到 SER TxRes”事实，再进入 confirm_tx 路径
         // ⚠️ 若此处失败，必须返回错误并禁止 ack MQTT（让其重投）
         let api_transaction_pool = ctx.api_transaction_pool()?;
+        let api_resource_pool = ctx.api_resource_pool()?;
         match self.trade_type {
             1 => {
                 ApiWithdrawRepo::update_tx_res_received_at(&api_transaction_pool, &self.trade_no)
@@ -187,18 +190,26 @@ impl AwmOrderTransResMsg {
                 self.transfer_fee(ctx).await?;
             }
             4 => {
-                self.resource_operation_result_with_ctx(&api_transaction_pool, Some(ctx)).await?;
+                self.resource_operation_result_with_ctx(&api_resource_pool, Some(ctx)).await?;
             }
             5 => {
-                self.collect_resource_delegation_result_with_ctx(&api_transaction_pool, Some(ctx))
-                    .await?;
+                self.collect_resource_delegation_result_with_ctx(
+                    &api_transaction_pool,
+                    &api_resource_pool,
+                    Some(ctx),
+                )
+                .await?;
             }
             7 => {
-                self.withdraw_resource_delegation_result_with_ctx(&api_transaction_pool, Some(ctx))
-                    .await?;
+                self.withdraw_resource_delegation_result_with_ctx(
+                    &api_transaction_pool,
+                    &api_resource_pool,
+                    Some(ctx),
+                )
+                .await?;
             }
             6 | 8 => {
-                self.resource_reclaim_result(&api_transaction_pool).await?;
+                self.resource_reclaim_result(&api_resource_pool).await?;
             }
             _ => {}
         }
@@ -217,6 +228,7 @@ impl AwmOrderTransResMsg {
     async fn resource_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
         ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         // AWM_CMD_RSC_RES is shared by two local roles. Platform wallets receive
@@ -226,13 +238,23 @@ impl AwmOrderTransResMsg {
         // fact first instead of trusting only the message trade type.
         match self.trade_type {
             1 | 7 => {
-                self.withdraw_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+                self.withdraw_resource_delegation_result_with_ctx(
+                    api_transaction_pool,
+                    api_resource_pool,
+                    ctx,
+                )
+                .await
             }
             2 | 5 => {
-                self.collect_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+                self.collect_resource_delegation_result_with_ctx(
+                    api_transaction_pool,
+                    api_resource_pool,
+                    ctx,
+                )
+                .await
             }
-            4 => self.resource_operation_result_with_ctx(api_transaction_pool, ctx).await,
-            6 | 8 => self.resource_reclaim_result(api_transaction_pool).await,
+            4 => self.resource_operation_result_with_ctx(api_resource_pool, ctx).await,
+            6 | 8 => self.resource_reclaim_result(api_resource_pool).await,
             _ => {
                 tracing::warn!(
                     trade_no = %self.trade_no,
@@ -246,13 +268,13 @@ impl AwmOrderTransResMsg {
 
     async fn resource_operation_result_with_ctx(
         &self,
-        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
         ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status { "success" } else { "fail" };
         let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
         ApiResourceOperationRepo::mark_result_received(
-            api_transaction_pool,
+            api_resource_pool,
             &self.trade_no,
             result_status,
             self.fail_type.map(i64::from),
@@ -270,6 +292,7 @@ impl AwmOrderTransResMsg {
     async fn collect_resource_delegation_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
         ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status {
@@ -279,17 +302,15 @@ impl AwmOrderTransResMsg {
         };
         let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
 
-        if let Some(resource_task) = ApiResourceDelegationRepo::find_by_resource_trade_no(
-            api_transaction_pool,
-            &self.trade_no,
-        )
-        .await?
+        if let Some(resource_task) =
+            ApiResourceDelegationRepo::find_by_resource_trade_no(api_resource_pool, &self.trade_no)
+                .await?
         {
             // Platform wallet: the message trade number is the real resource
             // delegation task (for example CD...), so this fact is ACKed later
             // as a resource task result with TX_RES.
             ApiResourceDelegationRepo::mark_backend_result_received(
-                api_transaction_pool,
+                api_resource_pool,
                 &self.trade_no,
                 result_status,
                 self.fail_type.map(i64::from),
@@ -344,7 +365,7 @@ impl AwmOrderTransResMsg {
         }
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            api_transaction_pool,
+            api_resource_pool,
             NewApiResourceDelegation::platform_delegate(
                 &self.uid,
                 &self.trade_no,
@@ -373,6 +394,7 @@ impl AwmOrderTransResMsg {
     async fn withdraw_resource_delegation_result_with_ctx(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
         ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status {
@@ -382,17 +404,15 @@ impl AwmOrderTransResMsg {
         };
         let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
 
-        if let Some(resource_task) = ApiResourceDelegationRepo::find_by_resource_trade_no(
-            api_transaction_pool,
-            &self.trade_no,
-        )
-        .await?
+        if let Some(resource_task) =
+            ApiResourceDelegationRepo::find_by_resource_trade_no(api_resource_pool, &self.trade_no)
+                .await?
         {
             // Platform wallet: the message trade number is the real resource
             // delegation task (for example CD...), so this fact is ACKed later
             // as a resource task result with TX_RES.
             ApiResourceDelegationRepo::mark_backend_result_received(
-                api_transaction_pool,
+                api_resource_pool,
                 &self.trade_no,
                 result_status,
                 self.fail_type.map(i64::from),
@@ -433,7 +453,7 @@ impl AwmOrderTransResMsg {
         // order, or a dependency that points back to it. Persist a projection
         // fact so the side-effect worker can ACK it as WD + TX_RSC_RES.
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            api_transaction_pool,
+            api_resource_pool,
             NewApiResourceDelegation::platform_delegate(
                 &self.uid,
                 &self.trade_no,
@@ -542,7 +562,7 @@ impl AwmOrderTransResMsg {
 
     async fn resource_reclaim_result(
         &self,
-        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let result_status = if self.status {
             ApiResourceDelegationResultStatus::Success
@@ -551,7 +571,7 @@ impl AwmOrderTransResMsg {
         };
         let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
         ApiResourceDelegationRepo::mark_backend_result_received(
-            api_transaction_pool,
+            api_resource_pool,
             &self.trade_no,
             result_status,
             self.fail_type.map(i64::from),
@@ -682,37 +702,50 @@ impl AwmOrderTransResMsg {
     #[cfg(test)]
     async fn resource_operation_result(
         &self,
-        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
         ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        self.resource_operation_result_with_ctx(api_transaction_pool, ctx).await
+        self.resource_operation_result_with_ctx(api_resource_pool, ctx).await
     }
 
     #[cfg(test)]
     async fn collect_resource_delegation_result(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
         ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        self.collect_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+        self.collect_resource_delegation_result_with_ctx(
+            api_transaction_pool,
+            api_resource_pool,
+            ctx,
+        )
+        .await
     }
 
     #[cfg(test)]
     async fn withdraw_resource_delegation_result(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
         ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        self.withdraw_resource_delegation_result_with_ctx(api_transaction_pool, ctx).await
+        self.withdraw_resource_delegation_result_with_ctx(
+            api_transaction_pool,
+            api_resource_pool,
+            ctx,
+        )
+        .await
     }
 
     #[cfg(test)]
     async fn resource_result(
         &self,
         api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
         ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        self.resource_result_with_ctx(api_transaction_pool, ctx).await
+        self.resource_result_with_ctx(api_transaction_pool, api_resource_pool, ctx).await
     }
 }
 
@@ -817,9 +850,12 @@ mod tests {
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
             .await?
             .into_transaction_db_pool()?;
+        let resource_pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await?
+            .into_api_resource_db_pool()?;
 
         ApiResourceOperationRepo::upsert(
-            &pool,
+            &resource_pool,
             NewApiResourceOperation::backend_stake("uid_1", "op_result_msg", "owner", "1"),
         )
         .await?;
@@ -834,10 +870,11 @@ mod tests {
             block_number: None,
         };
 
-        msg.resource_operation_result(&pool, None).await?;
+        msg.resource_operation_result(&resource_pool, None).await?;
 
         let got =
-            ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_result_msg").await?;
+            ApiResourceOperationRepo::get_by_resource_trade_no(&resource_pool, "op_result_msg")
+                .await?;
         assert_eq!(got.result_status.as_deref(), Some("fail"));
         assert_eq!(got.fail_type, Some(2));
         assert!(got.result_received_at.is_some());
@@ -854,6 +891,9 @@ mod tests {
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
             .await?
             .into_transaction_db_pool()?;
+        let resource_pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await?
+            .into_api_resource_db_pool()?;
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -966,6 +1006,9 @@ mod tests {
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
             .await?
             .into_transaction_db_pool()?;
+        let resource_pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await?
+            .into_api_resource_db_pool()?;
         insert_blocked_collect_waiting_platform_result(&pool, "C_wait_success", "DL_success")
             .await?;
 
@@ -979,7 +1022,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.collect_resource_delegation_result(&pool, None).await?;
+        msg.collect_resource_delegation_result(&pool, &resource_pool, None).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_success").await?;
         assert!(collect.resource_gate_released_at.is_some());
@@ -989,7 +1032,8 @@ mod tests {
         );
         assert_eq!(collect.resource_dependency_trade_no.as_deref(), Some("DL_success"));
         let result_fact =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "DL_success").await?;
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, "DL_success")
+                .await?;
         assert_eq!(result_fact.origin_trade_no.as_deref(), Some("C_wait_success"));
         assert_eq!(result_fact.result_status, Some(ApiResourceDelegationResultStatus::Success));
         assert!(result_fact.result_ack_sent_at.is_none());
@@ -1004,6 +1048,9 @@ mod tests {
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
             .await?
             .into_transaction_db_pool()?;
+        let resource_pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await?
+            .into_api_resource_db_pool()?;
         insert_blocked_collect_waiting_platform_result(&pool, "C_wait_fail", "DL_fail").await?;
 
         let msg = AwmOrderTransResMsg {
@@ -1016,7 +1063,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.collect_resource_delegation_result(&pool, None).await?;
+        msg.collect_resource_delegation_result(&pool, &resource_pool, None).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_wait_fail").await?;
         assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
@@ -1028,7 +1075,7 @@ mod tests {
             Some(ApiResourceDependencyType::LocalDelegate)
         );
         let result_fact =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "DL_fail").await?;
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, "DL_fail").await?;
         assert_eq!(result_fact.origin_trade_no.as_deref(), Some("C_wait_fail"));
         assert_eq!(result_fact.result_status, Some(ApiResourceDelegationResultStatus::Fail));
         assert!(result_fact.result_ack_sent_at.is_none());
@@ -1044,6 +1091,9 @@ mod tests {
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
             .await?
             .into_transaction_db_pool()?;
+        let resource_pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await?
+            .into_api_resource_db_pool()?;
 
         ApiCollectRepo::upsert_api_collect(
             &pool,
@@ -1081,7 +1131,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.resource_result(&pool, None).await?;
+        msg.resource_result(&pool, &resource_pool, None).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_origin_result").await?;
         assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
@@ -1094,7 +1144,8 @@ mod tests {
         assert!(collect.result_ack_sent_at.is_none());
 
         let result_fact =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "C_origin_result").await?;
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, "C_origin_result")
+                .await?;
         assert_eq!(result_fact.origin_trade_no.as_deref(), Some("C_origin_result"));
         assert_eq!(result_fact.result_status, Some(ApiResourceDelegationResultStatus::Fail));
         assert!(result_fact.result_ack_sent_at.is_none());
@@ -1106,7 +1157,8 @@ mod tests {
                 .contains("\"tradeNo\":\"C_origin_result\"")
         );
 
-        let result_ack_rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await?;
+        let result_ack_rows =
+            ApiResourceDelegationRepo::scan_need_result_ack(&resource_pool, 100).await?;
         assert!(result_ack_rows.iter().any(|row| row.resource_trade_no == "C_origin_result"));
 
         Ok(())
@@ -1120,6 +1172,9 @@ mod tests {
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
             .await?
             .into_transaction_db_pool()?;
+        let resource_pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await?
+            .into_api_resource_db_pool()?;
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -1166,7 +1221,7 @@ mod tests {
             block_number: None,
         };
 
-        msg.resource_result(&pool, None).await?;
+        msg.resource_result(&pool, &resource_pool, None).await?;
 
         let withdraw = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &pool,
@@ -1185,14 +1240,15 @@ mod tests {
         assert!(withdraw.tx_res_ack_sent_at.is_none());
 
         let result_fact =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "W_origin_result").await?;
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, "W_origin_result")
+                .await?;
         assert_eq!(result_fact.origin_trade_no.as_deref(), Some("W_origin_result"));
         assert_eq!(result_fact.origin_trade_type, Some(ApiTradeType::Withdraw as i64));
         assert_eq!(result_fact.result_status, Some(ApiResourceDelegationResultStatus::Success));
         assert!(result_fact.result_ack_sent_at.is_none());
 
         let collect_ack_rows = ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
-            &pool,
+            &resource_pool,
             ApiTradeType::Collect as i64,
             100,
         )
@@ -1200,7 +1256,7 @@ mod tests {
         assert!(!collect_ack_rows.iter().any(|row| row.resource_trade_no == "W_origin_result"));
 
         let withdraw_ack_rows = ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
-            &pool,
+            &resource_pool,
             ApiTradeType::Withdraw as i64,
             100,
         )

@@ -167,7 +167,7 @@ impl SideEffectWorker {
         let next_retry_at = (chrono::Utc::now() + chrono::Duration::seconds(wait_secs))
             .format("%Y-%m-%dT%H:%M:%SZ")
             .to_string();
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
         let affected = ApiResourceDelegationRepo::mark_result_ack_retry_wait(
             &pool,
             resource_trade_no,
@@ -621,7 +621,7 @@ impl SideEffectWorker {
         info!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Processing resource result ACK command");
 
         let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -693,14 +693,24 @@ impl SideEffectWorker {
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
     ) -> Result<(), ServiceError> {
         let release = Self::collect_gate_release_from_resource_result(resource_task);
-        let ack_rows = ApiCollectRepo::mark_resource_result_ack_sent_and_release_gate(
-            &self.ctx.api_transaction_pool()?,
+        let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(
+            &self.ctx.api_resource_pool()?,
             &resource_task.resource_trade_no,
-            release.as_ref().map(|(origin_trade_no, _)| origin_trade_no.as_str()),
-            release.as_ref().map(|(_, release_result)| *release_result),
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if ack_rows > 0 {
+            if let Some((origin_trade_no, release_result)) = release.as_ref() {
+                ApiCollectRepo::mark_resource_released(
+                    &self.ctx.api_transaction_pool()?,
+                    origin_trade_no,
+                    *release_result,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+            }
+        }
 
         if ack_rows == 0 {
             warn!(
@@ -860,7 +870,7 @@ impl SideEffectWorker {
         origin_trade_no: &str,
     ) -> Result<(), ServiceError> {
         let delegations = ApiResourceDelegationRepo::list_by_origin_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             origin_trade_no,
         )
         .await
@@ -883,7 +893,7 @@ impl SideEffectWorker {
 
         let resource_trade_no = collect_local_undelegate_trade_no(origin_trade_no);
         ApiResourceDelegationRepo::upsert(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             NewApiResourceDelegation::local_undelegate(
                 local_delegate.uid.clone(),
                 resource_trade_no,
@@ -908,7 +918,7 @@ impl SideEffectWorker {
         info!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Processing resource task ACK command");
 
         let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -932,7 +942,7 @@ impl SideEffectWorker {
         {
             Ok(_) => {
                 let affected = ApiResourceDelegationRepo::mark_task_ack_sent(
-                    &self.ctx.api_transaction_pool()?,
+                    &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
                 )
                 .await
@@ -958,7 +968,7 @@ impl SideEffectWorker {
         info!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Processing resource tx exec receipt command");
 
         let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -982,7 +992,7 @@ impl SideEffectWorker {
         backend_api.upload_tx_exec_receipt(&payload).await?;
 
         let affected = ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -1847,9 +1857,12 @@ oss:
         let pool = SqliteContext::new(&dir_path, Some("api_transaction.db"))
             .await?
             .into_transaction_db_pool()?;
+        let resource_pool = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await?
+            .into_api_resource_db_pool()?;
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            &pool,
+            &resource_pool,
             NewApiResourceDelegation::platform_delegate(
                 "uid_1",
                 "C_rsc_ack_release",
@@ -1865,8 +1878,11 @@ oss:
         )
         .await?;
 
-        let resource_task =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "C_rsc_ack_release").await?;
+        let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &resource_pool,
+            "C_rsc_ack_release",
+        )
+        .await?;
         assert_eq!(
             SideEffectWorker::collect_gate_release_from_resource_result(&resource_task),
             Some((
@@ -1885,9 +1901,12 @@ oss:
         let pool = SqliteContext::new(&dir_path, Some("api_transaction.db"))
             .await?
             .into_transaction_db_pool()?;
+        let resource_pool = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await?
+            .into_api_resource_db_pool()?;
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            &pool,
+            &resource_pool,
             NewApiResourceDelegation::platform_delegate(
                 "uid_1",
                 "C_rsc_ack_fail_release",
@@ -1903,9 +1922,11 @@ oss:
         )
         .await?;
 
-        let resource_task =
-            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "C_rsc_ack_fail_release")
-                .await?;
+        let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &resource_pool,
+            "C_rsc_ack_fail_release",
+        )
+        .await?;
         assert_eq!(
             SideEffectWorker::collect_gate_release_from_resource_result(&resource_task),
             Some((
@@ -2147,6 +2168,9 @@ oss:
         let tx_ctx =
             SqliteContext::new(&dir_path, Some("api_transaction.db")).await.expect("init tx db");
         let pool = tx_ctx.into_transaction_db_pool().expect("tx pool");
+        let resource_ctx =
+            SqliteContext::new(&dir_path, Some("api_resource.db")).await.expect("init resource db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
         let wallet_ctx =
             SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init wallet db");
         let wallet_pool: ApiWalletDbPool =
@@ -2177,7 +2201,7 @@ oss:
         .expect("insert collect");
 
         ApiResourceDelegationRepo::upsert(
-            &pool,
+            &resource_pool,
             NewApiResourceDelegation::local_delegate(
                 "uid",
                 "rsc_local_delegate_C_LOCAL_UNDELEGATE",
@@ -2192,7 +2216,7 @@ oss:
         .await
         .expect("insert local delegate");
         ApiResourceDelegationRepo::mark_result_received(
-            &pool,
+            &resource_pool,
             "rsc_local_delegate_C_LOCAL_UNDELEGATE",
             ApiResourceDelegationResultStatus::Success,
             None,
@@ -2213,7 +2237,7 @@ oss:
             .expect("create undelegation idempotent");
 
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &pool,
+            &resource_pool,
             "rsc_local_undelegate_C_LOCAL_UNDELEGATE",
         )
         .await

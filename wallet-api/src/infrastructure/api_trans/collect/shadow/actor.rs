@@ -151,7 +151,7 @@ impl CollectorShadowScannerActor {
 async fn log_startup_failed_local_delegate_diagnostics(
     ctx: &'static crate::context::Context,
 ) -> Result<(), ServiceError> {
-    let pool = ctx.api_transaction_pool()?;
+    let pool = ctx.api_resource_pool()?;
     let limit = shadow_rpc_policy::read_usize_env(
         "COLLECT_SHADOW_STARTUP_DIAG_MAX_ITEMS",
         STARTUP_FAILED_LOCAL_DELEGATE_DIAG_DEFAULT_LIMIT,

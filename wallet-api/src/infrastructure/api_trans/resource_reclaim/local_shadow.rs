@@ -7,7 +7,7 @@ use wallet_chain_interact::{
     tron::operations::{RawTransactionParams, TronTxOperation, stake::UnDelegateArgs},
 };
 use wallet_database::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool,
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
@@ -69,27 +69,27 @@ impl Default for LocalResourceReclaimScannerConfig {
 
 #[derive(Debug, Clone)]
 pub struct LocalResourceReclaimScanner {
-    api_transaction_pool: ApiTransactionDbPool,
+    api_resource_pool: ApiResourceDbPool,
     config: LocalResourceReclaimScannerConfig,
 }
 
 impl LocalResourceReclaimScanner {
-    pub fn new(api_transaction_pool: ApiTransactionDbPool) -> Self {
-        Self::with_config(api_transaction_pool, LocalResourceReclaimScannerConfig::default())
+    pub fn new(api_resource_pool: ApiResourceDbPool) -> Self {
+        Self::with_config(api_resource_pool, LocalResourceReclaimScannerConfig::default())
     }
 
     pub fn with_config(
-        api_transaction_pool: ApiTransactionDbPool,
+        api_resource_pool: ApiResourceDbPool,
         config: LocalResourceReclaimScannerConfig,
     ) -> Self {
-        Self { api_transaction_pool, config }
+        Self { api_resource_pool, config }
     }
 
     pub async fn scan_round(&self) -> Vec<LocalResourceReclaimIntent> {
         let mut intents = Vec::new();
 
         match ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiTradeType::Collect as i64,
             ApiResourceDelegationSource::Local,
             ApiResourceDelegationOperationType::Undelegate,
@@ -110,7 +110,7 @@ impl LocalResourceReclaimScanner {
         }
 
         match ApiResourceDelegationRepo::scan_can_recover_local_undelegation_for_origin_type(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiTradeType::Collect as i64,
             self.config.max_items_per_scan,
         )
@@ -223,7 +223,7 @@ impl LocalResourceReclaimWorker {
         );
 
         let affected = ApiResourceDelegationRepo::claim_build_slot(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -238,7 +238,7 @@ impl LocalResourceReclaimWorker {
         }
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -267,7 +267,7 @@ impl LocalResourceReclaimWorker {
 
         let tx_hash = self.execute_tron_local_undelegation(&delegation).await?;
         let affected = ApiResourceDelegationRepo::mark_broadcast_success(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
             &tx_hash,
         )
@@ -308,7 +308,7 @@ impl LocalResourceReclaimWorker {
         );
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -350,7 +350,7 @@ impl LocalResourceReclaimWorker {
             Ok(Some(resp)) => {
                 let payload = format!("local_undelegation_recovered:{}", resp.tx_hash);
                 ApiResourceDelegationRepo::mark_result_received(
-                    &self.ctx.api_transaction_pool()?,
+                    &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
                     ApiResourceDelegationResultStatus::Success,
                     None,
@@ -483,7 +483,7 @@ impl LocalResourceReclaimWorker {
         resource_trade_no: &str,
     ) -> Result<(), ServiceError> {
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
         )
         .await
@@ -491,7 +491,7 @@ impl LocalResourceReclaimWorker {
         let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
         let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
         ApiResourceDelegationRepo::mark_recover_retry_wait(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             ApiResourceDelegationRecoverStatus::RecoverWaiting,
             &next_retry_at.to_rfc3339(),
@@ -517,7 +517,7 @@ impl LocalResourceReclaimWorker {
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
         )
         .await
@@ -530,7 +530,7 @@ impl LocalResourceReclaimWorker {
             ApiResourceDelegationRecoverStatus::RetryRecover
         };
         ApiResourceDelegationRepo::reset_for_retry(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             next_status,
             &next_retry_at.to_rfc3339(),
@@ -602,12 +602,12 @@ pub struct LocalResourceReclaimShadowActorSystem {
 
 impl LocalResourceReclaimShadowActorSystem {
     pub fn new(ctx: &'static crate::context::Context) -> Result<Self, ServiceError> {
-        let api_transaction_pool = ctx.api_transaction_pool()?;
+        let api_resource_pool = ctx.api_resource_pool()?;
         let (shutdown_tx, shutdown_rx1) = broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let (intent_tx, intent_rx) = mpsc::channel(100);
 
-        let scanner = Arc::new(LocalResourceReclaimScanner::new(api_transaction_pool.clone()));
+        let scanner = Arc::new(LocalResourceReclaimScanner::new(api_resource_pool.clone()));
         let worker = LocalResourceReclaimWorker::new(ctx);
 
         info!(
@@ -673,8 +673,8 @@ pub(crate) async fn init(
 pub async fn scan_and_process_once(
     ctx: &'static crate::context::Context,
 ) -> Result<(), ServiceError> {
-    let api_transaction_pool = ctx.api_transaction_pool()?;
-    let scanner = LocalResourceReclaimScanner::new(api_transaction_pool.clone());
+    let api_resource_pool = ctx.api_resource_pool()?;
+    let scanner = LocalResourceReclaimScanner::new(api_resource_pool.clone());
     let worker = LocalResourceReclaimWorker::new(ctx);
 
     for intent in scanner.scan_round().await {
@@ -699,11 +699,11 @@ mod tests {
     async fn scanner_owns_only_local_undelegation_execute_and_recover() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
-        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
             .await
-            .expect("init api_transaction.db")
-            .into_transaction_db_pool()
-            .expect("transaction pool");
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -770,7 +770,7 @@ mod tests {
     #[tokio::test]
     async fn local_undelegation_retry_resets_execution_facts() {
         let ctx = test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("resource pool");
         let worker = LocalResourceReclaimWorker::new(ctx);
 
         ApiResourceDelegationRepo::upsert(
@@ -824,11 +824,11 @@ mod tests {
     async fn scanner_skips_future_retry_until_due_then_reopens_execute() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
-        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
             .await
-            .expect("init api_transaction.db")
-            .into_transaction_db_pool()
-            .expect("transaction pool");
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,

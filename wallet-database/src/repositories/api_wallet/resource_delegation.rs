@@ -1,5 +1,5 @@
 use crate::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool,
     dao::api_resource_delegation::ApiResourceDelegationDao,
     entities::api_resource_delegation::{
         ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
@@ -12,21 +12,21 @@ pub struct ApiResourceDelegationRepo;
 
 impl ApiResourceDelegationRepo {
     pub async fn upsert(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         input: NewApiResourceDelegation,
     ) -> Result<(), crate::Error> {
         ApiResourceDelegationDao::upsert(pool.write_ref(), input).await
     }
 
     pub async fn get_by_resource_trade_no(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<ApiResourceDelegationEntity, crate::Error> {
         ApiResourceDelegationDao::get_by_resource_trade_no(pool.read_ref(), resource_trade_no).await
     }
 
     pub async fn find_by_resource_trade_no(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<Option<ApiResourceDelegationEntity>, crate::Error> {
         ApiResourceDelegationDao::find_by_resource_trade_no(pool.read_ref(), resource_trade_no)
@@ -34,21 +34,21 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn list_by_origin_trade_no(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_no: &str,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
         ApiResourceDelegationDao::list_by_origin_trade_no(pool.read_ref(), origin_trade_no).await
     }
 
     pub async fn mark_task_ack_sent(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::mark_task_ack_sent(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn mark_task_ack_retry_wait(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         next_retry_at: &str,
     ) -> Result<u64, crate::Error> {
@@ -61,7 +61,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_task_ack(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
         Self::scan_need_task_ack_for_origin_type(
@@ -73,7 +73,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_task_ack_for_origin_type(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
@@ -90,7 +90,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_task_ack_for_origin_type_source_and_operation(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         source: ApiResourceDelegationSource,
         operation_type: ApiResourceDelegationOperationType,
@@ -107,7 +107,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_result_ack_for_origin_type(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
@@ -122,7 +122,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn find_pending_result_ack_by_origin(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         origin_trade_no: &str,
     ) -> Result<Option<ApiResourceDelegationEntity>, crate::Error> {
@@ -135,7 +135,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_result_ack_for_source_and_operation(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         source: ApiResourceDelegationSource,
         operation_type: ApiResourceDelegationOperationType,
         limit: usize,
@@ -150,7 +150,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn mark_result_ack_retry_wait(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         next_retry_at: &str,
     ) -> Result<u64, crate::Error> {
@@ -163,7 +163,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_result_ack(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
         Self::scan_need_result_ack_for_origin_type(
@@ -175,7 +175,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_can_execute_for_origin_type(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
@@ -189,7 +189,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_can_execute(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
         Self::scan_can_execute_for_origin_type(
@@ -201,7 +201,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_can_execute_for_origin_type_and_source(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         source: ApiResourceDelegationSource,
         limit: usize,
@@ -218,7 +218,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_can_execute_for_origin_type_source_and_operation(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         source: ApiResourceDelegationSource,
         operation_type: ApiResourceDelegationOperationType,
@@ -235,7 +235,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_can_recover_local_undelegation_for_origin_type(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
@@ -248,7 +248,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_can_recover_by_origin_type_source_and_operation(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         source: ApiResourceDelegationSource,
         operation_type: ApiResourceDelegationOperationType,
@@ -265,14 +265,14 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn claim_build_slot(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::claim_build_slot(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn mark_broadcast_success(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         tx_hash: &str,
     ) -> Result<u64, crate::Error> {
@@ -285,7 +285,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_tx_exec_receipt_upload_for_origin_type(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
@@ -300,7 +300,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_tx_exec_receipt_upload_for_origin_type_source_and_operation(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         source: ApiResourceDelegationSource,
         operation_type: ApiResourceDelegationOperationType,
@@ -317,7 +317,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_tx_exec_receipt_upload_for_source_and_operation(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         source: ApiResourceDelegationSource,
         operation_type: ApiResourceDelegationOperationType,
         limit: usize,
@@ -332,7 +332,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_need_tx_exec_receipt_upload(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
         Self::scan_need_tx_exec_receipt_upload_for_origin_type(
@@ -344,7 +344,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn mark_tx_exec_receipt_uploaded(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), resource_trade_no)
@@ -352,7 +352,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn mark_tx_exec_receipt_uploaded_for_source_and_operation(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         source: ApiResourceDelegationSource,
         operation_type: ApiResourceDelegationOperationType,
@@ -367,7 +367,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn mark_failed_if_unfinished(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         err_code: &str,
         err_msg: &str,
@@ -382,7 +382,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn scan_failed_for_origin_type_source_and_operation(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         origin_trade_type: i64,
         source: ApiResourceDelegationSource,
         operation_type: ApiResourceDelegationOperationType,
@@ -399,14 +399,14 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn mark_result_ack_sent(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::mark_result_ack_sent(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn upsert_original_order_result_fact(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         input: NewApiResourceDelegation,
         result_status: ApiResourceDelegationResultStatus,
         fail_type: Option<i64>,
@@ -426,7 +426,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn mark_result_received(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         result_status: ApiResourceDelegationResultStatus,
         fail_type: Option<i64>,
@@ -447,7 +447,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn mark_backend_result_received(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         result_status: ApiResourceDelegationResultStatus,
         fail_type: Option<i64>,
@@ -468,7 +468,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn mark_recover_retry_wait(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         recover_status: ApiResourceDelegationRecoverStatus,
         next_retry_at: &str,
@@ -483,7 +483,7 @@ impl ApiResourceDelegationRepo {
     }
 
     pub async fn reset_for_retry(
-        pool: &ApiTransactionDbPool,
+        pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         recover_status: ApiResourceDelegationRecoverStatus,
         next_retry_at: &str,
@@ -510,12 +510,12 @@ mod tests {
             api_resource_type::ApiResourceType,
             api_trade_type::ApiTradeType,
         },
-        repositories::test_helper::setup_api_transaction_pool,
+        repositories::test_helper::setup_api_resource_pool,
     };
 
     #[tokio::test]
     async fn resource_delegation_upsert_is_idempotent_and_preserves_source_boundary() {
-        let pool = setup_api_transaction_pool("resource_delegation_upsert").await;
+        let pool = setup_api_resource_pool("resource_delegation_upsert").await;
         let input = NewApiResourceDelegation::platform_delegate(
             "uid_1",
             "rsc_trade_1",
@@ -546,7 +546,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_authorized_mode_persists_permission_id() {
-        let pool = setup_api_transaction_pool("resource_delegation_authorized_mode").await;
+        let pool = setup_api_resource_pool("resource_delegation_authorized_mode").await;
         let input = NewApiResourceDelegation::platform_delegate_task(
             "uid_1",
             "rsc_auth_delegate",
@@ -574,7 +574,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_task_ack_is_idempotent() {
-        let pool = setup_api_transaction_pool("resource_delegation_ack").await;
+        let pool = setup_api_resource_pool("resource_delegation_ack").await;
         let input = NewApiResourceDelegation::platform_delegate(
             "uid_1",
             "rsc_trade_ack",
@@ -602,7 +602,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_task_ack_scan_finds_only_unacked_platform_tasks() {
-        let pool = setup_api_transaction_pool("resource_delegation_task_ack_scan").await;
+        let pool = setup_api_resource_pool("resource_delegation_task_ack_scan").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -665,7 +665,7 @@ mod tests {
 
     #[tokio::test]
     async fn platform_undelegation_task_ack_scan_finds_only_unacked_reclaim_tasks() {
-        let pool = setup_api_transaction_pool("platform_undelegation_task_ack_scan").await;
+        let pool = setup_api_resource_pool("platform_undelegation_task_ack_scan").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -737,7 +737,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_task_ack_retry_wait_throttles_scan() {
-        let pool = setup_api_transaction_pool("resource_delegation_task_ack_retry_wait").await;
+        let pool = setup_api_resource_pool("resource_delegation_task_ack_retry_wait").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -814,7 +814,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_execute_scan_finds_only_acked_unclaimed_tasks() {
-        let pool = setup_api_transaction_pool("resource_delegation_execute_scan").await;
+        let pool = setup_api_resource_pool("resource_delegation_execute_scan").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -855,7 +855,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_local_execute_scan_finds_unacked_local_tasks() {
-        let pool = setup_api_transaction_pool("resource_delegation_local_execute_scan").await;
+        let pool = setup_api_resource_pool("resource_delegation_local_execute_scan").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -888,7 +888,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_build_slot_claim_is_idempotent() {
-        let pool = setup_api_transaction_pool("resource_delegation_build_claim").await;
+        let pool = setup_api_resource_pool("resource_delegation_build_claim").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
             NewApiResourceDelegation::platform_delegate(
@@ -929,7 +929,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_local_build_slot_claim_skips_task_ack_gate() {
-        let pool = setup_api_transaction_pool("resource_delegation_local_build_claim").await;
+        let pool = setup_api_resource_pool("resource_delegation_local_build_claim").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
             NewApiResourceDelegation::local_delegate(
@@ -954,7 +954,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_broadcast_success_mark_is_idempotent() {
-        let pool = setup_api_transaction_pool("resource_delegation_broadcast_success").await;
+        let pool = setup_api_resource_pool("resource_delegation_broadcast_success").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
             NewApiResourceDelegation::platform_delegate(
@@ -1006,7 +1006,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_receipt_scan_and_mark_are_idempotent() {
-        let pool = setup_api_transaction_pool("resource_delegation_receipt_upload").await;
+        let pool = setup_api_resource_pool("resource_delegation_receipt_upload").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
             NewApiResourceDelegation::platform_delegate(
@@ -1077,7 +1077,7 @@ mod tests {
 
     #[tokio::test]
     async fn platform_undelegation_receipt_upload_scan_finds_successful_reclaim_tasks() {
-        let pool = setup_api_transaction_pool("platform_undelegation_receipt_upload_scan").await;
+        let pool = setup_api_resource_pool("platform_undelegation_receipt_upload_scan").await;
 
         for trade_no in [
             "rsc_reclaim_receipt_ready",
@@ -1188,7 +1188,7 @@ mod tests {
 
     #[tokio::test]
     async fn platform_undelegation_result_ack_scan_finds_reclaim_results() {
-        let pool = setup_api_transaction_pool("platform_undelegation_result_ack_scan").await;
+        let pool = setup_api_resource_pool("platform_undelegation_result_ack_scan").await;
 
         for trade_no in [
             "rsc_reclaim_result_ready",
@@ -1260,7 +1260,7 @@ mod tests {
 
     #[tokio::test]
     async fn platform_undelegation_result_ack_requires_tx_res_received_at() {
-        let pool = setup_api_transaction_pool("platform_undelegation_result_ack_tx_res_gate").await;
+        let pool = setup_api_resource_pool("platform_undelegation_result_ack_tx_res_gate").await;
 
         for trade_no in ["rsc_reclaim_recovered", "rsc_reclaim_backend_result"] {
             ApiResourceDelegationRepo::upsert(
@@ -1349,7 +1349,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_failure_fact_enables_fail_receipt_scan() {
-        let pool = setup_api_transaction_pool("resource_delegation_failure_receipt").await;
+        let pool = setup_api_resource_pool("resource_delegation_failure_receipt").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
             NewApiResourceDelegation::platform_delegate(
@@ -1393,7 +1393,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_result_records_success_and_failure_facts() {
-        let pool = setup_api_transaction_pool("resource_delegation_result").await;
+        let pool = setup_api_resource_pool("resource_delegation_result").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1465,7 +1465,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_result_ack_scan_and_mark_are_idempotent() {
-        let pool = setup_api_transaction_pool("resource_delegation_result_ack").await;
+        let pool = setup_api_resource_pool("resource_delegation_result_ack").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
             NewApiResourceDelegation::platform_delegate_task(
@@ -1589,8 +1589,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_original_order_result_fact_scans_for_result_ack_only() {
-        let pool =
-            setup_api_transaction_pool("resource_delegation_original_order_result_fact").await;
+        let pool = setup_api_resource_pool("resource_delegation_original_order_result_fact").await;
         let payload = r#"{"tradeNo":"C_origin","tradeType":"2","status":false}"#;
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
@@ -1644,7 +1643,7 @@ mod tests {
 
     #[tokio::test]
     async fn resource_delegation_result_ack_retry_wait_throttles_scan() {
-        let pool = setup_api_transaction_pool("resource_delegation_result_ack_retry").await;
+        let pool = setup_api_resource_pool("resource_delegation_result_ack_retry").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
             NewApiResourceDelegation::platform_delegate_task(
@@ -1712,7 +1711,7 @@ mod tests {
 
     #[tokio::test]
     async fn local_undelegation_execute_and_recover_scans_respect_source_operation_and_retry() {
-        let pool = setup_api_transaction_pool("resource_delegation_local_undelegation_scan").await;
+        let pool = setup_api_resource_pool("resource_delegation_local_undelegation_scan").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1786,7 +1785,7 @@ mod tests {
 
     #[tokio::test]
     async fn local_undelegation_retry_reset_returns_task_to_executable_state() {
-        let pool = setup_api_transaction_pool("resource_delegation_local_undelegation_retry").await;
+        let pool = setup_api_resource_pool("resource_delegation_local_undelegation_retry").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1839,8 +1838,7 @@ mod tests {
 
     #[tokio::test]
     async fn platform_undelegation_reset_for_retry_releases_build_slot() {
-        let pool =
-            setup_api_transaction_pool("resource_delegation_platform_undelegation_retry").await;
+        let pool = setup_api_resource_pool("resource_delegation_platform_undelegation_retry").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1903,7 +1901,7 @@ mod tests {
 
     #[tokio::test]
     async fn platform_delegate_reset_for_retry_releases_build_slot() {
-        let pool = setup_api_transaction_pool("resource_delegation_platform_delegate_retry").await;
+        let pool = setup_api_resource_pool("resource_delegation_platform_delegate_retry").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1960,8 +1958,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_platform_undelegation_build_slot_can_be_reclaimed() {
-        let pool =
-            setup_api_transaction_pool("resource_delegation_platform_undelegation_stale").await;
+        let pool = setup_api_resource_pool("resource_delegation_platform_undelegation_stale").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -2019,8 +2016,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_platform_delegation_build_slot_can_be_reclaimed() {
-        let pool =
-            setup_api_transaction_pool("resource_delegation_platform_delegation_stale").await;
+        let pool = setup_api_resource_pool("resource_delegation_platform_delegation_stale").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,

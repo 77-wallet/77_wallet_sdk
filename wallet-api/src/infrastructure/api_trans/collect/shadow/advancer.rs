@@ -541,7 +541,7 @@ impl ShadowAdvancer {
         &self,
         origin_trade_no: &str,
     ) -> Result<Option<String>, crate::error::service::ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
 
         Ok(ApiResourceDelegationRepo::find_pending_result_ack_by_origin(
             &pool,
@@ -597,6 +597,7 @@ mod tests {
     async fn try_advance_prioritizes_resource_result_ack_before_fee_upload() -> anyhow::Result<()> {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
         let pool = ctx.api_transaction_pool()?;
+        let resource_pool = ctx.api_resource_pool()?;
         let (intent_tx, mut intent_rx) = mpsc::channel(100);
         let (diagnose_tx, _diagnose_rx) = mpsc::channel(100);
         let advancer = ShadowAdvancer::new(ctx, intent_tx, Some(diagnose_tx));
@@ -633,7 +634,7 @@ mod tests {
         .await?;
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            &pool,
+            &resource_pool,
             NewApiResourceDelegation::platform_delegate(
                 "uid_1",
                 "C_pending_rsc_ack",

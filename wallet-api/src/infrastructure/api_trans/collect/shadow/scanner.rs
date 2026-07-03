@@ -716,6 +716,7 @@ mod tests {
     {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
         let pool = ctx.api_transaction_pool()?;
+        let resource_pool = ctx.api_resource_pool()?;
         let (intent_tx, mut intent_rx) = mpsc::channel(100);
         let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
 
@@ -751,7 +752,7 @@ mod tests {
         .await?;
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            &pool,
+            &resource_pool,
             NewApiResourceDelegation::platform_delegate(
                 "uid_1",
                 "C_pending_rsc_ack",
@@ -902,7 +903,7 @@ impl ShadowScanner {
     }
 
     async fn scan_need_resource_result_ack(&self) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
 
         trace!(
             max_items = %self.config.max_items_per_scan,
@@ -926,7 +927,7 @@ impl ShadowScanner {
     }
 
     async fn scan_need_resource_task_ack(&self) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
 
         trace!(
             max_items = %self.config.max_items_per_scan,
@@ -954,7 +955,7 @@ impl ShadowScanner {
     }
 
     async fn scan_can_local_resource_delegate(&self) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
 
         trace!(max_items = %self.config.max_items_per_scan, "Scanning executable local delegate records");
 
@@ -977,7 +978,7 @@ impl ShadowScanner {
     }
 
     async fn scan_need_resource_tx_exec_receipt_upload(&self) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
 
         trace!(
             max_items = %self.config.max_items_per_scan,
@@ -1668,7 +1669,7 @@ impl ShadowScanner {
         &self,
         origin_trade_no: &str,
     ) -> Result<Option<String>, crate::error::service::ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
 
         Ok(wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::find_pending_result_ack_by_origin(
             &pool,

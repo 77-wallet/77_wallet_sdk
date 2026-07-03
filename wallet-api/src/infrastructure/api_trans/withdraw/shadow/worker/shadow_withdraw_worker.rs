@@ -476,7 +476,7 @@ impl ShadowWithdrawWorker {
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
         )
         .await
@@ -490,7 +490,7 @@ impl ShadowWithdrawWorker {
         };
 
         let affected = ApiResourceDelegationRepo::reset_for_retry(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             next_status,
             &next_retry_at.to_rfc3339(),
@@ -519,7 +519,7 @@ impl ShadowWithdrawWorker {
         resource_trade_no: String,
     ) -> Result<(), ServiceError> {
         let affected = ApiResourceDelegationRepo::claim_build_slot(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -529,7 +529,7 @@ impl ShadowWithdrawWorker {
         }
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -541,7 +541,7 @@ impl ShadowWithdrawWorker {
 
         let tx_hash = self.execute_tron_resource_delegation(&delegation).await?;
         ApiResourceDelegationRepo::mark_broadcast_success(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
             &tx_hash,
         )
@@ -1945,7 +1945,7 @@ impl ShadowWithdrawWorker {
 
         let err_code = if err.is_network_error() { "ERR_6005" } else { "ERR_6008" };
         ApiResourceDelegationRepo::mark_failed_if_unfinished(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             err_code,
             &err.to_string(),
@@ -2823,6 +2823,10 @@ oss:
             .expect("init api_transaction.db");
         let transaction_pool =
             transaction_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
 
         let wallet_ctx =
             SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
@@ -2841,7 +2845,7 @@ oss:
         let worker = ShadowWithdrawWorker::new(test_ctx, scanner);
 
         ApiResourceDelegationRepo::upsert(
-            &transaction_pool,
+            &resource_pool,
             NewApiResourceDelegation::platform_delegate_task(
                 "uid",
                 "wd_platform_delegate_retry",
@@ -2857,18 +2861,12 @@ oss:
         )
         .await
         .expect("insert platform delegation");
-        ApiResourceDelegationRepo::mark_task_ack_sent(
-            &transaction_pool,
-            "wd_platform_delegate_retry",
-        )
-        .await
-        .expect("mark ack");
-        ApiResourceDelegationRepo::claim_build_slot(
-            &transaction_pool,
-            "wd_platform_delegate_retry",
-        )
-        .await
-        .expect("claim build slot");
+        ApiResourceDelegationRepo::mark_task_ack_sent(&resource_pool, "wd_platform_delegate_retry")
+            .await
+            .expect("mark ack");
+        ApiResourceDelegationRepo::claim_build_slot(&resource_pool, "wd_platform_delegate_retry")
+            .await
+            .expect("claim build slot");
 
         worker
             .schedule_resource_delegation_rebuild_retry(
@@ -2879,7 +2877,7 @@ oss:
             .expect("schedule retry");
 
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &transaction_pool,
+            &resource_pool,
             "wd_platform_delegate_retry",
         )
         .await

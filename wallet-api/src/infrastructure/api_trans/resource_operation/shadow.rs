@@ -14,7 +14,7 @@ use wallet_chain_interact::{
     },
 };
 use wallet_database::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool,
     entities::{
         api_resource_operation::{ApiResourceOperationEntity, ApiResourceOperationType},
         api_resource_type::ApiResourceType,
@@ -77,25 +77,25 @@ impl Default for ResourceOperationScannerConfig {
 
 #[derive(Debug, Clone)]
 pub struct ResourceOperationScanner {
-    api_transaction_pool: ApiTransactionDbPool,
+    api_resource_pool: ApiResourceDbPool,
     config: ResourceOperationScannerConfig,
 }
 
 impl ResourceOperationScanner {
-    pub fn new(api_transaction_pool: ApiTransactionDbPool) -> Self {
-        Self::with_config(api_transaction_pool, ResourceOperationScannerConfig::default())
+    pub fn new(api_resource_pool: ApiResourceDbPool) -> Self {
+        Self::with_config(api_resource_pool, ResourceOperationScannerConfig::default())
     }
 
     pub fn with_config(
-        api_transaction_pool: ApiTransactionDbPool,
+        api_resource_pool: ApiResourceDbPool,
         config: ResourceOperationScannerConfig,
     ) -> Self {
-        Self { api_transaction_pool, config }
+        Self { api_resource_pool, config }
     }
 
     pub async fn try_advance(&self, resource_trade_no: &str) -> Vec<ResourceOperationIntent> {
         match ApiResourceOperationRepo::get_by_resource_trade_no(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             resource_trade_no,
         )
         .await
@@ -176,7 +176,7 @@ impl ResourceOperationScanner {
         let mut intents = Vec::new();
 
         match ApiResourceOperationRepo::scan_need_task_ack(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             self.config.max_items_per_scan,
         )
         .await
@@ -192,7 +192,7 @@ impl ResourceOperationScanner {
         }
 
         match ApiResourceOperationRepo::scan_can_build(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             self.config.max_items_per_scan,
         )
         .await
@@ -208,7 +208,7 @@ impl ResourceOperationScanner {
         }
 
         match ApiResourceOperationRepo::scan_can_broadcast(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             self.config.max_items_per_scan,
         )
         .await
@@ -224,7 +224,7 @@ impl ResourceOperationScanner {
         }
 
         match ApiResourceOperationRepo::scan_need_recover(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             self.config.max_items_per_scan,
         )
         .await
@@ -240,7 +240,7 @@ impl ResourceOperationScanner {
         }
 
         match ApiResourceOperationRepo::scan_need_tx_exec_receipt_upload(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             self.config.max_items_per_scan,
         )
         .await
@@ -258,7 +258,7 @@ impl ResourceOperationScanner {
         }
 
         match ApiResourceOperationRepo::scan_need_result_ack(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             self.config.max_items_per_scan,
         )
         .await
@@ -391,7 +391,7 @@ impl ResourceOperationWorker {
         info!(resource_trade_no = %resource_trade_no, "Processing resource operation task ACK");
 
         let resource_task = ApiResourceOperationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -413,7 +413,7 @@ impl ResourceOperationWorker {
             .await?;
 
         let affected = ApiResourceOperationRepo::mark_task_ack_sent(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -429,7 +429,7 @@ impl ResourceOperationWorker {
         info!(resource_trade_no = %resource_trade_no, "Claiming resource operation build slot");
 
         let affected = ApiResourceOperationRepo::claim_building_at(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -441,7 +441,7 @@ impl ResourceOperationWorker {
 
         if let Err(err) = self.build_resource_operation(&resource_trade_no).await {
             if let Err(db_err) = ApiResourceOperationRepo::clear_building_at(
-                &self.ctx.api_transaction_pool()?,
+                &self.ctx.api_resource_pool()?,
                 &resource_trade_no,
             )
             .await
@@ -460,7 +460,7 @@ impl ResourceOperationWorker {
 
     async fn build_resource_operation(&self, resource_trade_no: &str) -> Result<(), ServiceError> {
         let operation = ApiResourceOperationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
         )
         .await
@@ -477,7 +477,7 @@ impl ResourceOperationWorker {
         let (tx_hash, raw_tx, transaction_fee) = self.build_tron_resource_raw(&operation).await?;
         let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
         let affected = ApiResourceOperationRepo::update_after_build(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             &tx_hash,
             &raw_tx_str,
@@ -659,7 +659,7 @@ impl ResourceOperationWorker {
         info!(resource_trade_no = %resource_trade_no, "Processing resource operation BroadcastTx");
 
         let operation = ApiResourceOperationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -689,7 +689,7 @@ impl ResourceOperationWorker {
                 "Detected expired tron raw_tx during broadcast; invalidating stale tx facts"
             );
             let rows = ApiResourceOperationRepo::invalidate_raw_tx(
-                &self.ctx.api_transaction_pool()?,
+                &self.ctx.api_resource_pool()?,
                 &resource_trade_no,
             )
             .await
@@ -733,7 +733,7 @@ impl ResourceOperationWorker {
                 }
 
                 let affected = ApiResourceOperationRepo::mark_broadcast_executed(
-                    &self.ctx.api_transaction_pool()?,
+                    &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
                 )
                 .await
@@ -760,14 +760,14 @@ impl ResourceOperationWorker {
 
                 let now = Utc::now();
                 let rows_affected = ApiResourceOperationRepo::mark_broadcast_uncertain_attempt(
-                    &self.ctx.api_transaction_pool()?,
+                    &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
 
                 let refreshed = ApiResourceOperationRepo::get_by_resource_trade_no(
-                    &self.ctx.api_transaction_pool()?,
+                    &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
                 )
                 .await
@@ -790,7 +790,7 @@ impl ResourceOperationWorker {
                         "Broadcast uncertain timeout reached; invalidating raw_tx for rebuild"
                     );
                     let rows = ApiResourceOperationRepo::invalidate_raw_tx(
-                        &self.ctx.api_transaction_pool()?,
+                        &self.ctx.api_resource_pool()?,
                         &resource_trade_no,
                     )
                     .await
@@ -812,7 +812,7 @@ impl ResourceOperationWorker {
         info!(resource_trade_no = %resource_trade_no, "Processing resource operation RecoverTx");
 
         let operation = ApiResourceOperationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -856,14 +856,14 @@ impl ResourceOperationWorker {
 
             let now = Utc::now();
             let rows_affected = ApiResourceOperationRepo::mark_broadcast_uncertain_attempt(
-                &self.ctx.api_transaction_pool()?,
+                &self.ctx.api_resource_pool()?,
                 &resource_trade_no,
             )
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
 
             let refreshed = ApiResourceOperationRepo::get_by_resource_trade_no(
-                &self.ctx.api_transaction_pool()?,
+                &self.ctx.api_resource_pool()?,
                 &resource_trade_no,
             )
             .await
@@ -886,7 +886,7 @@ impl ResourceOperationWorker {
                     "Recover uncertain timeout reached; invalidating raw_tx for rebuild"
                 );
                 let rows = ApiResourceOperationRepo::invalidate_raw_tx(
-                    &self.ctx.api_transaction_pool()?,
+                    &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
                 )
                 .await
@@ -930,7 +930,7 @@ impl ResourceOperationWorker {
                 .to_rfc3339();
 
         let affected = ApiResourceOperationRepo::confirm_transaction_time_if_absent(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
             &transaction_time,
         )
@@ -958,7 +958,7 @@ impl ResourceOperationWorker {
         info!(resource_trade_no = %resource_trade_no, "Processing resource operation UploadTxExecReceipt");
 
         let operation = ApiResourceOperationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -985,7 +985,7 @@ impl ResourceOperationWorker {
         backend_api.upload_tx_exec_receipt(&payload).await?;
 
         let affected = ApiResourceOperationRepo::mark_tx_exec_receipt_uploaded(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -1009,7 +1009,7 @@ impl ResourceOperationWorker {
         info!(resource_trade_no = %resource_trade_no, "Processing resource operation result ACK");
 
         let operation = ApiResourceOperationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -1035,7 +1035,7 @@ impl ResourceOperationWorker {
             .await?;
 
         let affected = ApiResourceOperationRepo::mark_result_ack_sent(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -1065,7 +1065,7 @@ impl ResourceOperationWorker {
 
         let (err_code, err_msg) = Self::failure_fact_from_error(err);
         let affected = ApiResourceOperationRepo::mark_failed_if_unfinished(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             &err_code,
             &err_msg,
@@ -1187,12 +1187,12 @@ pub struct ResourceOperationShadowActorSystem {
 
 impl ResourceOperationShadowActorSystem {
     pub fn new(ctx: &'static crate::context::Context) -> Result<Self, ServiceError> {
-        let api_transaction_pool = ctx.api_transaction_pool()?;
+        let api_resource_pool = ctx.api_resource_pool()?;
         let (shutdown_tx, shutdown_rx1) = broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let (intent_tx, intent_rx) = mpsc::channel(100);
 
-        let scanner = Arc::new(ResourceOperationScanner::new(api_transaction_pool.clone()));
+        let scanner = Arc::new(ResourceOperationScanner::new(api_resource_pool.clone()));
         let worker = ResourceOperationWorker::new(ctx);
 
         info!(
@@ -1278,8 +1278,8 @@ pub(crate) async fn init(
 pub async fn scan_and_process_once(
     ctx: &'static crate::context::Context,
 ) -> Result<(), ServiceError> {
-    let api_transaction_pool = ctx.api_transaction_pool()?;
-    let scanner = ResourceOperationScanner::new(api_transaction_pool.clone());
+    let api_resource_pool = ctx.api_resource_pool()?;
+    let scanner = ResourceOperationScanner::new(api_resource_pool.clone());
     let worker = ResourceOperationWorker::new(ctx);
 
     for intent in scanner.scan_round().await {
@@ -1306,11 +1306,11 @@ mod tests {
     async fn scanner_owns_resource_operation_ack_build_broadcast_recover_and_receipt_intents() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
-        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
             .await
-            .expect("init api_transaction.db")
-            .into_transaction_db_pool()
-            .expect("transaction pool");
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
 
         ApiResourceOperationRepo::upsert(
             &pool,
@@ -1550,7 +1550,7 @@ mod tests {
     #[tokio::test]
     async fn terminal_failure_fact_is_scannable_for_receipt_upload() {
         let ctx = test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("resource pool");
 
         ApiResourceOperationRepo::upsert(
             &pool,
@@ -1583,11 +1583,11 @@ mod tests {
     async fn resource_operation_targeted_wakeup_emits_result_ack() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
-        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
             .await
-            .expect("init api_transaction.db")
-            .into_transaction_db_pool()
-            .expect("transaction pool");
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
 
         ApiResourceOperationRepo::upsert(
             &pool,

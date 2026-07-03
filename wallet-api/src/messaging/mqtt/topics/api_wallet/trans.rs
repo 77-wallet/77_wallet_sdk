@@ -268,7 +268,7 @@ impl AwmResourceOperationMsg {
             operation_type,
         );
 
-        let pool = ctx.api_transaction_pool()?;
+        let pool = ctx.api_resource_pool()?;
         ApiResourceOperationRepo::upsert(&pool, req).await?;
         tracing::info!(
             trade_no = %self.trade_no,
@@ -317,7 +317,7 @@ impl AwmResourceDelegationMsg {
         )
         .with_delegation_auth(self.resource_delegation_mode(), self.normalized_permission_id());
 
-        let pool = ctx.api_transaction_pool()?;
+        let pool = ctx.api_resource_pool()?;
         ApiResourceDelegationRepo::upsert(&pool, req).await?;
         tracing::info!(
             trade_no = %self.trade_no,
@@ -624,8 +624,9 @@ mod tests {
 
         msg.resource_operation(manager.ctx).await?;
 
-        let tx_pool = api_transaction_pool(manager.ctx)?;
-        let got = ApiResourceOperationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
+        let resource_pool = manager.ctx.api_resource_pool()?;
+        let got =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&resource_pool, &trade_no).await?;
         assert_eq!(got.task_source, ApiResourceOperationTaskSource::Backend);
         assert_eq!(got.operation_type, ApiResourceOperationType::Stake);
         assert_eq!(got.resource_type, ApiResourceType::Energy);

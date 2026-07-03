@@ -7,7 +7,7 @@ use wallet_chain_interact::{
     tron::operations::{RawTransactionParams, TronTxOperation},
 };
 use wallet_database::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool,
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
@@ -83,20 +83,20 @@ impl Default for PlatformResourceReclaimScannerConfig {
 
 #[derive(Debug, Clone)]
 pub struct PlatformResourceReclaimScanner {
-    api_transaction_pool: ApiTransactionDbPool,
+    api_resource_pool: ApiResourceDbPool,
     config: PlatformResourceReclaimScannerConfig,
 }
 
 impl PlatformResourceReclaimScanner {
-    pub fn new(api_transaction_pool: ApiTransactionDbPool) -> Self {
-        Self::with_config(api_transaction_pool, PlatformResourceReclaimScannerConfig::default())
+    pub fn new(api_resource_pool: ApiResourceDbPool) -> Self {
+        Self::with_config(api_resource_pool, PlatformResourceReclaimScannerConfig::default())
     }
 
     pub fn with_config(
-        api_transaction_pool: ApiTransactionDbPool,
+        api_resource_pool: ApiResourceDbPool,
         config: PlatformResourceReclaimScannerConfig,
     ) -> Self {
-        Self { api_transaction_pool, config }
+        Self { api_resource_pool, config }
     }
 
     pub async fn scan_round(&self) -> Vec<PlatformResourceReclaimIntent> {
@@ -119,7 +119,7 @@ impl PlatformResourceReclaimScanner {
         intents: &mut Vec<PlatformResourceReclaimIntent>,
     ) {
         match ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type_source_and_operation(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiTradeType::Collect as i64,
             ApiResourceDelegationSource::Platform,
             ApiResourceDelegationOperationType::Undelegate,
@@ -145,7 +145,7 @@ impl PlatformResourceReclaimScanner {
         intents: &mut Vec<PlatformResourceReclaimIntent>,
     ) {
         match ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type_source_and_operation(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiTradeType::Withdraw as i64,
             ApiResourceDelegationSource::Platform,
             ApiResourceDelegationOperationType::Undelegate,
@@ -171,7 +171,7 @@ impl PlatformResourceReclaimScanner {
         intents: &mut Vec<PlatformResourceReclaimIntent>,
     ) {
         match ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiTradeType::Collect as i64,
             ApiResourceDelegationSource::Platform,
             ApiResourceDelegationOperationType::Undelegate,
@@ -197,7 +197,7 @@ impl PlatformResourceReclaimScanner {
         intents: &mut Vec<PlatformResourceReclaimIntent>,
     ) {
         match ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiTradeType::Withdraw as i64,
             ApiResourceDelegationSource::Platform,
             ApiResourceDelegationOperationType::Undelegate,
@@ -223,7 +223,7 @@ impl PlatformResourceReclaimScanner {
         intents: &mut Vec<PlatformResourceReclaimIntent>,
     ) {
         match ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiTradeType::Collect as i64,
             ApiResourceDelegationSource::Platform,
             ApiResourceDelegationOperationType::Undelegate,
@@ -249,7 +249,7 @@ impl PlatformResourceReclaimScanner {
         intents: &mut Vec<PlatformResourceReclaimIntent>,
     ) {
         match ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiTradeType::Withdraw as i64,
             ApiResourceDelegationSource::Platform,
             ApiResourceDelegationOperationType::Undelegate,
@@ -275,7 +275,7 @@ impl PlatformResourceReclaimScanner {
         intents: &mut Vec<PlatformResourceReclaimIntent>,
     ) {
         match ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_source_and_operation(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiResourceDelegationSource::Platform,
             ApiResourceDelegationOperationType::Undelegate,
             self.config.max_items_per_scan,
@@ -305,7 +305,7 @@ impl PlatformResourceReclaimScanner {
         intents: &mut Vec<PlatformResourceReclaimIntent>,
     ) {
         match ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
-            &self.api_transaction_pool,
+            &self.api_resource_pool,
             ApiResourceDelegationSource::Platform,
             ApiResourceDelegationOperationType::Undelegate,
             self.config.max_items_per_scan,
@@ -420,7 +420,7 @@ impl PlatformResourceReclaimWorker {
         );
 
         let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -464,7 +464,7 @@ impl PlatformResourceReclaimWorker {
         }
 
         let affected = ApiResourceDelegationRepo::mark_task_ack_sent(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -494,7 +494,7 @@ impl PlatformResourceReclaimWorker {
     ) {
         let wait_secs = resource_delegation_retry_wait_secs(retry_count);
         let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
-        let Ok(pool) = self.ctx.api_transaction_pool() else {
+        let Ok(pool) = self.ctx.api_resource_pool() else {
             error!(
                 resource_trade_no = %resource_trade_no,
                 error = %err,
@@ -537,7 +537,7 @@ impl PlatformResourceReclaimWorker {
         );
 
         let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -606,7 +606,7 @@ impl PlatformResourceReclaimWorker {
         }
 
         let affected = ApiResourceDelegationRepo::mark_result_ack_sent(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -663,7 +663,7 @@ impl PlatformResourceReclaimWorker {
         let err_msg = err.to_string();
         let payload = format!("platform_undelegation_terminal_failure:{err_msg}");
         let failed = ApiResourceDelegationRepo::mark_failed_if_unfinished(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             Self::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE,
             &err_msg,
@@ -671,7 +671,7 @@ impl PlatformResourceReclaimWorker {
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
         let result = ApiResourceDelegationRepo::mark_result_received(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             ApiResourceDelegationResultStatus::Fail,
             Some(2),
@@ -704,7 +704,7 @@ impl PlatformResourceReclaimWorker {
         );
 
         let affected = ApiResourceDelegationRepo::claim_build_slot(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -719,7 +719,7 @@ impl PlatformResourceReclaimWorker {
         }
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -754,7 +754,7 @@ impl PlatformResourceReclaimWorker {
         )
         .await?;
         let affected = ApiResourceDelegationRepo::mark_broadcast_success(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
             &tx_hash,
         )
@@ -795,7 +795,7 @@ impl PlatformResourceReclaimWorker {
         );
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -839,7 +839,7 @@ impl PlatformResourceReclaimWorker {
             Ok(Some(resp)) => {
                 let payload = format!("platform_undelegation_recovered:{}", resp.tx_hash);
                 ApiResourceDelegationRepo::mark_result_received(
-                    &self.ctx.api_transaction_pool()?,
+                    &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
                     ApiResourceDelegationResultStatus::Success,
                     None,
@@ -884,7 +884,7 @@ impl PlatformResourceReclaimWorker {
         );
 
         let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
@@ -914,7 +914,7 @@ impl PlatformResourceReclaimWorker {
 
         let affected =
             ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded_for_source_and_operation(
-                &self.ctx.api_transaction_pool()?,
+                &self.ctx.api_resource_pool()?,
                 &resource_trade_no,
                 ApiResourceDelegationSource::Platform,
                 ApiResourceDelegationOperationType::Undelegate,
@@ -1093,7 +1093,7 @@ impl PlatformResourceReclaimWorker {
         resource_trade_no: &str,
     ) -> Result<(), ServiceError> {
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
         )
         .await
@@ -1101,7 +1101,7 @@ impl PlatformResourceReclaimWorker {
         let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
         let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
         ApiResourceDelegationRepo::mark_recover_retry_wait(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             ApiResourceDelegationRecoverStatus::RecoverWaiting,
             &next_retry_at.to_rfc3339(),
@@ -1128,7 +1128,7 @@ impl PlatformResourceReclaimWorker {
     ) -> Result<(), ServiceError> {
         let wait_secs = resource_delegation_retry_wait_secs(retry_count);
         let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
         let affected = ApiResourceDelegationRepo::mark_result_ack_retry_wait(
             &pool,
             resource_trade_no,
@@ -1151,7 +1151,7 @@ impl PlatformResourceReclaimWorker {
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
         )
         .await
@@ -1164,7 +1164,7 @@ impl PlatformResourceReclaimWorker {
             ApiResourceDelegationRecoverStatus::RetryRecover
         };
         ApiResourceDelegationRepo::reset_for_retry(
-            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
             resource_trade_no,
             next_status,
             &next_retry_at.to_rfc3339(),
@@ -1236,12 +1236,12 @@ pub struct PlatformResourceReclaimShadowActorSystem {
 
 impl PlatformResourceReclaimShadowActorSystem {
     pub fn new(ctx: &'static crate::context::Context) -> Result<Self, ServiceError> {
-        let api_transaction_pool = ctx.api_transaction_pool()?;
+        let api_resource_pool = ctx.api_resource_pool()?;
         let (shutdown_tx, shutdown_rx1) = broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let (intent_tx, intent_rx) = mpsc::channel(100);
 
-        let scanner = Arc::new(PlatformResourceReclaimScanner::new(api_transaction_pool.clone()));
+        let scanner = Arc::new(PlatformResourceReclaimScanner::new(api_resource_pool.clone()));
         let worker = PlatformResourceReclaimWorker::new(ctx);
 
         info!(
@@ -1307,8 +1307,8 @@ pub(crate) async fn init(
 pub async fn scan_and_process_once(
     ctx: &'static crate::context::Context,
 ) -> Result<(), ServiceError> {
-    let api_transaction_pool = ctx.api_transaction_pool()?;
-    let scanner = PlatformResourceReclaimScanner::new(api_transaction_pool.clone());
+    let api_resource_pool = ctx.api_resource_pool()?;
+    let scanner = PlatformResourceReclaimScanner::new(api_resource_pool.clone());
     let worker = PlatformResourceReclaimWorker::new(ctx);
 
     for intent in scanner.scan_round().await {
@@ -1333,7 +1333,7 @@ mod tests {
     #[tokio::test]
     async fn scanner_finds_platform_undelegation_for_collect_and_withdraw() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1401,7 +1401,7 @@ mod tests {
     #[tokio::test]
     async fn platform_reclaim_scanner_finds_task_ack_before_execute() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1445,7 +1445,7 @@ mod tests {
     #[tokio::test]
     async fn platform_undelegation_terminal_failure_reports_receipt_and_result_ack() {
         let ctx = test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1523,7 +1523,7 @@ mod tests {
     #[tokio::test]
     async fn platform_undelegation_chain_validation_error_is_terminal_failure() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1581,7 +1581,7 @@ mod tests {
     #[tokio::test]
     async fn scanner_finds_platform_undelegation_recover_for_collect_and_withdraw() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1681,7 +1681,7 @@ mod tests {
     #[tokio::test]
     async fn platform_undelegation_task_ack_retry_sets_retry_wait() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1727,7 +1727,7 @@ mod tests {
     #[tokio::test]
     async fn platform_undelegation_recover_retry_preserves_broadcast_hash() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1788,7 +1788,7 @@ mod tests {
     #[tokio::test]
     async fn platform_undelegation_rebuild_retry_clears_broadcast_hash() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1843,7 +1843,7 @@ mod tests {
     #[tokio::test]
     async fn scanner_finds_platform_undelegation_receipt_upload_after_success() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         for trade_no in [
             "rsc_platform_undelegate_collect_receipt",
@@ -1933,7 +1933,7 @@ mod tests {
     #[tokio::test]
     async fn scanner_finds_platform_undelegation_result_ack_after_result() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         for trade_no in [
             "rsc_platform_undelegate_collect_result",
@@ -2011,7 +2011,7 @@ mod tests {
     #[tokio::test]
     async fn platform_undelegation_recover_does_not_send_result_ack_before_mqtt_result() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_transaction_pool().expect("transaction pool");
+        let pool = ctx.api_resource_pool().expect("transaction pool");
 
         ApiResourceDelegationRepo::upsert(
             &pool,

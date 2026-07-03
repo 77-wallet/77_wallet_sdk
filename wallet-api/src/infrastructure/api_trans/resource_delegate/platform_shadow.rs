@@ -4,7 +4,7 @@ use chrono::Utc;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{error, info, warn};
 use wallet_database::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool,
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
@@ -81,17 +81,17 @@ impl Default for PlatformResourceDelegateScannerConfig {
 
 #[derive(Debug, Clone)]
 pub struct PlatformResourceDelegateScanner {
-    pool: ApiTransactionDbPool,
+    pool: ApiResourceDbPool,
     config: PlatformResourceDelegateScannerConfig,
 }
 
 impl PlatformResourceDelegateScanner {
-    pub fn new(pool: ApiTransactionDbPool) -> Self {
+    pub fn new(pool: ApiResourceDbPool) -> Self {
         Self::with_config(pool, PlatformResourceDelegateScannerConfig::default())
     }
 
     pub fn with_config(
-        pool: ApiTransactionDbPool,
+        pool: ApiResourceDbPool,
         config: PlatformResourceDelegateScannerConfig,
     ) -> Self {
         Self { pool, config }
@@ -270,12 +270,13 @@ impl PlatformResourceDelegateScannerActor {
 
 #[derive(Debug, Clone)]
 pub struct PlatformResourceDelegateWorker {
-    pool: ApiTransactionDbPool,
+    pool: ApiResourceDbPool,
+    transaction_pool: ApiTransactionDbPool,
 }
 
 impl PlatformResourceDelegateWorker {
-    pub fn new(pool: ApiTransactionDbPool) -> Self {
-        Self { pool }
+    pub fn new(pool: ApiResourceDbPool, transaction_pool: ApiTransactionDbPool) -> Self {
+        Self { pool, transaction_pool }
     }
 
     pub async fn handle(&self, intent: PlatformResourceDelegateIntent) -> Result<(), ServiceError> {
@@ -514,24 +515,42 @@ impl PlatformResourceDelegateWorker {
         );
         match task.origin_trade_type {
             Some(x) if x == ApiTradeType::Collect as i64 => {
-                ApiCollectRepo::mark_resource_result_ack_sent_and_release_gate(
+                let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(
                     &self.pool,
                     &task.resource_trade_no,
-                    release.as_ref().map(|(origin, _)| origin.as_str()),
-                    release.as_ref().map(|(_, result)| *result),
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
+                if ack_rows > 0 {
+                    if let Some((origin, result)) = release.as_ref() {
+                        ApiCollectRepo::mark_resource_released(
+                            &self.transaction_pool,
+                            origin,
+                            *result,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                    }
+                }
             }
             Some(x) if x == ApiTradeType::Withdraw as i64 => {
-                ApiWithdrawRepo::mark_resource_result_ack_sent_and_release_gate(
+                let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(
                     &self.pool,
                     &task.resource_trade_no,
-                    release.as_ref().map(|(origin, _)| origin.as_str()),
-                    release.as_ref().map(|(_, result)| *result),
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
+                if ack_rows > 0 {
+                    if let Some((origin, result)) = release.as_ref() {
+                        ApiWithdrawRepo::mark_resource_released(
+                            &self.transaction_pool,
+                            origin,
+                            *result,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                    }
+                }
             }
             _ => {
                 ApiResourceDelegationRepo::mark_result_ack_sent(
@@ -558,10 +577,13 @@ impl PlatformResourceDelegateWorker {
         let result = ApiResourceGateResult::ResourceDelegationFailedBypass;
         match task.origin_trade_type {
             Some(x) if x == ApiTradeType::Collect as i64 => {
-                let rows =
-                    ApiCollectRepo::mark_resource_released(&self.pool, origin_trade_no, result)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows = ApiCollectRepo::mark_resource_released(
+                    &self.transaction_pool,
+                    origin_trade_no,
+                    result,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     origin_trade_no = %origin_trade_no,
                     resource_trade_no = %task.resource_trade_no,
@@ -572,10 +594,13 @@ impl PlatformResourceDelegateWorker {
                 );
             }
             Some(x) if x == ApiTradeType::Withdraw as i64 => {
-                let rows =
-                    ApiWithdrawRepo::mark_resource_released(&self.pool, origin_trade_no, result)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows = ApiWithdrawRepo::mark_resource_released(
+                    &self.transaction_pool,
+                    origin_trade_no,
+                    result,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     origin_trade_no = %origin_trade_no,
                     resource_trade_no = %task.resource_trade_no,
@@ -713,12 +738,12 @@ pub struct PlatformResourceDelegateShadowActorSystem {
 }
 
 impl PlatformResourceDelegateShadowActorSystem {
-    pub fn new(pool: ApiTransactionDbPool) -> Self {
+    pub fn new(pool: ApiResourceDbPool, transaction_pool: ApiTransactionDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let (intent_tx, intent_rx) = mpsc::channel(100);
         let scanner = Arc::new(PlatformResourceDelegateScanner::new(pool.clone()));
-        let worker = PlatformResourceDelegateWorker::new(pool);
+        let worker = PlatformResourceDelegateWorker::new(pool, transaction_pool);
 
         let scanner_clone = scanner.clone();
         let intent_tx_clone = intent_tx.clone();
@@ -761,13 +786,19 @@ impl PlatformResourceDelegateShadowActorSystem {
     }
 }
 
-pub(crate) async fn init(pool: ApiTransactionDbPool) -> PlatformResourceDelegateShadowActorSystem {
-    PlatformResourceDelegateShadowActorSystem::new(pool)
+pub(crate) async fn init(
+    pool: ApiResourceDbPool,
+    transaction_pool: ApiTransactionDbPool,
+) -> PlatformResourceDelegateShadowActorSystem {
+    PlatformResourceDelegateShadowActorSystem::new(pool, transaction_pool)
 }
 
-pub async fn scan_and_process_once(pool: ApiTransactionDbPool) -> Result<(), ServiceError> {
+pub async fn scan_and_process_once(
+    pool: ApiResourceDbPool,
+    transaction_pool: ApiTransactionDbPool,
+) -> Result<(), ServiceError> {
     let scanner = PlatformResourceDelegateScanner::new(pool.clone());
-    let worker = PlatformResourceDelegateWorker::new(pool);
+    let worker = PlatformResourceDelegateWorker::new(pool, transaction_pool);
     for intent in scanner.scan_round().await {
         worker.handle(intent).await?;
     }

@@ -92,6 +92,7 @@ pub struct Context {
     core_db: Arc<wallet_database::SqliteContext>, // data.db
     api_wallet_db: Arc<wallet_database::SqliteContext>, // api_wallet.db
     api_transaction_db: Arc<wallet_database::SqliteContext>, // api_transaction.db
+    api_resource_db: Arc<wallet_database::SqliteContext>, // api_resource.db
     task_db: Arc<wallet_database::SqliteContext>, // task.db
     oss_client: Arc<wallet_oss::oss_client::OssClient>,
     frontend_notify: Arc<RwLock<FrontendNotifySender>>,
@@ -134,6 +135,7 @@ impl Context {
         let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
         let api_wallet_db = SqliteContext::new(db_path, Some("api_wallet.db")).await?;
         let api_transaction_db = SqliteContext::new(db_path, Some("api_transaction.db")).await?;
+        let api_resource_db = SqliteContext::new(db_path, Some("api_resource.db")).await?;
         let task_db = SqliteContext::new(db_path, Some("task.db")).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
@@ -174,6 +176,7 @@ impl Context {
             core_db,
             api_wallet_db,
             api_transaction_db,
+            api_resource_db,
             task_db,
         )
         .await
@@ -191,6 +194,7 @@ impl Context {
         let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
         let api_wallet_db = SqliteContext::new(db_path, Some("api_wallet.db")).await?;
         let api_transaction_db = SqliteContext::new(db_path, Some("api_transaction.db")).await?;
+        let api_resource_db = SqliteContext::new(db_path, Some("api_resource.db")).await?;
         let task_db = SqliteContext::new(db_path, Some("task.db")).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
@@ -230,6 +234,7 @@ impl Context {
             core_db,
             api_wallet_db,
             api_transaction_db,
+            api_resource_db,
             task_db,
         )
         .await
@@ -248,6 +253,7 @@ impl Context {
         core_db: SqliteContext,
         api_wallet_db: SqliteContext,
         api_transaction_db: SqliteContext,
+        api_resource_db: SqliteContext,
         task_db: SqliteContext,
     ) -> Result<Context, crate::error::service::ServiceError> {
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
@@ -275,6 +281,7 @@ impl Context {
             core_db: Arc::new(core_db),
             api_wallet_db: Arc::new(api_wallet_db),
             api_transaction_db: Arc::new(api_transaction_db),
+            api_resource_db: Arc::new(api_resource_db),
             task_db: Arc::new(task_db),
             frontend_notify,
             oss_client: Arc::new(oss_client),
@@ -375,6 +382,10 @@ impl Context {
         &self.api_transaction_db
     }
 
+    pub(crate) fn api_resource_db(&self) -> &SqliteContext {
+        &self.api_resource_db
+    }
+
     pub(crate) fn api_funds_db(&self) -> &SqliteContext {
         self.api_transaction_db()
     }
@@ -402,6 +413,13 @@ impl Context {
     ) -> Result<wallet_database::ApiTransactionDbPool, crate::error::service::ServiceError> {
         let pool = self.api_transaction_db.get_pool()?;
         Ok(wallet_database::ApiTransactionDbPool::new(pool))
+    }
+
+    pub(crate) fn api_resource_pool(
+        &self,
+    ) -> Result<wallet_database::ApiResourceDbPool, crate::error::service::ServiceError> {
+        let pool = self.api_resource_db.get_pool()?;
+        Ok(wallet_database::ApiResourceDbPool::new(pool))
     }
 
     pub(crate) fn task_db(&self) -> &SqliteContext {

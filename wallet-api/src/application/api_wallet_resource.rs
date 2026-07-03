@@ -274,7 +274,7 @@ impl ApiResourceApplication {
         amount: String,
         operation_type: ApiResourceOperationType,
     ) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
         let input = NewApiResourceOperation::client(
             uid,
             resource_trade_no,
@@ -296,7 +296,7 @@ impl ApiResourceApplication {
         raw_tx: &str,
         transaction_fee: &str,
     ) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
         let existing = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, resource_trade_no)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;

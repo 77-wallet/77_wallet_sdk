@@ -85,8 +85,9 @@ impl ApiTransService {
             {
                 Ok(bill) => bill,
                 Err(err) if Self::is_bill_detail_primary_lookup_not_found(&err) => {
+                    let api_resource_pool = self.ctx.api_resource_pool()?;
                     return Self::resource_operation_bill_detail_by_hash(
-                        &api_transaction_pool,
+                        &api_resource_pool,
                         owner,
                         &tx_hash,
                     )
@@ -110,12 +111,12 @@ impl ApiTransService {
     }
 
     pub(crate) async fn resource_operation_bill_detail_by_hash(
-        api_transaction_pool: &ApiTransactionDbPool,
+        api_resource_pool: &wallet_database::ApiResourceDbPool,
         owner: &str,
         tx_hash: &str,
     ) -> Result<ApiBillDetailVo, ServiceError> {
         let operation =
-            ApiResourceOperationRepo::get_by_hash_and_owner(api_transaction_pool, tx_hash, owner)
+            ApiResourceOperationRepo::get_by_hash_and_owner(api_resource_pool, tx_hash, owner)
                 .await?
                 .ok_or(wallet_database::Error::NotFound(format!(
                     "api resource operation not found,tx_hash = {} ,owner = {}",

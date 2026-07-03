@@ -594,7 +594,7 @@ impl ShadowScanner {
     }
 
     async fn scan_need_resource_result_ack(&self) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource result ACK records");
 
         let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
@@ -614,7 +614,7 @@ impl ShadowScanner {
     }
 
     async fn scan_need_resource_task_ack(&self) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource task ACK records");
 
         let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type(
@@ -634,7 +634,6 @@ impl ShadowScanner {
     }
 
     async fn scan_can_resource_delegation_execute(&self) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning executable withdraw resource delegation records");
 
         self.scan_can_withdraw_platform_delegate().await;
@@ -643,7 +642,7 @@ impl ShadowScanner {
     }
 
     async fn scan_can_withdraw_platform_delegate(&self) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning executable withdraw platform delegate records");
 
         let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
@@ -665,7 +664,7 @@ impl ShadowScanner {
     }
 
     async fn scan_need_resource_tx_exec_receipt_upload(&self) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
         trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource tx exec receipt upload records");
 
         let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
@@ -1216,7 +1215,7 @@ impl ShadowScanner {
         &self,
         origin_trade_no: &str,
     ) -> Result<Option<String>, crate::error::service::ServiceError> {
-        let pool = self.ctx.api_transaction_pool()?;
+        let pool = self.ctx.api_resource_pool()?;
         Ok(wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::find_pending_result_ack_by_origin(
             &pool,
             wallet_database::entities::api_trade_type::ApiTradeType::Withdraw as i64,
@@ -1342,6 +1341,7 @@ mod tests {
     -> anyhow::Result<()> {
         let ctx = test_ctx().await;
         let pool = ctx.api_transaction_pool()?;
+        let resource_pool = ctx.api_resource_pool()?;
         let (intent_tx, mut intent_rx) = mpsc::channel(100);
         let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
 
@@ -1385,7 +1385,7 @@ mod tests {
         .await?;
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
-            &pool,
+            &resource_pool,
             NewApiResourceDelegation::platform_delegate(
                 "uid_1",
                 "W_pending_rsc_ack",
