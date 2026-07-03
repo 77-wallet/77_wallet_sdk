@@ -20,6 +20,10 @@ CREATE TABLE api_resource_operation
     tx_hash                      TEXT NULL, -- 资源操作链上交易哈希
     transaction_fee              TEXT NULL, -- 构建阶段预估/计算出的交易手续费
     last_broadcast_at            TIMESTAMP NULL, -- 最近一次成功广播时间；不代表链上最终确认
+    broadcast_uncertain_since_at TIMESTAMP NULL, -- 广播不确定状态起始时间
+    broadcast_uncertain_retry_count INTEGER NOT NULL DEFAULT 0, -- 广播不确定状态重试次数
+    broadcast_uncertain_last_checked_at TIMESTAMP NULL, -- 广播不确定状态最近检查时间
+    broadcast_uncertain_reconciled_at TIMESTAMP NULL, -- 广播不确定状态已收敛时间
     transaction_time             TIMESTAMP NULL, -- 链上最终确认时间；必须来自链上查询结果
     tx_status                    TEXT NULL, -- 链上执行状态视图，如 success / fail / uncertain
     tx_exec_receipt_uploaded_at  TIMESTAMP NULL, -- 链上执行回执已上传时间
@@ -47,3 +51,5 @@ CREATE INDEX api_resource_operation_scan
     ON api_resource_operation (task_source, operation_type, status, next_retry_at);
 CREATE INDEX api_resource_operation_owner
     ON api_resource_operation (owner_address, resource_type);
+CREATE INDEX api_resource_operation_hash_owner
+    ON api_resource_operation (tx_hash, owner_address);

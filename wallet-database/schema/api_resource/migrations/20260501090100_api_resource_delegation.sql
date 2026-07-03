@@ -15,12 +15,15 @@ CREATE TABLE api_resource_delegation
     resource_type                INTEGER     NOT NULL DEFAULT 1, -- 资源类型：0=bandwidth；1=energy
     native_amount                TEXT        NOT NULL DEFAULT '0', -- 链上代理 TRX 数量，来自 MQTT nativeValue；amount 保留资源数量 rscValue
     amount                       TEXT        NOT NULL DEFAULT '0', -- 资源数量，字符串保存避免精度/单位转换损失
+    delegation_mode              INTEGER     NOT NULL DEFAULT 1, -- 1=平台出款地址代理；2=授权地址代理
+    permission_id                TEXT NULL, -- 授权地址代理时使用的 TRON active permission id
     status                       INTEGER     NOT NULL DEFAULT 1, -- 资源任务阶段：1=pending，2=success，3=fail；执行推进仍以事实字段为准
 
     task_ack_sent_at             TIMESTAMP NULL, -- platform 资源任务接收 ACK 已发送时间；local 不使用
     building_at                  TIMESTAMP NULL, -- 链上交易构建占位，防止重复构建
     tx_hash                      TEXT NULL, -- 资源代理/回收链上交易哈希
     tx_status                    TEXT NULL, -- 链上执行状态视图，如 success / fail / uncertain
+    tx_res_received_at           TIMESTAMP NULL, -- 已接收后端交易结果时间
     tx_exec_receipt_uploaded_at  TIMESTAMP NULL, -- 链上执行回执已上传时间
 
     result_status                INTEGER NULL, -- 后端最终结果或本地最终结果状态：1=success，2=fail
