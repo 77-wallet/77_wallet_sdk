@@ -39,10 +39,15 @@ fn wallet_total_assets_query_key(
 }
 
 fn get_cached_wallet_total_assets(key: &str, max_age: Duration) -> Option<BalanceInfo> {
-    // 仅在 age 窗口内返回，调用侧可分别传 fresh TTL 或 stale TTL。
+    // 仅在 fresh age 窗口内返回，避免正常请求长期吃旧值。
     WALLET_TOTAL_ASSETS_CACHE.get(key).and_then(|entry| {
         if entry.updated_at.elapsed() <= max_age { Some(entry.value.clone()) } else { None }
     })
+}
+
+fn get_stale_wallet_total_assets(key: &str) -> Option<BalanceInfo> {
+    // 查询失败兜底使用最近一次成功值，不设置时间窗；缓存只能被下一次成功查询刷新。
+    WALLET_TOTAL_ASSETS_CACHE.get(key).map(|entry| entry.value.clone())
 }
 
 fn set_cached_wallet_total_assets(key: &str, value: &BalanceInfo) {
@@ -52,7 +57,17 @@ fn set_cached_wallet_total_assets(key: &str, value: &BalanceInfo) {
     );
 }
 
+fn mark_cached_wallet_total_assets_stale(key: &str, fresh_ttl: Duration) {
+    if let Some(mut entry) = WALLET_TOTAL_ASSETS_CACHE.get_mut(key) {
+        let stale_at = Instant::now()
+            .checked_sub(fresh_ttl + Duration::from_millis(1))
+            .unwrap_or_else(Instant::now);
+        entry.updated_at = stale_at;
+    }
+}
+
 pub(super) fn invalidate_wallet_total_assets_cache(wallet_address: &str) -> usize {
+    let defaults = runtime_defaults::api_assets();
     let keys: Vec<String> = WALLET_TOTAL_ASSETS_CACHE
         .iter()
         .filter(|entry| {
@@ -64,7 +79,7 @@ pub(super) fn invalidate_wallet_total_assets_cache(wallet_address: &str) -> usiz
 
     let removed_count = keys.len();
     for key in keys {
-        WALLET_TOTAL_ASSETS_CACHE.remove(&key);
+        mark_cached_wallet_total_assets_stale(&key, defaults.total_cache_ttl);
         super::singleflight::invalidate_balance_info(&key);
     }
 
@@ -133,6 +148,17 @@ where
             }
             Err(err) => {
                 log_db_pool_timeout_metric(&err.to_string());
+                if is_v3_timeout_or_pool_timeout(&err) {
+                    if let Some(cached) = get_stale_wallet_total_assets(cache_key) {
+                        tracing::warn!(
+                            metric = "api_assets_stale_cache_hit",
+                            cache_key = %cache_key,
+                            err = %err,
+                            "wallet assets query failed, returning stale cached result"
+                        );
+                        return Ok(cached);
+                    }
+                }
                 Err(err)
             }
         }
@@ -354,7 +380,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalidate_wallet_total_assets_cache_clears_matching_entry() {
+    async fn total_assets_query_returns_stale_cache_on_timeout() {
+        let key = unique_key("assets-stale-timeout");
+        let first = load_total_assets_with_cache(&key, Duration::from_secs(60), || async {
+            Ok(BalanceInfo {
+                amount: 7.0,
+                currency: "USD".to_string(),
+                unit_price: None,
+                fiat_value: Some(7.0),
+            })
+        })
+        .await
+        .expect("initial query ok");
+        assert_eq!(first.amount, 7.0);
+
+        super::singleflight::invalidate_balance_info(&key);
+        super::mark_cached_wallet_total_assets_stale(&key, Duration::from_secs(3600));
+
+        let stale = load_total_assets_with_cache(&key, Duration::from_millis(0), || async {
+            Err(ServiceError::Timeout)
+        })
+        .await
+        .expect("timeout should return stale cache without age limit");
+
+        assert_eq!(stale.amount, 7.0);
+    }
+
+    #[tokio::test]
+    async fn invalidate_wallet_total_assets_cache_marks_matching_entry_stale() {
         let key1 = super::wallet_total_assets_v3_lock_key("0xabc", Some(7), Some("ETH"));
         let key2 = super::wallet_total_assets_v3_lock_key("0xabc", None, None);
         let hit_count = Arc::new(AtomicUsize::new(0));
@@ -394,7 +447,7 @@ mod tests {
         let removed = super::invalidate_wallet_total_assets_cache("0xabc");
         assert_eq!(removed, 2);
 
-        let _ = load_total_assets_with_cache(&key1, Duration::from_secs(60), {
+        let _ = load_total_assets_with_cache(&key1, Duration::from_millis(1), {
             let hit_count = hit_count.clone();
             move || async move {
                 hit_count.fetch_add(1, Ordering::SeqCst);
