@@ -281,8 +281,10 @@ impl ShadowWithdrawWorker {
         chain_code: &str,
         raw_tx_json: &str,
         last_broadcast_at_present: bool,
+        tx_hash_present: bool,
     ) -> bool {
         !last_broadcast_at_present
+            && !tx_hash_present
             && Self::should_invalidate_expired_tron_raw(chain_code, raw_tx_json)
     }
 
@@ -1002,6 +1004,7 @@ impl ShadowWithdrawWorker {
                         &req.chain_code,
                         raw_tx_json,
                         req.last_broadcast_at.is_some(),
+                        req.tx_hash.as_deref().is_some_and(|tx_hash| !tx_hash.trim().is_empty()),
                     ) {
                         warn!(
                             trade_no = %req.trade_no,
@@ -2665,11 +2668,31 @@ oss:
         assert!(ShadowWithdrawWorker::should_invalidate_expired_tron_raw_for_recover(
             "tron",
             &raw_tx_json,
+            false,
             false
         ));
         assert!(!ShadowWithdrawWorker::should_invalidate_expired_tron_raw_for_recover(
             "tron",
             &raw_tx_json,
+            true,
+            false
+        ));
+        assert!(!ShadowWithdrawWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            false,
+            true
+        ));
+    }
+
+    #[test]
+    fn withdraw_expired_tron_raw_with_tx_hash_is_not_invalidated_for_recover() {
+        let raw_tx_json = expired_tron_raw_tx_json(123);
+
+        assert!(!ShadowWithdrawWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            false,
             true
         ));
     }

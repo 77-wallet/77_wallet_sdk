@@ -280,6 +280,17 @@ impl ShadowCollectWorker {
         exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
     }
 
+    fn should_invalidate_expired_tron_raw_for_recover(
+        chain_code: &str,
+        raw_tx_json: &str,
+        last_broadcast_at_present: bool,
+        tx_hash_present: bool,
+    ) -> bool {
+        !last_broadcast_at_present
+            && !tx_hash_present
+            && Self::should_invalidate_expired_tron_raw(chain_code, raw_tx_json)
+    }
+
     fn should_nudge_advance_after_recover_skip(req: &ApiCollectEntity) -> bool {
         req.transaction_time.is_some()
     }
@@ -1518,9 +1529,12 @@ impl ShadowCollectWorker {
             }
             Ok(None) => {
                 if let Some(raw_tx_json) = req.raw_tx.as_deref() {
-                    if req.last_broadcast_at.is_none()
-                        && Self::should_invalidate_expired_tron_raw(&req.chain_code, raw_tx_json)
-                    {
+                    if Self::should_invalidate_expired_tron_raw_for_recover(
+                        &req.chain_code,
+                        raw_tx_json,
+                        req.last_broadcast_at.is_some(),
+                        req.tx_hash.as_deref().is_some_and(|tx_hash| !tx_hash.trim().is_empty()),
+                    ) {
                         warn!(
                             trade_no = %req.trade_no,
                             tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
@@ -3543,6 +3557,7 @@ mod tests {
     };
     use tempfile::tempdir;
     use tokio::sync::{OnceCell, mpsc};
+    use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
     use wallet_database::{
         ApiWalletDbPool, SqliteContext,
         entities::{
@@ -3683,6 +3698,45 @@ oss:
         .await
         .expect("init test context");
         Box::leak(Box::new(ctx))
+    }
+
+    fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
+        let raw = RawTransactionParams {
+            tx_id: "expired-tron-collect-tx".to_string(),
+            raw_data: serde_json::json!({ "expiration": expiration_ms }).to_string(),
+            raw_data_hex: "00".to_string(),
+            signature: vec![],
+        };
+        let raw_tx = crate::domain::api_wallet::adapter::tx::RawTx::Tron(
+            raw,
+            BillResourceConsume { net_used: 0, energy_used: 0 },
+            String::new(),
+        );
+        wallet_utils::serde_func::serde_to_string(&raw_tx).expect("serialize expired tron raw tx")
+    }
+
+    #[test]
+    fn collect_expired_tron_raw_with_tx_hash_is_not_invalidated_for_recover() {
+        let raw_tx_json = expired_tron_raw_tx_json(123);
+
+        assert!(ShadowCollectWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            false,
+            false
+        ));
+        assert!(!ShadowCollectWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            true,
+            false
+        ));
+        assert!(!ShadowCollectWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            false,
+            true
+        ));
     }
 
     fn base_collect() -> ApiCollectEntity {

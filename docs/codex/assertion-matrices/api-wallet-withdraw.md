@@ -190,6 +190,38 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: pool seam must surface missing rows instead of silently
   succeeding.
 
+### Withdraw Chain TX Actions Share Running Key
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/dispatcher.rs
+  chain_tx_actions_share_running_key
+  ```
+
+- Backend: none.
+- Dispatcher facts: `BuildTx`, `BroadcastTx`, and `RecoverTx` for the same
+  withdraw `trade_no` map to the same running key.
+- Invariant: build, broadcast, and recover for one withdraw order must not run
+  concurrently.
+
+### Withdraw Expired TRON Raw Keeps TX Hash
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
+  withdraw_expired_tron_raw_with_tx_hash_is_not_invalidated_for_recover
+  ```
+
+- Backend: none.
+- DB facts: persisted `tx_hash` is treated as possible broadcast evidence even
+  when `last_broadcast_at` is still empty.
+- Invariant: recover must not clear `raw_tx` / `tx_hash` for rebuild when the
+  withdraw row already has a transaction hash.
+
 ## Template Contract
 
 `withdraw_notification/mod.rs` uses the role-trait Given-When-Then shape:

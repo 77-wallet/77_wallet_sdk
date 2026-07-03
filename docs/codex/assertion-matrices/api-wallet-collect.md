@@ -448,6 +448,70 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: scanner routing must recover broadcast-visible pending rows instead
   of re-entering build or fee upload.
 
+### Collect Chain TX Actions Share Running Key
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/dispatcher.rs
+  chain_tx_actions_share_running_key
+  ```
+
+- Backend: none.
+- Dispatcher facts: `BuildTx`, `BroadcastTx`, and `RecoverTx` for the same
+  collect `trade_no` map to the same running key.
+- Invariant: build, broadcast, and recover for one collect order must not run
+  concurrently.
+
+### Collect Expired TRON Raw Keeps TX Hash
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  collect_expired_tron_raw_with_tx_hash_is_not_invalidated_for_recover
+  ```
+
+- Backend: none.
+- DB facts: persisted `tx_hash` is treated as possible broadcast evidence even
+  when `last_broadcast_at` is still empty.
+- Invariant: recover must not clear `raw_tx` / `tx_hash` for rebuild when the
+  collect row already has a transaction hash.
+
+### Collect Fee Chain TX Actions Share Running Key
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect_fee/shadow/dispatcher.rs
+  chain_tx_actions_share_running_key
+  ```
+
+- Backend: none.
+- Dispatcher facts: `BuildTx`, `BroadcastTx`, and `RecoverTx` for the same fee
+  `trade_no` map to the same running key.
+- Invariant: build, broadcast, and recover for one fee order must not run
+  concurrently.
+
+### Collect Fee Expired TRON Raw Keeps TX Hash
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect_fee/shadow/worker/shadow_fee_worker.rs
+  collect_fee_expired_tron_raw_with_tx_hash_is_not_invalidated_for_recover
+  ```
+
+- Backend: none.
+- DB facts: persisted `tx_hash` is treated as possible broadcast evidence even
+  when `last_broadcast_at` is still empty.
+- Invariant: recover must not clear `raw_tx` / `tx_hash` for rebuild when the
+  fee row already has a transaction hash.
+
 ## Template Contract
 
 `collect_notification/mod.rs` uses the role-trait Given-When-Then shape:

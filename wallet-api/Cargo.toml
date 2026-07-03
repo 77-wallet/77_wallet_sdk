@@ -8,8 +8,14 @@ doctest = false
 
 [features]
 # default = ["prod", "api-mqtt"]
-default = ["dev", "token", "integration-tests", "api-mqtt", "api-wallet-console"]
-# default = ["test", "token", "integration-tests", "api-mqtt"]
+# default = ["dev", "token", "integration-tests", "api-mqtt", "api-wallet-console"]
+default = [
+    "test",
+    "token",
+    "integration-tests",
+    "api-mqtt",
+    "api-wallet-console",
+]
 
 integration-tests = []
 api-mqtt = []
@@ -119,7 +125,10 @@ urlencoding = { workspace = true }
 dashmap.workspace = true
 num_cpus = "1.16"
 scopeguard = "1.2"
-eframe = { version = "0.27", default-features = false, features = ["default_fonts", "glow"], optional = true }
+eframe = { version = "0.27", default-features = false, features = [
+    "default_fonts",
+    "glow",
+], optional = true }
 
 governor = "0.4"
 

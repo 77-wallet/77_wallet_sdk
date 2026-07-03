@@ -24,9 +24,7 @@ use super::CollectIntent;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
     EvalResourceGate(String),
-    BuildTx(String),
-    BroadcastTx(String),
-    RecoverTx(String),
+    ChainTx(String),
     ExecuteLocalResourceDelegation(String),
     SendOrderAck(String),
     SendResultAck(String),
@@ -46,13 +44,13 @@ impl RunningKey {
                 RunningKey::EvalResourceGate(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
-                RunningKey::BuildTx(trade_no.clone())
+                RunningKey::ChainTx(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => {
-                RunningKey::BroadcastTx(trade_no.clone())
+                RunningKey::ChainTx(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
-                RunningKey::RecoverTx(trade_no.clone())
+                RunningKey::ChainTx(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) => {
                 RunningKey::ExecuteLocalResourceDelegation(trade_no.clone())
@@ -91,27 +89,20 @@ mod tests {
     use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     #[test]
-    fn broadcast_and_recover_use_different_running_keys() {
+    fn chain_tx_actions_share_running_key() {
         let trade_no = "C_KEY";
+        let build = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BuildTx(
+            trade_no.to_string(),
+        )));
         let broadcast = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BroadcastTx(
             trade_no.to_string(),
         )));
         let recover = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::RecoverTx(
             trade_no.to_string(),
         )));
-        assert_ne!(broadcast, recover);
-    }
-
-    #[test]
-    fn build_and_chain_use_different_running_keys() {
-        let trade_no = "C_KEY";
-        let build = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BuildTx(
-            trade_no.to_string(),
-        )));
-        let chain = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BroadcastTx(
-            trade_no.to_string(),
-        )));
-        assert_ne!(build, chain);
+        assert_eq!(build, broadcast);
+        assert_eq!(broadcast, recover);
+        assert!(matches!(build, RunningKey::ChainTx(_)));
     }
 
     #[test]
@@ -126,20 +117,6 @@ mod tests {
 
         assert!(matches!(resource_exec, RunningKey::ExecuteLocalResourceDelegation(_)));
         assert_ne!(resource_exec, collect_build);
-    }
-
-    #[test]
-    fn broadcast_and_recover_use_different_chain_keys_even_with_same_trade_no() {
-        let trade_no = "C_KEY";
-        let broadcast = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BroadcastTx(
-            trade_no.to_string(),
-        )));
-        let recover = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::RecoverTx(
-            trade_no.to_string(),
-        )));
-
-        assert!(matches!(broadcast, RunningKey::BroadcastTx(_)));
-        assert!(matches!(recover, RunningKey::RecoverTx(_)));
     }
 }
 
