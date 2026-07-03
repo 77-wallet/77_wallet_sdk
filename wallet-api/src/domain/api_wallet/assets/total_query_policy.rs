@@ -1,32 +1,19 @@
-use dashmap::DashMap;
-use once_cell::sync::Lazy;
 use std::{future::Future, time::Instant};
 use tokio::time::Duration;
 
-use crate::{config::runtime_defaults, response_vo::standard_wallet::account::BalanceInfo};
+use crate::{
+    config::runtime_defaults, infrastructure::api_wallet_total_assets_cache,
+    response_vo::standard_wallet::account::BalanceInfo,
+};
 
 use super::{ApiAccountRepo, ApiAssetsDomain, singleflight};
-
-#[derive(Clone)]
-struct CachedWalletTotalAssets {
-    // 保存最近一次成功聚合结果，用于短 TTL 命中和失败时 stale 返回。
-    value: BalanceInfo,
-    updated_at: Instant,
-}
-
-// 与锁分开存放，避免锁生命周期影响缓存命中。
-static WALLET_TOTAL_ASSETS_CACHE: Lazy<DashMap<String, CachedWalletTotalAssets>> =
-    Lazy::new(DashMap::new);
-static WALLET_TOTAL_ASSETS_REFRESHING: Lazy<DashMap<String, ()>> = Lazy::new(DashMap::new);
 
 pub(super) fn wallet_total_assets_v3_lock_key(
     wallet_address: &str,
     account_id: Option<u32>,
     chain_code: Option<&str>,
 ) -> String {
-    let account_part = account_id.map(|v| v.to_string()).unwrap_or_else(|| "none".to_string());
-    let chain_part = chain_code.unwrap_or("none");
-    format!("wallet={wallet_address};account_id={account_part};chain_code={chain_part}")
+    api_wallet_total_assets_cache::wallet_total_assets_key(wallet_address, account_id, chain_code)
 }
 
 fn wallet_total_assets_query_key(
@@ -39,48 +26,13 @@ fn wallet_total_assets_query_key(
     wallet_total_assets_v3_lock_key(wallet_part, account_id, chain_code)
 }
 
-fn get_cached_wallet_total_assets(key: &str, max_age: Duration) -> Option<BalanceInfo> {
-    // 仅在 fresh age 窗口内返回，避免正常请求长期吃旧值。
-    WALLET_TOTAL_ASSETS_CACHE.get(key).and_then(|entry| {
-        if entry.updated_at.elapsed() <= max_age { Some(entry.value.clone()) } else { None }
-    })
-}
-
-fn get_stale_wallet_total_assets(key: &str) -> Option<BalanceInfo> {
-    // 查询失败兜底使用最近一次成功值，不设置时间窗；缓存只能被下一次成功查询刷新。
-    WALLET_TOTAL_ASSETS_CACHE.get(key).map(|entry| entry.value.clone())
-}
-
-fn set_cached_wallet_total_assets(key: &str, value: &BalanceInfo) {
-    WALLET_TOTAL_ASSETS_CACHE.insert(
-        key.to_string(),
-        CachedWalletTotalAssets { value: value.clone(), updated_at: Instant::now() },
-    );
-}
-
-fn mark_cached_wallet_total_assets_stale(key: &str, fresh_ttl: Duration) {
-    if let Some(mut entry) = WALLET_TOTAL_ASSETS_CACHE.get_mut(key) {
-        let stale_at = Instant::now()
-            .checked_sub(fresh_ttl + Duration::from_millis(1))
-            .unwrap_or_else(Instant::now);
-        entry.updated_at = stale_at;
-    }
-}
-
 pub(super) fn invalidate_wallet_total_assets_cache(wallet_address: &str) -> usize {
     let defaults = runtime_defaults::api_assets();
-    let keys: Vec<String> = WALLET_TOTAL_ASSETS_CACHE
-        .iter()
-        .filter(|entry| {
-            let key = entry.key();
-            key.starts_with(&format!("wallet={wallet_address};"))
-        })
-        .map(|entry| entry.key().clone())
-        .collect();
+    let keys =
+        api_wallet_total_assets_cache::mark_wallet_stale(wallet_address, defaults.total_cache_ttl);
 
     let removed_count = keys.len();
     for key in keys {
-        mark_cached_wallet_total_assets_stale(&key, defaults.total_cache_ttl);
         super::singleflight::invalidate_balance_info(&key);
     }
 
@@ -99,41 +51,7 @@ pub(super) fn schedule_wallet_total_assets_refresh(
     ctx: &'static crate::context::Context,
     wallet_address: String,
 ) -> bool {
-    let cache_key = wallet_total_assets_query_key(Some(&wallet_address), None, None);
-    if WALLET_TOTAL_ASSETS_REFRESHING.insert(cache_key.clone(), ()).is_some() {
-        tracing::debug!(
-            cache_key = %cache_key,
-            wallet_address = %wallet_address,
-            "api wallet total-assets refresh already scheduled"
-        );
-        return false;
-    }
-
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        let result =
-            ApiAssetsDomain::get_api_wallet_assets(ctx, Some(&wallet_address), None, None).await;
-        match result {
-            Ok(_) => {
-                tracing::debug!(
-                    cache_key = %cache_key,
-                    wallet_address = %wallet_address,
-                    "api wallet total-assets cache refreshed after balance sync"
-                );
-            }
-            Err(err) => {
-                tracing::warn!(
-                    cache_key = %cache_key,
-                    wallet_address = %wallet_address,
-                    err = %err,
-                    "api wallet total-assets cache refresh failed after balance sync"
-                );
-            }
-        }
-        WALLET_TOTAL_ASSETS_REFRESHING.remove(&cache_key);
-    });
-
-    true
+    api_wallet_total_assets_cache::schedule_refresh(ctx, wallet_address)
 }
 
 fn is_db_pool_timeout_error(err: &str) -> bool {
@@ -162,7 +80,7 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<BalanceInfo, crate::error::service::ServiceError>>,
 {
-    if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
+    if let Some(cached) = api_wallet_total_assets_cache::get_fresh(cache_key, fresh_ttl) {
         tracing::debug!(
             metric = "api_assets_cache_hit",
             cache_key = %cache_key,
@@ -174,7 +92,7 @@ where
 
     let wait_start = Instant::now();
     let result = singleflight::call_balance_info(cache_key, || async move {
-        if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
+        if let Some(cached) = api_wallet_total_assets_cache::get_fresh(cache_key, fresh_ttl) {
             tracing::debug!(
                 metric = "api_assets_dedup_hit",
                 cache_key = %cache_key,
@@ -185,13 +103,13 @@ where
 
         match query_fn().await {
             Ok(balance) => {
-                set_cached_wallet_total_assets(cache_key, &balance);
+                api_wallet_total_assets_cache::set(cache_key, &balance);
                 Ok(balance)
             }
             Err(err) => {
                 log_db_pool_timeout_metric(&err.to_string());
                 if is_v3_timeout_or_pool_timeout(&err) {
-                    if let Some(cached) = get_stale_wallet_total_assets(cache_key) {
+                    if let Some(cached) = api_wallet_total_assets_cache::get_stale(cache_key) {
                         tracing::warn!(
                             metric = "api_assets_stale_cache_hit",
                             cache_key = %cache_key,
@@ -354,7 +272,10 @@ mod tests {
 
     use tokio::time::{Duration, sleep};
 
-    use crate::{error::service::ServiceError, response_vo::standard_wallet::account::BalanceInfo};
+    use crate::{
+        error::service::ServiceError, infrastructure::api_wallet_total_assets_cache,
+        response_vo::standard_wallet::account::BalanceInfo,
+    };
 
     use super::load_total_assets_with_cache;
 
@@ -437,7 +358,7 @@ mod tests {
         assert_eq!(first.amount, 7.0);
 
         super::singleflight::invalidate_balance_info(&key);
-        super::mark_cached_wallet_total_assets_stale(&key, Duration::from_secs(3600));
+        api_wallet_total_assets_cache::mark_key_stale(&key, Duration::from_secs(3600));
 
         let stale = load_total_assets_with_cache(&key, Duration::from_millis(0), || async {
             Err(ServiceError::Timeout)

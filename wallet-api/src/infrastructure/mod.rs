@@ -1,5 +1,6 @@
 pub mod api_trans;
 pub mod api_wallet_assets_sync;
+pub(crate) mod api_wallet_total_assets_cache;
 pub mod cache;
 pub mod expand_address;
 pub mod expand_init;
