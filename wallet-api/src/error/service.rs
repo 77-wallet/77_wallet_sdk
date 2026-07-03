@@ -47,12 +47,24 @@ pub enum ServiceError {
 
 impl ServiceError {
     pub(crate) fn is_transient_db_pool_timeout(&self) -> bool {
-        matches!(
+        if matches!(
             self,
             ServiceError::Database(wallet_database::Error::Database(
                 wallet_database::DatabaseError::Sqlx(sqlx::Error::PoolTimedOut)
             ))
-        )
+        ) {
+            return true;
+        }
+
+        match self {
+            ServiceError::System(err) => Self::contains_db_pool_timeout(&err.to_string()),
+            ServiceError::Context(context) => Self::contains_db_pool_timeout(context),
+            _ => false,
+        }
+    }
+
+    fn contains_db_pool_timeout(msg: &str) -> bool {
+        msg.contains("pool timed out while waiting for an open connection")
     }
 
     fn rpc_auth_unauthorized_marker(msg: &str) -> bool {
@@ -128,6 +140,26 @@ mod tests {
 
         assert!(err.is_transient_db_pool_timeout());
         assert!(!ServiceError::Parameter("timeout".to_string()).is_transient_db_pool_timeout());
+    }
+
+    #[test]
+    fn db_pool_timeout_matches_wrapped_system_error() {
+        let err = ServiceError::System(crate::error::system::SystemError::Internal(
+            "Database error: Database error: Sqlx error: pool timed out while waiting for an open connection"
+                .to_string(),
+        ));
+
+        assert!(err.is_transient_db_pool_timeout());
+    }
+
+    #[test]
+    fn db_pool_timeout_matches_wrapped_context_error() {
+        let err = ServiceError::Context(
+            "resource delegation -> Database error: Sqlx error: pool timed out while waiting for an open connection"
+                .to_string(),
+        );
+
+        assert!(err.is_transient_db_pool_timeout());
     }
 }
 

@@ -505,6 +505,17 @@ impl ShadowCollectWorker {
             return Ok(());
         };
 
+        if err.is_transient_db_pool_timeout() {
+            self.schedule_local_resource_delegation_rebuild_retry(resource_trade_no, &err).await?;
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Resource delegation hit local DB pool timeout, scheduled retry instead of reporting failure"
+            );
+            return Ok(());
+        }
+
         match err.retry_policy() {
             wallet_utils::RetryPolicy::Never => {
                 warn!(
