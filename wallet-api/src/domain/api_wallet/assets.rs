@@ -41,7 +41,9 @@ pub struct ApiAssetsDomain;
 mod singleflight;
 mod total_query_policy;
 
-use total_query_policy::invalidate_wallet_total_assets_cache;
+use total_query_policy::{
+    invalidate_wallet_total_assets_cache, schedule_wallet_total_assets_refresh,
+};
 
 enum SyncFilter {
     Symbol(Vec<String>),
@@ -570,7 +572,7 @@ impl ApiAssetsDomain {
                 &account_balances,
             );
 
-            Self::invalidate_changed_account_total_cache(&changed_accounts);
+            Self::invalidate_changed_account_total_cache(ctx, &changed_accounts);
 
             // 只有有变化才推送
             if !changed_accounts.is_empty() {
@@ -603,17 +605,24 @@ impl ApiAssetsDomain {
     }
 
     fn invalidate_changed_account_total_cache(
+        ctx: &'static Context,
         changed_accounts: &crate::messaging::notify::api_wallet::ApiWalletSyncAssetsMsgFront,
     ) {
         let mut removed = 0usize;
+        let mut scheduled = 0usize;
 
         for entry in changed_accounts.iter() {
             let wallet_address = entry.key().clone();
-            removed += invalidate_wallet_total_assets_cache(&wallet_address);
+            let removed_for_wallet = invalidate_wallet_total_assets_cache(&wallet_address);
+            removed += removed_for_wallet;
+            if removed_for_wallet > 0 && schedule_wallet_total_assets_refresh(ctx, wallet_address) {
+                scheduled += 1;
+            }
         }
 
         tracing::debug!(
             removed_count = removed,
+            scheduled_count = scheduled,
             wallet_count = changed_accounts.len(),
             "invalidated api wallet total-assets cache after sync"
         );

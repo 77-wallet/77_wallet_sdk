@@ -17,6 +17,7 @@ struct CachedWalletTotalAssets {
 // 与锁分开存放，避免锁生命周期影响缓存命中。
 static WALLET_TOTAL_ASSETS_CACHE: Lazy<DashMap<String, CachedWalletTotalAssets>> =
     Lazy::new(DashMap::new);
+static WALLET_TOTAL_ASSETS_REFRESHING: Lazy<DashMap<String, ()>> = Lazy::new(DashMap::new);
 
 pub(super) fn wallet_total_assets_v3_lock_key(
     wallet_address: &str,
@@ -92,6 +93,47 @@ pub(super) fn invalidate_wallet_total_assets_cache(wallet_address: &str) -> usiz
     }
 
     removed_count
+}
+
+pub(super) fn schedule_wallet_total_assets_refresh(
+    ctx: &'static crate::context::Context,
+    wallet_address: String,
+) -> bool {
+    let cache_key = wallet_total_assets_query_key(Some(&wallet_address), None, None);
+    if WALLET_TOTAL_ASSETS_REFRESHING.insert(cache_key.clone(), ()).is_some() {
+        tracing::debug!(
+            cache_key = %cache_key,
+            wallet_address = %wallet_address,
+            "api wallet total-assets refresh already scheduled"
+        );
+        return false;
+    }
+
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let result =
+            ApiAssetsDomain::get_api_wallet_assets(ctx, Some(&wallet_address), None, None).await;
+        match result {
+            Ok(_) => {
+                tracing::debug!(
+                    cache_key = %cache_key,
+                    wallet_address = %wallet_address,
+                    "api wallet total-assets cache refreshed after balance sync"
+                );
+            }
+            Err(err) => {
+                tracing::warn!(
+                    cache_key = %cache_key,
+                    wallet_address = %wallet_address,
+                    err = %err,
+                    "api wallet total-assets cache refresh failed after balance sync"
+                );
+            }
+        }
+        WALLET_TOTAL_ASSETS_REFRESHING.remove(&cache_key);
+    });
+
+    true
 }
 
 fn is_db_pool_timeout_error(err: &str) -> bool {
