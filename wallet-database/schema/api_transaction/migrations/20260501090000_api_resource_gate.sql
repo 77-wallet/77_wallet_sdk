@@ -1,4 +1,4 @@
--- Add TRON resource gate facts to original API wallet transactions.
+-- Add post-order fields to original API wallet transactions.
 
 ALTER TABLE api_collect ADD COLUMN resource_check_at TIMESTAMP NULL; -- 最近一次资源决策/检查时间，仅用于观测、排障和恢复扫描节流，不作为 CanBuild 放行条件
 ALTER TABLE api_collect ADD COLUMN resource_gate_released_at TIMESTAMP NULL; -- 资源闸门释放时间；TRON 原交易进入 BuildTx 的资源前置事实
@@ -19,3 +19,11 @@ CREATE INDEX api_collect_resource_gate_scan
 
 CREATE INDEX api_withdraws_resource_gate_scan
     ON api_withdraws (chain_code, trade_type, resource_gate_released_at, resource_dependency_trade_no);
+
+ALTER TABLE api_withdraws ADD COLUMN out_order_id TEXT NULL;
+ALTER TABLE api_withdraws ADD COLUMN client_id TEXT NULL;
+ALTER TABLE api_withdraws ADD COLUMN create_time TEXT NULL;
+
+ALTER TABLE api_withdraws ADD COLUMN estimated_transaction_fee TEXT NULL;
+ALTER TABLE api_withdraws ADD COLUMN estimated_resource_consume TEXT NULL;
+ALTER TABLE api_withdraws ADD COLUMN fee_estimated_at TIMESTAMP NULL;
