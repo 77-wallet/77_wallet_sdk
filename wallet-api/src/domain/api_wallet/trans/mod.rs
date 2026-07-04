@@ -787,6 +787,16 @@ impl ApiTransDomain {
                             return Ok(Some(synthetic));
                         }
                         synthetic
+                    } else if chain_code.eq_ignore_ascii_case(&ChainCode::Tron.to_string())
+                        && Self::is_transaction_expired_error(&e)
+                    {
+                        tracing::warn!(
+                            chain_code = %chain_code,
+                            error = %e,
+                            "broadcast transaction expired; return error so raw tx can be rebuilt"
+                        );
+                        chain_rpc_guard::record_transient_failure_from_error(&e);
+                        return Err(e);
                     } else if e.is_network_error() {
                         tracing::error!("broadcast_transfer: 网络错误, 交易广播失败: {}", e);
                         chain_rpc_guard::record_transient_failure_from_error(&e);
