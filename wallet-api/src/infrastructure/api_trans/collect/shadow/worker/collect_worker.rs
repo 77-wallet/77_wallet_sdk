@@ -3331,6 +3331,44 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
+        let should_rebuild_tron_expired_raw =
+            ApiTransDomain::should_invalidate_tron_expired_broadcast(
+                &req.chain_code,
+                &err,
+                req.raw_tx.is_some(),
+                req.tx_hash.is_some(),
+                req.last_broadcast_at.is_some(),
+            );
+
+        // TRON raw tx can expire before the node accepts broadcast. Retrying the
+        // same raw cannot make progress, so clear build facts and let the
+        // scanner rebuild.
+        if should_rebuild_tron_expired_raw {
+            let rows_affected = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
+                &self.ctx.api_transaction_pool()?,
+                trade_no,
+                None,
+            )
+            .await
+            .map_err(|db_err: wallet_database::Error| {
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to invalidate raw_tx for tron expired rebuild");
+                ServiceError::Database(db_err.into())
+            })?;
+
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                error = %err,
+                source = "shadow_worker_v2",
+                "TRON transaction expired detected, invalidated raw_tx for rebuild"
+            );
+
+            if rows_affected > 0 {
+                self.advancer.try_advance(trade_no).await;
+            }
+            return Ok(());
+        }
+
         // "already exists" 表示节点已接收广播，作为幂等成功兜底处理。
         // 避免误写 SendingTxFailed 并冻结到错误分支。
         if crate::domain::api_wallet::trans::ApiTransDomain::is_duplicate_broadcast_error(&err)

@@ -1237,6 +1237,38 @@ impl ShadowFeeWorker {
             return Ok(());
         }
 
+        let should_rebuild_tron_expired_raw =
+            ApiTransDomain::should_invalidate_tron_expired_broadcast(
+                &fee.chain_code,
+                &err,
+                fee.raw_tx.is_some(),
+                fee.tx_hash.is_some(),
+                fee.last_broadcast_at.is_some(),
+            );
+
+        // TRON raw tx can expire before the node accepts broadcast. Retrying the
+        // same raw cannot make progress, so clear build facts and let the
+        // scanner rebuild.
+        if should_rebuild_tron_expired_raw {
+            let rows_affected = ApiFeeRepo::invalidate_raw_tx(&self.ctx.api_transaction_pool()?, trade_no, None, None, None)
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to invalidate raw_tx for tron expired rebuild");
+                    ServiceError::Database(db_err.into())
+                })?;
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                error = %err,
+                source = "shadow_fee_worker",
+                "TRON transaction expired detected, invalidated raw_tx for rebuild"
+            );
+            if rows_affected > 0 {
+                self.scanner.try_advance(trade_no).await;
+            }
+            return Ok(());
+        }
+
         // "already exists" 表示节点已接收广播，作为幂等成功兜底处理。
         // 避免误写 SendingTxFailed 并冻结到错误分支。
         if ApiTransDomain::is_duplicate_broadcast_error(&err)

@@ -2103,6 +2103,39 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
+        let should_rebuild_tron_expired_raw = matches!(stage, WithdrawFailureStage::Broadcast)
+            && ApiTransDomain::should_invalidate_tron_expired_broadcast(
+                &withdraw.chain_code,
+                &err,
+                withdraw.raw_tx.is_some(),
+                withdraw.tx_hash.is_some(),
+                withdraw.last_broadcast_at.is_some(),
+            );
+
+        // TRON raw tx can expire before the node accepts broadcast. Retrying the
+        // same raw forever cannot make progress, so clear build facts and let
+        // the scanner rebuild.
+        if should_rebuild_tron_expired_raw {
+            let rows_affected =
+                ApiWithdrawRepo::invalidate_raw_tx(&self.ctx.api_transaction_pool()?, trade_no, None, None, None)
+                    .await
+                    .map_err(|db_err: wallet_database::Error| {
+                        error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to invalidate raw_tx for tron expired rebuild");
+                        ServiceError::Database(db_err.into())
+                    })?;
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                error = %err,
+                source = "shadow_withdraw_worker",
+                "TRON transaction expired detected, invalidated raw_tx for rebuild"
+            );
+            if rows_affected > 0 {
+                self.scanner.try_advance(trade_no).await;
+            }
+            return Ok(());
+        }
+
         // 广播阶段的 "already exists" 表示链节点已接受该交易，属于幂等成功。
         // 兜底处理：即使上游未命中 duplicate 判定，也不应写 SendingTxFailed。
         if matches!(stage, WithdrawFailureStage::Broadcast)

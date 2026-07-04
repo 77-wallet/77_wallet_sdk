@@ -50,6 +50,35 @@ mod sol_broadcast_error_tests {
     }
 
     #[test]
+    fn tron_transaction_expired_error_is_detected() {
+        let err = ServiceError::Parameter(
+            "Chain interact error: `rpc error Transaction expired`".to_string(),
+        );
+        assert!(ApiTransDomain::is_transaction_expired_error(&err));
+        assert!(!ApiTransDomain::is_blockhash_not_found_error(&err));
+    }
+
+    #[test]
+    fn tron_transaction_expired_invalidates_raw_for_rebuild() {
+        let err = ServiceError::Parameter(
+            "Chain interact error: `rpc error Transaction expired`".to_string(),
+        );
+
+        assert!(ApiTransDomain::should_invalidate_tron_expired_broadcast(
+            "tron", &err, true, true, false,
+        ));
+        assert!(!ApiTransDomain::should_invalidate_tron_expired_broadcast(
+            "tron", &err, true, true, true,
+        ));
+        assert!(!ApiTransDomain::should_invalidate_tron_expired_broadcast(
+            "tron", &err, true, false, false,
+        ));
+        assert!(!ApiTransDomain::should_invalidate_tron_expired_broadcast(
+            "sol", &err, true, true, false,
+        ));
+    }
+
+    #[test]
     fn rent_shortage_should_not_be_recoverable_simulation_failure() {
         let err = ServiceError::Parameter(
             "node response: Transaction simulation failed: Transaction results in an account (0) with insufficient funds for rent"
@@ -369,6 +398,24 @@ impl ApiTransDomain {
     pub(crate) fn is_blockhash_not_found_error(err: &ServiceError) -> bool {
         let s = err.to_string().to_ascii_lowercase();
         s.contains("blockhash not found") || s.contains("block hash not found")
+    }
+
+    pub(crate) fn is_transaction_expired_error(err: &ServiceError) -> bool {
+        err.to_string().to_ascii_lowercase().contains("transaction expired")
+    }
+
+    pub(crate) fn should_invalidate_tron_expired_broadcast(
+        chain_code: &str,
+        err: &ServiceError,
+        has_raw_tx: bool,
+        has_tx_hash: bool,
+        last_broadcast_at_present: bool,
+    ) -> bool {
+        chain_code.eq_ignore_ascii_case("tron")
+            && Self::is_transaction_expired_error(err)
+            && has_raw_tx
+            && has_tx_hash
+            && !last_broadcast_at_present
     }
 
     pub(crate) fn is_recoverable_sol_broadcast_error(_err: &ServiceError) -> bool {
