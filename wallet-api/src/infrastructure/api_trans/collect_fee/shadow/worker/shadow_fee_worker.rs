@@ -869,13 +869,23 @@ impl ShadowFeeWorker {
                 ChainRpcGuardAttempt::Skip => return Ok(()),
             };
         info!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Starting to broadcast transaction");
-        let tx_resp = ApiTransDomain::broadcast_transfer(
-            &self.ctx,
+        let tx_resp = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+            ApiTransDomain::broadcast_transfer(
+                &self.ctx,
+                &fee.chain_code,
+                raw_tx,
+                fee.tx_hash.as_deref(),
+            ),
             &fee.chain_code,
-            raw_tx,
-            fee.tx_hash.as_deref(),
+            trade_no,
+            "broadcast",
+            "shadow_fee_worker",
         )
-        .await?;
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => None,
+        };
 
         match tx_resp {
             Some(tx) => {

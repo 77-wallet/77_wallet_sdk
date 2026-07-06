@@ -2225,13 +2225,23 @@ impl ShadowCollectWorker {
                 ChainRpcGuardAttempt::Skip => return Ok(()),
             };
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Starting to broadcast transaction");
-        let tx_resp = crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
-            &self.ctx,
+        let tx_resp = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+            crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
+                &self.ctx,
+                &req.chain_code,
+                raw_tx,
+                req.tx_hash.as_deref(),
+            ),
             &req.chain_code,
-            raw_tx,
-            req.tx_hash.as_deref(),
+            trade_no,
+            "broadcast",
+            "shadow_worker_v2",
         )
-        .await?;
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => None,
+        };
 
         match tx_resp {
             Some(tx) => {

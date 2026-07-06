@@ -1532,13 +1532,23 @@ impl ShadowWithdrawWorker {
                 ChainRpcGuardAttempt::Skip => return Ok(()),
             };
         info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Starting to broadcast transaction");
-        let tx_resp = ApiTransDomain::broadcast_transfer(
-            &self.ctx,
+        let tx_resp = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+            ApiTransDomain::broadcast_transfer(
+                &self.ctx,
+                &withdraw.chain_code,
+                raw_tx,
+                withdraw.tx_hash.as_deref(),
+            ),
             &withdraw.chain_code,
-            raw_tx,
-            withdraw.tx_hash.as_deref(),
+            trade_no,
+            "broadcast",
+            "shadow_withdraw_worker",
         )
-        .await?;
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => None,
+        };
 
         match tx_resp {
             Some(tx) => {

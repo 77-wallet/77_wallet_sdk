@@ -3,6 +3,7 @@ use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::{
     collections::HashSet,
+    future::Future,
     sync::{
         Arc,
         atomic::{AtomicU32, AtomicU64, Ordering},
@@ -22,9 +23,11 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 /// - `CHAIN_RPC_GUARD_HOSTS`: comma-separated hosts to guard (default: `api.nileex.io`)
 /// - `CHAIN_RPC_GUARD_MAX_CONCURRENCY`: guarded-endpoint global concurrency (default: 6)
 /// - `CHAIN_RPC_GUARD_ACQUIRE_TIMEOUT_MS`: max wait for a guarded permit (default: 30000)
+/// - `CHAIN_RPC_GUARD_RPC_TIMEOUT_MS`: max guarded RPC await time (default: 60000)
 const DEFAULT_GUARDED_HOSTS: &str = "api.nileex.io";
 const DEFAULT_MAX_CONCURRENCY: usize = 6;
 const DEFAULT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_RPC_TIMEOUT: Duration = Duration::from_secs(60);
 const CHAIN_HOST_CACHE_TTL: Duration = Duration::from_secs(60);
 const TRANSIENT_503_REPORT_WINDOW_MS: u64 = 60_000;
 
@@ -49,6 +52,15 @@ fn acquire_timeout() -> Duration {
         .filter(|v| *v > 0)
         .map(Duration::from_millis)
         .unwrap_or(DEFAULT_ACQUIRE_TIMEOUT)
+}
+
+fn rpc_timeout() -> Duration {
+    std::env::var("CHAIN_RPC_GUARD_RPC_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .map(Duration::from_millis)
+        .unwrap_or(DEFAULT_RPC_TIMEOUT)
 }
 
 static CHAIN_RPC_SEM: Lazy<Arc<Semaphore>> =
@@ -341,6 +353,46 @@ pub async fn acquire_for_attempt_with_ctx(
     }
 }
 
+pub async fn run_with_rpc_timeout<F, T>(
+    future: F,
+    chain_code: &str,
+    trade_no: &str,
+    action: &str,
+    source: &str,
+) -> Result<T, tokio::time::error::Elapsed>
+where
+    F: Future<Output = T>,
+{
+    run_with_rpc_timeout_duration(future, rpc_timeout(), chain_code, trade_no, action, source).await
+}
+
+async fn run_with_rpc_timeout_duration<F, T>(
+    future: F,
+    timeout: Duration,
+    chain_code: &str,
+    trade_no: &str,
+    action: &str,
+    source: &str,
+) -> Result<T, tokio::time::error::Elapsed>
+where
+    F: Future<Output = T>,
+{
+    match tokio::time::timeout(timeout, future).await {
+        Ok(result) => Ok(result),
+        Err(err) => {
+            tracing::warn!(
+                trade_no = %trade_no,
+                chain_code = %chain_code,
+                action = %action,
+                timeout = ?timeout,
+                source = %source,
+                "chain rpc call timed out"
+            );
+            Err(err)
+        }
+    }
+}
+
 pub async fn record_success_for_chain_code_with_ctx(ctx: &Context, chain_code: &str) {
     let Some(host) = guarded_host_for_chain_code(chain_code, ctx).await else { return };
     breaker_for_host(&host).record_success();
@@ -407,7 +459,7 @@ pub fn is_transient_chain_rpc_error_message(msg: &str) -> bool {
 mod tests {
     use super::{
         ChainRpcGuardAcquire, RpcCircuitBreaker, acquire_guarded_host_permit,
-        is_transient_chain_rpc_error_message,
+        is_transient_chain_rpc_error_message, run_with_rpc_timeout_duration,
     };
     use std::{sync::Arc, thread, time::Duration};
     use tokio::sync::Semaphore;
@@ -463,5 +515,23 @@ mod tests {
             result,
             ChainRpcGuardAcquire::Acquired { host, .. } if host == "api.nileex.io"
         ));
+    }
+
+    #[tokio::test]
+    async fn rpc_timeout_returns_elapsed_for_slow_future() {
+        let result: Result<u8, tokio::time::error::Elapsed> = run_with_rpc_timeout_duration(
+            async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                1_u8
+            },
+            Duration::from_millis(1),
+            "tron",
+            "T_timeout",
+            "broadcast",
+            "test",
+        )
+        .await;
+
+        assert!(result.is_err());
     }
 }

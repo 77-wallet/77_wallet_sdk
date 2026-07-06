@@ -222,6 +222,24 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: recover must not clear `raw_tx` / `tx_hash` for rebuild when the
   withdraw row already has a transaction hash.
 
+### Withdraw Broadcast RPC Timeout Preserves Chain Facts
+
+- Layer: unit / component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/chain_rpc_guard.rs
+  rpc_timeout_returns_elapsed_for_slow_future
+  src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
+  ```
+
+- Backend: none.
+- Chain/RPC facts: guarded broadcast RPC await time is bounded by
+  `CHAIN_RPC_GUARD_RPC_TIMEOUT_MS`.
+- Invariant: broadcast timeout is treated as uncertain, preserving existing
+  `tx_hash` / `raw_tx` so recover can query chain facts after the current
+  `ChainTx` attempt exits.
+
 ## Template Contract
 
 `withdraw_notification/mod.rs` uses the role-trait Given-When-Then shape:

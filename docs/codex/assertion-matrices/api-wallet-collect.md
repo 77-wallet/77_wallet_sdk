@@ -531,6 +531,25 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   dispatcher running key when the shared RPC guard is saturated, without writing
   a terminal order failure.
 
+### Chain RPC Broadcast Timeout
+
+- Layer: unit / component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/chain_rpc_guard.rs
+  rpc_timeout_returns_elapsed_for_slow_future
+  src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  src/infrastructure/api_trans/collect_fee/shadow/worker/shadow_fee_worker.rs
+  ```
+
+- Backend: none.
+- Chain/RPC facts: guarded broadcast RPC await time is bounded by
+  `CHAIN_RPC_GUARD_RPC_TIMEOUT_MS`.
+- Invariant: broadcast timeout is treated as uncertain, preserving existing
+  `tx_hash` / `raw_tx` so recover can query chain facts after the current
+  `ChainTx` attempt exits.
+
 ## Template Contract
 
 `collect_notification/mod.rs` uses the role-trait Given-When-Then shape:
