@@ -38,7 +38,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "tx_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND transaction_time IS NULL AND finished_at IS NULL".to_string()
             }
             AdvancementPoint::CanBroadcast => {
-                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL".to_string()
+                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (chain_code NOT IN ('bnb','eth','sol','tron') OR broadcast_uncertain_since_at IS NULL)".to_string()
             }
             AdvancementPoint::NeedRecover => {
                 "tx_hash IS NOT NULL AND transaction_time IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
@@ -70,6 +70,8 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                     && fee.transaction_time.is_none()
                     && fee.finished_at.is_none()
                     && fee.err_code.is_none()
+                    && (!matches!(fee.chain_code.as_str(), "bnb" | "eth" | "sol" | "tron")
+                        || fee.broadcast_uncertain_since_at.is_none())
             },
             AdvancementPoint::NeedRecover => |fee| {
                 fee.tx_hash.is_some()

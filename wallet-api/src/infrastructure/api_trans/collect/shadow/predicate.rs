@@ -35,8 +35,8 @@ pub fn evaluate_stage(stage: CollectStage, collect: &ApiCollectEntity) -> StageE
     }
 }
 
-fn is_evm_chain_code(chain_code: &str) -> bool {
-    chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
+fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
+    matches!(chain_code.to_ascii_lowercase().as_str(), "tron" | "eth" | "bnb" | "sol")
 }
 
 fn collect_resource_gate_released_for_build(collect: &ApiCollectEntity) -> bool {
@@ -341,8 +341,8 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - 当前周期已经进入服务费上传的交易：必须先完成 TxFeeResAck，才能广播
 fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
-    let evm_uncertain_in_progress =
-        is_evm_chain_code(&collect.chain_code) && collect.broadcast_uncertain_since_at.is_some();
+    let broadcast_uncertain_in_progress = tracks_broadcast_uncertain_state(&collect.chain_code)
+        && collect.broadcast_uncertain_since_at.is_some();
 
     if collect.raw_tx.is_none() {
         reasons.push(StageReason {
@@ -374,10 +374,10 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
         });
     }
 
-    if evm_uncertain_in_progress {
+    if broadcast_uncertain_in_progress {
         reasons.push(StageReason {
-            code: "evm_broadcast_uncertain_in_progress",
-            message: "EVM tx is in uncertain state; recover owns progression".to_string(),
+            code: "broadcast_uncertain_in_progress",
+            message: "Tx is in uncertain broadcast state; recover owns progression".to_string(),
         });
     }
 
@@ -387,7 +387,7 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
         && fee_res_ack_required_for_progress(collect)
-        && !evm_uncertain_in_progress;
+        && !broadcast_uncertain_in_progress;
     // let can_advance = false;
     // tracing::info!(
     //     trade_no = %collect.trade_no,
@@ -416,7 +416,7 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
 /// - 只看不可逆事实是否缺失，不做时间推断
 fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
-    let evm_pre_broadcast_pending = is_evm_chain_code(&collect.chain_code)
+    let broadcast_not_attempted = tracks_broadcast_uncertain_state(&collect.chain_code)
         && collect.raw_tx.is_some()
         && collect.last_broadcast_at.is_none()
         && collect.broadcast_uncertain_since_at.is_none();
@@ -458,10 +458,11 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
-    if evm_pre_broadcast_pending {
+    if broadcast_not_attempted {
         reasons.push(StageReason {
-            code: "evm_broadcast_not_attempted",
-            message: "EVM raw_tx exists but broadcast has not been attempted yet".to_string(),
+            code: "broadcast_not_attempted",
+            message: "Raw tx exists but broadcast has not entered uncertain or executed yet"
+                .to_string(),
         });
     }
 
@@ -470,7 +471,7 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
         && collect.tx_exec_receipt_uploaded_at.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
-        && !evm_pre_broadcast_pending;
+        && !broadcast_not_attempted;
 
     StageEval { can_advance, reasons }
 }
@@ -947,11 +948,11 @@ mod tests {
         assert!(eval.reasons.iter().any(|r| r.code == "error"));
     }
 
-    // --- CanBroadcast: EVM uncertain ---
+    // --- CanBroadcast: broadcast uncertain ---
 
     #[test]
-    fn can_broadcast_blocks_evm_uncertain_state() {
-        for chain in ["eth", "bnb"] {
+    fn can_broadcast_blocks_tracked_uncertain_state() {
+        for chain in ["tron", "eth", "bnb", "sol"] {
             let mut c = base_collect();
             c.chain_code = chain.to_string();
             c.broadcast_uncertain_since_at = Some(Utc::now());
@@ -960,44 +961,46 @@ mod tests {
             let eval = evaluate_stage(CollectStage::CanBroadcast, &c);
             assert!(!eval.can_advance, "{chain}: should block on uncertain state");
             assert!(
-                eval.reasons.iter().any(|r| r.code == "evm_broadcast_uncertain_in_progress"),
-                "{chain}: expected reason code evm_broadcast_uncertain_in_progress"
+                eval.reasons.iter().any(|r| r.code == "broadcast_uncertain_in_progress"),
+                "{chain}: expected reason code broadcast_uncertain_in_progress"
             );
         }
     }
 
     #[test]
-    fn can_broadcast_non_evm_not_blocked_by_uncertain_field() {
+    fn can_broadcast_untracked_chain_not_blocked_by_uncertain_field() {
         let mut c = base_collect();
-        c.chain_code = "tron".to_string();
+        c.chain_code = "unknown".to_string();
         c.broadcast_uncertain_since_at = Some(Utc::now());
         c.tx_exec_receipt_uploaded_at = None;
 
         let eval = evaluate_stage(CollectStage::CanBroadcast, &c);
-        // tron is not an EVM chain; the uncertain field alone must not block it
         assert!(eval.can_advance);
     }
 
-    // --- NeedRecover: EVM pre-broadcast guard ---
+    // --- NeedRecover: pre-broadcast guard ---
 
     #[test]
-    fn need_recover_blocks_evm_before_broadcast_attempted() {
+    fn need_recover_blocks_tracked_chain_before_broadcast_attempted() {
         let mut c = base_collect();
-        c.chain_code = "eth".to_string();
+        c.chain_code = "tron".to_string();
         c.raw_tx = Some("{}".to_string());
         c.last_broadcast_at = None;
         c.broadcast_uncertain_since_at = None;
         c.tx_exec_receipt_uploaded_at = None;
 
         let eval = evaluate_stage(CollectStage::NeedRecover, &c);
-        assert!(!eval.can_advance, "EVM with raw_tx but no broadcast yet should not recover");
-        assert!(eval.reasons.iter().any(|r| r.code == "evm_broadcast_not_attempted"));
+        assert!(
+            !eval.can_advance,
+            "tracked chain with raw_tx but no broadcast yet should not recover"
+        );
+        assert!(eval.reasons.iter().any(|r| r.code == "broadcast_not_attempted"));
     }
 
     #[test]
-    fn need_recover_allows_evm_after_broadcast_uncertain() {
+    fn need_recover_allows_tracked_chain_after_broadcast_uncertain() {
         let mut c = base_collect();
-        c.chain_code = "eth".to_string();
+        c.chain_code = "tron".to_string();
         c.raw_tx = Some("{}".to_string());
         c.broadcast_uncertain_since_at = Some(Utc::now());
         c.last_broadcast_at = None;

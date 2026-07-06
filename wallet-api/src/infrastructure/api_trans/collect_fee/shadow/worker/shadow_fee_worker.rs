@@ -92,6 +92,12 @@ impl ShadowFeeWorker {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
     }
 
+    fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
+        Self::is_evm_chain_code(chain_code)
+            || chain_code.eq_ignore_ascii_case("sol")
+            || chain_code.eq_ignore_ascii_case("tron")
+    }
+
     pub(crate) fn is_solana_recipient_rent_error(err: &ServiceError) -> bool {
         let msg = err.to_string();
         msg.contains("recipient account is not initialized")
@@ -819,7 +825,7 @@ impl ShadowFeeWorker {
                 return Ok(());
             }
 
-            if Self::is_evm_chain_code(&fresh_fee.chain_code)
+            if Self::tracks_broadcast_uncertain_state(&fresh_fee.chain_code)
                 && fresh_fee.broadcast_uncertain_since_at.is_some()
                 && fresh_fee.last_broadcast_at.is_none()
                 && fresh_fee.transaction_time.is_none()
@@ -831,7 +837,7 @@ impl ShadowFeeWorker {
                     tx_hash = %fresh_fee.tx_hash.as_deref().unwrap_or_default(),
                     nonce = fresh_fee.nonce,
                     source = "shadow_fee_worker",
-                    "Skip Broadcast: EVM uncertain state in progress; recover should proceed"
+                    "Skip Broadcast: uncertain state in progress; recover should proceed"
                 );
                 return Ok(());
             }
@@ -946,7 +952,7 @@ impl ShadowFeeWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction broadcast result is uncertain");
-                if !Self::is_evm_chain_code(&fee.chain_code) {
+                if !Self::tracks_broadcast_uncertain_state(&fee.chain_code) {
                     return Ok(());
                 }
                 let had_uncertain_since = fee.broadcast_uncertain_since_at.is_some();
@@ -966,7 +972,7 @@ impl ShadowFeeWorker {
                     retry_count = refreshed.broadcast_uncertain_retry_count,
                     uncertain_since_at = ?refreshed.broadcast_uncertain_since_at,
                     source = "shadow_fee_worker",
-                    "EVM broadcast uncertain state recorded"
+                    "Broadcast uncertain state recorded"
                 );
                 self.scanner.try_advance(trade_no).await;
                 Ok(())

@@ -182,7 +182,9 @@ impl ShadowCollectWorker {
     }
 
     fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
-        Self::is_evm_chain_code(chain_code) || chain_code.eq_ignore_ascii_case("sol")
+        Self::is_evm_chain_code(chain_code)
+            || chain_code.eq_ignore_ascii_case("sol")
+            || chain_code.eq_ignore_ascii_case("tron")
     }
 
     fn should_spend_all_native_collect(chain_code: &str, token_key: &AssetTokenKey) -> bool {
@@ -4853,11 +4855,12 @@ oss:
     }
 
     #[test]
-    fn sol_chain_tracks_broadcast_uncertain_state() {
+    fn tron_chain_tracks_broadcast_uncertain_state() {
+        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("tron"));
         assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("sol"));
         assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("eth"));
         assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("bnb"));
-        assert!(!ShadowCollectWorker::tracks_broadcast_uncertain_state("tron"));
+        assert!(!ShadowCollectWorker::tracks_broadcast_uncertain_state("unknown"));
     }
 
     #[test]

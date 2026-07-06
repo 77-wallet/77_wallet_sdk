@@ -119,7 +119,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             CollectStage::CanBroadcast => {
                 // 广播前同样只关心当前周期是否已经走到服务费上传这一步。
                 // 没有进入过该阶段，就不该被旧的手续费 ACK 事实阻塞。
-                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth','sol') OR broadcast_uncertain_since_at IS NULL)".to_string()
+                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth','sol','tron') OR broadcast_uncertain_since_at IS NULL)".to_string()
             }
             CollectStage::NeedRecover => {
                 "tx_hash IS NOT NULL AND transaction_time IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
@@ -179,7 +179,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             },
             CollectStage::CanBroadcast => |collect| {
                 let broadcast_uncertain_in_progress =
-                    matches!(collect.chain_code.as_str(), "bnb" | "eth" | "sol")
+                    matches!(collect.chain_code.as_str(), "bnb" | "eth" | "sol" | "tron")
                         && collect.broadcast_uncertain_since_at.is_some();
                 // 同 BuildTx 一样，广播只看当前周期是否真的进过服务费上传。
                 collect.raw_tx.is_some()

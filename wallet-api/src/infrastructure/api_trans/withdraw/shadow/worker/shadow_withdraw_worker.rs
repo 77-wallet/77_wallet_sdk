@@ -156,6 +156,12 @@ impl ShadowWithdrawWorker {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
     }
 
+    fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
+        Self::is_evm_chain_code(chain_code)
+            || chain_code.eq_ignore_ascii_case("sol")
+            || chain_code.eq_ignore_ascii_case("tron")
+    }
+
     fn should_force_align_prebroadcast_nonce_gap(chain_nonce: u64, local_nonce: u64) -> bool {
         local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
     }
@@ -847,7 +853,7 @@ impl ShadowWithdrawWorker {
                 return Ok(());
             }
 
-            if Self::is_evm_chain_code(&fresh_req.chain_code)
+            if Self::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
                 && fresh_req.raw_tx.is_some()
                 && fresh_req.last_broadcast_at.is_none()
                 && fresh_req.broadcast_uncertain_since_at.is_none()
@@ -859,7 +865,7 @@ impl ShadowWithdrawWorker {
                     tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
                     nonce = fresh_req.nonce,
                     source = "shadow_withdraw_worker",
-                    "Skip Recover: EVM raw_tx exists but not in uncertain state; broadcast should proceed"
+                    "Skip Recover: raw_tx exists but not in uncertain state; broadcast should proceed"
                 );
                 return Ok(());
             }
@@ -1422,7 +1428,7 @@ impl ShadowWithdrawWorker {
                 return Ok(());
             }
 
-            if Self::is_evm_chain_code(&fresh_withdraw.chain_code)
+            if Self::tracks_broadcast_uncertain_state(&fresh_withdraw.chain_code)
                 && fresh_withdraw.broadcast_uncertain_since_at.is_some()
                 && fresh_withdraw.last_broadcast_at.is_none()
                 && fresh_withdraw.transaction_time.is_none()
@@ -1434,7 +1440,7 @@ impl ShadowWithdrawWorker {
                     tx_hash = %fresh_withdraw.tx_hash.as_deref().unwrap_or_default(),
                     nonce = fresh_withdraw.nonce,
                     source = "shadow_withdraw_worker",
-                    "Skip Broadcast: EVM uncertain state in progress; recover should proceed"
+                    "Skip Broadcast: uncertain state in progress; recover should proceed"
                 );
                 return Ok(());
             }
@@ -1606,7 +1612,7 @@ impl ShadowWithdrawWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Transaction broadcast result is uncertain");
-                if !Self::is_evm_chain_code(&withdraw.chain_code) {
+                if !Self::tracks_broadcast_uncertain_state(&withdraw.chain_code) {
                     return Ok(());
                 }
                 let had_uncertain_since = withdraw.broadcast_uncertain_since_at.is_some();
@@ -1626,7 +1632,7 @@ impl ShadowWithdrawWorker {
                     retry_count = refreshed.broadcast_uncertain_retry_count,
                     uncertain_since_at = ?refreshed.broadcast_uncertain_since_at,
                     source = "shadow_withdraw_worker",
-                    "EVM broadcast uncertain state recorded"
+                    "Broadcast uncertain state recorded"
                 );
                 self.scanner.try_advance(trade_no).await;
                 Ok(())
