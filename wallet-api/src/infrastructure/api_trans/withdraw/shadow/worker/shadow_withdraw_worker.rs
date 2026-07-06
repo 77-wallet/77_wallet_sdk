@@ -10,7 +10,7 @@ use wallet_chain_interact::{
     tron::operations::{RawTransactionParams, TronTxOperation},
 };
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
@@ -482,12 +482,22 @@ impl ShadowWithdrawWorker {
         resource_trade_no: &str,
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
-        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+        Self::schedule_resource_delegation_rebuild_retry_in_pool(
             &self.ctx.api_resource_pool()?,
             resource_trade_no,
+            err,
         )
         .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
+    }
+
+    async fn schedule_resource_delegation_rebuild_retry_in_pool(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(pool, resource_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
         let wait_secs = Self::resource_delegation_retry_wait_secs(task.retry_count);
         let next_retry_at = Utc::now() + chrono::Duration::seconds(wait_secs);
         let next_status = if err.is_network_error() {
@@ -497,7 +507,7 @@ impl ShadowWithdrawWorker {
         };
 
         let affected = ApiResourceDelegationRepo::reset_for_retry(
-            &self.ctx.api_resource_pool()?,
+            pool,
             resource_trade_no,
             next_status,
             &next_retry_at.to_rfc3339(),
@@ -2373,7 +2383,15 @@ impl ShadowWithdrawWorker {
     }
 
     async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
-        let rows_affected = ApiWithdrawRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+        Self::clear_build_slot_after_claim_in_pool(&self.ctx.api_transaction_pool()?, trade_no)
+            .await
+    }
+
+    async fn clear_build_slot_after_claim_in_pool(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let rows_affected = ApiWithdrawRepo::clear_building_at(pool, trade_no)
             .await
             .map_err(|db_err: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to clear build slot after BuildTx early exit");
@@ -2854,22 +2872,6 @@ oss:
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
 
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-        let test_ctx = test_ctx().await;
-
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let scanner =
-            Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
-                test_ctx,
-                crate::infrastructure::api_trans::withdraw::shadow::ScannerConfig::default(),
-                intent_tx,
-                None,
-            ));
-        let worker = ShadowWithdrawWorker::new(test_ctx, scanner);
-
         let trade_no = "W_clear_build_slot_after_claim";
         ApiWithdrawRepo::upsert_api_withdraw(
             &collect_pool,
@@ -2904,7 +2906,9 @@ oss:
             .expect("claim build slot");
         assert_eq!(claimed, 1);
 
-        worker.clear_build_slot_after_claim(trade_no).await.expect("clear build slot");
+        ShadowWithdrawWorker::clear_build_slot_after_claim_in_pool(&collect_pool, trade_no)
+            .await
+            .expect("clear build slot");
 
         let persisted = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &collect_pool,
@@ -2931,22 +2935,6 @@ oss:
             .expect("init api_resource.db");
         let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
 
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-        let test_ctx = test_ctx().await;
-
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let scanner =
-            Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
-                test_ctx,
-                crate::infrastructure::api_trans::withdraw::shadow::ScannerConfig::default(),
-                intent_tx,
-                None,
-            ));
-        let worker = ShadowWithdrawWorker::new(test_ctx, scanner);
-
         ApiResourceDelegationRepo::upsert(
             &resource_pool,
             NewApiResourceDelegation::platform_delegate_task(
@@ -2971,13 +2959,13 @@ oss:
             .await
             .expect("claim build slot");
 
-        worker
-            .schedule_resource_delegation_rebuild_retry(
-                "wd_platform_delegate_retry",
-                &crate::error::service::ServiceError::Parameter("retryable test error".to_string()),
-            )
-            .await
-            .expect("schedule retry");
+        ShadowWithdrawWorker::schedule_resource_delegation_rebuild_retry_in_pool(
+            &resource_pool,
+            "wd_platform_delegate_retry",
+            &crate::error::service::ServiceError::Parameter("retryable test error".to_string()),
+        )
+        .await
+        .expect("schedule retry");
 
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
             &resource_pool,

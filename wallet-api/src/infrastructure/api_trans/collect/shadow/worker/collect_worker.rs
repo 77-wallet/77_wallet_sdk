@@ -12,7 +12,7 @@ use rust_decimal::Decimal;
 use tracing::{error, info, warn};
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
         api_resource_delegation::{
@@ -552,12 +552,22 @@ impl ShadowCollectWorker {
         resource_trade_no: &str,
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
-        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+        Self::schedule_local_resource_delegation_rebuild_retry_in_pool(
             &self.ctx.api_resource_pool()?,
             resource_trade_no,
+            err,
         )
         .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
+    }
+
+    async fn schedule_local_resource_delegation_rebuild_retry_in_pool(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(pool, resource_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
         let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
         let next_retry_at = Utc::now() + chrono::Duration::seconds(wait_secs);
         let next_status = if err.is_network_error() {
@@ -567,7 +577,7 @@ impl ShadowCollectWorker {
         };
 
         let affected = ApiResourceDelegationRepo::reset_for_retry(
-            &self.ctx.api_resource_pool()?,
+            pool,
             resource_trade_no,
             next_status,
             &next_retry_at.to_rfc3339(),
@@ -3663,7 +3673,15 @@ impl ShadowCollectWorker {
     }
 
     async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
-        let rows_affected = ApiCollectRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+        Self::clear_build_slot_after_claim_in_pool(&self.ctx.api_transaction_pool()?, trade_no)
+            .await
+    }
+
+    async fn clear_build_slot_after_claim_in_pool(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let rows_affected = ApiCollectRepo::clear_building_at(pool, trade_no)
             .await
             .map_err(|e: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear build slot after BuildTx early exit");
@@ -3689,7 +3707,24 @@ impl ShadowCollectWorker {
             return Ok(false);
         }
 
-        let rows_affected = ApiCollectRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+        Self::reclaim_stale_build_slot_in_pool(
+            &self.ctx.api_transaction_pool()?,
+            trade_no,
+            building_at,
+        )
+        .await
+    }
+
+    async fn reclaim_stale_build_slot_in_pool(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        building_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, ServiceError> {
+        if !Self::is_stale_build_slot(building_at, Utc::now()) {
+            return Ok(false);
+        }
+
+        let rows_affected = ApiCollectRepo::clear_building_at(pool, trade_no)
             .await
             .map_err(|e: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear stale build slot");
@@ -3975,22 +4010,6 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
-            .await
-            .expect("init api_resource.db");
-        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
-
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = ShadowCollectWorker::new(
-            test_ctx().await,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
-            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                test_ctx().await,
-                intent_tx.clone(),
-                None,
-            )),
-        );
-
         let trade_no = "T_clear_build_slot_after_claim";
         ApiCollectRepo::upsert_api_collect(
             &collect_pool,
@@ -4016,7 +4035,9 @@ oss:
             .expect("claim build slot");
         assert_eq!(claimed, 1);
 
-        worker.clear_build_slot_after_claim(trade_no).await.expect("clear build slot");
+        ShadowCollectWorker::clear_build_slot_after_claim_in_pool(&collect_pool, trade_no)
+            .await
+            .expect("clear build slot");
 
         let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
             .await
@@ -4033,22 +4054,6 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
-            .await
-            .expect("init api_resource.db");
-        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
-
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = ShadowCollectWorker::new(
-            test_ctx().await,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
-            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                test_ctx().await,
-                intent_tx.clone(),
-                None,
-            )),
-        );
-
         let trade_no = "T_reclaim_stale_build_slot";
         ApiCollectRepo::upsert_api_collect(
             &collect_pool,
@@ -4087,10 +4092,13 @@ oss:
             Some(true)
         );
 
-        let reclaimed = worker
-            .reclaim_stale_build_slot(trade_no, req.building_at)
-            .await
-            .expect("reclaim stale slot");
+        let reclaimed = ShadowCollectWorker::reclaim_stale_build_slot_in_pool(
+            &collect_pool,
+            trade_no,
+            req.building_at,
+        )
+        .await
+        .expect("reclaim stale slot");
         assert!(reclaimed);
 
         let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
@@ -4113,22 +4121,6 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
-            .await
-            .expect("init api_resource.db");
-        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
-
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = ShadowCollectWorker::new(
-            test_ctx().await,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
-            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                test_ctx().await,
-                intent_tx.clone(),
-                None,
-            )),
-        );
-
         let trade_no = "T_fresh_build_slot";
         ApiCollectRepo::upsert_api_collect(
             &collect_pool,
@@ -4162,10 +4154,13 @@ oss:
         let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
             .await
             .expect("load collect");
-        let reclaimed = worker
-            .reclaim_stale_build_slot(trade_no, req.building_at)
-            .await
-            .expect("reclaim fresh slot");
+        let reclaimed = ShadowCollectWorker::reclaim_stale_build_slot_in_pool(
+            &collect_pool,
+            trade_no,
+            req.building_at,
+        )
+        .await
+        .expect("reclaim fresh slot");
         assert!(!reclaimed);
 
         let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
@@ -4551,7 +4546,6 @@ oss:
                 None,
             )),
         );
-
         ApiResourceDelegationRepo::upsert(
             &resource_pool,
             NewApiResourceDelegation::platform_delegate_task(
@@ -4603,24 +4597,10 @@ oss:
         let dir = tempdir().expect("tempdir");
         let dir_path = dir.path().to_string_lossy().to_string();
 
-        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
-            .await
-            .expect("init api_transaction.db");
-        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
         let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
             .await
             .expect("init api_resource.db");
         let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = ShadowCollectWorker::new(
-            test_ctx().await,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
-            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                test_ctx().await,
-                intent_tx,
-                None,
-            )),
-        );
 
         ApiResourceDelegationRepo::upsert(
             &resource_pool,
@@ -4649,13 +4629,13 @@ oss:
             .await
             .expect("claim build slot");
 
-        worker
-            .schedule_local_resource_delegation_rebuild_retry(
-                "rsc_platform_delegate_retry",
-                &ServiceError::Parameter("retryable test error".to_string()),
-            )
-            .await
-            .expect("schedule retry");
+        ShadowCollectWorker::schedule_local_resource_delegation_rebuild_retry_in_pool(
+            &resource_pool,
+            "rsc_platform_delegate_retry",
+            &ServiceError::Parameter("retryable test error".to_string()),
+        )
+        .await
+        .expect("schedule retry");
 
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
             &resource_pool,

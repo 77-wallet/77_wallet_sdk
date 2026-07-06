@@ -1479,7 +1479,15 @@ impl ShadowFeeWorker {
     }
 
     async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
-        let rows_affected = ApiFeeRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+        Self::clear_build_slot_after_claim_in_pool(&self.ctx.api_transaction_pool()?, trade_no)
+            .await
+    }
+
+    async fn clear_build_slot_after_claim_in_pool(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let rows_affected = ApiFeeRepo::clear_building_at(pool, trade_no)
             .await
             .map_err(|db_err: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to clear build slot after BuildTx early exit");
@@ -1505,7 +1513,24 @@ impl ShadowFeeWorker {
             return Ok(false);
         }
 
-        let rows_affected = ApiFeeRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+        Self::reclaim_stale_build_slot_in_pool(
+            &self.ctx.api_transaction_pool()?,
+            trade_no,
+            building_at,
+        )
+        .await
+    }
+
+    async fn reclaim_stale_build_slot_in_pool(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        building_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, ServiceError> {
+        if !Self::is_stale_build_slot(building_at, Utc::now()) {
+            return Ok(false);
+        }
+
+        let rows_affected = ApiFeeRepo::clear_building_at(pool, trade_no)
             .await
             .map_err(|db_err: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to clear stale build slot");
@@ -1663,22 +1688,12 @@ oss:
 
     #[tokio::test]
     async fn clear_build_slot_after_claim_releases_building_at() {
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let scanner =
-            Arc::new(crate::infrastructure::api_trans::collect_fee::shadow::ShadowScanner::new(
-                test_ctx().await,
-                crate::infrastructure::api_trans::collect_fee::shadow::ScannerConfig::default(),
-                intent_tx,
-                None,
-            ));
-        let worker = ShadowFeeWorker::new(
-            test_ctx().await,
-            Arc::new(
-                crate::infrastructure::api_trans::collect_fee::legacy::AddressLockManager::new(),
-            ),
-            scanner,
-        );
-        let collect_pool = test_ctx().await.api_transaction_pool().expect("transaction pool");
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
 
         let trade_no = "F_clear_build_slot_after_claim";
         ApiFeeRepo::upsert_api_fee(
@@ -1703,7 +1718,9 @@ oss:
             .expect("claim build slot");
         assert_eq!(claimed, 1);
 
-        worker.clear_build_slot_after_claim(trade_no).await.expect("clear build slot");
+        ShadowFeeWorker::clear_build_slot_after_claim_in_pool(&collect_pool, trade_no)
+            .await
+            .expect("clear build slot");
 
         let persisted =
             ApiFeeRepo::get_api_fee_by_trade_no(&collect_pool, trade_no).await.expect("load fee");
@@ -1712,22 +1729,12 @@ oss:
 
     #[tokio::test]
     async fn fee_reclaim_stale_build_slot_clears_and_allows_reclaim() {
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let scanner =
-            Arc::new(crate::infrastructure::api_trans::collect_fee::shadow::ShadowScanner::new(
-                test_ctx().await,
-                crate::infrastructure::api_trans::collect_fee::shadow::ScannerConfig::default(),
-                intent_tx,
-                None,
-            ));
-        let worker = ShadowFeeWorker::new(
-            test_ctx().await,
-            Arc::new(
-                crate::infrastructure::api_trans::collect_fee::legacy::AddressLockManager::new(),
-            ),
-            scanner,
-        );
-        let collect_pool = test_ctx().await.api_transaction_pool().expect("transaction pool");
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
 
         let trade_no = "F_reclaim_stale_build_slot";
         ApiFeeRepo::upsert_api_fee(
@@ -1763,10 +1770,13 @@ oss:
             Some(true)
         );
 
-        let reclaimed = worker
-            .reclaim_stale_build_slot(trade_no, fee.building_at)
-            .await
-            .expect("reclaim stale slot");
+        let reclaimed = ShadowFeeWorker::reclaim_stale_build_slot_in_pool(
+            &collect_pool,
+            trade_no,
+            fee.building_at,
+        )
+        .await
+        .expect("reclaim stale slot");
         assert!(reclaimed);
 
         let persisted =
@@ -1781,22 +1791,12 @@ oss:
 
     #[tokio::test]
     async fn fee_fresh_build_slot_is_not_reclaimed() {
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let scanner =
-            Arc::new(crate::infrastructure::api_trans::collect_fee::shadow::ShadowScanner::new(
-                test_ctx().await,
-                crate::infrastructure::api_trans::collect_fee::shadow::ScannerConfig::default(),
-                intent_tx,
-                None,
-            ));
-        let worker = ShadowFeeWorker::new(
-            test_ctx().await,
-            Arc::new(
-                crate::infrastructure::api_trans::collect_fee::legacy::AddressLockManager::new(),
-            ),
-            scanner,
-        );
-        let collect_pool = test_ctx().await.api_transaction_pool().expect("transaction pool");
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
 
         let trade_no = "F_fresh_build_slot";
         ApiFeeRepo::upsert_api_fee(
@@ -1827,10 +1827,13 @@ oss:
 
         let fee =
             ApiFeeRepo::get_api_fee_by_trade_no(&collect_pool, trade_no).await.expect("load fee");
-        let reclaimed = worker
-            .reclaim_stale_build_slot(trade_no, fee.building_at)
-            .await
-            .expect("reclaim fresh slot");
+        let reclaimed = ShadowFeeWorker::reclaim_stale_build_slot_in_pool(
+            &collect_pool,
+            trade_no,
+            fee.building_at,
+        )
+        .await
+        .expect("reclaim fresh slot");
         assert!(!reclaimed);
 
         let persisted =
