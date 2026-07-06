@@ -402,13 +402,21 @@ impl ShadowWithdrawWorker {
 
     async fn process_eval_resource_gate(&self, trade_no: String) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Processing EvalResourceGate command");
-        resource_rpc_auth::run_with_rpc_auth_retry(
+        crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
+            self.ctx,
             "tron",
-            "withdraw_eval_resource_gate",
             &trade_no,
-            || self.process_resource_gate_inner(&trade_no),
+            "withdraw_eval_resource_gate",
+            "shadow_withdraw_worker",
+            resource_rpc_auth::run_with_rpc_auth_retry(
+                "tron",
+                "withdraw_eval_resource_gate",
+                &trade_no,
+                || self.process_resource_gate_inner(&trade_no),
+            ),
         )
-        .await
+        .await?;
+        Ok(())
     }
 
     async fn process_fee_estimate(&self, trade_no: String) -> Result<(), ServiceError> {
@@ -418,13 +426,23 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
-        let fee_details = resource_rpc_auth::run_with_rpc_auth_retry(
+        let Some(fee_details) = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
+            self.ctx,
             &req.chain_code,
-            "withdraw_estimate_fee",
             &trade_no,
-            || self.estimate_tron_fee_details_for_withdraw(&req),
+            "withdraw_estimate_fee",
+            "shadow_withdraw_worker",
+            resource_rpc_auth::run_with_rpc_auth_retry(
+                &req.chain_code,
+                "withdraw_estimate_fee",
+                &trade_no,
+                || self.estimate_tron_fee_details_for_withdraw(&req),
+            ),
         )
-        .await?;
+        .await?
+        else {
+            return Ok(());
+        };
         let estimated_transaction_fee =
             Self::format_estimated_fee_amount(fee_details.estimate_fee.amount);
         let estimated_resource_consume =

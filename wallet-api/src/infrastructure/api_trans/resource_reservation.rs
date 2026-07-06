@@ -84,10 +84,9 @@ impl WithdrawResourceReservationManager {
         let energy_shortfall = required.energy.saturating_sub(effective_available.energy);
         let bandwidth_shortfall = required.bandwidth.saturating_sub(effective_available.bandwidth);
 
-        state.totals.entry(resource_key.clone()).or_default().add_assign(required);
-        state.by_trade_no.insert(trade_no, (resource_key, required));
-
         if energy_shortfall == 0 && bandwidth_shortfall == 0 {
+            state.totals.entry(resource_key.clone()).or_default().add_assign(required);
+            state.by_trade_no.insert(trade_no, (resource_key, required));
             ResourceReservationDecision::Reserved { effective_available, reserved }
         } else {
             ResourceReservationDecision::NeedMore(ResourceShortfall {
@@ -155,7 +154,22 @@ mod withdraw_resource_reservation_tests {
                 reserved: required,
             })
         );
-        assert_eq!(manager.reserved_for(&key), ResourceBudget::new(27_064, 690));
+        assert_eq!(manager.reserved_for(&key), required);
+    }
+
+    #[test]
+    fn insufficient_resource_does_not_reserve_memory_budget() {
+        let manager = WithdrawResourceReservationManager::default();
+        let key = "TAy4";
+        let available = ResourceBudget::new(1_000, 1_000);
+        let required = ResourceBudget::new(13_532, 345);
+
+        assert!(matches!(
+            manager.reserve_if_available(key, "A", required, available),
+            ResourceReservationDecision::NeedMore(_)
+        ));
+
+        assert_eq!(manager.reserved_for(key), ResourceBudget::default());
     }
 
     #[test]

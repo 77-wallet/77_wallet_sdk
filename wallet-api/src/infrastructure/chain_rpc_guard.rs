@@ -1,4 +1,4 @@
-use crate::context::Context;
+use crate::{context::Context, error::service::ServiceError};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::{
@@ -370,6 +370,49 @@ where
     F: Future<Output = T>,
 {
     run_with_rpc_timeout_duration(future, rpc_timeout(), chain_code, trade_no, action, source).await
+}
+
+pub async fn run_guarded_with_ctx<T, Fut>(
+    ctx: &Context,
+    chain_code: &str,
+    trade_no: &str,
+    action: &str,
+    source: &str,
+    future: Fut,
+) -> Result<Option<T>, ServiceError>
+where
+    Fut: Future<Output = Result<T, ServiceError>>,
+{
+    if let Some((host, remaining)) = breaker_open_for_chain_code_with_ctx(ctx, chain_code).await {
+        tracing::warn!(
+            trade_no = %trade_no,
+            chain_code = %chain_code,
+            action = %action,
+            host = %host,
+            remaining = ?remaining,
+            source = %source,
+            "Skip chain rpc: circuit breaker open"
+        );
+        return Ok(None);
+    }
+
+    let _guard = match acquire_for_attempt_with_ctx(ctx, chain_code, trade_no, action, source).await
+    {
+        ChainRpcGuardAttempt::Proceed(permit) => permit,
+        ChainRpcGuardAttempt::Skip => return Ok(None),
+    };
+
+    match run_with_rpc_timeout(future, chain_code, trade_no, action, source).await {
+        Ok(Ok(value)) => {
+            record_success_for_chain_code_with_ctx(ctx, chain_code).await;
+            Ok(Some(value))
+        }
+        Ok(Err(err)) => {
+            record_transient_failure_from_error(&err);
+            Err(err)
+        }
+        Err(_) => Ok(None),
+    }
 }
 
 async fn run_with_rpc_timeout_duration<F, T>(
