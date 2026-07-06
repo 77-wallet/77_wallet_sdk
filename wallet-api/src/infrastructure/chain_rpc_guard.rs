@@ -89,6 +89,11 @@ pub enum ChainRpcGuardAcquire {
     Closed { host: String },
 }
 
+pub enum ChainRpcGuardAttempt {
+    Proceed(Option<ChainRpcGuardPermit>),
+    Skip,
+}
+
 #[derive(Default)]
 pub struct RpcCircuitBreaker {
     open_until_ms: AtomicU64,
@@ -287,6 +292,53 @@ pub async fn acquire_if_guarded_with_ctx_timeout(
         return ChainRpcGuardAcquire::NotGuarded;
     };
     acquire_guarded_host_permit(host, shared_chain_rpc_semaphore(), acquire_timeout()).await
+}
+
+pub async fn acquire_for_attempt_with_ctx(
+    ctx: &Context,
+    chain_code: &str,
+    trade_no: &str,
+    action: &str,
+    source: &str,
+) -> ChainRpcGuardAttempt {
+    match acquire_if_guarded_with_ctx_timeout(ctx, chain_code).await {
+        ChainRpcGuardAcquire::Acquired { host, permit, waited } => {
+            tracing::info!(
+                trade_no = %trade_no,
+                chain_code = %chain_code,
+                action = %action,
+                host = %host,
+                waited = ?waited,
+                source = %source,
+                "Acquired chain rpc guard permit"
+            );
+            ChainRpcGuardAttempt::Proceed(Some(permit))
+        }
+        ChainRpcGuardAcquire::TimedOut { host, timeout } => {
+            tracing::warn!(
+                trade_no = %trade_no,
+                chain_code = %chain_code,
+                action = %action,
+                host = %host,
+                timeout = ?timeout,
+                source = %source,
+                "Skip chain action: chain rpc guard permit wait timed out; scanner will retry"
+            );
+            ChainRpcGuardAttempt::Skip
+        }
+        ChainRpcGuardAcquire::Closed { host } => {
+            tracing::warn!(
+                trade_no = %trade_no,
+                chain_code = %chain_code,
+                action = %action,
+                host = %host,
+                source = %source,
+                "Chain rpc guard closed; continue without permit"
+            );
+            ChainRpcGuardAttempt::Proceed(None)
+        }
+        ChainRpcGuardAcquire::NotGuarded => ChainRpcGuardAttempt::Proceed(None),
+    }
 }
 
 pub async fn record_success_for_chain_code_with_ctx(ctx: &Context, chain_code: &str) {

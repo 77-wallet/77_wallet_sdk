@@ -68,6 +68,7 @@ use crate::{
             resource_rpc_auth,
             withdraw::shadow::ShadowScanner,
         },
+        chain_rpc_guard::ChainRpcGuardAttempt,
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -891,18 +892,21 @@ impl ShadowWithdrawWorker {
             }
         }
 
-        // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &req.chain_code,
-        )
-        .await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Acquired chain rpc guard permit");
-        }
-
         // 执行恢复交易
+        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
+        let _chain_rpc_guard =
+            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
+                self.ctx,
+                &req.chain_code,
+                trade_no,
+                "recover",
+                "shadow_withdraw_worker",
+            )
+            .await
+            {
+                ChainRpcGuardAttempt::Proceed(permit) => permit,
+                ChainRpcGuardAttempt::Skip => return Ok(()),
+            };
         let recover_result = self.recover_tx(&req).await;
         match recover_result {
             Ok(Some(tx_resp)) => {
@@ -1285,16 +1289,6 @@ impl ShadowWithdrawWorker {
         }
 
         // ====== phase 2: 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &withdraw.chain_code,
-        )
-        .await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Acquired chain rpc guard permit");
-        }
-
         // 通过Context获取Handles实例，然后获取私钥管理器
         let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
@@ -1308,6 +1302,20 @@ impl ShadowWithdrawWorker {
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_withdraw_worker", "Generated transfer request with nonce");
 
         // 10. 构建交易
+        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
+        let _chain_rpc_guard =
+            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
+                self.ctx,
+                &withdraw.chain_code,
+                trade_no,
+                "build",
+                "shadow_withdraw_worker",
+            )
+            .await
+            {
+                ChainRpcGuardAttempt::Proceed(permit) => permit,
+                ChainRpcGuardAttempt::Skip => return Ok(()),
+            };
         let (tx_hash, raw_tx, fee_str) = ApiTransDomain::build_transfer_raw(
             &self.ctx,
             transfer_req,
@@ -1502,17 +1510,6 @@ impl ShadowWithdrawWorker {
             }
         }
 
-        // ====== phase 2: 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &withdraw.chain_code,
-        )
-        .await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Acquired chain rpc guard permit");
-        }
-
         // 6. 反序列化raw_tx
         let raw_tx = wallet_utils::serde_func::serde_from_str(
             &withdraw.raw_tx.as_deref().unwrap_or_default(),
@@ -1520,6 +1517,20 @@ impl ShadowWithdrawWorker {
         info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Deserialized raw_tx successfully");
 
         // 7. 广播交易
+        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
+        let _chain_rpc_guard =
+            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
+                self.ctx,
+                &withdraw.chain_code,
+                trade_no,
+                "broadcast",
+                "shadow_withdraw_worker",
+            )
+            .await
+            {
+                ChainRpcGuardAttempt::Proceed(permit) => permit,
+                ChainRpcGuardAttempt::Skip => return Ok(()),
+            };
         info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Starting to broadcast transaction");
         let tx_resp = ApiTransDomain::broadcast_transfer(
             &self.ctx,

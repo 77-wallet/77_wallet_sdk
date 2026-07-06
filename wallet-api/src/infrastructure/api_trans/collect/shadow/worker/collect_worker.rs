@@ -65,15 +65,18 @@ use crate::{
         },
         service::ServiceError,
     },
-    infrastructure::api_trans::{
-        collect::legacy::AddressLockManager,
-        resource_amount::energy_shortfall_to_apply_amounts,
-        resource_apply_outcome::PlatformApplyOutcome,
-        resource_delegation::{
-            execute_resource_delegation, resource_delegation_failure_fact,
-            resource_delegation_retry_wait_secs,
+    infrastructure::{
+        api_trans::{
+            collect::legacy::AddressLockManager,
+            resource_amount::energy_shortfall_to_apply_amounts,
+            resource_apply_outcome::PlatformApplyOutcome,
+            resource_delegation::{
+                execute_resource_delegation, resource_delegation_failure_fact,
+                resource_delegation_retry_wait_secs,
+            },
+            resource_rpc_auth,
         },
-        resource_rpc_auth,
+        chain_rpc_guard::ChainRpcGuardAttempt,
     },
     request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
 };
@@ -1411,18 +1414,21 @@ impl ShadowCollectWorker {
             }
         }
 
-        // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &req.chain_code,
-        )
-        .await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit");
-        }
-
         // 执行恢复交易
+        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
+        let _chain_rpc_guard =
+            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
+                self.ctx,
+                &req.chain_code,
+                trade_no,
+                "recover",
+                "shadow_worker_v2",
+            )
+            .await
+            {
+                ChainRpcGuardAttempt::Proceed(permit) => permit,
+                ChainRpcGuardAttempt::Skip => return Ok(()),
+            };
         let recover_result = self.recover_tx(&req).await;
         match recover_result {
             Ok(Some(tx_resp)) => {
@@ -2040,16 +2046,6 @@ impl ShadowCollectWorker {
         }
 
         // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &req.chain_code,
-        )
-        .await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit");
-        }
-
         // 通过Context获取Handles实例，然后获取私钥管理器
         let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
@@ -2063,6 +2059,20 @@ impl ShadowCollectWorker {
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_worker_v2", "Generated transfer request with nonce");
 
         // 构建交易
+        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
+        let _chain_rpc_guard =
+            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
+                self.ctx,
+                &req.chain_code,
+                trade_no,
+                "build",
+                "shadow_worker_v2",
+            )
+            .await
+            {
+                ChainRpcGuardAttempt::Proceed(permit) => permit,
+                ChainRpcGuardAttempt::Skip => return Ok(()),
+            };
         let (tx_hash, raw_tx, fee) =
             crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
                 &self.ctx,
@@ -2181,17 +2191,6 @@ impl ShadowCollectWorker {
         };
         // 🔓 锁在这里已经释放
 
-        // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &req.chain_code,
-        )
-        .await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit for broadcast");
-        }
-
         // 检查是否已有raw_tx和tx_hash
         if req.tx_hash.is_none() || req.raw_tx.is_none() || req.raw_tx.as_ref().unwrap().is_empty()
         {
@@ -2211,6 +2210,20 @@ impl ShadowCollectWorker {
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Deserialized raw_tx successfully");
 
         // 广播交易
+        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
+        let _chain_rpc_guard =
+            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
+                self.ctx,
+                &req.chain_code,
+                trade_no,
+                "broadcast",
+                "shadow_worker_v2",
+            )
+            .await
+            {
+                ChainRpcGuardAttempt::Proceed(permit) => permit,
+                ChainRpcGuardAttempt::Skip => return Ok(()),
+            };
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Starting to broadcast transaction");
         let tx_resp = crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
             &self.ctx,
