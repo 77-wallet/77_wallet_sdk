@@ -471,13 +471,6 @@ impl ApiWithdrawDao {
               AND transaction_time IS NULL
               AND finished_at IS NULL
               AND err_code IS NULL
-              AND (
-                  resource_gate_released_at IS NOT NULL
-                  OR resource_block_reason IS NOT NULL
-                  OR resource_dependency_trade_no IS NOT NULL
-                  OR raw_tx IS NOT NULL
-                  OR last_broadcast_at IS NOT NULL
-              )
         "#;
 
         let row = sqlx::query(sql)
@@ -2880,6 +2873,7 @@ mod tests {
         for trade_no in [
             "W_RESOURCE_CURRENT",
             "W_RESOURCE_PENDING",
+            "W_RESOURCE_ESTIMATED_ONLY",
             "W_RESOURCE_FINISHED",
             "W_RESOURCE_OTHER_OWNER",
         ] {
@@ -2923,6 +2917,43 @@ mod tests {
             &pool,
             "W_RESOURCE_OTHER_OWNER",
             ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
+
+        let budget = ApiWithdrawRepo::pending_resource_budget_by_owner(
+            &pool,
+            "TRON",
+            "FROM_FEE_ESTIMATE",
+            "W_RESOURCE_CURRENT",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(budget.energy, 27_064);
+        assert_eq!(budget.bandwidth, 690);
+    }
+
+    #[tokio::test]
+    async fn pending_withdraw_resource_budget_counts_estimated_order_before_gate_release() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_pending_resource_estimated_only");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        seed_withdraw_for_fee_estimate(&pool, "W_RESOURCE_CURRENT", "tron", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_RESOURCE_ESTIMATED_ONLY",
+            "tron",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+        ApiWithdrawRepo::update_fee_estimate(
+            &pool,
+            "W_RESOURCE_ESTIMATED_ONLY",
+            "1.23",
+            r#"{"bandwidth":345,"energy":13532}"#,
         )
         .await
         .unwrap();

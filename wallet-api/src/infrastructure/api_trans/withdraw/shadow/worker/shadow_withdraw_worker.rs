@@ -21,7 +21,9 @@ use wallet_database::{
         },
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawEntity, ErrCode, WithdrawFailureStage},
+        api_withdraw::{
+            ApiWithdrawEntity, ErrCode, PendingWithdrawResourceBudget, WithdrawFailureStage,
+        },
     },
     repositories::api_wallet::{
         resource_delegation::ApiResourceDelegationRepo, wallet::ApiWalletRepo,
@@ -342,6 +344,18 @@ impl ShadowWithdrawWorker {
             && available_bandwidth >= required_bandwidth as i64
     }
 
+    fn effective_resource_after_pending_withdraws(
+        available_energy: i64,
+        available_bandwidth: i64,
+        pending_budget: PendingWithdrawResourceBudget,
+    ) -> ResourceBudget {
+        let effective_energy =
+            available_energy.saturating_sub(pending_budget.energy.min(i64::MAX as u64) as i64);
+        let effective_bandwidth = available_bandwidth
+            .saturating_sub(pending_budget.bandwidth.min(i64::MAX as u64) as i64);
+        ResourceBudget::new(effective_energy.max(0) as u64, effective_bandwidth.max(0) as u64)
+    }
+
     fn resource_shortfall(required: u64, available: i64) -> u64 {
         required.saturating_sub(available.max(0) as u64)
     }
@@ -600,14 +614,11 @@ impl ShadowWithdrawWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        let effective_chain_energy =
-            available_energy.saturating_sub(pending_budget.energy.min(i64::MAX as u64) as i64);
-        let effective_chain_bandwidth = available_bandwidth
-            .saturating_sub(pending_budget.bandwidth.min(i64::MAX as u64) as i64);
         let required = ResourceBudget::new(fee_details.energy, fee_details.bandwidth);
-        let available = ResourceBudget::new(
-            effective_chain_energy.max(0) as u64,
-            effective_chain_bandwidth.max(0) as u64,
+        let available = Self::effective_resource_after_pending_withdraws(
+            available_energy,
+            available_bandwidth,
+            pending_budget,
         );
 
         let decision = self.resource_reservations.reserve_if_available(
@@ -2439,7 +2450,7 @@ impl ShadowWithdrawWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::ShadowWithdrawWorker;
+    use super::{ResourceBudget, ShadowWithdrawWorker};
     use crate::{
         context::api_wallet_backend::ApiWalletBackend, domain::api_wallet::adapter::tx::RawTx,
         error::system::SystemError,
@@ -2461,7 +2472,7 @@ mod tests {
             api_resource_type::ApiResourceType,
             api_trade_type::ApiTradeType,
             api_wallet::ApiWalletType,
-            api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+            api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, PendingWithdrawResourceBudget},
             asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::{
@@ -2705,6 +2716,28 @@ oss:
         assert_eq!(value["bandwidth"], 210);
         assert!(value.get("energy_used").is_none());
         assert!(value.get("net_used").is_none());
+    }
+
+    #[test]
+    fn withdraw_resource_gate_subtracts_db_pending_budget_from_chain_available() {
+        let available = ShadowWithdrawWorker::effective_resource_after_pending_withdraws(
+            13_532,
+            690,
+            PendingWithdrawResourceBudget { energy: 13_532, bandwidth: 345 },
+        );
+
+        assert_eq!(available, ResourceBudget::new(0, 345));
+    }
+
+    #[test]
+    fn withdraw_resource_gate_pending_budget_saturates_at_zero() {
+        let available = ShadowWithdrawWorker::effective_resource_after_pending_withdraws(
+            326,
+            100,
+            PendingWithdrawResourceBudget { energy: 13_532, bandwidth: 345 },
+        );
+
+        assert_eq!(available, ResourceBudget::new(0, 0));
     }
 
     fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
