@@ -770,12 +770,31 @@ impl ShadowFeeWorker {
                 ChainRpcGuardAttempt::Proceed(permit) => permit,
                 ChainRpcGuardAttempt::Skip => return Ok(()),
             };
-        let (tx_hash, raw_tx, fee_str) = ApiTransDomain::build_transfer_raw(
-            &self.ctx,
-            transfer_req,
-            Some(private_key), // 私钥管理
-        )
-        .await?;
+        let (tx_hash, raw_tx, fee_str) =
+            match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+                ApiTransDomain::build_transfer_raw(
+                    &self.ctx,
+                    transfer_req,
+                    Some(private_key), // 私钥管理
+                ),
+                &fee.chain_code,
+                trade_no,
+                "build",
+                "shadow_fee_worker",
+            )
+            .await
+            {
+                Ok(result) => result?,
+                Err(_) => {
+                    warn!(
+                        trade_no = %trade_no,
+                        chain_code = %fee.chain_code,
+                        source = "shadow_fee_worker",
+                        "Build RPC timed out; leaving build slot for stale reclaim"
+                    );
+                    return Ok(());
+                }
+            };
         info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee_str, source = "shadow_fee_worker", "Built transfer raw transaction successfully");
 
         // ====== phase 3: 锁内 · 提交不可逆事实 ======

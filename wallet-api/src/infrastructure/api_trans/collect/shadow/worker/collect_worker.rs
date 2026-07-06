@@ -2154,12 +2154,30 @@ impl ShadowCollectWorker {
                 ChainRpcGuardAttempt::Skip => return Ok(()),
             };
         let (tx_hash, raw_tx, fee) =
-            crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
-                &self.ctx,
-                transfer_req,
-                Some(private_key),
+            match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+                crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
+                    &self.ctx,
+                    transfer_req,
+                    Some(private_key),
+                ),
+                &req.chain_code,
+                trade_no,
+                "build",
+                "shadow_worker_v2",
             )
-            .await?;
+            .await
+            {
+                Ok(result) => result?,
+                Err(_) => {
+                    warn!(
+                        trade_no = %trade_no,
+                        chain_code = %req.chain_code,
+                        source = "shadow_worker_v2",
+                        "Build RPC timed out; leaving build slot for stale reclaim"
+                    );
+                    return Ok(());
+                }
+            };
         info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee, source = "shadow_worker_v2", "Built transfer raw transaction successfully");
 
         // ====== phase 3: 锁内 · 提交不可逆事实 ======
