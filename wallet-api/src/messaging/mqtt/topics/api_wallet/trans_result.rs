@@ -404,6 +404,13 @@ impl AwmOrderTransResMsg {
         api_resource_pool: &wallet_database::ApiResourceDbPool,
         ctx: Option<&'static Context>,
     ) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!(
+            resource_trade_no = %self.trade_no,
+            trade_type = %self.trade_type,
+            status = %self.status,
+            fail_type = ?self.fail_type,
+            "Received withdraw resource delegation result"
+        );
         let result_status = if self.status {
             ApiResourceDelegationResultStatus::Success
         } else {
@@ -418,6 +425,11 @@ impl AwmOrderTransResMsg {
             // Platform wallet: the message trade number is the real resource
             // delegation task (for example CD...), so this fact is ACKed later
             // as a resource task result with TX_RES.
+            tracing::info!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = ?resource_task.origin_trade_no,
+                "Withdraw resource delegation result matched local resource task"
+            );
             ApiResourceDelegationRepo::mark_backend_result_received(
                 api_resource_pool,
                 &self.trade_no,
@@ -459,13 +471,26 @@ impl AwmOrderTransResMsg {
         // Merchant wallet: the message trade number is the original withdraw
         // order, or a dependency that points back to it. Persist a projection
         // fact so the side-effect worker can ACK it as WD + TX_RSC_RES.
+        tracing::info!(
+            resource_trade_no = %self.trade_no,
+            origin_trade_no = %withdraw.trade_no,
+            dependency_trade_no = ?withdraw.resource_dependency_trade_no,
+            status = %self.status,
+            "Withdraw resource delegation result matched blocked origin order"
+        );
         if self.status {
-            ApiWithdrawRepo::mark_resource_released(
+            let rows = ApiWithdrawRepo::mark_resource_released(
                 api_transaction_pool,
                 &withdraw.trade_no,
                 ApiResourceGateResult::PlatformDelegateSuccess,
             )
             .await?;
+            tracing::info!(
+                resource_trade_no = %self.trade_no,
+                origin_trade_no = %withdraw.trade_no,
+                rows = rows,
+                "Withdraw resource gate released by platform delegation result"
+            );
         }
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(

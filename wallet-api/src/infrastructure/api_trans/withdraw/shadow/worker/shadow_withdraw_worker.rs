@@ -616,6 +616,15 @@ impl ShadowWithdrawWorker {
         {
             return Ok(());
         }
+        if Self::is_waiting_platform_delegate_result(&req) {
+            info!(
+                trade_no = %trade_no,
+                dependency_trade_no = ?req.resource_dependency_trade_no,
+                source = "shadow_withdraw_worker",
+                "TRON withdraw resource gate already blocked on platform delegation result"
+            );
+            return Ok(());
+        }
 
         let fee_details = self.estimate_tron_fee_details_for_withdraw(&req).await?;
         let adapter =
@@ -702,6 +711,12 @@ impl ShadowWithdrawWorker {
             self.resource_reservations.release(trade_no);
         }
         result
+    }
+
+    fn is_waiting_platform_delegate_result(req: &ApiWithdrawEntity) -> bool {
+        req.resource_block_reason == Some(ApiResourceBlockReason::NeedPlatformDelegate)
+            && req.resource_dependency_type == Some(ApiResourceDependencyType::PlatformDelegate)
+            && req.resource_dependency_trade_no.is_some()
     }
 
     async fn log_resource_gate_decision(
@@ -2560,6 +2575,7 @@ mod tests {
                 ApiResourceDelegationOperationType, ApiResourceDelegationRecoverStatus,
                 NewApiResourceDelegation,
             },
+            api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
             api_resource_type::ApiResourceType,
             api_trade_type::ApiTradeType,
             api_wallet::ApiWalletType,
@@ -2829,6 +2845,16 @@ oss:
         );
 
         assert_eq!(available, ResourceBudget::new(0, 0));
+    }
+
+    #[test]
+    fn withdraw_resource_gate_waits_when_platform_delegate_dependency_exists() {
+        let mut withdraw = base_withdraw();
+        withdraw.resource_block_reason = Some(ApiResourceBlockReason::NeedPlatformDelegate);
+        withdraw.resource_dependency_type = Some(ApiResourceDependencyType::PlatformDelegate);
+        withdraw.resource_dependency_trade_no = Some(withdraw.trade_no.clone());
+
+        assert!(ShadowWithdrawWorker::is_waiting_platform_delegate_result(&withdraw));
     }
 
     fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
