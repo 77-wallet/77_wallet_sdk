@@ -59,3 +59,7 @@ oss:
 pub async fn api_trans_test_pool() -> wallet_database::ApiTransactionDbPool {
     api_trans_test_ctx().await.api_transaction_pool().expect("api transaction test pool")
 }
+
+pub async fn api_resource_test_pool() -> wallet_database::ApiResourceDbPool {
+    api_trans_test_ctx().await.api_resource_pool().expect("api resource test pool")
+}

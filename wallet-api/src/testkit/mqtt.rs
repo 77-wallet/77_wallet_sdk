@@ -2,7 +2,9 @@
 
 use crate::context::Context;
 use rumqttc::v5::mqttbytes::v5::Publish;
-use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool, DbPool, TaskDbPool};
+use wallet_database::{
+    ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool, DbPool, TaskDbPool,
+};
 
 pub async fn exec_wallet_order_payload(
     ctx: &'static Context,
@@ -30,6 +32,12 @@ pub fn api_transaction_pool(
     ctx: &'static Context,
 ) -> Result<ApiTransactionDbPool, crate::error::service::ServiceError> {
     ctx.api_transaction_pool()
+}
+
+pub fn api_resource_pool(
+    ctx: &'static Context,
+) -> Result<ApiResourceDbPool, crate::error::service::ServiceError> {
+    ctx.api_resource_pool()
 }
 
 pub fn task_pool(ctx: &'static Context) -> Result<TaskDbPool, crate::error::service::ServiceError> {

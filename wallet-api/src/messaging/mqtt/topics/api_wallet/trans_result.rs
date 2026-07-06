@@ -349,7 +349,14 @@ impl AwmOrderTransResMsg {
         // Merchant wallet: the message trade number is the original collect
         // order, or a dependency that points back to it. Persist a projection
         // fact so the side-effect worker can ACK it as COL + TX_RSC_RES.
-        if !self.status {
+        if self.status {
+            ApiCollectRepo::mark_resource_released(
+                api_transaction_pool,
+                &collect.trade_no,
+                ApiResourceGateResult::PlatformDelegateSuccess,
+            )
+            .await?;
+        } else {
             // 平台代理失败不是归集资源链的最终出口。
             // 文档顺序是：自身资源 -> 平台代理 -> 本地代理 -> 主链/手续费。
             // 所以商户侧收到原单失败结果时，只把 collect 切回本地代理入口；

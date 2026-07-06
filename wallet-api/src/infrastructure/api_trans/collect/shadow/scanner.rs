@@ -1012,9 +1012,41 @@ impl ShadowScanner {
             self.config.max_items_per_scan,
         ).await?;
 
+        let mut skipped = 0usize;
+        let mut first_skip: Option<(String, std::time::Duration)> = None;
+
         for record in records {
+            if let Some((host, remaining)) =
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
+                    self.ctx,
+                    &record.chain_code,
+                )
+                .await
+            {
+                skipped += 1;
+                if first_skip.is_none() {
+                    first_skip = Some((host, remaining));
+                }
+                continue;
+            }
             let intent = CollectIntent::Chain(ChainIntent::EvalResourceGate(record.trade_no));
             self.dispatch_intent(intent).await;
+        }
+
+        if skipped > 0 {
+            if let Some((host, remaining)) = first_skip {
+                warn!(
+                    skipped = skipped,
+                    host = %host,
+                    remaining = ?remaining,
+                    "chain rpc circuit breaker open; skipped some resource gate intents"
+                );
+            } else {
+                warn!(
+                    skipped = skipped,
+                    "chain rpc circuit breaker open; skipped some resource gate intents"
+                );
+            }
         }
 
         Ok(())

@@ -71,6 +71,26 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   `resource_gate_result = NULL`.
 - Invariant: failed delegation result ACK must not release the collect gate.
 
+### Collect Resource Gate Chain RPC Guard
+
+- Layer: component / worker orchestration.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  process_resource_gate_inner
+  ```
+
+- Backend: none; the protected calls are chain RPC adapter calls made through
+  wallet-core.
+- DB facts: guarded skip / timeout does not write terminal collect facts and
+  leaves the order eligible for a later scanner retry.
+- Scanner: `NeedResourceGate` intent dispatch is skipped while the chain RPC
+  breaker is open for the order's chain endpoint.
+- Invariant: transient node failures during resource-gate evaluation must not
+  be amplified across many pending collect orders, and must not be treated as a
+  collect business failure.
+
 ### Collect Gate Ignores Withdraw-Origin ACK
 
 - Layer: integration.

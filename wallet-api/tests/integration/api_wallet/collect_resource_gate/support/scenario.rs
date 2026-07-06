@@ -1,8 +1,9 @@
-use wallet_api::testkit::collect::{
-    send_resource_result_ack_via_worker, upload_resource_tx_exec_receipt_via_worker,
+use wallet_api::testkit::{
+    collect::{send_resource_result_ack_via_worker, upload_resource_tx_exec_receipt_via_worker},
+    mqtt::{api_resource_pool, api_transaction_pool},
 };
 use wallet_database::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool,
     entities::{
         api_collect::ApiCollectEntity,
         api_resource_gate::{
@@ -19,16 +20,14 @@ use crate::harness::{
 };
 
 use super::{
-    db::{
-        open_collect_pool, seed_blocked_collect, seed_failed_resource_receipt_row,
-        seed_resource_result,
-    },
+    db::{seed_blocked_collect, seed_failed_resource_receipt_row, seed_resource_result},
     fixtures::CollectResourceGateFixture,
 };
 
 pub(crate) struct CollectResourceGateScenario {
     env: &'static WorkerTestEnv,
     collect_pool: ApiTransactionDbPool,
+    resource_pool: ApiResourceDbPool,
 }
 
 impl CollectResourceGateScenario {
@@ -36,9 +35,10 @@ impl CollectResourceGateScenario {
         let env = ensure_worker_env().await;
         env.recorder.reset();
 
-        let collect_pool = open_collect_pool(env).await;
+        let collect_pool = api_transaction_pool(env.ctx()).expect("api transaction pool");
+        let resource_pool = api_resource_pool(env.ctx()).expect("api resource pool");
 
-        Self { env, collect_pool }
+        Self { env, collect_pool, resource_pool }
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -133,6 +133,7 @@ impl CollectResourceGateSeed for SeedRole<'_, CollectResourceGateScenario> {
     async fn collect_resource_result(&self, fixture: &CollectResourceGateFixture, success: bool) {
         seed_resource_result(
             &self.scenario().collect_pool,
+            &self.scenario().resource_pool,
             &fixture.trade_no,
             &fixture.resource_trade_no,
             ApiTradeType::Collect,
@@ -144,6 +145,7 @@ impl CollectResourceGateSeed for SeedRole<'_, CollectResourceGateScenario> {
     async fn withdraw_origin_resource_result(&self, fixture: &CollectResourceGateFixture) {
         seed_resource_result(
             &self.scenario().collect_pool,
+            &self.scenario().resource_pool,
             "W_ORIGIN_SKIP",
             &fixture.resource_trade_no,
             ApiTradeType::Withdraw,
@@ -154,7 +156,7 @@ impl CollectResourceGateSeed for SeedRole<'_, CollectResourceGateScenario> {
 
     async fn failed_collect_resource_receipt(&self, fixture: &CollectResourceGateFixture) {
         seed_failed_resource_receipt_row(
-            &self.scenario().collect_pool,
+            &self.scenario().resource_pool,
             Some(&fixture.trade_no),
             &fixture.resource_trade_no,
         )
@@ -166,7 +168,7 @@ impl CollectResourceGateSeed for SeedRole<'_, CollectResourceGateScenario> {
         fixture: &CollectResourceGateFixture,
     ) {
         seed_failed_resource_receipt_row(
-            &self.scenario().collect_pool,
+            &self.scenario().resource_pool,
             None,
             &fixture.resource_trade_no,
         )

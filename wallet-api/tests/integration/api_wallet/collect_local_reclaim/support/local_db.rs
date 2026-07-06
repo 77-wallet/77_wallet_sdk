@@ -1,19 +1,19 @@
 use wallet_api::testkit::{
     collect::scan_collect_intent_labels_once,
-    context::{api_trans_test_ctx, api_trans_test_pool},
+    context::{api_resource_test_pool, api_trans_test_ctx},
     resource_reclaim::scan_local_reclaim_intent_labels_once,
 };
-use wallet_database::ApiTransactionDbPool;
+use wallet_database::ApiResourceDbPool;
 
 use super::db::{insert_local_undelegation, mark_local_undelegation_broadcasted};
 
 pub(crate) struct LocalReclaimScannerDb {
-    pool: ApiTransactionDbPool,
+    pool: ApiResourceDbPool,
 }
 
 impl LocalReclaimScannerDb {
     pub(crate) async fn new() -> Self {
-        let pool = api_trans_test_pool().await;
+        let pool = api_resource_test_pool().await;
 
         Self { pool }
     }

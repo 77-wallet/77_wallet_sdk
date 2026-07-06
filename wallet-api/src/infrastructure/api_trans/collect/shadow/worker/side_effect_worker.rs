@@ -737,19 +737,13 @@ impl SideEffectWorker {
                 Some(ApiResourceDelegationResultStatus::Success) => {
                     ApiResourceGateResult::ResourceDelegationSuccess
                 }
-                Some(ApiResourceDelegationResultStatus::Fail) => {
-                    ApiResourceGateResult::ResourceDelegationFailedBypass
-                }
                 None => return None,
+                Some(ApiResourceDelegationResultStatus::Fail) => return None,
             }
         } else if resource_task.err_code.is_none()
             && matches!(resource_task.tx_status.as_deref(), Some("success"))
         {
             ApiResourceGateResult::ResourceDelegationSuccess
-        } else if resource_task.err_code.is_some()
-            || matches!(resource_task.tx_status.as_deref(), Some("fail"))
-        {
-            ApiResourceGateResult::ResourceDelegationFailedBypass
         } else {
             return None;
         };
@@ -1895,7 +1889,7 @@ oss:
     }
 
     #[tokio::test]
-    async fn original_order_resource_failure_bypasses_collect_gate() -> anyhow::Result<()> {
+    async fn original_order_resource_failure_keeps_collect_gate_blocked() -> anyhow::Result<()> {
         let dir = tempdir()?;
         let dir_path = dir.path().to_string_lossy().to_string();
         let pool = SqliteContext::new(&dir_path, Some("api_transaction.db"))
@@ -1929,10 +1923,7 @@ oss:
         .await?;
         assert_eq!(
             SideEffectWorker::collect_gate_release_from_resource_result(&resource_task),
-            Some((
-                "C_rsc_ack_fail_release".to_string(),
-                ApiResourceGateResult::ResourceDelegationFailedBypass,
-            ))
+            None
         );
 
         Ok(())

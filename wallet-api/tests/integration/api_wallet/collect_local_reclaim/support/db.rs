@@ -1,11 +1,11 @@
 use wallet_database::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool,
     entities::{api_resource_delegation::NewApiResourceDelegation, api_trade_type::ApiTradeType},
     repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
 };
 
 pub(crate) async fn insert_local_undelegation(
-    pool: &ApiTransactionDbPool,
+    pool: &ApiResourceDbPool,
     resource_trade_no: &str,
     origin_trade_no: &str,
 ) {
@@ -27,7 +27,7 @@ pub(crate) async fn insert_local_undelegation(
 }
 
 pub(crate) async fn mark_local_undelegation_broadcasted(
-    pool: &ApiTransactionDbPool,
+    pool: &ApiResourceDbPool,
     resource_trade_no: &str,
     tx_hash: &str,
 ) {

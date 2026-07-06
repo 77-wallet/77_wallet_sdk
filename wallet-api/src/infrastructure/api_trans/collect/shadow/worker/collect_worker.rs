@@ -744,7 +744,12 @@ impl ShadowCollectWorker {
         }
 
         let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
-        let snapshot = self.eval_collect_resource_gate_snapshot(&req, &exec_to_addr).await?;
+        let Some(snapshot) = self
+            .eval_collect_resource_gate_snapshot_guarded(&req, &exec_to_addr, origin_trade_no)
+            .await?
+        else {
+            return Ok(());
+        };
 
         // 资源顺序只处理到“允许回到旧 collect 主链”为止：
         // 自身资源 -> 平台代理 -> 本地代理 fallback -> release gate。
@@ -757,7 +762,7 @@ impl ShadowCollectWorker {
             origin_trade_no,
             &req,
             &exec_to_addr,
-            snapshot,
+            snapshot.clone(),
         )
         .await?;
 
@@ -840,7 +845,6 @@ impl ShadowCollectWorker {
         origin_trade_no: String,
     ) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(&origin_trade_no).await?;
-        let ctx = self.ctx;
         if !Self::is_tron_collect(&req.chain_code) {
             return Ok(());
         }
@@ -854,48 +858,88 @@ impl ShadowCollectWorker {
         }
 
         let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
-        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
-        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
-                self.ctx,
-                &req.chain_code,
-                req.token_addr.clone(),
-            )
-            .await?;
-            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
-        } else {
-            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
-        };
         let fee_details = self
-            .estimate_tron_fee_details(
-                &req.from_addr,
-                &exec_to_addr,
-                &req.value,
-                &token_symbol,
-                &main_coin.symbol,
-                token_key,
-                token_decimals,
-            )
+            .eval_collect_resource_gate_snapshot_guarded(&req, &exec_to_addr, &origin_trade_no)
             .await?;
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
-                .await?;
-        let resource = adapter.account_resource(&req.from_addr).await?;
-        let available_energy = resource.available_energy();
-        let available_bandwidth = resource.available_bandwidth();
-        let energy_price = resource.energy_price();
+        let Some(snapshot) = fee_details else {
+            return Ok(());
+        };
 
         self.commit_platform_delegation_block(
             &origin_trade_no,
             &req,
             &exec_to_addr,
-            fee_details.energy,
-            fee_details.bandwidth,
-            available_energy,
-            available_bandwidth,
-            energy_price,
+            snapshot.required_energy,
+            snapshot.required_bandwidth,
+            snapshot.available_energy,
+            snapshot.available_bandwidth,
+            snapshot.energy_price,
         )
         .await
+    }
+
+    async fn eval_collect_resource_gate_snapshot_guarded(
+        &self,
+        req: &ApiCollectEntity,
+        exec_to_addr: &str,
+        origin_trade_no: &str,
+    ) -> Result<Option<ResourceGateSnapshot>, ServiceError> {
+        if let Some((host, remaining)) =
+            crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
+                self.ctx,
+                &req.chain_code,
+            )
+            .await
+        {
+            warn!(
+                origin_trade_no = %origin_trade_no,
+                chain_code = %req.chain_code,
+                host = %host,
+                remaining = ?remaining,
+                source = "shadow_worker_v2",
+                "Skip resource gate evaluation: chain rpc circuit breaker open"
+            );
+            return Ok(None);
+        }
+
+        let _chain_rpc_guard =
+            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
+                self.ctx,
+                &req.chain_code,
+                origin_trade_no,
+                "resource_gate",
+                "shadow_worker_v2",
+            )
+            .await
+            {
+                ChainRpcGuardAttempt::Proceed(permit) => permit,
+                ChainRpcGuardAttempt::Skip => return Ok(None),
+            };
+
+        let result = crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+            self.eval_collect_resource_gate_snapshot(req, exec_to_addr),
+            &req.chain_code,
+            origin_trade_no,
+            "resource_gate",
+            "shadow_worker_v2",
+        )
+        .await;
+
+        match result {
+            Ok(Ok(snapshot)) => {
+                crate::infrastructure::chain_rpc_guard::record_success_for_chain_code_with_ctx(
+                    self.ctx,
+                    &req.chain_code,
+                )
+                .await;
+                Ok(Some(snapshot))
+            }
+            Ok(Err(err)) => {
+                crate::infrastructure::chain_rpc_guard::record_transient_failure_from_error(&err);
+                Err(err)
+            }
+            Err(_) => Ok(None),
+        }
     }
 
     async fn eval_collect_resource_gate_snapshot(
