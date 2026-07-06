@@ -199,6 +199,23 @@ impl ApiWithdrawRepo {
         .await
     }
 
+    pub async fn pending_resource_orders_by_owner(
+        pool: &ApiTransactionDbPool,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::pending_resource_orders_by_owner(
+            pool.read_ref(),
+            chain_code,
+            from_addr,
+            exclude_trade_no,
+            limit,
+        )
+        .await
+    }
+
     /// Runtime repair helper: query withdraw candidates from acct_change facts.
     ///
     /// Caller must still perform Rust-side filtering (amount/time window/uniqueness)

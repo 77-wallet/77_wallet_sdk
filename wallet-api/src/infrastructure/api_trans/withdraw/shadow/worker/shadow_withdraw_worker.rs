@@ -629,6 +629,18 @@ impl ShadowWithdrawWorker {
         );
 
         if let ResourceReservationDecision::Reserved { effective_available, reserved } = decision {
+            self.log_resource_gate_decision(
+                trade_no,
+                &req,
+                "resource_ready",
+                &fee_details,
+                available_energy,
+                available_bandwidth,
+                pending_budget,
+                reserved,
+                effective_available,
+            )
+            .await?;
             let rows = ApiWithdrawRepo::mark_resource_released(
                 &self.ctx.api_transaction_pool()?,
                 trade_no,
@@ -639,27 +651,24 @@ impl ShadowWithdrawWorker {
             if rows > 0 {
                 self.scanner.try_advance(trade_no).await;
             }
-            info!(
-                trade_no = %trade_no,
-                required_energy = %fee_details.energy,
-                required_bandwidth = %fee_details.bandwidth,
-                available_energy = %available_energy,
-                available_bandwidth = %available_bandwidth,
-                pending_db_energy = %pending_budget.energy,
-                pending_db_bandwidth = %pending_budget.bandwidth,
-                reserved_energy = %reserved.energy,
-                reserved_bandwidth = %reserved.bandwidth,
-                effective_energy = %effective_available.energy,
-                effective_bandwidth = %effective_available.bandwidth,
-                source = "shadow_withdraw_worker",
-                "TRON withdraw resource gate reserved local resource budget"
-            );
             return Ok(());
         }
 
         let ResourceReservationDecision::NeedMore(shortfall) = decision else {
             unreachable!("reserved decision returned early")
         };
+        self.log_resource_gate_decision(
+            trade_no,
+            &req,
+            "need_platform_delegate",
+            &fee_details,
+            available_energy,
+            available_bandwidth,
+            pending_budget,
+            shortfall.reserved,
+            shortfall.effective_available,
+        )
+        .await?;
 
         let result = self
             .commit_platform_delegation_block(
@@ -675,6 +684,70 @@ impl ShadowWithdrawWorker {
             self.resource_reservations.release(trade_no);
         }
         result
+    }
+
+    async fn log_resource_gate_decision(
+        &self,
+        trade_no: &str,
+        req: &ApiWithdrawEntity,
+        decision: &'static str,
+        fee_details: &TronFeeDetails,
+        available_energy: i64,
+        available_bandwidth: i64,
+        pending_budget: PendingWithdrawResourceBudget,
+        reserved: ResourceBudget,
+        effective_available: ResourceBudget,
+    ) -> Result<(), ServiceError> {
+        info!(
+            trade_no = %trade_no,
+            from_addr = %req.from_addr,
+            decision,
+            required_energy = %fee_details.energy,
+            required_bandwidth = %fee_details.bandwidth,
+            chain_available_energy = %available_energy,
+            chain_available_bandwidth = %available_bandwidth,
+            pending_db_energy = %pending_budget.energy,
+            pending_db_bandwidth = %pending_budget.bandwidth,
+            reserved_memory_energy = %reserved.energy,
+            reserved_memory_bandwidth = %reserved.bandwidth,
+            effective_energy = %effective_available.energy,
+            effective_bandwidth = %effective_available.bandwidth,
+            source = "shadow_withdraw_worker",
+            "TRON withdraw resource gate budget decision"
+        );
+
+        if pending_budget.energy == 0 && pending_budget.bandwidth == 0 {
+            return Ok(());
+        }
+
+        let pending_orders = ApiWithdrawRepo::pending_resource_orders_by_owner(
+            &self.ctx.api_transaction_pool()?,
+            &req.chain_code,
+            &req.from_addr,
+            trade_no,
+            10,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        for pending in pending_orders {
+            info!(
+                trade_no = %trade_no,
+                from_addr = %req.from_addr,
+                pending_trade_no = %pending.trade_no,
+                pending_estimated_resource_consume = ?pending.estimated_resource_consume,
+                pending_resource_gate_result = ?pending.resource_gate_result,
+                pending_resource_block_reason = ?pending.resource_block_reason,
+                pending_resource_dependency_trade_no = ?pending.resource_dependency_trade_no,
+                pending_raw_tx_exists = pending.raw_tx.is_some(),
+                pending_last_broadcast_at = ?pending.last_broadcast_at,
+                pending_tx_hash = ?pending.tx_hash,
+                pending_created_at = %pending.created_at.to_rfc3339(),
+                source = "shadow_withdraw_worker",
+                "TRON withdraw resource gate pending DB budget owner"
+            );
+        }
+
+        Ok(())
     }
 
     async fn commit_platform_delegation_block(

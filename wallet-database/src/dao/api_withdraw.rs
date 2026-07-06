@@ -486,6 +486,41 @@ impl ApiWithdrawDao {
         Ok(PendingWithdrawResourceBudget { energy, bandwidth })
     }
 
+    pub async fn pending_resource_orders_by_owner<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+              AND lower(chain_code) = lower(?)
+              AND from_addr = ?
+              AND trade_no <> ?
+              AND estimated_resource_consume IS NOT NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+            ORDER BY created_at ASC, id ASC
+            LIMIT ?
+        "#;
+
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(exclude_trade_no)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     /// Find withdraw candidates for acct_change-driven tx_hash backfill.
     ///
     /// Notes:
