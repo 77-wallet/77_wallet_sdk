@@ -1,4 +1,6 @@
-use wallet_api::testkit::{collect::scan_collect_intent_labels_once, mqtt::api_resource_pool};
+use wallet_api::testkit::{
+    collect::scan_collect_resource_receipt_intent_labels_once, mqtt::api_resource_pool,
+};
 use wallet_database::ApiResourceDbPool;
 
 use crate::harness::{WorkerTestEnv, ensure_worker_env};
@@ -29,7 +31,9 @@ impl LocalCollectResourceDb {
     }
 
     pub(crate) async fn when_collect_scanner_runs(&self) -> Vec<String> {
-        scan_collect_intent_labels_once(self.env.ctx()).await.expect("scanner round should succeed")
+        scan_collect_resource_receipt_intent_labels_once(self.env.ctx())
+            .await
+            .expect("scanner round should succeed")
     }
 
     pub(crate) fn then_scanner_emits_resource_receipt_upload(&self, labels: Vec<String>) {

@@ -1,5 +1,5 @@
 use wallet_database::{
-    ApiTransactionDbPool, SqliteContext,
+    ApiResourceDbPool, ApiTransactionDbPool,
     entities::{
         api_resource_delegation::ApiResourceDelegationResultStatus,
         api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
@@ -8,15 +8,6 @@ use wallet_database::{
     },
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
-
-use crate::harness::worker::WorkerTestEnv;
-
-pub(crate) async fn open_transaction_pool(env: &WorkerTestEnv) -> ApiTransactionDbPool {
-    let tx_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
-        .await
-        .expect("open api transaction sqlite");
-    tx_pool_ctx.into_transaction_db_pool().expect("transaction pool")
-}
 
 pub(crate) async fn seed_withdraw(pool: &ApiTransactionDbPool, trade_no: &str) {
     ApiWithdrawRepo::upsert_api_withdraw(
@@ -74,7 +65,7 @@ pub(crate) async fn mark_withdraw_blocked(
 }
 
 pub(crate) async fn seed_resource_delegation_ready_for_ack(
-    pool: &ApiTransactionDbPool,
+    pool: &ApiResourceDbPool,
     origin_trade_no: &str,
     resource_trade_no: &str,
 ) {
@@ -85,12 +76,13 @@ pub(crate) async fn seed_resource_delegation_ready_for_ack(
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
             result_status, result_received_at, result_payload,
-            created_at, updated_at
+            tx_res_received_at, created_at, updated_at
         ) VALUES (
             'uid', 1, 1, ?, 1,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
             1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":true}',
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )
@@ -104,7 +96,7 @@ pub(crate) async fn seed_resource_delegation_ready_for_ack(
 }
 
 pub(crate) async fn seed_failed_original_order_resource_result(
-    pool: &ApiTransactionDbPool,
+    pool: &ApiResourceDbPool,
     trade_no: &str,
 ) {
     sqlx::query(
@@ -114,12 +106,13 @@ pub(crate) async fn seed_failed_original_order_resource_result(
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
             result_status, result_received_at, result_payload,
-            created_at, updated_at
+            tx_res_received_at, created_at, updated_at
         ) VALUES (
             'uid', 1, 1, ?, 1,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
             ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":false}',
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )
@@ -134,7 +127,7 @@ pub(crate) async fn seed_failed_original_order_resource_result(
 }
 
 pub(crate) async fn seed_successful_resource_delegation(
-    pool: &ApiTransactionDbPool,
+    pool: &ApiResourceDbPool,
     origin: Option<(&str, ApiTradeType)>,
     resource_trade_no: &str,
     tx_hash: &str,
@@ -151,12 +144,13 @@ pub(crate) async fn seed_successful_resource_delegation(
             resource_trade_no, chain_code, owner_address, receiver_address,
             resource_type, native_amount, amount, status,
             tx_hash, tx_status, result_status, result_received_at, result_payload,
-            created_at, updated_at
+            tx_res_received_at, created_at, updated_at
         ) VALUES (
             'uid', 1, 1, ?, ?,
             ?, 'tron', 'owner', 'receiver',
             1, '2', '32000', 3,
             ?, 'success', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{"status":true}',
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )
@@ -172,7 +166,7 @@ pub(crate) async fn seed_successful_resource_delegation(
 }
 
 pub(crate) async fn seed_failed_resource_delegation(
-    pool: &ApiTransactionDbPool,
+    pool: &ApiResourceDbPool,
     origin_trade_no: &str,
     origin_trade_type: ApiTradeType,
     resource_trade_no: &str,

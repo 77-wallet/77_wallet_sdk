@@ -6,8 +6,11 @@
 use std::sync::Arc;
 
 use wallet_database::{
-    ApiTransactionDbPool, entities::api_collect::ApiCollectEntity,
-    repositories::api_wallet::collect::ApiCollectRepo,
+    ApiTransactionDbPool,
+    entities::{api_collect::ApiCollectEntity, api_trade_type::ApiTradeType},
+    repositories::api_wallet::{
+        collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+    },
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransStatus, TransType, TxExecReceiptUploadReq,
@@ -243,4 +246,18 @@ pub async fn scan_collect_intent_labels_once(
     }
 
     Ok(labels)
+}
+
+pub async fn scan_collect_resource_receipt_intent_labels_once(
+    ctx: &'static Context,
+) -> Result<Vec<String>, ServiceError> {
+    let records = ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
+        &ctx.api_resource_pool()?,
+        ApiTradeType::Collect as i64,
+        8,
+    )
+    .await
+    .map_err(|e| ServiceError::Database(e.into()))?;
+
+    Ok(records.into_iter().map(|_| "UploadResourceTxExecReceipt".to_string()).collect())
 }

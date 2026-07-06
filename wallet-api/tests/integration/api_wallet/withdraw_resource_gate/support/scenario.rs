@@ -1,10 +1,13 @@
-use wallet_api::testkit::withdraw::{
-    scan_withdraw_intent_labels_for_trade_once,
-    send_resource_result_ack_via_worker as send_withdraw_resource_result_ack_via_worker,
-    upload_resource_tx_exec_receipt_via_worker as upload_withdraw_resource_tx_exec_receipt_via_worker,
+use wallet_api::testkit::{
+    mqtt::{api_resource_pool, api_transaction_pool},
+    withdraw::{
+        scan_withdraw_intent_labels_for_trade_once,
+        send_resource_result_ack_via_worker as send_withdraw_resource_result_ack_via_worker,
+        upload_resource_tx_exec_receipt_via_worker as upload_withdraw_resource_tx_exec_receipt_via_worker,
+    },
 };
 use wallet_database::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool,
     entities::{
         api_resource_gate::ApiResourceGateResult, api_trade_type::ApiTradeType,
         api_withdraw::ApiWithdrawEntity,
@@ -20,7 +23,7 @@ use crate::harness::{
 use super::{
     assertions::assert_event_ack_payload_exists,
     db::{
-        mark_withdraw_blocked, open_transaction_pool, seed_failed_original_order_resource_result,
+        mark_withdraw_blocked, seed_failed_original_order_resource_result,
         seed_failed_resource_delegation, seed_resource_delegation_ready_for_ack,
         seed_successful_resource_delegation, seed_withdraw,
     },
@@ -30,6 +33,7 @@ use super::{
 pub(crate) struct WithdrawResourceGateScenario {
     env: &'static WorkerTestEnv,
     tx_pool: ApiTransactionDbPool,
+    resource_pool: ApiResourceDbPool,
 }
 
 impl WithdrawResourceGateScenario {
@@ -37,9 +41,10 @@ impl WithdrawResourceGateScenario {
         let env = ensure_worker_env().await;
         env.recorder.reset();
 
-        let tx_pool = open_transaction_pool(env).await;
+        let tx_pool = api_transaction_pool(env.ctx()).expect("api transaction pool");
+        let resource_pool = api_resource_pool(env.ctx()).expect("api resource pool");
 
-        Self { env, tx_pool }
+        Self { env, tx_pool, resource_pool }
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -127,7 +132,7 @@ trait WithdrawResourceGateSeed {
 impl WithdrawResourceGateSeed for SeedRole<'_, WithdrawResourceGateScenario> {
     async fn resource_delegation_ready_for_ack(&self, fixture: &WithdrawResourceGateFixture) {
         seed_resource_delegation_ready_for_ack(
-            &self.scenario().tx_pool,
+            &self.scenario().resource_pool,
             &fixture.trade_no,
             &fixture.resource_trade_no,
         )
@@ -146,7 +151,7 @@ impl WithdrawResourceGateSeed for SeedRole<'_, WithdrawResourceGateScenario> {
 
     async fn successful_withdraw_resource_delegation(&self, fixture: &WithdrawResourceGateFixture) {
         seed_successful_resource_delegation(
-            &self.scenario().tx_pool,
+            &self.scenario().resource_pool,
             Some((&fixture.trade_no, ApiTradeType::Withdraw)),
             &fixture.resource_trade_no,
             "tx_hash_withdraw_release",
@@ -156,7 +161,7 @@ impl WithdrawResourceGateSeed for SeedRole<'_, WithdrawResourceGateScenario> {
 
     async fn failed_withdraw_resource_delegation(&self, fixture: &WithdrawResourceGateFixture) {
         seed_failed_resource_delegation(
-            &self.scenario().tx_pool,
+            &self.scenario().resource_pool,
             &fixture.trade_no,
             ApiTradeType::Withdraw,
             &fixture.resource_trade_no,
@@ -165,8 +170,11 @@ impl WithdrawResourceGateSeed for SeedRole<'_, WithdrawResourceGateScenario> {
     }
 
     async fn failed_original_order_resource_result(&self, fixture: &WithdrawResourceGateFixture) {
-        seed_failed_original_order_resource_result(&self.scenario().tx_pool, &fixture.trade_no)
-            .await;
+        seed_failed_original_order_resource_result(
+            &self.scenario().resource_pool,
+            &fixture.trade_no,
+        )
+        .await;
     }
 
     async fn resource_delegation_without_origin_trade(
@@ -174,7 +182,7 @@ impl WithdrawResourceGateSeed for SeedRole<'_, WithdrawResourceGateScenario> {
         fixture: &WithdrawResourceGateFixture,
     ) {
         seed_successful_resource_delegation(
-            &self.scenario().tx_pool,
+            &self.scenario().resource_pool,
             None,
             &fixture.resource_trade_no,
             "tx_hash_withdraw_no_origin",
@@ -184,7 +192,7 @@ impl WithdrawResourceGateSeed for SeedRole<'_, WithdrawResourceGateScenario> {
 
     async fn collect_origin_resource_delegation(&self, fixture: &WithdrawResourceGateFixture) {
         seed_successful_resource_delegation(
-            &self.scenario().tx_pool,
+            &self.scenario().resource_pool,
             Some((&fixture.trade_no, ApiTradeType::Collect)),
             &fixture.resource_trade_no,
             "tx_hash_withdraw_wrong_origin",

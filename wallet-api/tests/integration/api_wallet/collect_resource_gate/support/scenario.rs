@@ -215,8 +215,6 @@ pub(crate) trait CollectResourceGateThen {
     async fn collect_cannot_build(&self, fixture: &CollectResourceGateFixture);
 
     async fn collect_waits_for_local_delegate(&self, fixture: &CollectResourceGateFixture);
-
-    async fn collect_still_waits_for_platform_delegate(&self, fixture: &CollectResourceGateFixture);
 }
 
 #[async_trait::async_trait(?Send)]
@@ -252,14 +250,6 @@ impl CollectResourceGateThen for ThenRole<'_, CollectResourceGateScenario> {
     async fn collect_waits_for_local_delegate(&self, fixture: &CollectResourceGateFixture) {
         let collect = self.scenario().load().collect(&fixture.trade_no).await;
         self.scenario().assert().collect_waits_for_local_delegate(&collect);
-    }
-
-    async fn collect_still_waits_for_platform_delegate(
-        &self,
-        fixture: &CollectResourceGateFixture,
-    ) {
-        let collect = self.scenario().load().collect(&fixture.trade_no).await;
-        self.scenario().assert().collect_still_waits_for_platform_delegate(&collect, fixture);
     }
 }
 
@@ -301,12 +291,6 @@ trait CollectResourceGateAssert {
     fn collect_cannot_build(&self, is_candidate: bool);
 
     fn collect_waits_for_local_delegate(&self, collect: &ApiCollectEntity);
-
-    fn collect_still_waits_for_platform_delegate(
-        &self,
-        collect: &ApiCollectEntity,
-        fixture: &CollectResourceGateFixture,
-    );
 }
 
 impl CollectResourceGateAssert for AssertRole<'_, CollectResourceGateScenario> {
@@ -357,25 +341,5 @@ impl CollectResourceGateAssert for AssertRole<'_, CollectResourceGateScenario> {
             Some(ApiResourceDependencyType::LocalDelegate)
         );
         assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
-    }
-
-    fn collect_still_waits_for_platform_delegate(
-        &self,
-        collect: &ApiCollectEntity,
-        fixture: &CollectResourceGateFixture,
-    ) {
-        assert!(collect.resource_gate_released_at.is_none());
-        assert_eq!(
-            collect.resource_dependency_trade_no.as_deref(),
-            Some(fixture.resource_trade_no.as_str())
-        );
-        assert_eq!(
-            collect.resource_dependency_type,
-            Some(ApiResourceDependencyType::PlatformDelegate)
-        );
-        assert_eq!(
-            collect.resource_block_reason,
-            Some(ApiResourceBlockReason::NeedPlatformDelegate)
-        );
     }
 }

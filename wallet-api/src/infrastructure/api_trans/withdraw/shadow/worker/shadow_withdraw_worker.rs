@@ -2945,19 +2945,8 @@ oss:
 
     #[tokio::test]
     async fn withdraw_resource_apply_identity_uses_wallet_app_and_merchant_ids() {
-        let dir = tempdir().expect("tempdir");
-        let dir_path = dir.path().to_string_lossy().to_string();
-
-        let transaction_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
-            .await
-            .expect("init api_transaction.db");
-        let transaction_pool =
-            transaction_ctx.into_transaction_db_pool().expect("transaction pool");
-
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+        let test_ctx = test_ctx().await;
+        let wallet_pool = test_ctx.api_wallet_pool().expect("wallet pool");
 
         ApiWalletRepo::upsert(
             &wallet_pool,
@@ -2981,7 +2970,6 @@ oss:
             .expect("set merchant id");
 
         let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let test_ctx = test_ctx().await;
         let scanner =
             Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
                 test_ctx,

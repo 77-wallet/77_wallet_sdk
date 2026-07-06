@@ -459,6 +459,15 @@ impl AwmOrderTransResMsg {
         // Merchant wallet: the message trade number is the original withdraw
         // order, or a dependency that points back to it. Persist a projection
         // fact so the side-effect worker can ACK it as WD + TX_RSC_RES.
+        if self.status {
+            ApiWithdrawRepo::mark_resource_released(
+                api_transaction_pool,
+                &withdraw.trade_no,
+                ApiResourceGateResult::PlatformDelegateSuccess,
+            )
+            .await?;
+        }
+
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
             api_resource_pool,
             NewApiResourceDelegation::platform_delegate(

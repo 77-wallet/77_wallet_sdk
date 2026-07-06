@@ -29,7 +29,9 @@ use wallet_database::{
             ApiResourceDelegationOperationType, ApiResourceDelegationResultStatus,
             ApiResourceDelegationSource, NewApiResourceDelegation,
         },
-        api_resource_gate::ApiResourceGateResult,
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         api_trade_type::ApiTradeType,
         asset_token_key::AssetTokenKey,
     },
@@ -1018,6 +1020,22 @@ impl SideEffectWorker {
             return Ok(());
         };
 
+        let rows = ApiCollectRepo::mark_resource_blocked(
+            &self.ctx.api_transaction_pool()?,
+            origin_trade_no,
+            ApiResourceBlockReason::NeedLocalDelegate,
+            None,
+            Some(ApiResourceDependencyType::LocalDelegate),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            resource_trade_no = %resource_task.resource_trade_no,
+            origin_trade_no = %origin_trade_no,
+            rows = %rows,
+            source = "side_effect_worker",
+            "Switch collect resource gate to local delegation after platform failure receipt"
+        );
         self.advancer.try_advance(origin_trade_no).await;
         Ok(())
     }

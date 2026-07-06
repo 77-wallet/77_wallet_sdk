@@ -11,7 +11,9 @@ use wallet_database::{
             ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
             ApiResourceDelegationSource,
         },
-        api_resource_gate::ApiResourceGateResult,
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         api_trade_type::ApiTradeType,
     },
     repositories::api_wallet::{
@@ -574,13 +576,14 @@ impl PlatformResourceDelegateWorker {
         let Some(origin_trade_no) = task.origin_trade_no.as_deref() else {
             return Ok(());
         };
-        let result = ApiResourceGateResult::ResourceDelegationFailedBypass;
         match task.origin_trade_type {
             Some(x) if x == ApiTradeType::Collect as i64 => {
-                let rows = ApiCollectRepo::mark_resource_released(
+                let rows = ApiCollectRepo::mark_resource_blocked(
                     &self.transaction_pool,
                     origin_trade_no,
-                    result,
+                    ApiResourceBlockReason::NeedLocalDelegate,
+                    None,
+                    Some(ApiResourceDependencyType::LocalDelegate),
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
@@ -589,11 +592,11 @@ impl PlatformResourceDelegateWorker {
                     resource_trade_no = %task.resource_trade_no,
                     source = "platform_resource_delegate",
                     rows_affected = %rows,
-                    release_reason = ?result,
-                    "Release collect gate by delegation failure bypass"
+                    "Switch collect resource gate to local delegation after platform failure"
                 );
             }
             Some(x) if x == ApiTradeType::Withdraw as i64 => {
+                let result = ApiResourceGateResult::ResourceDelegationFailedBypass;
                 let rows = ApiWithdrawRepo::mark_resource_released(
                     &self.transaction_pool,
                     origin_trade_no,

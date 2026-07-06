@@ -8,6 +8,7 @@ use support::{
 };
 
 #[tokio::test]
+#[serial]
 async fn collect_scanner_emits_resource_receipt_upload_for_failed_delegation() {
     let db = LocalCollectResourceDb::new().await;
     let fixture = CollectResourceGateFixture::resource_scan_case("RSC_FAIL_RECEIPT_SCAN");
@@ -75,7 +76,7 @@ async fn withdraw_origin_resource_result_ack_does_not_release_collect_gate() {
 
 #[tokio::test]
 #[serial]
-async fn collect_failed_resource_bypass_reopens_collect_build_flow() {
+async fn collect_failed_resource_receipt_switches_to_local_delegate() {
     let scenario = CollectResourceGateScenario::new().await;
     let fixture = CollectResourceGateFixture::origin_case("C_RSC_FAIL_BYPASS");
     let given = scenario.given();
@@ -88,7 +89,8 @@ async fn collect_failed_resource_bypass_reopens_collect_build_flow() {
 
     when.resource_receipt_upload_is_sent(&fixture).await;
 
-    then.collect_still_waits_for_platform_delegate(&fixture).await;
+    then.origin_collect_gate_is_not_released(&fixture).await;
+    then.collect_waits_for_local_delegate(&fixture).await;
     then.collect_cannot_build(&fixture).await;
 }
 
