@@ -592,9 +592,23 @@ impl ShadowWithdrawWorker {
         let resource = adapter.account_resource(&req.from_addr).await?;
         let available_energy = resource.available_energy();
         let available_bandwidth = resource.available_bandwidth();
+        let pending_budget = ApiWithdrawRepo::pending_resource_budget_by_owner(
+            &self.ctx.api_transaction_pool()?,
+            &req.chain_code,
+            &req.from_addr,
+            trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let effective_chain_energy =
+            available_energy.saturating_sub(pending_budget.energy.min(i64::MAX as u64) as i64);
+        let effective_chain_bandwidth = available_bandwidth
+            .saturating_sub(pending_budget.bandwidth.min(i64::MAX as u64) as i64);
         let required = ResourceBudget::new(fee_details.energy, fee_details.bandwidth);
-        let available =
-            ResourceBudget::new(available_energy.max(0) as u64, available_bandwidth.max(0) as u64);
+        let available = ResourceBudget::new(
+            effective_chain_energy.max(0) as u64,
+            effective_chain_bandwidth.max(0) as u64,
+        );
 
         let decision = self.resource_reservations.reserve_if_available(
             &req.from_addr,
@@ -620,6 +634,8 @@ impl ShadowWithdrawWorker {
                 required_bandwidth = %fee_details.bandwidth,
                 available_energy = %available_energy,
                 available_bandwidth = %available_bandwidth,
+                pending_db_energy = %pending_budget.energy,
+                pending_db_bandwidth = %pending_budget.bandwidth,
                 reserved_energy = %reserved.energy,
                 reserved_bandwidth = %reserved.bandwidth,
                 effective_energy = %effective_available.energy,

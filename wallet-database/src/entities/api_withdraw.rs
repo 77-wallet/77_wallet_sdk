@@ -27,6 +27,12 @@ pub struct WithdrawCreatedFact {
     pub status: ApiWithdrawStatus,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PendingWithdrawResourceBudget {
+    pub energy: u64,
+    pub bandwidth: u64,
+}
+
 /// NOTE:
 /// ErrCode MUST NOT implement Deserialize directly.
 /// All deserialization must go through this function

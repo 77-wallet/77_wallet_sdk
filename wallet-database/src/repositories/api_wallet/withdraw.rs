@@ -33,8 +33,8 @@ use crate::{
         },
         api_trade_type::ApiTradeType,
         api_withdraw::{
-            ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawCreatedFact,
-            WithdrawFailureStage,
+            ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
+            WithdrawCreatedFact, WithdrawFailureStage,
         },
         asset_token_key::AssetTokenKey,
     },
@@ -182,6 +182,21 @@ impl ApiWithdrawRepo {
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_need_resource_gate(pool.read_ref(), limit).await
+    }
+
+    pub async fn pending_resource_budget_by_owner(
+        pool: &ApiTransactionDbPool,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+    ) -> Result<PendingWithdrawResourceBudget, crate::Error> {
+        ApiWithdrawDao::pending_resource_budget_by_owner(
+            pool.read_ref(),
+            chain_code,
+            from_addr,
+            exclude_trade_no,
+        )
+        .await
     }
 
     /// Runtime repair helper: query withdraw candidates from acct_change facts.

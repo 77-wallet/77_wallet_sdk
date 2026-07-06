@@ -6,8 +6,8 @@ use crate::{
         },
         api_trade_type::ApiTradeType,
         api_withdraw::{
-            ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawCreatedFact,
-            WithdrawFailureStage,
+            ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
+            WithdrawCreatedFact, WithdrawFailureStage,
         },
     },
     pagination::Pagination,
@@ -425,6 +425,72 @@ impl ApiWithdrawDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(result)
+    }
+
+    pub async fn pending_resource_budget_by_owner<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+    ) -> Result<PendingWithdrawResourceBudget, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(estimated_resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(estimated_resource_consume, '$.energy'),
+                            json_extract(estimated_resource_consume, '$.energy_used'),
+                            json_extract(estimated_resource_consume, '$.energyUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS energy,
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(estimated_resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(estimated_resource_consume, '$.bandwidth'),
+                            json_extract(estimated_resource_consume, '$.net_used'),
+                            json_extract(estimated_resource_consume, '$.netUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS bandwidth
+            FROM api_withdraws
+            WHERE trade_type = ?
+              AND lower(chain_code) = lower(?)
+              AND from_addr = ?
+              AND trade_no <> ?
+              AND estimated_resource_consume IS NOT NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND (
+                  resource_gate_released_at IS NOT NULL
+                  OR resource_block_reason IS NOT NULL
+                  OR resource_dependency_trade_no IS NOT NULL
+                  OR raw_tx IS NOT NULL
+                  OR last_broadcast_at IS NOT NULL
+              )
+        "#;
+
+        let row = sqlx::query(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(exclude_trade_no)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        let energy = row.try_get::<i64, _>("energy").unwrap_or_default().max(0) as u64;
+        let bandwidth = row.try_get::<i64, _>("bandwidth").unwrap_or_default().max(0) as u64;
+        Ok(PendingWithdrawResourceBudget { energy, bandwidth })
     }
 
     /// Find withdraw candidates for acct_change-driven tx_hash backfill.
@@ -2545,8 +2611,8 @@ mod tests {
     use crate::{
         SqliteContext,
         entities::{
-            api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus,
-            asset_token_key::AssetTokenKey,
+            api_resource_gate::ApiResourceGateResult, api_trade_type::ApiTradeType,
+            api_withdraw::ApiWithdrawStatus, asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::withdraw::ApiWithdrawRepo,
     };
@@ -2803,6 +2869,75 @@ mod tests {
         let trade_nos = rows.into_iter().map(|row| row.trade_no).collect::<Vec<_>>();
 
         assert_eq!(trade_nos, vec!["W_FEE_ESTIMATE_PENDING"]);
+    }
+
+    #[tokio::test]
+    async fn pending_withdraw_resource_budget_sums_unfinished_same_owner_orders() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_pending_resource_budget");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for trade_no in [
+            "W_RESOURCE_CURRENT",
+            "W_RESOURCE_PENDING",
+            "W_RESOURCE_FINISHED",
+            "W_RESOURCE_OTHER_OWNER",
+        ] {
+            seed_withdraw_for_fee_estimate(&pool, trade_no, "tron", ApiTradeType::Withdraw).await;
+            ApiWithdrawRepo::update_fee_estimate(
+                &pool,
+                trade_no,
+                "1.23",
+                r#"{"bandwidth":345,"energy":13532}"#,
+            )
+            .await
+            .unwrap();
+        }
+
+        ApiWithdrawRepo::mark_resource_released(
+            &pool,
+            "W_RESOURCE_PENDING",
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
+        ApiWithdrawRepo::mark_resource_released(
+            &pool,
+            "W_RESOURCE_FINISHED",
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE api_withdraws SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE trade_no = ?")
+            .bind("W_RESOURCE_FINISHED")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        sqlx::query("UPDATE api_withdraws SET from_addr = ? WHERE trade_no = ?")
+            .bind("OTHER_OWNER")
+            .bind("W_RESOURCE_OTHER_OWNER")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        ApiWithdrawRepo::mark_resource_released(
+            &pool,
+            "W_RESOURCE_OTHER_OWNER",
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
+
+        let budget = ApiWithdrawRepo::pending_resource_budget_by_owner(
+            &pool,
+            "TRON",
+            "FROM_FEE_ESTIMATE",
+            "W_RESOURCE_CURRENT",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(budget.energy, 13_532);
+        assert_eq!(budget.bandwidth, 345);
     }
 
     #[tokio::test]
