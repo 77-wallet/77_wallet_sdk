@@ -442,6 +442,10 @@ pub struct ScannerConfig {
     pub scan_interval: Duration,
     /// 每轮最大处理数量
     pub max_items_per_scan: usize,
+    /// 每轮最大手续费估算链 RPC 意图数量
+    pub max_fee_estimate_per_scan: usize,
+    /// 每轮最大资源门控链 RPC 意图数量
+    pub max_resource_gate_per_scan: usize,
 }
 
 impl Default for ScannerConfig {
@@ -450,7 +454,24 @@ impl Default for ScannerConfig {
             shadow_rpc_policy::read_u64_env("WITHDRAW_SHADOW_SCAN_INTERVAL_SECS", 30, 10, 120);
         let max_items_per_scan =
             shadow_rpc_policy::read_usize_env("WITHDRAW_SHADOW_MAX_ITEMS_PER_SCAN", 80, 20, 200);
-        Self { scan_interval: Duration::from_secs(scan_interval_secs), max_items_per_scan }
+        let max_fee_estimate_per_scan = shadow_rpc_policy::read_usize_env(
+            "WITHDRAW_SHADOW_MAX_FEE_ESTIMATE_PER_SCAN",
+            6,
+            1,
+            50,
+        );
+        let max_resource_gate_per_scan = shadow_rpc_policy::read_usize_env(
+            "WITHDRAW_SHADOW_MAX_RESOURCE_GATE_PER_SCAN",
+            6,
+            1,
+            50,
+        );
+        Self {
+            scan_interval: Duration::from_secs(scan_interval_secs),
+            max_items_per_scan,
+            max_fee_estimate_per_scan,
+            max_resource_gate_per_scan,
+        }
     }
 }
 
@@ -526,16 +547,42 @@ impl ShadowScanner {
     /// 该 intent 只补审计展示快照，不推进 BuildTx/ResourceGate。
     async fn scan_need_fee_estimate(&self) -> Result<(), ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw fee estimate records");
+        trace!(max_items = %self.config.max_fee_estimate_per_scan, "Scanning withdraw fee estimate records");
 
         let records = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_fee_estimate(
             &pool,
-            self.config.max_items_per_scan,
+            self.config.max_fee_estimate_per_scan,
         ).await?;
 
+        let mut skipped = 0usize;
+        let mut first_skip: Option<(String, std::time::Duration)> = None;
         for record in records {
+            if let Some((host, remaining)) =
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
+                    self.ctx,
+                    &record.chain_code,
+                )
+                .await
+            {
+                skipped += 1;
+                if first_skip.is_none() {
+                    first_skip = Some((host, remaining));
+                }
+                continue;
+            }
             let intent = WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(record.trade_no));
             self.dispatch_intent(intent);
+        }
+
+        if skipped > 0 {
+            if let Some((host, remaining)) = first_skip {
+                warn!(
+                    skipped = skipped,
+                    host = %host,
+                    remaining = ?remaining,
+                    "chain rpc circuit breaker open; skipped withdraw fee estimate intents"
+                );
+            }
         }
 
         Ok(())
@@ -577,17 +624,43 @@ impl ShadowScanner {
 
     async fn scan_need_resource_gate(&self) -> Result<(), ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        trace!(max_items = %self.config.max_items_per_scan, "Scanning withdraw resource gate records");
+        trace!(max_items = %self.config.max_resource_gate_per_scan, "Scanning withdraw resource gate records");
 
         let records = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_resource_gate(
             &pool,
-            self.config.max_items_per_scan,
+            self.config.max_resource_gate_per_scan,
         ).await?;
 
+        let mut skipped = 0usize;
+        let mut first_skip: Option<(String, std::time::Duration)> = None;
         for record in records {
+            if let Some((host, remaining)) =
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
+                    self.ctx,
+                    &record.chain_code,
+                )
+                .await
+            {
+                skipped += 1;
+                if first_skip.is_none() {
+                    first_skip = Some((host, remaining));
+                }
+                continue;
+            }
             let intent =
                 WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(record.trade_no));
             self.dispatch_intent(intent);
+        }
+
+        if skipped > 0 {
+            if let Some((host, remaining)) = first_skip {
+                warn!(
+                    skipped = skipped,
+                    host = %host,
+                    remaining = ?remaining,
+                    "chain rpc circuit breaker open; skipped withdraw resource gate intents"
+                );
+            }
         }
 
         Ok(())

@@ -24,6 +24,8 @@ pub async fn send_resource_result_ack_via_worker(
         WithdrawShadowScannerConfig {
             scan_interval: std::time::Duration::from_secs(60),
             max_items_per_scan: 8,
+            max_fee_estimate_per_scan: 4,
+            max_resource_gate_per_scan: 4,
         },
         intent_tx,
         None,
@@ -46,6 +48,8 @@ pub async fn send_tx_ack_via_worker(
         WithdrawShadowScannerConfig {
             scan_interval: std::time::Duration::from_secs(60),
             max_items_per_scan: 8,
+            max_fee_estimate_per_scan: 4,
+            max_resource_gate_per_scan: 4,
         },
         intent_tx,
         None,
@@ -64,6 +68,8 @@ pub async fn upload_resource_tx_exec_receipt_via_worker(
         WithdrawShadowScannerConfig {
             scan_interval: std::time::Duration::from_secs(60),
             max_items_per_scan: 8,
+            max_fee_estimate_per_scan: 4,
+            max_resource_gate_per_scan: 4,
         },
         intent_tx,
         None,
@@ -106,6 +112,8 @@ async fn scan_withdraw_intent_summaries_once(
         WithdrawShadowScannerConfig {
             scan_interval: std::time::Duration::from_secs(60),
             max_items_per_scan: 8,
+            max_fee_estimate_per_scan: 4,
+            max_resource_gate_per_scan: 4,
         },
         intent_tx,
         None,
