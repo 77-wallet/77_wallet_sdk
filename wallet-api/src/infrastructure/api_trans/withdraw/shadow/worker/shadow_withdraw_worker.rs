@@ -913,7 +913,27 @@ impl ShadowWithdrawWorker {
                 ChainRpcGuardAttempt::Proceed(permit) => permit,
                 ChainRpcGuardAttempt::Skip => return Ok(()),
             };
-        let recover_result = self.recover_tx(&req).await;
+        let recover_result = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+            self.recover_tx(&req),
+            &req.chain_code,
+            trade_no,
+            "recover",
+            "shadow_withdraw_worker",
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                warn!(
+                    trade_no = %trade_no,
+                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                    chain_code = %req.chain_code,
+                    source = "shadow_withdraw_worker",
+                    "Recover RPC timed out; leaving tx facts intact for later retry"
+                );
+                return Ok(());
+            }
+        };
         match recover_result {
             Ok(Some(tx_resp)) => {
                 info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_withdraw_worker", "Transaction recover successful");
@@ -1049,8 +1069,8 @@ impl ShadowWithdrawWorker {
                     }
                 }
 
-                if !Self::is_evm_chain_code(&req.chain_code) {
-                    // 非 EVM 保持原行为：立即尝试推进一次
+                if !Self::tracks_broadcast_uncertain_state(&req.chain_code) {
+                    // 未纳入 broadcast-uncertain 轨道的链保持原行为：立即尝试推进一次
                     self.scanner.try_advance(trade_no).await;
                     return Ok(());
                 }
@@ -1073,8 +1093,12 @@ impl ShadowWithdrawWorker {
                     reconciled_at = ?refreshed.broadcast_uncertain_reconciled_at,
                     rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
                     source = "shadow_withdraw_worker",
-                    "EVM recover uncertain state recorded"
+                    "Recover uncertain state recorded"
                 );
+
+                if !Self::is_evm_chain_code(&refreshed.chain_code) {
+                    return Ok(());
+                }
 
                 let elapsed_secs =
                     Self::evm_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default();

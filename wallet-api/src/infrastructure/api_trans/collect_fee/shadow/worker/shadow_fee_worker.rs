@@ -278,7 +278,7 @@ impl ShadowFeeWorker {
                 return Ok(());
             }
 
-            if Self::is_evm_chain_code(&fresh_req.chain_code)
+            if Self::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
                 && fresh_req.raw_tx.is_some()
                 && fresh_req.last_broadcast_at.is_none()
                 && fresh_req.broadcast_uncertain_since_at.is_none()
@@ -290,7 +290,7 @@ impl ShadowFeeWorker {
                     tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
                     nonce = fresh_req.nonce,
                     source = "shadow_fee_worker",
-                    "Skip Recover: EVM raw_tx exists but not in uncertain state; broadcast should proceed"
+                    "Skip Recover: raw_tx exists but not in uncertain state; broadcast should proceed"
                 );
                 return Ok(());
             }
@@ -339,7 +339,27 @@ impl ShadowFeeWorker {
                 ChainRpcGuardAttempt::Proceed(permit) => permit,
                 ChainRpcGuardAttempt::Skip => return Ok(()),
             };
-        let recover_result = self.recover_tx(&req).await;
+        let recover_result = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+            self.recover_tx(&req),
+            &req.chain_code,
+            trade_no,
+            "recover",
+            "shadow_fee_worker",
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                warn!(
+                    trade_no = %trade_no,
+                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                    chain_code = %req.chain_code,
+                    source = "shadow_fee_worker",
+                    "Recover RPC timed out; leaving tx facts intact for later retry"
+                );
+                return Ok(());
+            }
+        };
         match recover_result {
             Ok(Some(tx_resp)) => {
                 info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_fee_worker", "Transaction recover successful");
@@ -478,7 +498,7 @@ impl ShadowFeeWorker {
                     }
                 }
 
-                if !Self::is_evm_chain_code(&req.chain_code) {
+                if !Self::tracks_broadcast_uncertain_state(&req.chain_code) {
                     // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
                     // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
                     self.scanner.try_advance(trade_no).await;
@@ -503,8 +523,12 @@ impl ShadowFeeWorker {
                     reconciled_at = ?refreshed.broadcast_uncertain_reconciled_at,
                     rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
                     source = "shadow_fee_worker",
-                    "EVM recover uncertain state recorded"
+                    "Recover uncertain state recorded"
                 );
+
+                if !Self::is_evm_chain_code(&refreshed.chain_code) {
+                    return Ok(());
+                }
 
                 let elapsed_secs =
                     Self::evm_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default();

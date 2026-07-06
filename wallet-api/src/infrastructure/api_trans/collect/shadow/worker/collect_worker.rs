@@ -1414,7 +1414,7 @@ impl ShadowCollectWorker {
                 return Ok(());
             }
 
-            if Self::is_evm_chain_code(&fresh_req.chain_code)
+            if Self::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
                 && fresh_req.raw_tx.is_some()
                 && fresh_req.last_broadcast_at.is_none()
                 && fresh_req.broadcast_uncertain_since_at.is_none()
@@ -1426,7 +1426,7 @@ impl ShadowCollectWorker {
                     tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
                     nonce = fresh_req.nonce,
                     source = "shadow_worker_v2",
-                    "Skip Recover: EVM raw_tx exists but not in uncertain state; broadcast should proceed"
+                    "Skip Recover: raw_tx exists but not in uncertain state; broadcast should proceed"
                 );
                 return Ok(());
             }
@@ -1475,7 +1475,27 @@ impl ShadowCollectWorker {
                 ChainRpcGuardAttempt::Proceed(permit) => permit,
                 ChainRpcGuardAttempt::Skip => return Ok(()),
             };
-        let recover_result = self.recover_tx(&req).await;
+        let recover_result = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+            self.recover_tx(&req),
+            &req.chain_code,
+            trade_no,
+            "recover",
+            "shadow_worker_v2",
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                warn!(
+                    trade_no = %trade_no,
+                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                    chain_code = %req.chain_code,
+                    source = "shadow_worker_v2",
+                    "Recover RPC timed out; leaving tx facts intact for later retry"
+                );
+                return Ok(());
+            }
+        };
         match recover_result {
             Ok(Some(tx_resp)) => {
                 info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_worker_v2", "Transaction recover successful");
@@ -1660,7 +1680,21 @@ impl ShadowCollectWorker {
                     return Ok(());
                 }
 
-                if !Self::is_evm_chain_code(&refreshed.chain_code) {
+                if !Self::is_evm_chain_code(&refreshed.chain_code)
+                    && !refreshed.chain_code.eq_ignore_ascii_case("sol")
+                {
+                    warn!(
+                        trade_no = %refreshed.trade_no,
+                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                        uncertain_duration_sec = elapsed_secs,
+                        chain_code = %refreshed.chain_code,
+                        source = "shadow_worker_v2",
+                        "Broadcast uncertain timeout reached for non-EVM chain; keep observing"
+                    );
+                    return Ok(());
+                }
+
+                if refreshed.chain_code.eq_ignore_ascii_case("sol") {
                     warn!(
                         trade_no = %refreshed.trade_no,
                         tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
