@@ -21,8 +21,10 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 /// Configuration (env):
 /// - `CHAIN_RPC_GUARD_HOSTS`: comma-separated hosts to guard (default: `api.nileex.io`)
 /// - `CHAIN_RPC_GUARD_MAX_CONCURRENCY`: guarded-endpoint global concurrency (default: 6)
+/// - `CHAIN_RPC_GUARD_ACQUIRE_TIMEOUT_MS`: max wait for a guarded permit (default: 30000)
 const DEFAULT_GUARDED_HOSTS: &str = "api.nileex.io";
 const DEFAULT_MAX_CONCURRENCY: usize = 6;
+const DEFAULT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 const CHAIN_HOST_CACHE_TTL: Duration = Duration::from_secs(60);
 const TRANSIENT_503_REPORT_WINDOW_MS: u64 = 60_000;
 
@@ -40,6 +42,15 @@ fn max_concurrency() -> usize {
         .unwrap_or(DEFAULT_MAX_CONCURRENCY)
 }
 
+fn acquire_timeout() -> Duration {
+    std::env::var("CHAIN_RPC_GUARD_ACQUIRE_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .map(Duration::from_millis)
+        .unwrap_or(DEFAULT_ACQUIRE_TIMEOUT)
+}
+
 static CHAIN_RPC_SEM: Lazy<Arc<Semaphore>> =
     Lazy::new(|| Arc::new(Semaphore::new(max_concurrency())));
 static TRANSIENT_503_COUNT: AtomicU64 = AtomicU64::new(0);
@@ -47,6 +58,35 @@ static LAST_TRANSIENT_503_REPORT_MS: AtomicU64 = AtomicU64::new(0);
 
 pub fn shared_chain_rpc_semaphore() -> Arc<Semaphore> {
     CHAIN_RPC_SEM.clone()
+}
+
+pub struct ChainRpcGuardPermit {
+    host: String,
+    _permit: OwnedSemaphorePermit,
+    acquired_at: std::time::Instant,
+}
+
+impl ChainRpcGuardPermit {
+    fn new(host: String, permit: OwnedSemaphorePermit) -> Self {
+        Self { host, _permit: permit, acquired_at: std::time::Instant::now() }
+    }
+}
+
+impl Drop for ChainRpcGuardPermit {
+    fn drop(&mut self) {
+        tracing::debug!(
+            host = %self.host,
+            held = ?self.acquired_at.elapsed(),
+            "released chain rpc guard permit"
+        );
+    }
+}
+
+pub enum ChainRpcGuardAcquire {
+    NotGuarded,
+    Acquired { host: String, permit: ChainRpcGuardPermit, waited: Duration },
+    TimedOut { host: String, timeout: Duration },
+    Closed { host: String },
 }
 
 #[derive(Default)]
@@ -207,6 +247,48 @@ pub async fn acquire_if_guarded_with_ctx(
     }
 }
 
+async fn acquire_guarded_host_permit(
+    host: String,
+    sem: Arc<Semaphore>,
+    timeout: Duration,
+) -> ChainRpcGuardAcquire {
+    let started_at = std::time::Instant::now();
+    tracing::debug!(host = %host, timeout = ?timeout, "waiting for chain rpc guard permit");
+    match tokio::time::timeout(timeout, sem.acquire_owned()).await {
+        Ok(Ok(permit)) => {
+            let waited = started_at.elapsed();
+            ChainRpcGuardAcquire::Acquired {
+                host: host.clone(),
+                permit: ChainRpcGuardPermit::new(host, permit),
+                waited,
+            }
+        }
+        Ok(Err(_)) => {
+            tracing::error!(host = %host, "chain rpc semaphore closed; skip guard acquire");
+            ChainRpcGuardAcquire::Closed { host }
+        }
+        Err(_) => {
+            tracing::warn!(
+                host = %host,
+                timeout = ?timeout,
+                waited = ?started_at.elapsed(),
+                "chain rpc guard permit wait timed out"
+            );
+            ChainRpcGuardAcquire::TimedOut { host, timeout }
+        }
+    }
+}
+
+pub async fn acquire_if_guarded_with_ctx_timeout(
+    ctx: &Context,
+    chain_code: &str,
+) -> ChainRpcGuardAcquire {
+    let Some(host) = guarded_host_for_chain_code(chain_code, ctx).await else {
+        return ChainRpcGuardAcquire::NotGuarded;
+    };
+    acquire_guarded_host_permit(host, shared_chain_rpc_semaphore(), acquire_timeout()).await
+}
+
 pub async fn record_success_for_chain_code_with_ctx(ctx: &Context, chain_code: &str) {
     let Some(host) = guarded_host_for_chain_code(chain_code, ctx).await else { return };
     breaker_for_host(&host).record_success();
@@ -271,8 +353,12 @@ pub fn is_transient_chain_rpc_error_message(msg: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{RpcCircuitBreaker, is_transient_chain_rpc_error_message};
-    use std::{thread, time::Duration};
+    use super::{
+        ChainRpcGuardAcquire, RpcCircuitBreaker, acquire_guarded_host_permit,
+        is_transient_chain_rpc_error_message,
+    };
+    use std::{sync::Arc, thread, time::Duration};
+    use tokio::sync::Semaphore;
 
     #[test]
     fn transient_chain_rpc_error_message_detects_503_and_html_payloads() {
@@ -298,5 +384,32 @@ mod tests {
         breaker.record_success();
         assert!(!breaker.is_open());
         assert!(breaker.remaining().is_none());
+    }
+
+    #[tokio::test]
+    async fn guarded_permit_acquire_times_out_without_permit() {
+        let sem = Arc::new(Semaphore::new(0));
+        let result =
+            acquire_guarded_host_permit("api.nileex.io".to_string(), sem, Duration::from_millis(1))
+                .await;
+
+        assert!(matches!(
+            result,
+            ChainRpcGuardAcquire::TimedOut { host, timeout }
+                if host == "api.nileex.io" && timeout == Duration::from_millis(1)
+        ));
+    }
+
+    #[tokio::test]
+    async fn guarded_permit_acquire_returns_permit_when_available() {
+        let sem = Arc::new(Semaphore::new(1));
+        let result =
+            acquire_guarded_host_permit("api.nileex.io".to_string(), sem, Duration::from_secs(1))
+                .await;
+
+        assert!(matches!(
+            result,
+            ChainRpcGuardAcquire::Acquired { host, .. } if host == "api.nileex.io"
+        ));
     }
 }

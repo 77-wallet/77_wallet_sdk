@@ -512,6 +512,25 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: recover must not clear `raw_tx` / `tx_hash` for rebuild when the
   fee row already has a transaction hash.
 
+### Chain RPC Guard Acquire Timeout
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/chain_rpc_guard.rs
+  guarded_permit_acquire_times_out_without_permit
+  guarded_permit_acquire_returns_permit_when_available
+  ```
+
+- Backend: none.
+- Chain/RPC facts: guarded endpoint permit acquisition is bounded by
+  `CHAIN_RPC_GUARD_ACQUIRE_TIMEOUT_MS`; a saturated semaphore returns a timeout
+  result instead of awaiting forever.
+- Invariant: collect-fee broadcast can end the current attempt and release its
+  dispatcher running key when the shared RPC guard is saturated, without writing
+  a terminal order failure.
+
 ## Template Contract
 
 `collect_notification/mod.rs` uses the role-trait Given-When-Then shape:

@@ -25,6 +25,7 @@ use crate::{
     },
     infrastructure::{
         api_trans::collect_fee::{legacy::AddressLockManager, shadow::ShadowScanner},
+        chain_rpc_guard::ChainRpcGuardAcquire,
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -843,14 +844,44 @@ impl ShadowFeeWorker {
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &fee.chain_code,
-        )
-        .await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
-        }
+        let _chain_rpc_guard =
+            match crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx_timeout(
+                self.ctx,
+                &fee.chain_code,
+            )
+            .await
+            {
+                ChainRpcGuardAcquire::Acquired { host, permit, waited } => {
+                    info!(
+                        trade_no = %trade_no,
+                        host = %host,
+                        waited = ?waited,
+                        source = "shadow_fee_worker",
+                        "Acquired chain rpc guard permit"
+                    );
+                    Some(permit)
+                }
+                ChainRpcGuardAcquire::TimedOut { host, timeout } => {
+                    warn!(
+                        trade_no = %trade_no,
+                        host = %host,
+                        timeout = ?timeout,
+                        source = "shadow_fee_worker",
+                        "Skip Broadcast: chain rpc guard permit wait timed out; scanner will retry"
+                    );
+                    return Ok(());
+                }
+                ChainRpcGuardAcquire::Closed { host } => {
+                    warn!(
+                        trade_no = %trade_no,
+                        host = %host,
+                        source = "shadow_fee_worker",
+                        "Chain rpc guard closed; continue without permit"
+                    );
+                    None
+                }
+                ChainRpcGuardAcquire::NotGuarded => None,
+            };
 
         // 6. 反序列化raw_tx
         let raw_tx = wallet_utils::serde_func::serde_from_str(fee.raw_tx.as_deref().unwrap())?;
