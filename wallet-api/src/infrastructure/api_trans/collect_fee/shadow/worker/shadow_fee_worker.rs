@@ -142,6 +142,8 @@ impl ShadowFeeWorker {
         if let Some(existing_tx_hash) = existing_tx_hash {
             if recovered_tx_hash != existing_tx_hash {
                 error!(
+                    observability_event = "shadow_recover_hash_mismatch",
+                    reason = "tx_hash_fact_conflict",
                     trade_no = %trade_no,
                     existing_tx_hash = %existing_tx_hash,
                     recover_tx_hash = %recovered_tx_hash,
@@ -310,6 +312,8 @@ impl ShadowFeeWorker {
                     .map(|ts| now.signed_duration_since(ts).num_seconds().max(0))
                     .unwrap_or_default();
                 info!(
+                    observability_event = "shadow_recover_skipped",
+                    reason = "evm_uncertain_backoff",
                     trade_no = %req.trade_no,
                     tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
                     nonce = req.nonce,
@@ -351,6 +355,8 @@ impl ShadowFeeWorker {
             Ok(result) => result,
             Err(_) => {
                 warn!(
+                    observability_event = "shadow_recover_skipped",
+                    reason = "rpc_execution_timeout",
                     trade_no = %trade_no,
                     tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
                     chain_code = %req.chain_code,
@@ -514,6 +520,8 @@ impl ShadowFeeWorker {
                 .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_fee_entity(trade_no).await?;
                 info!(
+                    observability_event = "shadow_broadcast_uncertain_recorded",
+                    reason = "recover_result_uncertain",
                     trade_no = %refreshed.trade_no,
                     tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
                     nonce = refreshed.nonce,
@@ -787,6 +795,8 @@ impl ShadowFeeWorker {
                 Ok(result) => result?,
                 Err(_) => {
                     warn!(
+                        observability_event = "shadow_build_skipped",
+                        reason = "rpc_execution_timeout",
                         trade_no = %trade_no,
                         chain_code = %fee.chain_code,
                         source = "shadow_fee_worker",
@@ -876,6 +886,8 @@ impl ShadowFeeWorker {
                 && fresh_fee.err_code.is_none()
             {
                 info!(
+                    observability_event = "shadow_broadcast_skipped",
+                    reason = "broadcast_uncertain_in_progress",
                     trade_no = %trade_no,
                     tx_hash = %fresh_fee.tx_hash.as_deref().unwrap_or_default(),
                     nonce = fresh_fee.nonce,

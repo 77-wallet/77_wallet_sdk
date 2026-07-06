@@ -286,6 +286,8 @@ async fn acquire_guarded_host_permit(
         }
         Err(_) => {
             tracing::warn!(
+                observability_event = "chain_rpc_guard_acquire_timeout",
+                reason = "guard_wait_timeout",
                 host = %host,
                 timeout = ?timeout,
                 waited = ?started_at.elapsed(),
@@ -328,6 +330,8 @@ pub async fn acquire_for_attempt_with_ctx(
         }
         ChainRpcGuardAcquire::TimedOut { host, timeout } => {
             tracing::warn!(
+                observability_event = "chain_rpc_guard_acquire_timeout",
+                reason = "guard_wait_timeout",
                 trade_no = %trade_no,
                 chain_code = %chain_code,
                 action = %action,
@@ -340,6 +344,8 @@ pub async fn acquire_for_attempt_with_ctx(
         }
         ChainRpcGuardAcquire::Closed { host } => {
             tracing::warn!(
+                observability_event = "chain_rpc_call_timeout",
+                reason = "rpc_execution_timeout",
                 trade_no = %trade_no,
                 chain_code = %chain_code,
                 action = %action,
