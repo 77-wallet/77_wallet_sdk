@@ -25,7 +25,7 @@ use crate::{
     },
     infrastructure::{
         api_trans::collect_fee::{legacy::AddressLockManager, shadow::ShadowScanner},
-        chain_rpc_guard::ChainRpcGuardAcquire,
+        chain_rpc_guard::{ChainRpcGuardAcquire, ChainRpcGuardPermit},
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -76,6 +76,11 @@ pub struct ShadowFeeWorker {
     address_locks: Arc<AddressLockManager>,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
+}
+
+enum ChainRpcAttemptGuard {
+    Proceed(Option<ChainRpcGuardPermit>),
+    Skip,
 }
 
 impl ShadowFeeWorker {
@@ -149,6 +154,56 @@ impl ShadowFeeWorker {
         }
 
         Ok(())
+    }
+
+    async fn acquire_chain_rpc_guard_for_attempt(
+        &self,
+        trade_no: &str,
+        chain_code: &str,
+        action: &str,
+    ) -> ChainRpcAttemptGuard {
+        match crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx_timeout(
+            self.ctx, chain_code,
+        )
+        .await
+        {
+            ChainRpcGuardAcquire::Acquired { host, permit, waited } => {
+                info!(
+                    trade_no = %trade_no,
+                    chain_code = %chain_code,
+                    action = %action,
+                    host = %host,
+                    waited = ?waited,
+                    source = "shadow_fee_worker",
+                    "Acquired chain rpc guard permit"
+                );
+                ChainRpcAttemptGuard::Proceed(Some(permit))
+            }
+            ChainRpcGuardAcquire::TimedOut { host, timeout } => {
+                warn!(
+                    trade_no = %trade_no,
+                    chain_code = %chain_code,
+                    action = %action,
+                    host = %host,
+                    timeout = ?timeout,
+                    source = "shadow_fee_worker",
+                    "Skip chain action: chain rpc guard permit wait timed out; scanner will retry"
+                );
+                ChainRpcAttemptGuard::Skip
+            }
+            ChainRpcGuardAcquire::Closed { host } => {
+                warn!(
+                    trade_no = %trade_no,
+                    chain_code = %chain_code,
+                    action = %action,
+                    host = %host,
+                    source = "shadow_fee_worker",
+                    "Chain rpc guard closed; continue without permit"
+                );
+                ChainRpcAttemptGuard::Proceed(None)
+            }
+            ChainRpcGuardAcquire::NotGuarded => ChainRpcAttemptGuard::Proceed(None),
+        }
     }
 
     fn should_throttle_evm_uncertain_recover(
@@ -318,18 +373,15 @@ impl ShadowFeeWorker {
             }
         }
 
-        // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &req.chain_code,
-        )
-        .await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
-        }
-
         // 执行恢复交易
+        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
+        let _chain_rpc_guard = match self
+            .acquire_chain_rpc_guard_for_attempt(trade_no, &req.chain_code, "recover")
+            .await
+        {
+            ChainRpcAttemptGuard::Proceed(permit) => permit,
+            ChainRpcAttemptGuard::Skip => return Ok(()),
+        };
         let recover_result = self.recover_tx(&req).await;
         match recover_result {
             Ok(Some(tx_resp)) => {
@@ -710,16 +762,6 @@ impl ShadowFeeWorker {
         }
 
         // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &fee.chain_code,
-        )
-        .await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
-        }
-
         // 通过Context获取Handles实例，然后获取私钥管理器
         let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
@@ -733,6 +775,14 @@ impl ShadowFeeWorker {
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_fee_worker", "Generated transfer request with nonce");
 
         // 10. 构建交易
+        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
+        let _chain_rpc_guard = match self
+            .acquire_chain_rpc_guard_for_attempt(trade_no, &fee.chain_code, "build")
+            .await
+        {
+            ChainRpcAttemptGuard::Proceed(permit) => permit,
+            ChainRpcAttemptGuard::Skip => return Ok(()),
+        };
         let (tx_hash, raw_tx, fee_str) = ApiTransDomain::build_transfer_raw(
             &self.ctx,
             transfer_req,
@@ -842,52 +892,19 @@ impl ShadowFeeWorker {
         }
         // 🔓 锁在这里已经释放
 
-        // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            match crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx_timeout(
-                self.ctx,
-                &fee.chain_code,
-            )
-            .await
-            {
-                ChainRpcGuardAcquire::Acquired { host, permit, waited } => {
-                    info!(
-                        trade_no = %trade_no,
-                        host = %host,
-                        waited = ?waited,
-                        source = "shadow_fee_worker",
-                        "Acquired chain rpc guard permit"
-                    );
-                    Some(permit)
-                }
-                ChainRpcGuardAcquire::TimedOut { host, timeout } => {
-                    warn!(
-                        trade_no = %trade_no,
-                        host = %host,
-                        timeout = ?timeout,
-                        source = "shadow_fee_worker",
-                        "Skip Broadcast: chain rpc guard permit wait timed out; scanner will retry"
-                    );
-                    return Ok(());
-                }
-                ChainRpcGuardAcquire::Closed { host } => {
-                    warn!(
-                        trade_no = %trade_no,
-                        host = %host,
-                        source = "shadow_fee_worker",
-                        "Chain rpc guard closed; continue without permit"
-                    );
-                    None
-                }
-                ChainRpcGuardAcquire::NotGuarded => None,
-            };
-
         // 6. 反序列化raw_tx
         let raw_tx = wallet_utils::serde_func::serde_from_str(fee.raw_tx.as_deref().unwrap())?;
         info!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Deserialized raw_tx successfully");
 
         // 7. 广播交易
+        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
+        let _chain_rpc_guard = match self
+            .acquire_chain_rpc_guard_for_attempt(trade_no, &fee.chain_code, "broadcast")
+            .await
+        {
+            ChainRpcAttemptGuard::Proceed(permit) => permit,
+            ChainRpcAttemptGuard::Skip => return Ok(()),
+        };
         info!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Starting to broadcast transaction");
         let tx_resp = ApiTransDomain::broadcast_transfer(
             &self.ctx,
