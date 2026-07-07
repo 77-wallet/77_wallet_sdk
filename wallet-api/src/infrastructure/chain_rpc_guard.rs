@@ -504,16 +504,20 @@ fn maybe_report_transient_503_count(now_ms: u64) {
 
 pub fn record_transient_failure_from_error<E: std::fmt::Display>(err: &E) {
     let s = err.to_string();
-    let error_code = chain_rpc_error_code(&s);
-    if is_service_unavailable_error(&s) {
+    record_transient_failure_from_message(&s);
+}
+
+pub fn record_transient_failure_from_message(msg: &str) {
+    let error_code = chain_rpc_error_code(msg);
+    if is_service_unavailable_error(msg) {
         TRANSIENT_503_COUNT.fetch_add(1, Ordering::Relaxed);
         maybe_report_transient_503_count(RpcCircuitBreaker::now_ms());
     }
 
-    if !is_transient_chain_rpc_error_message(&s) {
+    if !is_transient_chain_rpc_error_message(msg) {
         return;
     }
-    let Some(host) = guarded_host_from_error_message(&s) else { return };
+    let Some(host) = guarded_host_from_error_message(msg) else { return };
     if !is_guarded_host(&host) {
         return;
     }

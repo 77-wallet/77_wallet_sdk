@@ -1364,14 +1364,13 @@ impl ApiTransDomain {
                         .await?;
                         continue 'recover_auth_retry;
                     }
-                    if chain_rpc_guard::is_transient_chain_rpc_error_message(
-                        &service_err.to_string(),
-                    ) {
-                        tracing::warn!(trade_no=?tx_hash, "查询链上状态失败(瞬时): {}", service_err);
+                    let service_err_msg = service_err.to_string();
+                    if chain_rpc_guard::is_transient_chain_rpc_error_message(&service_err_msg) {
+                        tracing::warn!(trade_no=?tx_hash, error = %service_err_msg, "查询链上状态失败(瞬时)");
                     } else {
-                        tracing::error!(trade_no=?tx_hash, "查询链上状态失败: {}", service_err);
+                        tracing::error!(trade_no=?tx_hash, error = %service_err_msg, "查询链上状态失败");
                     }
-                    chain_rpc_guard::record_transient_failure_from_error(&service_err);
+                    chain_rpc_guard::record_transient_failure_from_message(&service_err_msg);
                     if auth_retry_attempted {
                         tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="process_recovered_tx:query_tx_res", error=%service_err, "auth retry failed");
                     }
