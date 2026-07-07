@@ -301,7 +301,7 @@ impl ShadowCollectWorker {
     }
 
     fn is_collect_build_503_error(err: &ServiceError) -> bool {
-        err.to_string().contains("code=503")
+        crate::infrastructure::chain_rpc_guard::chain_rpc_error_code(&err.to_string()) == Some(503)
     }
 
     fn build_503_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {

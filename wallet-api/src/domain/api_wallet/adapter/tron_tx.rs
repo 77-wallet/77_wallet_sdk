@@ -92,9 +92,7 @@ impl TronTx {
     }
 
     fn is_empty_tx_query_payload(err_msg: &str) -> bool {
-        err_msg.contains("missing field `Error`")
-            || err_msg.contains("value = {}")
-            || err_msg.contains("all response:{}")
+        crate::infrastructure::chain_rpc_guard::is_empty_chain_rpc_response_message(err_msg)
     }
 
     #[cfg(test)]

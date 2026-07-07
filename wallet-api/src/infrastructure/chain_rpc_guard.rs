@@ -503,7 +503,7 @@ fn maybe_report_transient_503_count(now_ms: u64) {
 
 pub fn record_transient_failure_from_error<E: std::fmt::Display>(err: &E) {
     let s = err.to_string();
-    let error_code = if s.contains("code=503") { Some(503) } else { None };
+    let error_code = chain_rpc_error_code(&s);
     if error_code == Some(503) {
         TRANSIENT_503_COUNT.fetch_add(1, Ordering::Relaxed);
         maybe_report_transient_503_count(RpcCircuitBreaker::now_ms());
@@ -523,15 +523,23 @@ fn guarded_host_from_error_message(msg: &str) -> Option<String> {
     GUARDED_HOSTS.iter().find(|h| msg.contains(h.as_str())).cloned()
 }
 
+pub fn chain_rpc_error_code(msg: &str) -> Option<u16> {
+    if msg.contains("code=503") { Some(503) } else { None }
+}
+
+pub fn is_empty_chain_rpc_response_message(msg: &str) -> bool {
+    msg.contains("missing field `Error`")
+        || msg.contains("value = {}")
+        || msg.contains("all response:{}")
+}
+
 pub fn is_transient_chain_rpc_error_message(msg: &str) -> bool {
     // Transient patterns seen under pressure:
     // - HTTP 503 + HTML error pages
     // - Empty JSON / partial bodies causing deserialization errors
-    msg.contains("code=503")
+    chain_rpc_error_code(msg).is_some()
         || msg.contains("<!DOCTYPE html>")
-        || msg.contains("missing field `Error`")
-        || msg.contains("value = {}")
-        || msg.contains("all response:{}")
+        || is_empty_chain_rpc_response_message(msg)
 }
 
 #[cfg(test)]
@@ -548,9 +556,16 @@ mod tests {
         assert!(is_transient_chain_rpc_error_message(
             "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
         ));
+        assert_eq!(
+            super::chain_rpc_error_code(
+                "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
+            ),
+            Some(503)
+        );
         assert!(is_transient_chain_rpc_error_message(
             "all response:<!DOCTYPE html><html><body>nginx</body></html>"
         ));
+        assert!(super::is_empty_chain_rpc_response_message("all response:{}"));
         assert!(!is_transient_chain_rpc_error_message("rpc error: invalid address"));
     }
 
