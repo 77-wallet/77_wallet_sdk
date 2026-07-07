@@ -441,6 +441,43 @@ pub async fn run_guarded_with_ctx_and_log<T, Fut>(
 where
     Fut: Future<Output = Result<T, ServiceError>>,
 {
+    match run_guarded_raw_with_ctx_and_log(
+        ctx,
+        chain_code,
+        trade_no,
+        action,
+        source,
+        failure_log,
+        future,
+    )
+    .await?
+    {
+        Some(Ok(value)) => {
+            record_success_for_chain_code_with_ctx(ctx, chain_code).await;
+            Ok(Some(value))
+        }
+        Some(Err(err)) => {
+            let rpc_error = ChainRpcErrorContext::from_display(&err);
+            failure_log.warn(&rpc_error, "guarded chain rpc call failed");
+            rpc_error.record_transient_failure();
+            Err(err)
+        }
+        None => Ok(None),
+    }
+}
+
+pub async fn run_guarded_raw_with_ctx_and_log<T, Fut>(
+    ctx: &Context,
+    chain_code: &str,
+    trade_no: &str,
+    action: &str,
+    source: &str,
+    failure_log: ChainRpcFailureLog<'_>,
+    future: Fut,
+) -> Result<Option<T>, ServiceError>
+where
+    Fut: Future<Output = T>,
+{
     if let Some((host, remaining)) = breaker_open_for_chain_code_with_ctx(ctx, chain_code).await {
         tracing::warn!(
             trade_no = %trade_no,
@@ -467,16 +504,7 @@ where
     };
 
     match run_with_rpc_timeout(future, chain_code, trade_no, action, source).await {
-        Ok(Ok(value)) => {
-            record_success_for_chain_code_with_ctx(ctx, chain_code).await;
-            Ok(Some(value))
-        }
-        Ok(Err(err)) => {
-            let rpc_error = ChainRpcErrorContext::from_display(&err);
-            failure_log.warn(&rpc_error, "guarded chain rpc call failed");
-            rpc_error.record_transient_failure();
-            Err(err)
-        }
+        Ok(value) => Ok(Some(value)),
         Err(_) => {
             failure_log.timeout_skip("rpc_execution_timeout");
             Ok(None)
