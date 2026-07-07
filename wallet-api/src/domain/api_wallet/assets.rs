@@ -1132,20 +1132,25 @@ impl ApiChainBalance {
         let raw =
             adapter.balance_token_key(&address, token_address.clone()).await.map_err(|e| {
                 let err = crate::error::service::ServiceError::from(e);
+                let err_msg = err.to_string();
+                let rpc_error = chain_rpc_guard::classify_chain_rpc_error_message(&err_msg);
                 // 记录瞬时链路错误（503/HTML 错页/异常响应），驱动熔断器统计与打开。
-                chain_rpc_guard::record_transient_failure_from_error(&err);
+                chain_rpc_guard::record_transient_failure_from_message(&err_msg);
                 // 在错误处理中克隆所有需要的值
                 let address_clone = address.clone();
                 let chain_code_clone = chain_code.clone();
                 let symbol_clone = symbol.clone();
                 let token_address_clone = token_address.clone();
                 tracing::error!(
-                    "获取API余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
-                    address_clone,
-                    chain_code_clone,
-                    symbol_clone,
-                    token_address_clone,
-                    err
+                    address = %address_clone,
+                    chain_code = %chain_code_clone,
+                    symbol = %symbol_clone,
+                    token = ?token_address_clone,
+                    error_code = ?rpc_error.error_code,
+                    guarded_host = ?rpc_error.guarded_host.as_deref(),
+                    transient_reason = ?rpc_error.transient_reason,
+                    error = %err_msg,
+                    "获取API余额出错"
                 );
                 // 重新构造 BalanceTask 以便返回
                 (
