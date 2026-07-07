@@ -508,24 +508,46 @@ pub fn record_transient_failure_from_error<E: std::fmt::Display>(err: &E) {
 }
 
 pub fn record_transient_failure_from_message(msg: &str) {
-    let error_code = chain_rpc_error_code(msg);
-    if is_service_unavailable_error(msg) {
+    let classification = classify_chain_rpc_error_message(msg);
+    if classification.is_service_unavailable {
         TRANSIENT_503_COUNT.fetch_add(1, Ordering::Relaxed);
         maybe_report_transient_503_count(RpcCircuitBreaker::now_ms());
     }
 
-    if !is_transient_chain_rpc_error_message(msg) {
+    if !classification.is_transient {
         return;
     }
-    let Some(host) = guarded_host_from_error_message(msg) else { return };
-    if !is_guarded_host(&host) {
-        return;
-    }
-    breaker_for_host(&host).record_failure(error_code);
+    let Some(host) = classification.guarded_host else { return };
+    breaker_for_host(&host).record_failure(classification.error_code);
 }
 
-fn guarded_host_from_error_message(msg: &str) -> Option<String> {
+pub fn guarded_chain_rpc_host_from_message(msg: &str) -> Option<String> {
     GUARDED_HOSTS.iter().find(|h| msg.contains(h.as_str())).cloned()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainRpcErrorClassification {
+    pub error_code: Option<u16>,
+    pub guarded_host: Option<String>,
+    pub is_service_unavailable: bool,
+    pub is_html_error_page: bool,
+    pub is_empty_response: bool,
+    pub is_transient: bool,
+}
+
+pub fn classify_chain_rpc_error_message(msg: &str) -> ChainRpcErrorClassification {
+    let error_code = chain_rpc_error_code(msg);
+    let is_service_unavailable = error_code == Some(HTTP_STATUS_SERVICE_UNAVAILABLE);
+    let is_html_error_page = is_chain_rpc_html_error_page(msg);
+    let is_empty_response = is_empty_chain_rpc_response_message(msg);
+    ChainRpcErrorClassification {
+        error_code,
+        guarded_host: guarded_chain_rpc_host_from_message(msg),
+        is_service_unavailable,
+        is_html_error_page,
+        is_empty_response,
+        is_transient: is_service_unavailable || is_html_error_page || is_empty_response,
+    }
 }
 
 pub fn chain_rpc_error_code(msg: &str) -> Option<u16> {
@@ -549,16 +571,14 @@ pub fn is_empty_chain_rpc_response_message(msg: &str) -> bool {
 }
 
 pub fn is_service_unavailable_error(msg: &str) -> bool {
-    chain_rpc_error_code(msg) == Some(HTTP_STATUS_SERVICE_UNAVAILABLE)
+    classify_chain_rpc_error_message(msg).is_service_unavailable
 }
 
 pub fn is_transient_chain_rpc_error_message(msg: &str) -> bool {
     // Transient patterns seen under pressure:
     // - HTTP 503 + HTML error pages
     // - Empty JSON / partial bodies causing deserialization errors
-    is_service_unavailable_error(msg)
-        || is_chain_rpc_html_error_page(msg)
-        || is_empty_chain_rpc_response_message(msg)
+    classify_chain_rpc_error_message(msg).is_transient
 }
 
 pub fn is_chain_rpc_html_error_page(msg: &str) -> bool {
@@ -569,6 +589,7 @@ pub fn is_chain_rpc_html_error_page(msg: &str) -> bool {
 mod tests {
     use super::{
         ChainRpcGuardAcquire, RpcCircuitBreaker, acquire_guarded_host_permit, chain_rpc_error_code,
+        classify_chain_rpc_error_message, guarded_chain_rpc_host_from_message,
         is_chain_rpc_html_error_page, is_empty_chain_rpc_response_message,
         is_service_unavailable_error, is_transient_chain_rpc_error_message,
         run_with_rpc_timeout_duration,
@@ -578,12 +599,9 @@ mod tests {
 
     #[test]
     fn transient_chain_rpc_error_message_detects_503_and_html_payloads() {
-        assert!(is_transient_chain_rpc_error_message(
-            "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
-        ));
-        assert!(is_service_unavailable_error(
-            "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
-        ));
+        let nile_503 = "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract";
+        assert!(is_transient_chain_rpc_error_message(nile_503));
+        assert!(is_service_unavailable_error(nile_503));
         assert_eq!(
             chain_rpc_error_code(
                 "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
@@ -600,6 +618,12 @@ mod tests {
             chain_rpc_error_code("Node response error: code=-32000, rpc=https://example"),
             None
         );
+        assert_eq!(guarded_chain_rpc_host_from_message(nile_503).as_deref(), Some("api.nileex.io"));
+        let classification = classify_chain_rpc_error_message(nile_503);
+        assert_eq!(classification.error_code, Some(503));
+        assert_eq!(classification.guarded_host.as_deref(), Some("api.nileex.io"));
+        assert!(classification.is_service_unavailable);
+        assert!(classification.is_transient);
         assert!(is_transient_chain_rpc_error_message(
             "all response:<!DOCTYPE html><html><body>nginx</body></html>"
         ));
