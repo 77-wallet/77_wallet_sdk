@@ -1135,15 +1135,17 @@ impl ApiTransDomain {
     ) -> Result<Option<TransferResp>, ServiceError> {
         tracing::info!(tx_hash=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
-        if let Some((host, remaining)) =
-            chain_rpc_guard::breaker_open_for_chain_code_with_ctx(ctx, chain_code).await
+        if let Some(detail) =
+            chain_rpc_guard::breaker_open_detail_for_chain_code_with_ctx(ctx, chain_code).await
         {
             tracing::warn!(
+                reason = "rpc_circuit_breaker_open",
                 chain_code = %chain_code,
-                host = %host,
-                remaining = ?remaining,
+                host = %detail.host,
+                remaining = ?detail.remaining,
+                last_error_code = ?detail.last_error_code,
                 tx_hash = %tx_hash,
-                "chain rpc circuit breaker open; skip recover query in this round"
+                "Recover query skipped because chain RPC circuit breaker is open"
             );
             return Ok(None);
         }

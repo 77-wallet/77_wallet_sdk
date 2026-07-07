@@ -112,6 +112,7 @@ pub struct RpcCircuitBreaker {
     consecutive_failures: AtomicU32,
     last_failure_ms: AtomicU64,
     last_reported_open_until_ms: AtomicU64,
+    last_error_code: AtomicU32,
 }
 
 impl RpcCircuitBreaker {
@@ -131,9 +132,15 @@ impl RpcCircuitBreaker {
         if now >= until { None } else { Some(Duration::from_millis(until - now)) }
     }
 
+    pub fn last_error_code(&self) -> Option<u16> {
+        let code = self.last_error_code.load(Ordering::Relaxed);
+        if code == 0 { None } else { Some(code as u16) }
+    }
+
     pub fn record_success(&self) {
         self.consecutive_failures.store(0, Ordering::Relaxed);
         self.last_failure_ms.store(0, Ordering::Relaxed);
+        self.last_error_code.store(0, Ordering::Relaxed);
         // 成功后立即清空 open_until，避免熔断窗口继续阻塞后续请求。
         self.open_until_ms.store(0, Ordering::Relaxed);
         let last_reported = self.last_reported_open_until_ms.swap(0, Ordering::Relaxed);
@@ -142,7 +149,10 @@ impl RpcCircuitBreaker {
         }
     }
 
-    pub fn record_failure(&self) {
+    pub fn record_failure(&self, error_code: Option<u16>) {
+        if let Some(code) = error_code {
+            self.last_error_code.store(code as u32, Ordering::Relaxed);
+        }
         let now = Self::now_ms();
         let last = self.last_failure_ms.swap(now, Ordering::Relaxed);
 
@@ -239,11 +249,30 @@ pub async fn breaker_open_for_chain_code_with_ctx(
     ctx: &Context,
     chain_code: &str,
 ) -> Option<(String, Duration)> {
+    breaker_open_detail_for_chain_code_with_ctx(ctx, chain_code)
+        .await
+        .map(|detail| (detail.host, detail.remaining))
+}
+
+pub struct ChainRpcBreakerOpenDetail {
+    pub host: String,
+    pub remaining: Duration,
+    pub last_error_code: Option<u16>,
+}
+
+pub async fn breaker_open_detail_for_chain_code_with_ctx(
+    ctx: &Context,
+    chain_code: &str,
+) -> Option<ChainRpcBreakerOpenDetail> {
     let host = guarded_host_for_chain_code(chain_code, ctx).await?;
     let breaker = breaker_for_host(&host);
     if breaker.is_open() {
         let remaining = breaker.remaining().unwrap_or(Duration::from_secs(0));
-        Some((host, remaining))
+        Some(ChainRpcBreakerOpenDetail {
+            host,
+            remaining,
+            last_error_code: breaker.last_error_code(),
+        })
     } else {
         None
     }
@@ -474,7 +503,8 @@ fn maybe_report_transient_503_count(now_ms: u64) {
 
 pub fn record_transient_failure_from_error<E: std::fmt::Display>(err: &E) {
     let s = err.to_string();
-    if s.contains("code=503") {
+    let error_code = if s.contains("code=503") { Some(503) } else { None };
+    if error_code == Some(503) {
         TRANSIENT_503_COUNT.fetch_add(1, Ordering::Relaxed);
         maybe_report_transient_503_count(RpcCircuitBreaker::now_ms());
     }
@@ -486,7 +516,7 @@ pub fn record_transient_failure_from_error<E: std::fmt::Display>(err: &E) {
     if !is_guarded_host(&host) {
         return;
     }
-    breaker_for_host(&host).record_failure();
+    breaker_for_host(&host).record_failure(error_code);
 }
 
 fn guarded_host_from_error_message(msg: &str) -> Option<String> {
@@ -528,15 +558,17 @@ mod tests {
     fn rpc_circuit_breaker_opens_after_consecutive_failures_and_closes_on_success() {
         let breaker = RpcCircuitBreaker::default();
         for _ in 0..10 {
-            breaker.record_failure();
+            breaker.record_failure(Some(503));
             thread::sleep(Duration::from_millis(1));
         }
         assert!(breaker.is_open());
         assert!(breaker.remaining().is_some());
+        assert_eq!(breaker.last_error_code(), Some(503));
 
         breaker.record_success();
         assert!(!breaker.is_open());
         assert!(breaker.remaining().is_none());
+        assert_eq!(breaker.last_error_code(), None);
     }
 
     #[tokio::test]
