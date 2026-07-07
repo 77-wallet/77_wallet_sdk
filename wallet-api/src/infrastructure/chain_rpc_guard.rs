@@ -524,7 +524,17 @@ fn guarded_host_from_error_message(msg: &str) -> Option<String> {
 }
 
 pub fn chain_rpc_error_code(msg: &str) -> Option<u16> {
-    if msg.contains("code=503") { Some(503) } else { None }
+    for marker in ["code=", "code:"] {
+        let Some((_, tail)) = msg.split_once(marker) else {
+            continue;
+        };
+        let digits: String =
+            tail.trim_start().chars().take_while(|ch| ch.is_ascii_digit()).collect();
+        if let Ok(code) = digits.parse::<u16>() {
+            return Some(code);
+        }
+    }
+    None
 }
 
 pub fn is_empty_chain_rpc_response_message(msg: &str) -> bool {
@@ -537,7 +547,7 @@ pub fn is_transient_chain_rpc_error_message(msg: &str) -> bool {
     // Transient patterns seen under pressure:
     // - HTTP 503 + HTML error pages
     // - Empty JSON / partial bodies causing deserialization errors
-    chain_rpc_error_code(msg).is_some()
+    chain_rpc_error_code(msg) == Some(503)
         || msg.contains("<!DOCTYPE html>")
         || is_empty_chain_rpc_response_message(msg)
 }
@@ -561,6 +571,16 @@ mod tests {
                 "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
             ),
             Some(503)
+        );
+        assert_eq!(
+            super::chain_rpc_error_code(
+                "NodeResponseError { code: 503, rpc: \"https://api.nileex.io/wallet/triggerconstantcontract\" }"
+            ),
+            Some(503)
+        );
+        assert_eq!(
+            super::chain_rpc_error_code("Node response error: code=-32000, rpc=https://example"),
+            None
         );
         assert!(is_transient_chain_rpc_error_message(
             "all response:<!DOCTYPE html><html><body>nginx</body></html>"
