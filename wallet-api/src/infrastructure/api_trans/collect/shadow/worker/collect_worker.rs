@@ -65,18 +65,15 @@ use crate::{
         },
         service::ServiceError,
     },
-    infrastructure::{
-        api_trans::{
-            collect::legacy::AddressLockManager,
-            resource_amount::energy_shortfall_to_apply_amounts,
-            resource_apply_outcome::PlatformApplyOutcome,
-            resource_delegation::{
-                execute_resource_delegation, resource_delegation_failure_fact,
-                resource_delegation_retry_wait_secs,
-            },
-            resource_rpc_auth,
+    infrastructure::api_trans::{
+        collect::legacy::AddressLockManager,
+        resource_amount::energy_shortfall_to_apply_amounts,
+        resource_apply_outcome::PlatformApplyOutcome,
+        resource_delegation::{
+            execute_resource_delegation, resource_delegation_failure_fact,
+            resource_delegation_retry_wait_secs,
         },
-        chain_rpc_guard::ChainRpcGuardAttempt,
+        resource_rpc_auth,
     },
     request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
 };

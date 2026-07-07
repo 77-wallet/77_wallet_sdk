@@ -13,7 +13,7 @@ use crate::{
     request::api_wallet::trans::ApiTransferReq,
 };
 use sha3::{Digest, Keccak256};
-use std::time::Instant;
+use std::{fmt::Display, time::Instant};
 use tokio::time::sleep;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_types::chain::chain::ChainCode;
@@ -229,6 +229,28 @@ impl ApiTransDomain {
 
     fn need_broadcast_visibility_check(chain_code: &str) -> bool {
         Self::is_evm_chain(chain_code) || Self::is_sol_chain(chain_code)
+    }
+
+    fn warn_chain_rpc_failure(
+        error: &impl Display,
+        log: chain_rpc_guard::ChainRpcFailureLog<'_>,
+        reason: &str,
+    ) -> chain_rpc_guard::ChainRpcErrorContext {
+        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(error);
+        log.warn(&rpc_error, reason);
+        rpc_error.record_transient_failure();
+        rpc_error
+    }
+
+    fn error_chain_rpc_failure(
+        error: &impl Display,
+        log: chain_rpc_guard::ChainRpcFailureLog<'_>,
+        reason: &str,
+    ) -> chain_rpc_guard::ChainRpcErrorContext {
+        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(error);
+        log.error(&rpc_error, reason);
+        rpc_error.record_transient_failure();
+        rpc_error
     }
 
     fn log_visibility_probe(
@@ -790,32 +812,31 @@ impl ApiTransDomain {
                     } else if chain_code.eq_ignore_ascii_case(&ChainCode::Tron.to_string())
                         && Self::is_transaction_expired_error(&e)
                     {
-                        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
-                        chain_rpc_guard::ChainRpcFailureLog::new()
-                            .chain_code(chain_code)
-                            .rpc(&rpc)
-                            .op("broadcast_transfer")
-                            .warn(
-                                &rpc_error,
-                                "broadcast transaction expired; return error so raw tx can be rebuilt",
-                            );
-                        rpc_error.record_transient_failure();
+                        Self::warn_chain_rpc_failure(
+                            &e,
+                            chain_rpc_guard::ChainRpcFailureLog::new()
+                                .chain_code(chain_code)
+                                .rpc(&rpc)
+                                .op("broadcast_transfer"),
+                            "broadcast transaction expired; return error so raw tx can be rebuilt",
+                        );
                         return Err(e);
                     } else if e.is_network_error() {
-                        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
-                        chain_rpc_guard::ChainRpcFailureLog::new()
-                            .chain_code(chain_code)
-                            .rpc(&rpc)
-                            .op("broadcast_transfer")
-                            .error(&rpc_error, "broadcast_transfer: 网络错误, 交易广播失败");
-                        rpc_error.record_transient_failure();
+                        Self::error_chain_rpc_failure(
+                            &e,
+                            chain_rpc_guard::ChainRpcFailureLog::new()
+                                .chain_code(chain_code)
+                                .rpc(&rpc)
+                                .op("broadcast_transfer"),
+                            "broadcast_transfer: 网络错误, 交易广播失败",
+                        );
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                         }
                         return Ok(None);
                     } else {
-                        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
-                        rpc_error.record_transient_failure();
+                        chain_rpc_guard::ChainRpcErrorContext::from_display(&e)
+                            .record_transient_failure();
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                         }
@@ -849,27 +870,27 @@ impl ApiTransDomain {
                         continue 'auth_retry;
                     }
                     Err(e) => {
-                        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
                         if e.is_delay_retryable() {
+                            Self::warn_chain_rpc_failure(
+                                &e,
+                                chain_rpc_guard::ChainRpcFailureLog::new()
+                                    .chain_code(chain_code)
+                                    .rpc(&rpc)
+                                    .visibility_kind(visibility_kind)
+                                    .op("broadcast_transfer:visibility_probe"),
+                                "broadcast visibility probe failed with delay retryable error",
+                            );
+                            return Ok(None);
+                        }
+                        Self::warn_chain_rpc_failure(
+                            &e,
                             chain_rpc_guard::ChainRpcFailureLog::new()
                                 .chain_code(chain_code)
                                 .rpc(&rpc)
                                 .visibility_kind(visibility_kind)
-                                .op("broadcast_transfer:visibility_probe")
-                                .warn(
-                                    &rpc_error,
-                                    "broadcast visibility probe failed with delay retryable error",
-                                );
-                            rpc_error.record_transient_failure();
-                            return Ok(None);
-                        }
-                        chain_rpc_guard::ChainRpcFailureLog::new()
-                            .chain_code(chain_code)
-                            .rpc(&rpc)
-                            .visibility_kind(visibility_kind)
-                            .op("broadcast_transfer:visibility_probe")
-                            .warn(&rpc_error, "broadcast visibility probe failed");
-                        rpc_error.record_transient_failure();
+                                .op("broadcast_transfer:visibility_probe"),
+                            "broadcast visibility probe failed",
+                        );
                         return Ok(None);
                     }
                 };
@@ -976,21 +997,18 @@ impl ApiTransDomain {
                                 continue 'auth_retry;
                             }
                             Err(e) => {
-                                let rpc_error =
-                                    chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
-                                chain_rpc_guard::ChainRpcFailureLog::new()
-                                    .chain_code(chain_code)
-                                    .rpc(&rpc)
-                                    .tx_hash(&resp.tx_hash)
-                                    .visibility_kind(visibility_kind)
-                                    .op("broadcast_transfer:visibility_check")
-                                    .attempt(attempt as u32)
-                                    .delay_ms(*delay_ms as u64)
-                                    .warn(
-                                        &rpc_error,
-                                        "broadcast visibility check miss (uncertain)",
-                                    );
-                                rpc_error.record_transient_failure();
+                                Self::warn_chain_rpc_failure(
+                                    &e,
+                                    chain_rpc_guard::ChainRpcFailureLog::new()
+                                        .chain_code(chain_code)
+                                        .rpc(&rpc)
+                                        .tx_hash(&resp.tx_hash)
+                                        .visibility_kind(visibility_kind)
+                                        .op("broadcast_transfer:visibility_check")
+                                        .attempt(attempt as u32)
+                                        .delay_ms(*delay_ms as u64),
+                                    "broadcast visibility check miss (uncertain)",
+                                );
                                 if auth_retry_attempted {
                                     tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                                 }
@@ -1262,18 +1280,15 @@ impl ApiTransDomain {
                                 );
                             }
                             Err(e) => {
-                                let rpc_error =
-                                    chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
-                                chain_rpc_guard::ChainRpcFailureLog::new()
-                                    .trade_no(tx_hash)
-                                    .tx_hash(tx_hash)
-                                    .rpc(&rpc)
-                                    .op("process_recovered_tx:sol_visibility_probe")
-                                    .warn(
-                                        &rpc_error,
-                                        "Solana visibility probe failed during recover",
-                                    );
-                                rpc_error.record_transient_failure();
+                                Self::warn_chain_rpc_failure(
+                                    &e,
+                                    chain_rpc_guard::ChainRpcFailureLog::new()
+                                        .trade_no(tx_hash)
+                                        .tx_hash(tx_hash)
+                                        .rpc(&rpc)
+                                        .op("process_recovered_tx:sol_visibility_probe"),
+                                    "Solana visibility probe failed during recover",
+                                );
                             }
                         }
                     }
@@ -1391,30 +1406,24 @@ impl ApiTransDomain {
                         .await?;
                         continue 'recover_auth_retry;
                     }
+                    let failure_log = chain_rpc_guard::ChainRpcFailureLog::new()
+                        .trade_no(tx_hash)
+                        .tx_hash(tx_hash)
+                        .chain_code(chain_code)
+                        .rpc(&rpc)
+                        .op("process_recovered_tx:query_tx_res");
                     let rpc_error =
                         chain_rpc_guard::ChainRpcErrorContext::from_display(&service_err);
                     if rpc_error.is_transient() {
-                        chain_rpc_guard::ChainRpcFailureLog::new()
-                            .trade_no(tx_hash)
-                            .tx_hash(tx_hash)
-                            .chain_code(chain_code)
-                            .rpc(&rpc)
-                            .op("process_recovered_tx:query_tx_res")
-                            .warn(
-                                &rpc_error,
-                                "查询链上状态失败(瞬时); recovered tx result will stay uncertain",
-                            );
+                        failure_log.warn(
+                            &rpc_error,
+                            "查询链上状态失败(瞬时); recovered tx result will stay uncertain",
+                        );
                     } else {
-                        chain_rpc_guard::ChainRpcFailureLog::new()
-                            .trade_no(tx_hash)
-                            .tx_hash(tx_hash)
-                            .chain_code(chain_code)
-                            .rpc(&rpc)
-                            .op("process_recovered_tx:query_tx_res")
-                            .error(
-                                &rpc_error,
-                                "查询链上状态失败; recovered tx result will stay uncertain",
-                            );
+                        failure_log.error(
+                            &rpc_error,
+                            "查询链上状态失败; recovered tx result will stay uncertain",
+                        );
                     }
                     rpc_error.record_transient_failure();
                     if auth_retry_attempted {
