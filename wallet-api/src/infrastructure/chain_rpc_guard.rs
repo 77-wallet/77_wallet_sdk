@@ -413,11 +413,45 @@ pub async fn run_guarded_with_ctx<T, Fut>(
 where
     Fut: Future<Output = Result<T, ServiceError>>,
 {
+    run_guarded_with_ctx_and_log(
+        ctx,
+        chain_code,
+        trade_no,
+        action,
+        source,
+        ChainRpcFailureLog::new()
+            .trade_no(trade_no)
+            .chain_code(chain_code)
+            .source(source)
+            .op(action),
+        future,
+    )
+    .await
+}
+
+pub async fn run_guarded_with_ctx_and_log<T, Fut>(
+    ctx: &Context,
+    chain_code: &str,
+    trade_no: &str,
+    action: &str,
+    source: &str,
+    failure_log: ChainRpcFailureLog<'_>,
+    future: Fut,
+) -> Result<Option<T>, ServiceError>
+where
+    Fut: Future<Output = Result<T, ServiceError>>,
+{
     if let Some((host, remaining)) = breaker_open_for_chain_code_with_ctx(ctx, chain_code).await {
         tracing::warn!(
             trade_no = %trade_no,
             chain_code = %chain_code,
             action = %action,
+            op = failure_log.op.unwrap_or(action),
+            tx_hash = failure_log.tx_hash.unwrap_or(""),
+            address = failure_log.address.unwrap_or(""),
+            symbol = failure_log.symbol.unwrap_or(""),
+            token = failure_log.token.unwrap_or(""),
+            exec_to_addr = failure_log.exec_to_addr.unwrap_or(""),
             host = %host,
             remaining = ?remaining,
             source = %source,
@@ -439,12 +473,7 @@ where
         }
         Ok(Err(err)) => {
             let rpc_error = ChainRpcErrorContext::from_display(&err);
-            ChainRpcFailureLog::new()
-                .trade_no(trade_no)
-                .chain_code(chain_code)
-                .source(source)
-                .op(action)
-                .warn(&rpc_error, "guarded chain rpc call failed");
+            failure_log.warn(&rpc_error, "guarded chain rpc call failed");
             rpc_error.record_transient_failure();
             Err(err)
         }

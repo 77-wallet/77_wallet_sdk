@@ -899,73 +899,21 @@ impl ShadowCollectWorker {
         exec_to_addr: &str,
         origin_trade_no: &str,
     ) -> Result<Option<ResourceGateSnapshot>, ServiceError> {
-        if let Some((host, remaining)) =
-            crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
-                self.ctx,
-                &req.chain_code,
-            )
-            .await
-        {
-            warn!(
-                origin_trade_no = %origin_trade_no,
-                chain_code = %req.chain_code,
-                host = %host,
-                remaining = ?remaining,
-                source = "shadow_worker_v2",
-                "Skip resource gate evaluation: chain rpc circuit breaker open"
-            );
-            return Ok(None);
-        }
-
-        let _chain_rpc_guard =
-            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
-                self.ctx,
-                &req.chain_code,
-                origin_trade_no,
-                "resource_gate",
-                "shadow_worker_v2",
-            )
-            .await
-            {
-                ChainRpcGuardAttempt::Proceed(permit) => permit,
-                ChainRpcGuardAttempt::Skip => return Ok(None),
-            };
-
-        let result = crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
-            self.eval_collect_resource_gate_snapshot(req, exec_to_addr),
+        crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+            self.ctx,
             &req.chain_code,
             origin_trade_no,
             "resource_gate",
             "shadow_worker_v2",
+            crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                .trade_no(origin_trade_no)
+                .chain_code(&req.chain_code)
+                .exec_to_addr(exec_to_addr)
+                .source("shadow_worker_v2")
+                .op("resource_gate"),
+            self.eval_collect_resource_gate_snapshot(req, exec_to_addr),
         )
-        .await;
-
-        match result {
-            Ok(Ok(snapshot)) => {
-                crate::infrastructure::chain_rpc_guard::record_success_for_chain_code_with_ctx(
-                    self.ctx,
-                    &req.chain_code,
-                )
-                .await;
-                Ok(Some(snapshot))
-            }
-            Ok(Err(err)) => {
-                let rpc_error =
-                    crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(
-                        &err,
-                    );
-                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
-                    .trade_no(origin_trade_no)
-                    .chain_code(&req.chain_code)
-                    .exec_to_addr(exec_to_addr)
-                    .source("shadow_worker_v2")
-                    .op("resource_gate")
-                    .warn(&rpc_error, "Resource gate snapshot failed");
-                rpc_error.record_transient_failure();
-                Err(err)
-            }
-            Err(_) => Ok(None),
-        }
+        .await
     }
 
     async fn eval_collect_resource_gate_snapshot(
