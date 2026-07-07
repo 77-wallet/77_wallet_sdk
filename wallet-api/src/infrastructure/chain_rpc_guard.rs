@@ -789,11 +789,11 @@ pub fn is_chain_rpc_html_error_page(msg: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChainRpcGuardAcquire, RpcCircuitBreaker, acquire_guarded_host_permit, chain_rpc_error_code,
-        classify_chain_rpc_error_message, guarded_chain_rpc_host_from_message,
-        is_chain_rpc_html_error_page, is_empty_chain_rpc_response_message,
-        is_service_unavailable_error, is_transient_chain_rpc_error_message,
-        run_with_rpc_timeout_duration,
+        ChainRpcErrorContext, ChainRpcGuardAcquire, RpcCircuitBreaker, acquire_guarded_host_permit,
+        chain_rpc_error_code, classify_chain_rpc_error_message,
+        guarded_chain_rpc_host_from_message, is_chain_rpc_html_error_page,
+        is_empty_chain_rpc_response_message, is_service_unavailable_error,
+        is_transient_chain_rpc_error_message, run_with_rpc_timeout_duration,
     };
     use std::{sync::Arc, thread, time::Duration};
     use tokio::sync::Semaphore;
@@ -834,6 +834,20 @@ mod tests {
         ));
         assert!(is_empty_chain_rpc_response_message("all response:{}"));
         assert!(!is_transient_chain_rpc_error_message("rpc error: invalid address"));
+    }
+
+    #[test]
+    fn chain_rpc_error_context_exposes_shared_fields() {
+        let err = "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount";
+        let ctx = ChainRpcErrorContext::from_display(&err);
+
+        assert_eq!(ctx.message(), err);
+        assert_eq!(ctx.error_code(), Some(503));
+        assert_eq!(ctx.guarded_host(), Some("api.nileex.io"));
+        assert_eq!(ctx.transient_reason(), Some("http_503"));
+        assert!(ctx.is_service_unavailable());
+        assert!(ctx.is_transient());
+        assert_eq!(ctx.classification().error_code, Some(503));
     }
 
     #[test]
