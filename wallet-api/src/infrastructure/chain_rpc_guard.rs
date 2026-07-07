@@ -438,7 +438,14 @@ where
             Ok(Some(value))
         }
         Ok(Err(err)) => {
-            record_transient_failure_from_error(&err);
+            let rpc_error = ChainRpcErrorContext::from_display(&err);
+            ChainRpcFailureLog::new()
+                .trade_no(trade_no)
+                .chain_code(chain_code)
+                .source(source)
+                .op(action)
+                .warn(&rpc_error, "guarded chain rpc call failed");
+            rpc_error.record_transient_failure();
             Err(err)
         }
         Err(_) => Ok(None),
