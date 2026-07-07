@@ -30,6 +30,7 @@ const DEFAULT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_RPC_TIMEOUT: Duration = Duration::from_secs(60);
 const CHAIN_HOST_CACHE_TTL: Duration = Duration::from_secs(60);
 const TRANSIENT_503_REPORT_WINDOW_MS: u64 = 60_000;
+const HTTP_STATUS_SERVICE_UNAVAILABLE: u16 = 503;
 
 static GUARDED_HOSTS: Lazy<HashSet<String>> = Lazy::new(|| {
     let raw =
@@ -504,7 +505,7 @@ fn maybe_report_transient_503_count(now_ms: u64) {
 pub fn record_transient_failure_from_error<E: std::fmt::Display>(err: &E) {
     let s = err.to_string();
     let error_code = chain_rpc_error_code(&s);
-    if error_code == Some(503) {
+    if is_service_unavailable_error(&s) {
         TRANSIENT_503_COUNT.fetch_add(1, Ordering::Relaxed);
         maybe_report_transient_503_count(RpcCircuitBreaker::now_ms());
     }
@@ -543,20 +544,30 @@ pub fn is_empty_chain_rpc_response_message(msg: &str) -> bool {
         || msg.contains("all response:{}")
 }
 
+pub fn is_service_unavailable_error(msg: &str) -> bool {
+    chain_rpc_error_code(msg) == Some(HTTP_STATUS_SERVICE_UNAVAILABLE)
+}
+
 pub fn is_transient_chain_rpc_error_message(msg: &str) -> bool {
     // Transient patterns seen under pressure:
     // - HTTP 503 + HTML error pages
     // - Empty JSON / partial bodies causing deserialization errors
-    chain_rpc_error_code(msg) == Some(503)
-        || msg.contains("<!DOCTYPE html>")
+    is_service_unavailable_error(msg)
+        || is_chain_rpc_html_error_page(msg)
         || is_empty_chain_rpc_response_message(msg)
+}
+
+pub fn is_chain_rpc_html_error_page(msg: &str) -> bool {
+    msg.contains("<!DOCTYPE html>")
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ChainRpcGuardAcquire, RpcCircuitBreaker, acquire_guarded_host_permit,
-        is_transient_chain_rpc_error_message, run_with_rpc_timeout_duration,
+        ChainRpcGuardAcquire, RpcCircuitBreaker, acquire_guarded_host_permit, chain_rpc_error_code,
+        is_chain_rpc_html_error_page, is_empty_chain_rpc_response_message,
+        is_service_unavailable_error, is_transient_chain_rpc_error_message,
+        run_with_rpc_timeout_duration,
     };
     use std::{sync::Arc, thread, time::Duration};
     use tokio::sync::Semaphore;
@@ -566,26 +577,32 @@ mod tests {
         assert!(is_transient_chain_rpc_error_message(
             "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
         ));
+        assert!(is_service_unavailable_error(
+            "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
+        ));
         assert_eq!(
-            super::chain_rpc_error_code(
+            chain_rpc_error_code(
                 "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
             ),
             Some(503)
         );
         assert_eq!(
-            super::chain_rpc_error_code(
+            chain_rpc_error_code(
                 "NodeResponseError { code: 503, rpc: \"https://api.nileex.io/wallet/triggerconstantcontract\" }"
             ),
             Some(503)
         );
         assert_eq!(
-            super::chain_rpc_error_code("Node response error: code=-32000, rpc=https://example"),
+            chain_rpc_error_code("Node response error: code=-32000, rpc=https://example"),
             None
         );
         assert!(is_transient_chain_rpc_error_message(
             "all response:<!DOCTYPE html><html><body>nginx</body></html>"
         ));
-        assert!(super::is_empty_chain_rpc_response_message("all response:{}"));
+        assert!(is_chain_rpc_html_error_page(
+            "all response:<!DOCTYPE html><html><body>nginx</body></html>"
+        ));
+        assert!(is_empty_chain_rpc_response_message("all response:{}"));
         assert!(!is_transient_chain_rpc_error_message("rpc error: invalid address"));
     }
 
