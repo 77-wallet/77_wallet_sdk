@@ -791,28 +791,23 @@ impl ApiTransDomain {
                         && Self::is_transaction_expired_error(&e)
                     {
                         let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
-                        tracing::warn!(
-                            chain_code = %chain_code,
-                            rpc = %rpc,
-                            error_code = ?rpc_error.error_code(),
-                            guarded_host = ?rpc_error.guarded_host(),
-                            transient_reason = ?rpc_error.transient_reason(),
-                            error = %rpc_error.message(),
-                            "broadcast transaction expired; return error so raw tx can be rebuilt"
-                        );
+                        chain_rpc_guard::ChainRpcFailureLog::new()
+                            .chain_code(chain_code)
+                            .rpc(&rpc)
+                            .op("broadcast_transfer")
+                            .warn(
+                                &rpc_error,
+                                "broadcast transaction expired; return error so raw tx can be rebuilt",
+                            );
                         rpc_error.record_transient_failure();
                         return Err(e);
                     } else if e.is_network_error() {
                         let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
-                        tracing::error!(
-                            chain_code = %chain_code,
-                            rpc = %rpc,
-                            error_code = ?rpc_error.error_code(),
-                            guarded_host = ?rpc_error.guarded_host(),
-                            transient_reason = ?rpc_error.transient_reason(),
-                            error = %rpc_error.message(),
-                            "broadcast_transfer: 网络错误, 交易广播失败"
-                        );
+                        chain_rpc_guard::ChainRpcFailureLog::new()
+                            .chain_code(chain_code)
+                            .rpc(&rpc)
+                            .op("broadcast_transfer")
+                            .error(&rpc_error, "broadcast_transfer: 网络错误, 交易广播失败");
                         rpc_error.record_transient_failure();
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");

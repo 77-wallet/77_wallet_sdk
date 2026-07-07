@@ -954,17 +954,13 @@ impl ShadowCollectWorker {
                     crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(
                         &err,
                     );
-                tracing::warn!(
-                    trade_no = %origin_trade_no,
-                    chain_code = %req.chain_code,
-                    exec_to_addr = %exec_to_addr,
-                    error_code = ?rpc_error.error_code(),
-                    guarded_host = ?rpc_error.guarded_host(),
-                    transient_reason = ?rpc_error.transient_reason(),
-                    error = %rpc_error.message(),
-                    source = "shadow_worker_v2",
-                    "Resource gate snapshot failed"
-                );
+                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(origin_trade_no)
+                    .chain_code(&req.chain_code)
+                    .exec_to_addr(exec_to_addr)
+                    .source("shadow_worker_v2")
+                    .op("resource_gate")
+                    .warn(&rpc_error, "Resource gate snapshot failed");
                 rpc_error.record_transient_failure();
                 Err(err)
             }

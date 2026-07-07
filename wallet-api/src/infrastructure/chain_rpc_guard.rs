@@ -584,6 +584,10 @@ pub struct ChainRpcFailureLog<'a> {
     source: Option<&'a str>,
     op: Option<&'a str>,
     visibility_kind: Option<&'a str>,
+    address: Option<&'a str>,
+    symbol: Option<&'a str>,
+    token: Option<&'a str>,
+    exec_to_addr: Option<&'a str>,
     attempt: Option<u32>,
     delay_ms: Option<u64>,
 }
@@ -628,6 +632,26 @@ impl<'a> ChainRpcFailureLog<'a> {
         self
     }
 
+    pub fn address(mut self, address: &'a str) -> Self {
+        self.address = Some(address);
+        self
+    }
+
+    pub fn symbol(mut self, symbol: &'a str) -> Self {
+        self.symbol = Some(symbol);
+        self
+    }
+
+    pub fn token(mut self, token: &'a str) -> Self {
+        self.token = Some(token);
+        self
+    }
+
+    pub fn exec_to_addr(mut self, exec_to_addr: &'a str) -> Self {
+        self.exec_to_addr = Some(exec_to_addr);
+        self
+    }
+
     pub fn attempt(mut self, attempt: u32) -> Self {
         self.attempt = Some(attempt);
         self
@@ -647,6 +671,10 @@ impl<'a> ChainRpcFailureLog<'a> {
             source = self.source.unwrap_or(""),
             op = self.op.unwrap_or(""),
             visibility_kind = self.visibility_kind.unwrap_or(""),
+            address = self.address.unwrap_or(""),
+            symbol = self.symbol.unwrap_or(""),
+            token = self.token.unwrap_or(""),
+            exec_to_addr = self.exec_to_addr.unwrap_or(""),
             attempt = ?self.attempt,
             delay_ms = ?self.delay_ms,
             error_code = ?error.error_code(),
@@ -667,6 +695,10 @@ impl<'a> ChainRpcFailureLog<'a> {
             source = self.source.unwrap_or(""),
             op = self.op.unwrap_or(""),
             visibility_kind = self.visibility_kind.unwrap_or(""),
+            address = self.address.unwrap_or(""),
+            symbol = self.symbol.unwrap_or(""),
+            token = self.token.unwrap_or(""),
+            exec_to_addr = self.exec_to_addr.unwrap_or(""),
             attempt = ?self.attempt,
             delay_ms = ?self.delay_ms,
             error_code = ?error.error_code(),

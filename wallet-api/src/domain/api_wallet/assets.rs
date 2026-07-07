@@ -1140,17 +1140,14 @@ impl ApiChainBalance {
                 let chain_code_clone = chain_code.clone();
                 let symbol_clone = symbol.clone();
                 let token_address_clone = token_address.clone();
-                tracing::error!(
-                    address = %address_clone,
-                    chain_code = %chain_code_clone,
-                    symbol = %symbol_clone,
-                    token = ?token_address_clone,
-                    error_code = ?rpc_error.error_code(),
-                    guarded_host = ?rpc_error.guarded_host(),
-                    transient_reason = ?rpc_error.transient_reason(),
-                    error = %rpc_error.message(),
-                    "获取API余额出错"
-                );
+                let token_log = format!("{token_address_clone:?}");
+                chain_rpc_guard::ChainRpcFailureLog::new()
+                    .chain_code(&chain_code_clone)
+                    .address(&address_clone)
+                    .symbol(&symbol_clone)
+                    .token(&token_log)
+                    .op("balance_token_key")
+                    .error(&rpc_error, "获取API余额出错");
                 // 重新构造 BalanceTask 以便返回
                 (
                     BalanceTask {
