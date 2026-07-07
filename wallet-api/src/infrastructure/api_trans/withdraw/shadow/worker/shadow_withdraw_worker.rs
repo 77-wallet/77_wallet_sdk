@@ -1045,44 +1045,27 @@ impl ShadowWithdrawWorker {
             }
         }
 
-        // 执行恢复交易
-        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
-        let _chain_rpc_guard =
-            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
+        // 执行恢复交易。raw wrapper 只处理外层 RPC guard/timeout，保留 recover 内层 Result。
+        let recover_result =
+            match crate::infrastructure::chain_rpc_guard::run_guarded_raw_with_ctx_and_log(
                 self.ctx,
                 &req.chain_code,
                 trade_no,
                 "recover",
                 "shadow_withdraw_worker",
+                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(trade_no)
+                    .tx_hash(req.tx_hash.as_deref().unwrap_or_default())
+                    .chain_code(&req.chain_code)
+                    .source("shadow_withdraw_worker")
+                    .op("recover"),
+                self.recover_tx(&req),
             )
-            .await
+            .await?
             {
-                ChainRpcGuardAttempt::Proceed(permit) => permit,
-                ChainRpcGuardAttempt::Skip => return Ok(()),
+                Some(result) => result,
+                None => return Ok(()),
             };
-        let recover_result = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
-            self.recover_tx(&req),
-            &req.chain_code,
-            trade_no,
-            "recover",
-            "shadow_withdraw_worker",
-        )
-        .await
-        {
-            Ok(result) => result,
-            Err(_) => {
-                warn!(
-                    observability_event = "shadow_recover_skipped",
-                    reason = "rpc_execution_timeout",
-                    trade_no = %trade_no,
-                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
-                    chain_code = %req.chain_code,
-                    source = "shadow_withdraw_worker",
-                    "Recover RPC timed out; leaving tx facts intact for later retry"
-                );
-                return Ok(());
-            }
-        };
         match recover_result {
             Ok(Some(tx_resp)) => {
                 info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_withdraw_worker", "Transaction recover successful");
