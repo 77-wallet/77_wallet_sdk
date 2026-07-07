@@ -1282,13 +1282,21 @@ impl ApiTransDomain {
                                 );
                             }
                             Err(e) => {
+                                let rpc_err_msg = e.to_string();
+                                let rpc_error =
+                                    chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
                                 tracing::warn!(
                                     trade_no = ?tx_hash,
                                     rpc = %rpc,
-                                    error = %e,
+                                    error_code = ?rpc_error.error_code,
+                                    guarded_host = ?rpc_error.guarded_host.as_deref(),
+                                    transient_reason = ?rpc_error.transient_reason,
+                                    error = %rpc_err_msg,
                                     "Solana visibility probe failed during recover"
                                 );
-                                chain_rpc_guard::record_transient_failure_from_error(&e);
+                                chain_rpc_guard::record_transient_failure_from_message(
+                                    &rpc_err_msg,
+                                );
                             }
                         }
                     }
@@ -1314,9 +1322,16 @@ impl ApiTransDomain {
                                 ));
                             }
                             Err(err) => {
+                                let rpc_err_msg = err.to_string();
+                                let rpc_error =
+                                    chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
                                 tracing::warn!(
                                     trade_no=?tx_hash,
-                                    error=%err,
+                                    rpc=%rpc,
+                                    error_code=?rpc_error.error_code,
+                                    guarded_host=?rpc_error.guarded_host.as_deref(),
+                                    transient_reason=?rpc_error.transient_reason,
+                                    error=%rpc_err_msg,
                                     "Tron pending pool query failed; keep uncertain"
                                 );
                                 return Ok(None);

@@ -951,7 +951,25 @@ impl ShadowCollectWorker {
                 Ok(Some(snapshot))
             }
             Ok(Err(err)) => {
-                crate::infrastructure::chain_rpc_guard::record_transient_failure_from_error(&err);
+                let err_msg = err.to_string();
+                let rpc_error =
+                    crate::infrastructure::chain_rpc_guard::classify_chain_rpc_error_message(
+                        &err_msg,
+                    );
+                tracing::warn!(
+                    trade_no = %origin_trade_no,
+                    chain_code = %req.chain_code,
+                    exec_to_addr = %exec_to_addr,
+                    error_code = ?rpc_error.error_code,
+                    guarded_host = ?rpc_error.guarded_host.as_deref(),
+                    transient_reason = ?rpc_error.transient_reason,
+                    error = %err_msg,
+                    source = "shadow_worker_v2",
+                    "Resource gate snapshot failed"
+                );
+                crate::infrastructure::chain_rpc_guard::record_transient_failure_from_message(
+                    &err_msg,
+                );
                 Err(err)
             }
             Err(_) => Ok(None),
