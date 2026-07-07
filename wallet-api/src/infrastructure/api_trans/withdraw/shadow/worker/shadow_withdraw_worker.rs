@@ -70,7 +70,6 @@ use crate::{
             resource_rpc_auth,
             withdraw::shadow::ShadowScanner,
         },
-        chain_rpc_guard::ChainRpcGuardAttempt,
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -1685,38 +1684,28 @@ impl ShadowWithdrawWorker {
         info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Deserialized raw_tx successfully");
 
         // 7. 广播交易
-        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
-        let _chain_rpc_guard =
-            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
-                self.ctx,
-                &withdraw.chain_code,
-                trade_no,
-                "broadcast",
-                "shadow_withdraw_worker",
-            )
-            .await
-            {
-                ChainRpcGuardAttempt::Proceed(permit) => permit,
-                ChainRpcGuardAttempt::Skip => return Ok(()),
-            };
         info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Starting to broadcast transaction");
-        let tx_resp = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+        let tx_resp = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+            self.ctx,
+            &withdraw.chain_code,
+            trade_no,
+            "broadcast",
+            "shadow_withdraw_worker",
+            crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                .trade_no(trade_no)
+                .tx_hash(withdraw.tx_hash.as_deref().unwrap_or_default())
+                .chain_code(&withdraw.chain_code)
+                .source("shadow_withdraw_worker")
+                .op("broadcast"),
             ApiTransDomain::broadcast_transfer(
                 &self.ctx,
                 &withdraw.chain_code,
                 raw_tx,
                 withdraw.tx_hash.as_deref(),
             ),
-            &withdraw.chain_code,
-            trade_no,
-            "broadcast",
-            "shadow_withdraw_worker",
         )
-        .await
-        {
-            Ok(result) => result?,
-            Err(_) => None,
-        };
+        .await?
+        .flatten();
 
         match tx_resp {
             Some(tx) => {

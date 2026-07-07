@@ -25,7 +25,6 @@ use crate::{
     },
     infrastructure::{
         api_trans::collect_fee::{legacy::AddressLockManager, shadow::ShadowScanner},
-        chain_rpc_guard::ChainRpcGuardAttempt,
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -879,38 +878,28 @@ impl ShadowFeeWorker {
         info!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Deserialized raw_tx successfully");
 
         // 7. 广播交易
-        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
-        let _chain_rpc_guard =
-            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
-                self.ctx,
-                &fee.chain_code,
-                trade_no,
-                "broadcast",
-                "shadow_fee_worker",
-            )
-            .await
-            {
-                ChainRpcGuardAttempt::Proceed(permit) => permit,
-                ChainRpcGuardAttempt::Skip => return Ok(()),
-            };
         info!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Starting to broadcast transaction");
-        let tx_resp = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+        let tx_resp = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+            self.ctx,
+            &fee.chain_code,
+            trade_no,
+            "broadcast",
+            "shadow_fee_worker",
+            crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                .trade_no(trade_no)
+                .tx_hash(fee.tx_hash.as_deref().unwrap_or_default())
+                .chain_code(&fee.chain_code)
+                .source("shadow_fee_worker")
+                .op("broadcast"),
             ApiTransDomain::broadcast_transfer(
                 &self.ctx,
                 &fee.chain_code,
                 raw_tx,
                 fee.tx_hash.as_deref(),
             ),
-            &fee.chain_code,
-            trade_no,
-            "broadcast",
-            "shadow_fee_worker",
         )
-        .await
-        {
-            Ok(result) => result?,
-            Err(_) => None,
-        };
+        .await?
+        .flatten();
 
         match tx_resp {
             Some(tx) => {
