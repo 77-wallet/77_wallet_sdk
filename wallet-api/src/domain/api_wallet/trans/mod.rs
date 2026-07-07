@@ -790,41 +790,37 @@ impl ApiTransDomain {
                     } else if chain_code.eq_ignore_ascii_case(&ChainCode::Tron.to_string())
                         && Self::is_transaction_expired_error(&e)
                     {
-                        let rpc_err_msg = e.to_string();
-                        let rpc_error =
-                            chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
+                        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
                         tracing::warn!(
                             chain_code = %chain_code,
                             rpc = %rpc,
-                            error_code = ?rpc_error.error_code,
-                            guarded_host = ?rpc_error.guarded_host.as_deref(),
-                            transient_reason = ?rpc_error.transient_reason,
-                            error = %rpc_err_msg,
+                            error_code = ?rpc_error.error_code(),
+                            guarded_host = ?rpc_error.guarded_host(),
+                            transient_reason = ?rpc_error.transient_reason(),
+                            error = %rpc_error.message(),
                             "broadcast transaction expired; return error so raw tx can be rebuilt"
                         );
-                        chain_rpc_guard::record_transient_failure_from_classification(&rpc_error);
+                        rpc_error.record_transient_failure();
                         return Err(e);
                     } else if e.is_network_error() {
-                        let rpc_err_msg = e.to_string();
-                        let rpc_error =
-                            chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
+                        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
                         tracing::error!(
                             chain_code = %chain_code,
                             rpc = %rpc,
-                            error_code = ?rpc_error.error_code,
-                            guarded_host = ?rpc_error.guarded_host.as_deref(),
-                            transient_reason = ?rpc_error.transient_reason,
-                            error = %rpc_err_msg,
+                            error_code = ?rpc_error.error_code(),
+                            guarded_host = ?rpc_error.guarded_host(),
+                            transient_reason = ?rpc_error.transient_reason(),
+                            error = %rpc_error.message(),
                             "broadcast_transfer: 网络错误, 交易广播失败"
                         );
-                        chain_rpc_guard::record_transient_failure_from_classification(&rpc_error);
+                        rpc_error.record_transient_failure();
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                         }
                         return Ok(None);
                     } else {
-                        let rpc_err_msg = e.to_string();
-                        chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
+                        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
+                        rpc_error.record_transient_failure();
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                         }
@@ -858,36 +854,27 @@ impl ApiTransDomain {
                         continue 'auth_retry;
                     }
                     Err(e) => {
-                        let rpc_err_msg = e.to_string();
-                        let rpc_error =
-                            chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
+                        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
                         if e.is_delay_retryable() {
-                            tracing::warn!(
-                                chain_code = %chain_code,
-                                rpc = %rpc,
-                                error_code = ?rpc_error.error_code,
-                                guarded_host = ?rpc_error.guarded_host.as_deref(),
-                                transient_reason = ?rpc_error.transient_reason,
-                                error = %rpc_err_msg,
-                                visibility_kind = %visibility_kind,
-                                "broadcast visibility probe failed with delay retryable error"
-                            );
-                            chain_rpc_guard::record_transient_failure_from_classification(
-                                &rpc_error,
-                            );
+                            chain_rpc_guard::ChainRpcFailureLog::new()
+                                .chain_code(chain_code)
+                                .rpc(&rpc)
+                                .visibility_kind(visibility_kind)
+                                .op("broadcast_transfer:visibility_probe")
+                                .warn(
+                                    &rpc_error,
+                                    "broadcast visibility probe failed with delay retryable error",
+                                );
+                            rpc_error.record_transient_failure();
                             return Ok(None);
                         }
-                        tracing::warn!(
-                            chain_code = %chain_code,
-                            rpc = %rpc,
-                            error_code = ?rpc_error.error_code,
-                            guarded_host = ?rpc_error.guarded_host.as_deref(),
-                            transient_reason = ?rpc_error.transient_reason,
-                            error = %rpc_err_msg,
-                            visibility_kind = %visibility_kind,
-                            "broadcast visibility probe failed"
-                        );
-                        chain_rpc_guard::record_transient_failure_from_classification(&rpc_error);
+                        chain_rpc_guard::ChainRpcFailureLog::new()
+                            .chain_code(chain_code)
+                            .rpc(&rpc)
+                            .visibility_kind(visibility_kind)
+                            .op("broadcast_transfer:visibility_probe")
+                            .warn(&rpc_error, "broadcast visibility probe failed");
+                        rpc_error.record_transient_failure();
                         return Ok(None);
                     }
                 };
@@ -994,25 +981,21 @@ impl ApiTransDomain {
                                 continue 'auth_retry;
                             }
                             Err(e) => {
-                                let rpc_err_msg = e.to_string();
                                 let rpc_error =
-                                    chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
-                                tracing::warn!(
-                                    chain_code = %chain_code,
-                                    tx_hash = %resp.tx_hash,
-                                    rpc = %rpc,
-                                    attempt = attempt,
-                                    delay_ms = *delay_ms,
-                                    error_code = ?rpc_error.error_code,
-                                    guarded_host = ?rpc_error.guarded_host.as_deref(),
-                                    transient_reason = ?rpc_error.transient_reason,
-                                    error = %rpc_err_msg,
-                                    visibility_kind = %visibility_kind,
-                                    "broadcast visibility check miss (uncertain)"
-                                );
-                                chain_rpc_guard::record_transient_failure_from_classification(
-                                    &rpc_error,
-                                );
+                                    chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
+                                chain_rpc_guard::ChainRpcFailureLog::new()
+                                    .chain_code(chain_code)
+                                    .rpc(&rpc)
+                                    .tx_hash(&resp.tx_hash)
+                                    .visibility_kind(visibility_kind)
+                                    .op("broadcast_transfer:visibility_check")
+                                    .attempt(attempt as u32)
+                                    .delay_ms(*delay_ms as u64)
+                                    .warn(
+                                        &rpc_error,
+                                        "broadcast visibility check miss (uncertain)",
+                                    );
+                                rpc_error.record_transient_failure();
                                 if auth_retry_attempted {
                                     tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                                 }
@@ -1284,21 +1267,18 @@ impl ApiTransDomain {
                                 );
                             }
                             Err(e) => {
-                                let rpc_err_msg = e.to_string();
                                 let rpc_error =
-                                    chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
-                                tracing::warn!(
-                                    trade_no = ?tx_hash,
-                                    rpc = %rpc,
-                                    error_code = ?rpc_error.error_code,
-                                    guarded_host = ?rpc_error.guarded_host.as_deref(),
-                                    transient_reason = ?rpc_error.transient_reason,
-                                    error = %rpc_err_msg,
-                                    "Solana visibility probe failed during recover"
-                                );
-                                chain_rpc_guard::record_transient_failure_from_classification(
-                                    &rpc_error,
-                                );
+                                    chain_rpc_guard::ChainRpcErrorContext::from_display(&e);
+                                chain_rpc_guard::ChainRpcFailureLog::new()
+                                    .trade_no(tx_hash)
+                                    .tx_hash(tx_hash)
+                                    .rpc(&rpc)
+                                    .op("process_recovered_tx:sol_visibility_probe")
+                                    .warn(
+                                        &rpc_error,
+                                        "Solana visibility probe failed during recover",
+                                    );
+                                rpc_error.record_transient_failure();
                             }
                         }
                     }
@@ -1324,18 +1304,17 @@ impl ApiTransDomain {
                                 ));
                             }
                             Err(err) => {
-                                let rpc_err_msg = err.to_string();
                                 let rpc_error =
-                                    chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
-                                tracing::warn!(
-                                    trade_no=?tx_hash,
-                                    rpc=%rpc,
-                                    error_code=?rpc_error.error_code,
-                                    guarded_host=?rpc_error.guarded_host.as_deref(),
-                                    transient_reason=?rpc_error.transient_reason,
-                                    error=%rpc_err_msg,
-                                    "Tron pending pool query failed; keep uncertain"
-                                );
+                                    chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
+                                chain_rpc_guard::ChainRpcFailureLog::new()
+                                    .trade_no(tx_hash)
+                                    .tx_hash(tx_hash)
+                                    .rpc(&rpc)
+                                    .op("process_recovered_tx:tron_pending_pool")
+                                    .warn(
+                                        &rpc_error,
+                                        "Tron pending pool query failed; keep uncertain",
+                                    );
                                 return Ok(None);
                             }
                         }
@@ -1417,32 +1396,32 @@ impl ApiTransDomain {
                         .await?;
                         continue 'recover_auth_retry;
                     }
-                    let service_err_msg = service_err.to_string();
                     let rpc_error =
-                        chain_rpc_guard::classify_chain_rpc_error_message(&service_err_msg);
-                    if rpc_error.is_transient {
-                        tracing::warn!(
-                            trade_no=?tx_hash,
-                            chain_code=%chain_code,
-                            rpc=%rpc,
-                            error_code=?rpc_error.error_code,
-                            guarded_host=?rpc_error.guarded_host.as_deref(),
-                            transient_reason=?rpc_error.transient_reason,
-                            error = %service_err_msg,
-                            "查询链上状态失败(瞬时); recovered tx result will stay uncertain"
-                        );
+                        chain_rpc_guard::ChainRpcErrorContext::from_display(&service_err);
+                    if rpc_error.is_transient() {
+                        chain_rpc_guard::ChainRpcFailureLog::new()
+                            .trade_no(tx_hash)
+                            .tx_hash(tx_hash)
+                            .chain_code(chain_code)
+                            .rpc(&rpc)
+                            .op("process_recovered_tx:query_tx_res")
+                            .warn(
+                                &rpc_error,
+                                "查询链上状态失败(瞬时); recovered tx result will stay uncertain",
+                            );
                     } else {
-                        tracing::error!(
-                            trade_no=?tx_hash,
-                            chain_code=%chain_code,
-                            rpc=%rpc,
-                            error_code=?rpc_error.error_code,
-                            guarded_host=?rpc_error.guarded_host.as_deref(),
-                            error = %service_err_msg,
-                            "查询链上状态失败; recovered tx result will stay uncertain"
-                        );
+                        chain_rpc_guard::ChainRpcFailureLog::new()
+                            .trade_no(tx_hash)
+                            .tx_hash(tx_hash)
+                            .chain_code(chain_code)
+                            .rpc(&rpc)
+                            .op("process_recovered_tx:query_tx_res")
+                            .error(
+                                &rpc_error,
+                                "查询链上状态失败; recovered tx result will stay uncertain",
+                            );
                     }
-                    chain_rpc_guard::record_transient_failure_from_classification(&rpc_error);
+                    rpc_error.record_transient_failure();
                     if auth_retry_attempted {
                         tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="process_recovered_tx:query_tx_res", error=%service_err, "auth retry failed");
                     }

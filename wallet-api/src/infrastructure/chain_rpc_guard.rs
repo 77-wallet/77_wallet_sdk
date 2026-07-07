@@ -525,6 +525,160 @@ pub fn record_transient_failure_from_classification(classification: &ChainRpcErr
     breaker_for_host(host).record_failure(classification.error_code);
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainRpcErrorContext {
+    message: String,
+    classification: ChainRpcErrorClassification,
+}
+
+impl ChainRpcErrorContext {
+    pub fn from_display<E: std::fmt::Display>(err: &E) -> Self {
+        Self::from_message(err.to_string())
+    }
+
+    pub fn from_message(message: impl Into<String>) -> Self {
+        let message = message.into();
+        let classification = classify_chain_rpc_error_message(&message);
+        Self { message, classification }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn classification(&self) -> &ChainRpcErrorClassification {
+        &self.classification
+    }
+
+    pub fn error_code(&self) -> Option<u16> {
+        self.classification.error_code
+    }
+
+    pub fn guarded_host(&self) -> Option<&str> {
+        self.classification.guarded_host.as_deref()
+    }
+
+    pub fn transient_reason(&self) -> Option<&'static str> {
+        self.classification.transient_reason
+    }
+
+    pub fn is_service_unavailable(&self) -> bool {
+        self.classification.is_service_unavailable
+    }
+
+    pub fn is_transient(&self) -> bool {
+        self.classification.is_transient
+    }
+
+    pub fn record_transient_failure(&self) {
+        record_transient_failure_from_classification(&self.classification);
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChainRpcFailureLog<'a> {
+    chain_code: Option<&'a str>,
+    rpc: Option<&'a str>,
+    trade_no: Option<&'a str>,
+    tx_hash: Option<&'a str>,
+    source: Option<&'a str>,
+    op: Option<&'a str>,
+    visibility_kind: Option<&'a str>,
+    attempt: Option<u32>,
+    delay_ms: Option<u64>,
+}
+
+impl<'a> ChainRpcFailureLog<'a> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn chain_code(mut self, chain_code: &'a str) -> Self {
+        self.chain_code = Some(chain_code);
+        self
+    }
+
+    pub fn rpc(mut self, rpc: &'a str) -> Self {
+        self.rpc = Some(rpc);
+        self
+    }
+
+    pub fn trade_no(mut self, trade_no: &'a str) -> Self {
+        self.trade_no = Some(trade_no);
+        self
+    }
+
+    pub fn tx_hash(mut self, tx_hash: &'a str) -> Self {
+        self.tx_hash = Some(tx_hash);
+        self
+    }
+
+    pub fn source(mut self, source: &'a str) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    pub fn op(mut self, op: &'a str) -> Self {
+        self.op = Some(op);
+        self
+    }
+
+    pub fn visibility_kind(mut self, visibility_kind: &'a str) -> Self {
+        self.visibility_kind = Some(visibility_kind);
+        self
+    }
+
+    pub fn attempt(mut self, attempt: u32) -> Self {
+        self.attempt = Some(attempt);
+        self
+    }
+
+    pub fn delay_ms(mut self, delay_ms: u64) -> Self {
+        self.delay_ms = Some(delay_ms);
+        self
+    }
+
+    pub fn warn(self, error: &ChainRpcErrorContext, reason: &str) {
+        tracing::warn!(
+            chain_code = self.chain_code.unwrap_or(""),
+            rpc = self.rpc.unwrap_or(""),
+            trade_no = self.trade_no.unwrap_or(""),
+            tx_hash = self.tx_hash.unwrap_or(""),
+            source = self.source.unwrap_or(""),
+            op = self.op.unwrap_or(""),
+            visibility_kind = self.visibility_kind.unwrap_or(""),
+            attempt = ?self.attempt,
+            delay_ms = ?self.delay_ms,
+            error_code = ?error.error_code(),
+            guarded_host = error.guarded_host().unwrap_or(""),
+            transient_reason = error.transient_reason().unwrap_or(""),
+            error = %error.message(),
+            reason = %reason,
+            "chain rpc failure"
+        );
+    }
+
+    pub fn error(self, error: &ChainRpcErrorContext, reason: &str) {
+        tracing::error!(
+            chain_code = self.chain_code.unwrap_or(""),
+            rpc = self.rpc.unwrap_or(""),
+            trade_no = self.trade_no.unwrap_or(""),
+            tx_hash = self.tx_hash.unwrap_or(""),
+            source = self.source.unwrap_or(""),
+            op = self.op.unwrap_or(""),
+            visibility_kind = self.visibility_kind.unwrap_or(""),
+            attempt = ?self.attempt,
+            delay_ms = ?self.delay_ms,
+            error_code = ?error.error_code(),
+            guarded_host = error.guarded_host().unwrap_or(""),
+            transient_reason = error.transient_reason().unwrap_or(""),
+            error = %error.message(),
+            reason = %reason,
+            "chain rpc failure"
+        );
+    }
+}
+
 pub fn guarded_chain_rpc_host_from_message(msg: &str) -> Option<String> {
     GUARDED_HOSTS.iter().find(|h| msg.contains(h.as_str())).cloned()
 }
