@@ -301,7 +301,9 @@ impl ShadowCollectWorker {
     }
 
     fn is_collect_build_503_error(err: &ServiceError) -> bool {
-        crate::infrastructure::chain_rpc_guard::is_service_unavailable_error(&err.to_string())
+        let err_msg = err.to_string();
+        crate::infrastructure::chain_rpc_guard::classify_chain_rpc_error_message(&err_msg)
+            .is_service_unavailable
     }
 
     fn build_503_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
@@ -3372,11 +3374,20 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
-        if req.raw_tx.is_none() && req.tx_hash.is_none() && Self::is_collect_build_503_error(&err) {
+        let build_err_msg = err.to_string();
+        let build_rpc_error =
+            crate::infrastructure::chain_rpc_guard::classify_chain_rpc_error_message(
+                &build_err_msg,
+            );
+        if req.raw_tx.is_none() && req.tx_hash.is_none() && build_rpc_error.is_service_unavailable {
             info!(
                 trade_no = %trade_no,
                 elapsed_secs = ?Self::build_503_elapsed_secs(&req, Utc::now()),
                 retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
+                error_code = ?build_rpc_error.error_code,
+                guarded_host = ?build_rpc_error.guarded_host.as_deref(),
+                transient_reason = ?build_rpc_error.transient_reason,
+                error = %build_err_msg,
                 source = "shadow_worker_v2",
                 "Detected BuildTx 503 failure"
             );
@@ -3390,7 +3401,7 @@ impl ShadowCollectWorker {
                     trade_no,
                     ApiCollectStatus::SendingTxFailed,
                     ErrCode::NetworkException,
-                    &format!("{}", err),
+                    &build_err_msg,
                 )
                 .await
                 .map_err(|db_err| {
@@ -3403,6 +3414,9 @@ impl ShadowCollectWorker {
                     rows_affected = %rows_affected,
                     elapsed_secs = ?Self::build_503_elapsed_secs(&req, now),
                     retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
+                    error_code = ?build_rpc_error.error_code,
+                    guarded_host = ?build_rpc_error.guarded_host.as_deref(),
+                    transient_reason = ?build_rpc_error.transient_reason,
                     source = "shadow_worker_v2",
                     "BuildTx 503 retry window expired; marked collect as terminal failure"
                 );
@@ -3426,6 +3440,9 @@ impl ShadowCollectWorker {
                     rows_affected = %rows_affected,
                     elapsed_secs = ?Self::build_503_elapsed_secs(&req, now),
                     retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
+                    error_code = ?build_rpc_error.error_code,
+                    guarded_host = ?build_rpc_error.guarded_host.as_deref(),
+                    transient_reason = ?build_rpc_error.transient_reason,
                     source = "shadow_worker_v2",
                     "BuildTx 503 retry window active; will retry later"
                 );
