@@ -2097,48 +2097,29 @@ impl ShadowCollectWorker {
         let transfer_req = self.gen_transfer_req(&req, &exec_to_addr, nonce).await?;
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_worker_v2", "Generated transfer request with nonce");
 
-        // 构建交易
-        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
-        let _chain_rpc_guard =
-            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
+        // 构建交易。公共包装负责 guarded endpoint 并发、timeout、成功/失败记录。
+        let Some((tx_hash, raw_tx, fee)) =
+            crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
                 self.ctx,
                 &req.chain_code,
                 trade_no,
                 "build",
                 "shadow_worker_v2",
-            )
-            .await
-            {
-                ChainRpcGuardAttempt::Proceed(permit) => permit,
-                ChainRpcGuardAttempt::Skip => return Ok(()),
-            };
-        let (tx_hash, raw_tx, fee) =
-            match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(trade_no)
+                    .chain_code(&req.chain_code)
+                    .source("shadow_worker_v2")
+                    .op("build"),
                 crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
                     &self.ctx,
                     transfer_req,
                     Some(private_key),
                 ),
-                &req.chain_code,
-                trade_no,
-                "build",
-                "shadow_worker_v2",
             )
-            .await
-            {
-                Ok(result) => result?,
-                Err(_) => {
-                    warn!(
-                        observability_event = "shadow_build_skipped",
-                        reason = "rpc_execution_timeout",
-                        trade_no = %trade_no,
-                        chain_code = %req.chain_code,
-                        source = "shadow_worker_v2",
-                        "Build RPC timed out; leaving build slot for stale reclaim"
-                    );
-                    return Ok(());
-                }
-            };
+            .await?
+        else {
+            return Ok(());
+        };
         info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee, source = "shadow_worker_v2", "Built transfer raw transaction successfully");
 
         // ====== phase 3: 锁内 · 提交不可逆事实 ======
