@@ -1135,7 +1135,7 @@ impl ApiChainBalance {
                 let err_msg = err.to_string();
                 let rpc_error = chain_rpc_guard::classify_chain_rpc_error_message(&err_msg);
                 // 记录瞬时链路错误（503/HTML 错页/异常响应），驱动熔断器统计与打开。
-                chain_rpc_guard::record_transient_failure_from_message(&err_msg);
+                chain_rpc_guard::record_transient_failure_from_classification(&rpc_error);
                 // 在错误处理中克隆所有需要的值
                 let address_clone = address.clone();
                 let chain_code_clone = chain_code.clone();

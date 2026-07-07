@@ -967,8 +967,8 @@ impl ShadowCollectWorker {
                     source = "shadow_worker_v2",
                     "Resource gate snapshot failed"
                 );
-                crate::infrastructure::chain_rpc_guard::record_transient_failure_from_message(
-                    &err_msg,
+                crate::infrastructure::chain_rpc_guard::record_transient_failure_from_classification(
+                    &rpc_error,
                 );
                 Err(err)
             }

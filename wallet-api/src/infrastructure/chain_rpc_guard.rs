@@ -509,6 +509,10 @@ pub fn record_transient_failure_from_error<E: std::fmt::Display>(err: &E) {
 
 pub fn record_transient_failure_from_message(msg: &str) {
     let classification = classify_chain_rpc_error_message(msg);
+    record_transient_failure_from_classification(&classification);
+}
+
+pub fn record_transient_failure_from_classification(classification: &ChainRpcErrorClassification) {
     if classification.is_service_unavailable {
         TRANSIENT_503_COUNT.fetch_add(1, Ordering::Relaxed);
         maybe_report_transient_503_count(RpcCircuitBreaker::now_ms());
@@ -517,8 +521,8 @@ pub fn record_transient_failure_from_message(msg: &str) {
     if !classification.is_transient {
         return;
     }
-    let Some(host) = classification.guarded_host else { return };
-    breaker_for_host(&host).record_failure(classification.error_code);
+    let Some(host) = classification.guarded_host.as_deref() else { return };
+    breaker_for_host(host).record_failure(classification.error_code);
 }
 
 pub fn guarded_chain_rpc_host_from_message(msg: &str) -> Option<String> {

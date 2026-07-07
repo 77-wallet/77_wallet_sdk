@@ -802,7 +802,7 @@ impl ApiTransDomain {
                             error = %rpc_err_msg,
                             "broadcast transaction expired; return error so raw tx can be rebuilt"
                         );
-                        chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
+                        chain_rpc_guard::record_transient_failure_from_classification(&rpc_error);
                         return Err(e);
                     } else if e.is_network_error() {
                         let rpc_err_msg = e.to_string();
@@ -817,7 +817,7 @@ impl ApiTransDomain {
                             error = %rpc_err_msg,
                             "broadcast_transfer: 网络错误, 交易广播失败"
                         );
-                        chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
+                        chain_rpc_guard::record_transient_failure_from_classification(&rpc_error);
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                         }
@@ -872,7 +872,9 @@ impl ApiTransDomain {
                                 visibility_kind = %visibility_kind,
                                 "broadcast visibility probe failed with delay retryable error"
                             );
-                            chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
+                            chain_rpc_guard::record_transient_failure_from_classification(
+                                &rpc_error,
+                            );
                             return Ok(None);
                         }
                         tracing::warn!(
@@ -885,7 +887,7 @@ impl ApiTransDomain {
                             visibility_kind = %visibility_kind,
                             "broadcast visibility probe failed"
                         );
-                        chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
+                        chain_rpc_guard::record_transient_failure_from_classification(&rpc_error);
                         return Ok(None);
                     }
                 };
@@ -1008,8 +1010,8 @@ impl ApiTransDomain {
                                     visibility_kind = %visibility_kind,
                                     "broadcast visibility check miss (uncertain)"
                                 );
-                                chain_rpc_guard::record_transient_failure_from_message(
-                                    &rpc_err_msg,
+                                chain_rpc_guard::record_transient_failure_from_classification(
+                                    &rpc_error,
                                 );
                                 if auth_retry_attempted {
                                     tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
@@ -1294,8 +1296,8 @@ impl ApiTransDomain {
                                     error = %rpc_err_msg,
                                     "Solana visibility probe failed during recover"
                                 );
-                                chain_rpc_guard::record_transient_failure_from_message(
-                                    &rpc_err_msg,
+                                chain_rpc_guard::record_transient_failure_from_classification(
+                                    &rpc_error,
                                 );
                             }
                         }
@@ -1440,7 +1442,7 @@ impl ApiTransDomain {
                             "查询链上状态失败; recovered tx result will stay uncertain"
                         );
                     }
-                    chain_rpc_guard::record_transient_failure_from_message(&service_err_msg);
+                    chain_rpc_guard::record_transient_failure_from_classification(&rpc_error);
                     if auth_retry_attempted {
                         tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="process_recovered_tx:query_tx_res", error=%service_err, "auth retry failed");
                     }
