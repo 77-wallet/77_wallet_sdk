@@ -529,6 +529,7 @@ pub fn guarded_chain_rpc_host_from_message(msg: &str) -> Option<String> {
 pub struct ChainRpcErrorClassification {
     pub error_code: Option<u16>,
     pub guarded_host: Option<String>,
+    pub transient_reason: Option<&'static str>,
     pub is_service_unavailable: bool,
     pub is_html_error_page: bool,
     pub is_empty_response: bool,
@@ -540,9 +541,19 @@ pub fn classify_chain_rpc_error_message(msg: &str) -> ChainRpcErrorClassificatio
     let is_service_unavailable = error_code == Some(HTTP_STATUS_SERVICE_UNAVAILABLE);
     let is_html_error_page = is_chain_rpc_html_error_page(msg);
     let is_empty_response = is_empty_chain_rpc_response_message(msg);
+    let transient_reason = if is_service_unavailable {
+        Some("http_503")
+    } else if is_html_error_page {
+        Some("html_error_page")
+    } else if is_empty_response {
+        Some("empty_response")
+    } else {
+        None
+    };
     ChainRpcErrorClassification {
         error_code,
         guarded_host: guarded_chain_rpc_host_from_message(msg),
+        transient_reason,
         is_service_unavailable,
         is_html_error_page,
         is_empty_response,
@@ -622,6 +633,7 @@ mod tests {
         let classification = classify_chain_rpc_error_message(nile_503);
         assert_eq!(classification.error_code, Some(503));
         assert_eq!(classification.guarded_host.as_deref(), Some("api.nileex.io"));
+        assert_eq!(classification.transient_reason, Some("http_503"));
         assert!(classification.is_service_unavailable);
         assert!(classification.is_transient);
         assert!(is_transient_chain_rpc_error_message(

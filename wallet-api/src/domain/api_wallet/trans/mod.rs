@@ -1365,10 +1365,29 @@ impl ApiTransDomain {
                         continue 'recover_auth_retry;
                     }
                     let service_err_msg = service_err.to_string();
-                    if chain_rpc_guard::is_transient_chain_rpc_error_message(&service_err_msg) {
-                        tracing::warn!(trade_no=?tx_hash, error = %service_err_msg, "查询链上状态失败(瞬时)");
+                    let rpc_error =
+                        chain_rpc_guard::classify_chain_rpc_error_message(&service_err_msg);
+                    if rpc_error.is_transient {
+                        tracing::warn!(
+                            trade_no=?tx_hash,
+                            chain_code=%chain_code,
+                            rpc=%rpc,
+                            error_code=?rpc_error.error_code,
+                            guarded_host=?rpc_error.guarded_host.as_deref(),
+                            transient_reason=?rpc_error.transient_reason,
+                            error = %service_err_msg,
+                            "查询链上状态失败(瞬时); recovered tx result will stay uncertain"
+                        );
                     } else {
-                        tracing::error!(trade_no=?tx_hash, error = %service_err_msg, "查询链上状态失败");
+                        tracing::error!(
+                            trade_no=?tx_hash,
+                            chain_code=%chain_code,
+                            rpc=%rpc,
+                            error_code=?rpc_error.error_code,
+                            guarded_host=?rpc_error.guarded_host.as_deref(),
+                            error = %service_err_msg,
+                            "查询链上状态失败; recovered tx result will stay uncertain"
+                        );
                     }
                     chain_rpc_guard::record_transient_failure_from_message(&service_err_msg);
                     if auth_retry_attempted {
