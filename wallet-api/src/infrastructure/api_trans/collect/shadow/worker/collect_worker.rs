@@ -2251,39 +2251,29 @@ impl ShadowCollectWorker {
         let raw_tx = wallet_utils::serde_func::serde_from_str(req.raw_tx.as_deref().unwrap())?;
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Deserialized raw_tx successfully");
 
-        // 广播交易
-        // 获取链交互全局许可（按 guarded endpoint 控制并发），只包住真实链 RPC。
-        let _chain_rpc_guard =
-            match crate::infrastructure::chain_rpc_guard::acquire_for_attempt_with_ctx(
-                self.ctx,
-                &req.chain_code,
-                trade_no,
-                "broadcast",
-                "shadow_worker_v2",
-            )
-            .await
-            {
-                ChainRpcGuardAttempt::Proceed(permit) => permit,
-                ChainRpcGuardAttempt::Skip => return Ok(()),
-            };
+        // 广播交易。公共包装负责 guarded endpoint 并发、timeout、成功/失败记录。
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Starting to broadcast transaction");
-        let tx_resp = match crate::infrastructure::chain_rpc_guard::run_with_rpc_timeout(
+        let tx_resp = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+            self.ctx,
+            &req.chain_code,
+            trade_no,
+            "broadcast",
+            "shadow_worker_v2",
+            crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                .trade_no(trade_no)
+                .tx_hash(req.tx_hash.as_deref().unwrap_or_default())
+                .chain_code(&req.chain_code)
+                .source("shadow_worker_v2")
+                .op("broadcast"),
             crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
                 &self.ctx,
                 &req.chain_code,
                 raw_tx,
                 req.tx_hash.as_deref(),
             ),
-            &req.chain_code,
-            trade_no,
-            "broadcast",
-            "shadow_worker_v2",
         )
-        .await
-        {
-            Ok(result) => result?,
-            Err(_) => None,
-        };
+        .await?
+        .flatten();
 
         match tx_resp {
             Some(tx) => {
