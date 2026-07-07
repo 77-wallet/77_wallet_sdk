@@ -790,22 +790,41 @@ impl ApiTransDomain {
                     } else if chain_code.eq_ignore_ascii_case(&ChainCode::Tron.to_string())
                         && Self::is_transaction_expired_error(&e)
                     {
+                        let rpc_err_msg = e.to_string();
+                        let rpc_error =
+                            chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
                         tracing::warn!(
                             chain_code = %chain_code,
-                            error = %e,
+                            rpc = %rpc,
+                            error_code = ?rpc_error.error_code,
+                            guarded_host = ?rpc_error.guarded_host.as_deref(),
+                            transient_reason = ?rpc_error.transient_reason,
+                            error = %rpc_err_msg,
                             "broadcast transaction expired; return error so raw tx can be rebuilt"
                         );
-                        chain_rpc_guard::record_transient_failure_from_error(&e);
+                        chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
                         return Err(e);
                     } else if e.is_network_error() {
-                        tracing::error!("broadcast_transfer: 网络错误, 交易广播失败: {}", e);
-                        chain_rpc_guard::record_transient_failure_from_error(&e);
+                        let rpc_err_msg = e.to_string();
+                        let rpc_error =
+                            chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
+                        tracing::error!(
+                            chain_code = %chain_code,
+                            rpc = %rpc,
+                            error_code = ?rpc_error.error_code,
+                            guarded_host = ?rpc_error.guarded_host.as_deref(),
+                            transient_reason = ?rpc_error.transient_reason,
+                            error = %rpc_err_msg,
+                            "broadcast_transfer: 网络错误, 交易广播失败"
+                        );
+                        chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                         }
                         return Ok(None);
                     } else {
-                        chain_rpc_guard::record_transient_failure_from_error(&e);
+                        let rpc_err_msg = e.to_string();
+                        chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                         }
@@ -839,25 +858,34 @@ impl ApiTransDomain {
                         continue 'auth_retry;
                     }
                     Err(e) => {
+                        let rpc_err_msg = e.to_string();
+                        let rpc_error =
+                            chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
                         if e.is_delay_retryable() {
                             tracing::warn!(
                                 chain_code = %chain_code,
                                 rpc = %rpc,
-                                error = %e,
+                                error_code = ?rpc_error.error_code,
+                                guarded_host = ?rpc_error.guarded_host.as_deref(),
+                                transient_reason = ?rpc_error.transient_reason,
+                                error = %rpc_err_msg,
                                 visibility_kind = %visibility_kind,
                                 "broadcast visibility probe failed with delay retryable error"
                             );
-                            chain_rpc_guard::record_transient_failure_from_error(&e);
+                            chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
                             return Ok(None);
                         }
                         tracing::warn!(
                             chain_code = %chain_code,
                             rpc = %rpc,
-                            error = %e,
+                            error_code = ?rpc_error.error_code,
+                            guarded_host = ?rpc_error.guarded_host.as_deref(),
+                            transient_reason = ?rpc_error.transient_reason,
+                            error = %rpc_err_msg,
                             visibility_kind = %visibility_kind,
                             "broadcast visibility probe failed"
                         );
-                        chain_rpc_guard::record_transient_failure_from_error(&e);
+                        chain_rpc_guard::record_transient_failure_from_message(&rpc_err_msg);
                         return Ok(None);
                     }
                 };
@@ -964,17 +992,25 @@ impl ApiTransDomain {
                                 continue 'auth_retry;
                             }
                             Err(e) => {
+                                let rpc_err_msg = e.to_string();
+                                let rpc_error =
+                                    chain_rpc_guard::classify_chain_rpc_error_message(&rpc_err_msg);
                                 tracing::warn!(
                                     chain_code = %chain_code,
                                     tx_hash = %resp.tx_hash,
                                     rpc = %rpc,
                                     attempt = attempt,
                                     delay_ms = *delay_ms,
-                                    error = %e,
+                                    error_code = ?rpc_error.error_code,
+                                    guarded_host = ?rpc_error.guarded_host.as_deref(),
+                                    transient_reason = ?rpc_error.transient_reason,
+                                    error = %rpc_err_msg,
                                     visibility_kind = %visibility_kind,
                                     "broadcast visibility check miss (uncertain)"
                                 );
-                                chain_rpc_guard::record_transient_failure_from_error(&e);
+                                chain_rpc_guard::record_transient_failure_from_message(
+                                    &rpc_err_msg,
+                                );
                                 if auth_retry_attempted {
                                     tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                                 }
