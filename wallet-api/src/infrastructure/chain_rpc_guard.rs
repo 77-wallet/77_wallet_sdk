@@ -477,7 +477,10 @@ where
             rpc_error.record_transient_failure();
             Err(err)
         }
-        Err(_) => Ok(None),
+        Err(_) => {
+            failure_log.timeout_skip("rpc_execution_timeout");
+            Ok(None)
+        }
     }
 }
 
@@ -743,6 +746,27 @@ impl<'a> ChainRpcFailureLog<'a> {
             error = %error.message(),
             reason = %reason,
             "chain rpc failure"
+        );
+    }
+
+    pub fn timeout_skip(self, reason: &str) {
+        tracing::warn!(
+            observability_event = "chain_rpc_skipped",
+            chain_code = self.chain_code.unwrap_or(""),
+            rpc = self.rpc.unwrap_or(""),
+            trade_no = self.trade_no.unwrap_or(""),
+            tx_hash = self.tx_hash.unwrap_or(""),
+            source = self.source.unwrap_or(""),
+            op = self.op.unwrap_or(""),
+            visibility_kind = self.visibility_kind.unwrap_or(""),
+            address = self.address.unwrap_or(""),
+            symbol = self.symbol.unwrap_or(""),
+            token = self.token.unwrap_or(""),
+            exec_to_addr = self.exec_to_addr.unwrap_or(""),
+            attempt = ?self.attempt,
+            delay_ms = ?self.delay_ms,
+            reason = %reason,
+            "chain rpc skipped"
         );
     }
 }
