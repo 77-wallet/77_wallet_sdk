@@ -1343,7 +1343,10 @@ impl ApiTransDomain {
         match classify_recover_missing_tx_route(chain_code) {
             RecoverMissingTxRoute::SolanaVisibilityProbe => {
                 Self::probe_sol_visibility_during_recover(chain_code, tx_hash, rpc, adapter).await;
-                tracing::info!(trade_no=?tx_hash, "Solana链上未找到该交易，等待下一轮Scanner重试");
+                Self::log_recover_missing_tx_wait(
+                    tx_hash,
+                    RecoverMissingTxRoute::SolanaVisibilityProbe,
+                );
                 Ok(None)
             }
             RecoverMissingTxRoute::TronPendingPool => {
@@ -1354,9 +1357,15 @@ impl ApiTransDomain {
                     .await
             }
             RecoverMissingTxRoute::WaitForScanner => {
-                tracing::info!(trade_no=?tx_hash, "非EVM链，链上未找到该交易，等待下一轮Scanner重试");
+                Self::log_recover_missing_tx_wait(tx_hash, RecoverMissingTxRoute::WaitForScanner);
                 Ok(None)
             }
+        }
+    }
+
+    fn log_recover_missing_tx_wait(tx_hash: &str, route: RecoverMissingTxRoute) {
+        if let Some(reason) = route.wait_reason() {
+            tracing::info!(trade_no=?tx_hash, "{}", reason);
         }
     }
 

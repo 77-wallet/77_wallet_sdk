@@ -60,6 +60,20 @@ pub(super) enum RecoverMissingTxRoute {
     WaitForScanner,
 }
 
+impl RecoverMissingTxRoute {
+    pub(super) fn wait_reason(self) -> Option<&'static str> {
+        match self {
+            RecoverMissingTxRoute::SolanaVisibilityProbe => {
+                Some("Solana链上未找到该交易，等待下一轮Scanner重试")
+            }
+            RecoverMissingTxRoute::WaitForScanner => {
+                Some("非EVM链，链上未找到该交易，等待下一轮Scanner重试")
+            }
+            RecoverMissingTxRoute::TronPendingPool | RecoverMissingTxRoute::EvmNonceCheck => None,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct RecoverAuthRetryState {
     attempted: bool,
@@ -379,12 +393,14 @@ mod tests {
     fn recover_missing_tx_routes_solana_to_visibility_probe() {
         let route = classify_recover_missing_tx_route(&ChainCode::Solana.to_string());
         assert_eq!(route, RecoverMissingTxRoute::SolanaVisibilityProbe);
+        assert_eq!(route.wait_reason(), Some("Solana链上未找到该交易，等待下一轮Scanner重试"));
     }
 
     #[test]
     fn recover_missing_tx_routes_tron_to_pending_pool() {
         let route = classify_recover_missing_tx_route(&ChainCode::Tron.to_string());
         assert_eq!(route, RecoverMissingTxRoute::TronPendingPool);
+        assert_eq!(route.wait_reason(), None);
     }
 
     #[test]
@@ -392,6 +408,7 @@ mod tests {
         for chain_code in [ChainCode::Ethereum.to_string(), ChainCode::BnbSmartChain.to_string()] {
             let route = classify_recover_missing_tx_route(&chain_code);
             assert_eq!(route, RecoverMissingTxRoute::EvmNonceCheck);
+            assert_eq!(route.wait_reason(), None);
         }
     }
 
@@ -399,5 +416,6 @@ mod tests {
     fn recover_missing_tx_routes_unknown_chain_to_wait() {
         let route = classify_recover_missing_tx_route("aptos");
         assert_eq!(route, RecoverMissingTxRoute::WaitForScanner);
+        assert_eq!(route.wait_reason(), Some("非EVM链，链上未找到该交易，等待下一轮Scanner重试"));
     }
 }
