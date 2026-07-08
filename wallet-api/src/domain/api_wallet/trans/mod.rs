@@ -37,6 +37,11 @@ enum RecoverAdapterAcquire {
     StayUncertain,
 }
 
+enum RecoverQueryErrorAction {
+    RetryAuth,
+    StayUncertain,
+}
+
 #[cfg(test)]
 mod confirm_tx_tests;
 
@@ -1220,29 +1225,19 @@ impl ApiTransDomain {
 
                 // === C. RPC 异常 ===
                 RecoverQueryOutcome::QueryError(service_err) => {
-                    match auth_retry.classify_query_error(&service_err) {
-                        RecoverQueryErrorDecision::RefreshAuthAndRetry => {
-                            Self::prepare_recover_auth_retry(
-                                ctx,
-                                &mut auth_retry,
-                                chain_code,
-                                RECOVER_OP_QUERY_TX_RES,
-                                Some(&rpc),
-                                &service_err,
-                            )
-                            .await?;
-                            continue 'recover_auth_retry;
-                        }
-                        RecoverQueryErrorDecision::StayUncertain => {}
-                    }
-                    log_recover_query_error(
+                    match Self::handle_recover_query_error_action(
+                        ctx,
+                        &mut auth_retry,
                         chain_code,
                         tx_hash,
                         &rpc,
                         &service_err,
-                        auth_retry.attempted(),
-                    );
-                    return Ok(None);
+                    )
+                    .await?
+                    {
+                        RecoverQueryErrorAction::RetryAuth => continue 'recover_auth_retry,
+                        RecoverQueryErrorAction::StayUncertain => return Ok(None),
+                    }
                 }
             }
         }
@@ -1290,6 +1285,40 @@ impl ApiTransDomain {
     ) -> Result<(), ServiceError> {
         auth_retry.mark_attempted();
         Self::refresh_rpc_auth_and_prepare_retry(ctx, chain_code, op, rpc, err).await
+    }
+
+    async fn handle_recover_query_error_action(
+        ctx: &'static Context,
+        auth_retry: &mut RecoverAuthRetryState,
+        chain_code: &str,
+        tx_hash: &str,
+        rpc: &str,
+        service_err: &ServiceError,
+    ) -> Result<RecoverQueryErrorAction, ServiceError> {
+        match auth_retry.classify_query_error(service_err) {
+            RecoverQueryErrorDecision::RefreshAuthAndRetry => {
+                Self::prepare_recover_auth_retry(
+                    ctx,
+                    auth_retry,
+                    chain_code,
+                    RECOVER_OP_QUERY_TX_RES,
+                    Some(rpc),
+                    service_err,
+                )
+                .await?;
+                Ok(RecoverQueryErrorAction::RetryAuth)
+            }
+            RecoverQueryErrorDecision::StayUncertain => {
+                log_recover_query_error(
+                    chain_code,
+                    tx_hash,
+                    rpc,
+                    service_err,
+                    auth_retry.attempted(),
+                );
+                Ok(RecoverQueryErrorAction::StayUncertain)
+            }
+        }
     }
 
     async fn handle_recovered_tx_result(
