@@ -159,7 +159,7 @@ mod evm_recover_nonce_state_tests {
 
 #[cfg(test)]
 mod recover_query_error_tests {
-    use super::ApiTransDomain;
+    use super::{ApiTransDomain, RecoverQueryErrorDecision};
     use crate::error::service::ServiceError;
 
     #[test]
@@ -195,6 +195,30 @@ mod recover_query_error_tests {
         .expect("recover query errors should be tolerated");
 
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn recover_query_unauthorized_refreshes_auth_before_retry() {
+        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+            401,
+            Some("Unauthorized".to_string()),
+        ));
+
+        let decision = ApiTransDomain::classify_recover_query_error(&err, false);
+
+        assert_eq!(decision, RecoverQueryErrorDecision::RefreshAuthAndRetry);
+    }
+
+    #[test]
+    fn recover_query_unauthorized_after_auth_retry_stays_uncertain() {
+        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+            401,
+            Some("Unauthorized".to_string()),
+        ));
+
+        let decision = ApiTransDomain::classify_recover_query_error(&err, true);
+
+        assert_eq!(decision, RecoverQueryErrorDecision::StayUncertain);
     }
 }
 
@@ -311,6 +335,12 @@ enum RecoverAdapterErrorDecision {
     Fatal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecoverQueryErrorDecision {
+    RefreshAuthAndRetry,
+    StayUncertain,
+}
+
 const RECOVER_OP_GET_ADAPTER: &str = "process_recovered_tx:get_adapter";
 const RECOVER_OP_QUERY_TX_RES: &str = "process_recovered_tx:query_tx_res";
 const RECOVER_OP_SOL_VISIBILITY_PROBE: &str = "process_recovered_tx:sol_visibility_probe";
@@ -345,6 +375,17 @@ impl ApiTransDomain {
             RecoverAdapterErrorDecision::StayUncertain
         } else {
             RecoverAdapterErrorDecision::Fatal
+        }
+    }
+
+    fn classify_recover_query_error(
+        err: &ServiceError,
+        auth_retry_attempted: bool,
+    ) -> RecoverQueryErrorDecision {
+        if !auth_retry_attempted && err.is_rpc_auth_unauthorized() {
+            RecoverQueryErrorDecision::RefreshAuthAndRetry
+        } else {
+            RecoverQueryErrorDecision::StayUncertain
         }
     }
 
@@ -1397,17 +1438,20 @@ impl ApiTransDomain {
                 // === C. RPC 异常 ===
                 Err(err) => {
                     let service_err: ServiceError = err.into();
-                    if !auth_retry_attempted && service_err.is_rpc_auth_unauthorized() {
-                        auth_retry_attempted = true;
-                        Self::refresh_rpc_auth_and_prepare_retry(
-                            ctx,
-                            chain_code,
-                            RECOVER_OP_QUERY_TX_RES,
-                            Some(&rpc),
-                            &service_err,
-                        )
-                        .await?;
-                        continue 'recover_auth_retry;
+                    match Self::classify_recover_query_error(&service_err, auth_retry_attempted) {
+                        RecoverQueryErrorDecision::RefreshAuthAndRetry => {
+                            auth_retry_attempted = true;
+                            Self::refresh_rpc_auth_and_prepare_retry(
+                                ctx,
+                                chain_code,
+                                RECOVER_OP_QUERY_TX_RES,
+                                Some(&rpc),
+                                &service_err,
+                            )
+                            .await?;
+                            continue 'recover_auth_retry;
+                        }
+                        RecoverQueryErrorDecision::StayUncertain => {}
                     }
                     return Self::handle_recover_query_error(
                         chain_code,
