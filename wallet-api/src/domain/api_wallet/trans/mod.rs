@@ -3,7 +3,7 @@ use crate::{
     domain::{
         api_wallet::{
             account::ApiAccountDomain,
-            adapter::tx::{RawTx, TxVisibilityProbe},
+            adapter::tx::{RawTx, Tx, TxVisibilityProbe},
             adapter_factory::ApiChainAdapterFactory,
         },
         chain::TransferResp,
@@ -154,6 +154,67 @@ mod evm_recover_nonce_state_tests {
     fn evm_recover_missing_tx_hash_detects_local_nonce_ahead() {
         let state = ApiTransDomain::classify_evm_missing_tx_hash_state(2, 3);
         assert_eq!(state, EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce);
+    }
+}
+
+#[cfg(test)]
+mod recover_query_error_tests {
+    use super::ApiTransDomain;
+    use crate::error::service::ServiceError;
+
+    #[test]
+    fn recover_transient_query_error_stays_uncertain() {
+        let err = ServiceError::Parameter(
+            "Node response error: code=503, rpc=https://api.nileex.io/wallet/gettransactioninfobyid"
+                .to_string(),
+        );
+
+        let result = ApiTransDomain::handle_recover_query_error(
+            "tron",
+            "0xtx",
+            "https://api.nileex.io",
+            err,
+            false,
+        )
+        .expect("recover query errors should be tolerated");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn recover_non_transient_query_error_stays_uncertain() {
+        let err = ServiceError::Parameter("invalid tx hash".to_string());
+
+        let result = ApiTransDomain::handle_recover_query_error(
+            "tron",
+            "0xtx",
+            "https://api.nileex.io",
+            err,
+            true,
+        )
+        .expect("recover query errors should be tolerated");
+
+        assert!(result.is_none());
+    }
+}
+
+#[cfg(test)]
+mod recover_tx_status_tests {
+    use super::ApiTransDomain;
+
+    #[test]
+    fn recovered_tx_status_two_is_success() {
+        assert!(ApiTransDomain::is_recovered_tx_status_success("0xtx", 2));
+    }
+
+    #[test]
+    fn recovered_tx_status_three_is_failure() {
+        assert!(!ApiTransDomain::is_recovered_tx_status_success("0xtx", 3));
+    }
+
+    #[test]
+    fn recovered_tx_unknown_status_is_failure() {
+        assert!(!ApiTransDomain::is_recovered_tx_status_success("0xtx", 1));
     }
 }
 
@@ -1225,170 +1286,28 @@ impl ApiTransDomain {
                     if auth_retry_attempted {
                         tracing::info!(chain_code=%chain_code, rpc=%rpc, op="process_recovered_tx:query_tx_res", "auth retry succeeded");
                     }
-                    // 修复状态类型问题：将i8转换为bool
-                    let is_success = match tx_result.status {
-                        2 => true,
-                        3 => false,
-                        _ => {
-                            tracing::warn!(trade_no=?tx_hash, "链上交易状态异常: {}", tx_result.status);
-                            false
-                        }
-                    };
-
-                    let time_ms = Self::normalize_chain_time_to_ms(tx_result.transaction_time)?;
-
-                    if is_success {
-                        tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
-                        chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code)
-                            .await;
-                        // 直接标记成功
-                        let mut mock_resp = TransferResp {
-                            tx_hash: tx_hash.to_string(),
-                            fee: transaction_fee.to_string(),
-                            consumer: None,
-                            transaction_time_ms: None,
-                        };
-                        // 使用链上时间设置 transaction_time_ms
-                        mock_resp.with_transaction_time(time_ms);
-                        return Ok(Some(mock_resp));
-                    } else {
-                        tracing::warn!(trade_no=?tx_hash, "链上失败，直接标记失败");
-                        return Err(ServiceError::System(
-                            crate::error::system::SystemError::Internal(
-                                "broadcasted tx failed".into(),
-                            ),
-                        ));
-                    }
+                    return Self::handle_recovered_tx_result(
+                        ctx,
+                        chain_code,
+                        tx_hash,
+                        transaction_fee,
+                        tx_result,
+                    )
+                    .await;
                 }
 
                 // === B. 链上没有该hash ===
                 Ok(None) => {
-                    tracing::info!(trade_no=?tx_hash, "链上未找到该交易，执行恢复判定");
-
-                    if Self::is_sol_chain(chain_code) {
-                        match adapter.tx_visibility_probe(tx_hash).await {
-                            Ok(Some(probe)) => {
-                                Self::log_visibility_probe(
-                                    chain_code, tx_hash, &rpc, "sol", &probe, None, None, "recover",
-                                );
-                            }
-                            Ok(None) => {
-                                tracing::info!(
-                                    trade_no = ?tx_hash,
-                                    rpc = %rpc,
-                                    "Solana visibility probe unavailable during recover"
-                                );
-                            }
-                            Err(e) => {
-                                Self::warn_chain_rpc_failure(
-                                    &e,
-                                    chain_rpc_guard::ChainRpcFailureLog::new()
-                                        .trade_no(tx_hash)
-                                        .tx_hash(tx_hash)
-                                        .rpc(&rpc)
-                                        .op("process_recovered_tx:sol_visibility_probe"),
-                                    "Solana visibility probe failed during recover",
-                                );
-                            }
-                        }
-                    }
-
-                    if chain_code == ChainCode::Tron.to_string() {
-                        match adapter.has_pending_tx(tx_hash).await {
-                            Ok(true) => {
-                                tracing::info!(
-                                    trade_no=?tx_hash,
-                                    "Tron pending pool still sees tx hash; keep observing"
-                                );
-                                return Ok(None);
-                            }
-                            Ok(false) => {
-                                tracing::warn!(
-                                    trade_no=?tx_hash,
-                                    "Tron tx missing from both confirmed and pending pools"
-                                );
-                                return Err(ServiceError::System(
-                                    crate::error::system::SystemError::Internal(
-                                        "tron tx missing from confirmed and pending pools".into(),
-                                    ),
-                                ));
-                            }
-                            Err(err) => {
-                                let rpc_error =
-                                    chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
-                                chain_rpc_guard::ChainRpcFailureLog::new()
-                                    .trade_no(tx_hash)
-                                    .tx_hash(tx_hash)
-                                    .rpc(&rpc)
-                                    .op("process_recovered_tx:tron_pending_pool")
-                                    .warn(
-                                        &rpc_error,
-                                        "Tron pending pool query failed; keep uncertain",
-                                    );
-                                return Ok(None);
-                            }
-                        }
-                    }
-
-                    let is_evm_chain = chain_code
-                        == wallet_types::chain::chain::ChainCode::Ethereum.to_string()
-                        || chain_code
-                            == wallet_types::chain::chain::ChainCode::BnbSmartChain.to_string();
-
-                    if !is_evm_chain {
-                        tracing::info!(trade_no=?tx_hash, "非EVM链，链上未找到该交易，等待下一轮Scanner重试");
-                        return Ok(None);
-                    }
-
-                    let chain_nonce = match Self::nonce_with_ctx(ctx, from_addr, chain_code).await {
-                        Ok(chain_nonce) => chain_nonce,
-                        Err(e) => {
-                            if e.is_network_error() {
-                                tracing::warn!(trade_no=?tx_hash, "恢复判定获取链上nonce失败(网络瞬时)，等待下一轮: {}", e);
-                                return Ok(None);
-                            }
-                            tracing::error!(trade_no=?tx_hash, "恢复判定获取链上nonce失败: {}", e);
-                            return Err(e);
-                        }
-                    };
-
-                    let local_nonce = nonce as u64;
-                    tracing::warn!(
-                        trade_no=?tx_hash,
-                        chain_nonce = chain_nonce,
-                        local_nonce = local_nonce,
-                        "EVM recover: tx hash missing on-chain, comparing nonce state"
-                    );
-
-                    match Self::classify_evm_missing_tx_hash_state(chain_nonce, local_nonce) {
-                        EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing => {
-                            tracing::warn!(
-                                trade_no=?tx_hash,
-                                chain_nonce = chain_nonce,
-                                local_nonce = local_nonce,
-                                "EVM recover: local tx hash missing but nonce already consumed on-chain; keep uncertain"
-                            );
-                            return Ok(None);
-                        }
-                        EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce => {
-                            tracing::warn!(
-                                trade_no=?tx_hash,
-                                chain_nonce = chain_nonce,
-                                local_nonce = local_nonce,
-                                "EVM recover: nonce matches next expected nonce but tx hash missing (rpc accepted only / not propagated / dropped)"
-                            );
-                            return Ok(None);
-                        }
-                        EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce => {
-                            tracing::warn!(
-                                trade_no=?tx_hash,
-                                chain_nonce = chain_nonce,
-                                local_nonce = local_nonce,
-                                "EVM recover: local nonce ahead of chain nonce (future nonce / nonce gap suspected)"
-                            );
-                            return Ok(None);
-                        }
-                    }
+                    return Self::handle_missing_recovered_tx(
+                        ctx,
+                        chain_code,
+                        from_addr,
+                        tx_hash,
+                        nonce,
+                        &rpc,
+                        adapter.as_ref(),
+                    )
+                    .await;
                 }
 
                 // === C. RPC 异常 ===
@@ -1406,32 +1325,238 @@ impl ApiTransDomain {
                         .await?;
                         continue 'recover_auth_retry;
                     }
-                    let failure_log = chain_rpc_guard::ChainRpcFailureLog::new()
-                        .trade_no(tx_hash)
-                        .tx_hash(tx_hash)
-                        .chain_code(chain_code)
-                        .rpc(&rpc)
-                        .op("process_recovered_tx:query_tx_res");
-                    let rpc_error =
-                        chain_rpc_guard::ChainRpcErrorContext::from_display(&service_err);
-                    if rpc_error.is_transient() {
-                        failure_log.warn(
-                            &rpc_error,
-                            "查询链上状态失败(瞬时); recovered tx result will stay uncertain",
-                        );
-                    } else {
-                        failure_log.error(
-                            &rpc_error,
-                            "查询链上状态失败; recovered tx result will stay uncertain",
-                        );
-                    }
-                    rpc_error.record_transient_failure();
-                    if auth_retry_attempted {
-                        tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="process_recovered_tx:query_tx_res", error=%service_err, "auth retry failed");
-                    }
-                    return Ok(None); // 容错，下轮再查
+                    return Self::handle_recover_query_error(
+                        chain_code,
+                        tx_hash,
+                        &rpc,
+                        service_err,
+                        auth_retry_attempted,
+                    );
                 }
             }
         }
+    }
+
+    async fn handle_recovered_tx_result(
+        ctx: &'static Context,
+        chain_code: &str,
+        tx_hash: &str,
+        transaction_fee: &str,
+        tx_result: wallet_chain_interact::QueryTransactionResult,
+    ) -> Result<Option<TransferResp>, ServiceError> {
+        let is_success = Self::is_recovered_tx_status_success(tx_hash, tx_result.status);
+        let time_ms = Self::normalize_chain_time_to_ms(tx_result.transaction_time)?;
+
+        if is_success {
+            tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
+            chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code).await;
+            let mut mock_resp = TransferResp {
+                tx_hash: tx_hash.to_string(),
+                fee: transaction_fee.to_string(),
+                consumer: None,
+                transaction_time_ms: None,
+            };
+            mock_resp.with_transaction_time(time_ms);
+            Ok(Some(mock_resp))
+        } else {
+            tracing::warn!(trade_no=?tx_hash, "链上失败，直接标记失败");
+            Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                "broadcasted tx failed".into(),
+            )))
+        }
+    }
+
+    fn is_recovered_tx_status_success(tx_hash: &str, status: i8) -> bool {
+        match status {
+            2 => true,
+            3 => false,
+            _ => {
+                tracing::warn!(trade_no=?tx_hash, "链上交易状态异常: {}", status);
+                false
+            }
+        }
+    }
+
+    async fn handle_missing_recovered_tx(
+        ctx: &'static Context,
+        chain_code: &str,
+        from_addr: &str,
+        tx_hash: &str,
+        nonce: i64,
+        rpc: &str,
+        adapter: &(dyn Tx + Sync),
+    ) -> Result<Option<TransferResp>, ServiceError> {
+        tracing::info!(trade_no=?tx_hash, "链上未找到该交易，执行恢复判定");
+
+        if Self::is_sol_chain(chain_code) {
+            Self::probe_sol_visibility_during_recover(chain_code, tx_hash, rpc, adapter).await;
+        }
+
+        if chain_code == ChainCode::Tron.to_string() {
+            return Self::handle_tron_missing_recovered_tx(tx_hash, rpc, adapter).await;
+        }
+
+        if !Self::is_evm_chain(chain_code) {
+            tracing::info!(trade_no=?tx_hash, "非EVM链，链上未找到该交易，等待下一轮Scanner重试");
+            return Ok(None);
+        }
+
+        Self::handle_evm_missing_recovered_tx(ctx, chain_code, from_addr, tx_hash, nonce).await
+    }
+
+    async fn probe_sol_visibility_during_recover(
+        chain_code: &str,
+        tx_hash: &str,
+        rpc: &str,
+        adapter: &(dyn Tx + Sync),
+    ) {
+        match adapter.tx_visibility_probe(tx_hash).await {
+            Ok(Some(probe)) => {
+                Self::log_visibility_probe(
+                    chain_code, tx_hash, rpc, "sol", &probe, None, None, "recover",
+                );
+            }
+            Ok(None) => {
+                tracing::info!(
+                    trade_no = ?tx_hash,
+                    rpc = %rpc,
+                    "Solana visibility probe unavailable during recover"
+                );
+            }
+            Err(e) => {
+                Self::warn_chain_rpc_failure(
+                    &e,
+                    chain_rpc_guard::ChainRpcFailureLog::new()
+                        .trade_no(tx_hash)
+                        .tx_hash(tx_hash)
+                        .rpc(rpc)
+                        .op("process_recovered_tx:sol_visibility_probe"),
+                    "Solana visibility probe failed during recover",
+                );
+            }
+        }
+    }
+
+    async fn handle_tron_missing_recovered_tx(
+        tx_hash: &str,
+        rpc: &str,
+        adapter: &(dyn Tx + Sync),
+    ) -> Result<Option<TransferResp>, ServiceError> {
+        match adapter.has_pending_tx(tx_hash).await {
+            Ok(true) => {
+                tracing::info!(
+                    trade_no=?tx_hash,
+                    "Tron pending pool still sees tx hash; keep observing"
+                );
+                Ok(None)
+            }
+            Ok(false) => {
+                tracing::warn!(
+                    trade_no=?tx_hash,
+                    "Tron tx missing from both confirmed and pending pools"
+                );
+                Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                    "tron tx missing from confirmed and pending pools".into(),
+                )))
+            }
+            Err(err) => {
+                let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
+                chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(tx_hash)
+                    .tx_hash(tx_hash)
+                    .rpc(rpc)
+                    .op("process_recovered_tx:tron_pending_pool")
+                    .warn(&rpc_error, "Tron pending pool query failed; keep uncertain");
+                Ok(None)
+            }
+        }
+    }
+
+    async fn handle_evm_missing_recovered_tx(
+        ctx: &'static Context,
+        chain_code: &str,
+        from_addr: &str,
+        tx_hash: &str,
+        nonce: i64,
+    ) -> Result<Option<TransferResp>, ServiceError> {
+        let chain_nonce = match Self::nonce_with_ctx(ctx, from_addr, chain_code).await {
+            Ok(chain_nonce) => chain_nonce,
+            Err(e) => {
+                if e.is_network_error() {
+                    tracing::warn!(trade_no=?tx_hash, "恢复判定获取链上nonce失败(网络瞬时)，等待下一轮: {}", e);
+                    return Ok(None);
+                }
+                tracing::error!(trade_no=?tx_hash, "恢复判定获取链上nonce失败: {}", e);
+                return Err(e);
+            }
+        };
+
+        let local_nonce = nonce as u64;
+        tracing::warn!(
+            trade_no=?tx_hash,
+            chain_nonce = chain_nonce,
+            local_nonce = local_nonce,
+            "EVM recover: tx hash missing on-chain, comparing nonce state"
+        );
+
+        match Self::classify_evm_missing_tx_hash_state(chain_nonce, local_nonce) {
+            EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing => {
+                tracing::warn!(
+                    trade_no=?tx_hash,
+                    chain_nonce = chain_nonce,
+                    local_nonce = local_nonce,
+                    "EVM recover: local tx hash missing but nonce already consumed on-chain; keep uncertain"
+                );
+                Ok(None)
+            }
+            EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce => {
+                tracing::warn!(
+                    trade_no=?tx_hash,
+                    chain_nonce = chain_nonce,
+                    local_nonce = local_nonce,
+                    "EVM recover: nonce matches next expected nonce but tx hash missing (rpc accepted only / not propagated / dropped)"
+                );
+                Ok(None)
+            }
+            EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce => {
+                tracing::warn!(
+                    trade_no=?tx_hash,
+                    chain_nonce = chain_nonce,
+                    local_nonce = local_nonce,
+                    "EVM recover: local nonce ahead of chain nonce (future nonce / nonce gap suspected)"
+                );
+                Ok(None)
+            }
+        }
+    }
+
+    fn handle_recover_query_error(
+        chain_code: &str,
+        tx_hash: &str,
+        rpc: &str,
+        service_err: ServiceError,
+        auth_retry_attempted: bool,
+    ) -> Result<Option<TransferResp>, ServiceError> {
+        let failure_log = chain_rpc_guard::ChainRpcFailureLog::new()
+            .trade_no(tx_hash)
+            .tx_hash(tx_hash)
+            .chain_code(chain_code)
+            .rpc(rpc)
+            .op("process_recovered_tx:query_tx_res");
+        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&service_err);
+        if rpc_error.is_transient() {
+            failure_log.warn(
+                &rpc_error,
+                "查询链上状态失败(瞬时); recovered tx result will stay uncertain",
+            );
+        } else {
+            failure_log
+                .error(&rpc_error, "查询链上状态失败; recovered tx result will stay uncertain");
+        }
+        rpc_error.record_transient_failure();
+        if auth_retry_attempted {
+            tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="process_recovered_tx:query_tx_res", error=%service_err, "auth retry failed");
+        }
+        Ok(None)
     }
 }
