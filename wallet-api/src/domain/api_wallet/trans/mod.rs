@@ -13,7 +13,7 @@ use crate::{
     request::api_wallet::trans::ApiTransferReq,
 };
 use sha3::{Digest, Keccak256};
-use std::{fmt::Display, time::Instant};
+use std::{fmt::Display, sync::Arc, time::Instant};
 use tokio::time::sleep;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_types::chain::chain::ChainCode;
@@ -30,6 +30,12 @@ use recover_mechanism::{
     classify_recover_missing_tx_route, log_evm_missing_tx_hash_state, log_recover_query_error,
     log_sol_visibility_probe_error, log_tron_pending_pool_query_error, recover_query_outcome,
 };
+
+enum RecoverAdapterAcquire {
+    Ready(Arc<dyn Tx + Send + Sync>),
+    RetryAuth,
+    StayUncertain,
+}
 
 #[cfg(test)]
 mod confirm_tx_tests;
@@ -1175,35 +1181,10 @@ impl ApiTransDomain {
         let mut auth_retry = RecoverAuthRetryState::default();
         'recover_auth_retry: loop {
             let adapter =
-                match ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code)
-                    .await
-                {
-                    Ok(adapter) => adapter,
-                    Err(e) => match auth_retry.classify_adapter_error(&e) {
-                        RecoverAdapterErrorDecision::RefreshAuthAndRetry => {
-                            Self::prepare_recover_auth_retry(
-                                ctx,
-                                &mut auth_retry,
-                                chain_code,
-                                RECOVER_OP_GET_ADAPTER,
-                                None,
-                                &e,
-                            )
-                            .await?;
-                            continue 'recover_auth_retry;
-                        }
-                        RecoverAdapterErrorDecision::StayUncertain => {
-                            tracing::warn!("process_recovered_tx: 延迟重试, 适配器创建失败: {}", e);
-                            return Ok(None);
-                        }
-                        RecoverAdapterErrorDecision::Fatal => {
-                            tracing::error!(
-                                "process_recovered_tx: 非延迟重试, 适配器创建失败: {}",
-                                e
-                            );
-                            return Err(e);
-                        }
-                    },
+                match Self::acquire_recover_adapter(ctx, &mut auth_retry, chain_code).await? {
+                    RecoverAdapterAcquire::Ready(adapter) => adapter,
+                    RecoverAdapterAcquire::RetryAuth => continue 'recover_auth_retry,
+                    RecoverAdapterAcquire::StayUncertain => return Ok(None),
                 };
             let rpc = adapter.rpc_endpoint_for_log().unwrap_or_else(|| "<unknown>".to_string());
 
@@ -1264,6 +1245,38 @@ impl ApiTransDomain {
                     return Ok(None);
                 }
             }
+        }
+    }
+
+    async fn acquire_recover_adapter(
+        ctx: &'static Context,
+        auth_retry: &mut RecoverAuthRetryState,
+        chain_code: &str,
+    ) -> Result<RecoverAdapterAcquire, ServiceError> {
+        match ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code).await {
+            Ok(adapter) => Ok(RecoverAdapterAcquire::Ready(adapter)),
+            Err(e) => match auth_retry.classify_adapter_error(&e) {
+                RecoverAdapterErrorDecision::RefreshAuthAndRetry => {
+                    Self::prepare_recover_auth_retry(
+                        ctx,
+                        auth_retry,
+                        chain_code,
+                        RECOVER_OP_GET_ADAPTER,
+                        None,
+                        &e,
+                    )
+                    .await?;
+                    Ok(RecoverAdapterAcquire::RetryAuth)
+                }
+                RecoverAdapterErrorDecision::StayUncertain => {
+                    tracing::warn!("process_recovered_tx: 延迟重试, 适配器创建失败: {}", e);
+                    Ok(RecoverAdapterAcquire::StayUncertain)
+                }
+                RecoverAdapterErrorDecision::Fatal => {
+                    tracing::error!("process_recovered_tx: 非延迟重试, 适配器创建失败: {}", e);
+                    Err(e)
+                }
+            },
         }
     }
 
