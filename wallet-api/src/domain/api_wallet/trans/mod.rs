@@ -26,9 +26,9 @@ pub(crate) mod withdraw;
 
 use recover_mechanism::{
     RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, RecoverAdapterErrorDecision,
-    RecoverAuthRetryState, RecoverMissingTxRoute, RecoverQueryErrorDecision,
+    RecoverAuthRetryState, RecoverMissingTxRoute, RecoverQueryErrorDecision, RecoverQueryOutcome,
     classify_recover_missing_tx_route, log_evm_missing_tx_hash_state, log_recover_query_error,
-    log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
+    log_sol_visibility_probe_error, log_tron_pending_pool_query_error, recover_query_outcome,
 };
 
 #[cfg(test)]
@@ -1207,10 +1207,9 @@ impl ApiTransDomain {
                 };
             let rpc = adapter.rpc_endpoint_for_log().unwrap_or_else(|| "<unknown>".to_string());
 
-            // 1. 查链上是否存在
-            match adapter.query_tx_res(tx_hash).await {
+            match recover_query_outcome(adapter.query_tx_res(tx_hash).await) {
                 // === A. 链上查到了 ===
-                Ok(Some(tx_result)) => {
+                RecoverQueryOutcome::Found(tx_result) => {
                     if auth_retry.attempted() {
                         tracing::info!(chain_code=%chain_code, rpc=%rpc, op=RECOVER_OP_QUERY_TX_RES, "auth retry succeeded");
                     }
@@ -1225,7 +1224,7 @@ impl ApiTransDomain {
                 }
 
                 // === B. 链上没有该hash ===
-                Ok(None) => {
+                RecoverQueryOutcome::Missing => {
                     return Self::handle_missing_recovered_tx(
                         ctx,
                         chain_code,
@@ -1239,8 +1238,7 @@ impl ApiTransDomain {
                 }
 
                 // === C. RPC 异常 ===
-                Err(err) => {
-                    let service_err: ServiceError = err.into();
+                RecoverQueryOutcome::QueryError(service_err) => {
                     match auth_retry.classify_query_error(&service_err) {
                         RecoverQueryErrorDecision::RefreshAuthAndRetry => {
                             Self::prepare_recover_auth_retry(

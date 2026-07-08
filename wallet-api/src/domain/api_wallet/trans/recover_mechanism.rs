@@ -1,5 +1,6 @@
 use crate::{error::service::ServiceError, infrastructure::chain_rpc_guard};
 use std::fmt::Display;
+use wallet_chain_interact::QueryTransactionResult;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
 
@@ -20,6 +21,12 @@ pub(super) enum RecoverAdapterErrorDecision {
 pub(super) enum RecoverQueryErrorDecision {
     RefreshAuthAndRetry,
     StayUncertain,
+}
+
+pub(super) enum RecoverQueryOutcome {
+    Found(QueryTransactionResult),
+    Missing,
+    QueryError(ServiceError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +155,16 @@ pub(super) fn classify_recover_query_error(
     }
 }
 
+pub(super) fn recover_query_outcome(
+    result: Result<Option<QueryTransactionResult>, wallet_chain_interact::Error>,
+) -> RecoverQueryOutcome {
+    match result {
+        Ok(Some(tx_result)) => RecoverQueryOutcome::Found(tx_result),
+        Ok(None) => RecoverQueryOutcome::Missing,
+        Err(err) => RecoverQueryOutcome::QueryError(err.into()),
+    }
+}
+
 pub(super) fn recover_failure_log<'a>(
     chain_code: &'a str,
     tx_hash: &'a str,
@@ -221,12 +238,14 @@ pub(super) fn log_tron_pending_pool_query_error(
 mod tests {
     use super::{
         EvmRecoverMissingTxHashState, RecoverAdapterErrorDecision, RecoverAuthRetryState,
-        RecoverMissingTxRoute, RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state,
-        classify_recover_adapter_error, classify_recover_missing_tx_route,
-        classify_recover_query_error, log_evm_missing_tx_hash_state, log_recover_query_error,
-        log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
+        RecoverMissingTxRoute, RecoverQueryErrorDecision, RecoverQueryOutcome,
+        classify_evm_missing_tx_hash_state, classify_recover_adapter_error,
+        classify_recover_missing_tx_route, classify_recover_query_error,
+        log_evm_missing_tx_hash_state, log_recover_query_error, log_sol_visibility_probe_error,
+        log_tron_pending_pool_query_error, recover_query_outcome,
     };
     use crate::error::service::ServiceError;
+    use wallet_chain_interact::QueryTransactionResult;
     use wallet_types::chain::chain::ChainCode;
 
     #[test]
@@ -324,6 +343,53 @@ mod tests {
         let decision = classify_recover_query_error(&err, true);
 
         assert_eq!(decision, RecoverQueryErrorDecision::StayUncertain);
+    }
+
+    #[test]
+    fn recover_query_outcome_maps_missing_tx() {
+        let outcome = recover_query_outcome(Ok(None));
+
+        assert!(matches!(outcome, RecoverQueryOutcome::Missing));
+    }
+
+    #[test]
+    fn recover_query_outcome_maps_found_tx() {
+        let tx_result = QueryTransactionResult::new(
+            "0xtx".to_string(),
+            1.23,
+            "resource".to_string(),
+            1_746_040_371_123,
+            2,
+            42,
+        );
+
+        let outcome = recover_query_outcome(Ok(Some(tx_result)));
+
+        match outcome {
+            RecoverQueryOutcome::Found(found) => {
+                assert_eq!(found.hash, "0xtx");
+                assert_eq!(found.status, 2);
+            }
+            RecoverQueryOutcome::Missing | RecoverQueryOutcome::QueryError(_) => {
+                panic!("expected found tx result")
+            }
+        }
+    }
+
+    #[test]
+    fn recover_query_outcome_maps_query_error() {
+        let outcome = recover_query_outcome(Err(wallet_chain_interact::Error::RpcError(
+            "temporarily unavailable".to_string(),
+        )));
+
+        match outcome {
+            RecoverQueryOutcome::QueryError(err) => {
+                assert!(err.to_string().contains("temporarily unavailable"));
+            }
+            RecoverQueryOutcome::Found(_) | RecoverQueryOutcome::Missing => {
+                panic!("expected query error")
+            }
+        }
     }
 
     #[test]
