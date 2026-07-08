@@ -279,6 +279,16 @@ mod recover_tx_status_tests {
     fn recovered_tx_unknown_status_is_failure() {
         assert!(!ApiTransDomain::is_recovered_tx_status_success("0xtx", 1));
     }
+
+    #[test]
+    fn recovered_transfer_resp_uses_local_fee_and_chain_time() {
+        let resp = ApiTransDomain::recovered_transfer_resp("0xtx", "1.23", 1_746_040_371_123);
+
+        assert_eq!(resp.tx_hash, "0xtx");
+        assert_eq!(resp.fee, "1.23");
+        assert_eq!(resp.transaction_time_ms, Some(1_746_040_371_123));
+        assert!(resp.consumer.is_none());
+    }
 }
 
 #[cfg(test)]
@@ -1478,20 +1488,28 @@ impl ApiTransDomain {
         if is_success {
             tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
             chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code).await;
-            let mut mock_resp = TransferResp {
-                tx_hash: tx_hash.to_string(),
-                fee: transaction_fee.to_string(),
-                consumer: None,
-                transaction_time_ms: None,
-            };
-            mock_resp.with_transaction_time(time_ms);
-            Ok(Some(mock_resp))
+            Ok(Some(Self::recovered_transfer_resp(tx_hash, transaction_fee, time_ms)))
         } else {
             tracing::warn!(trade_no=?tx_hash, "链上失败，直接标记失败");
             Err(ServiceError::System(crate::error::system::SystemError::Internal(
                 "broadcasted tx failed".into(),
             )))
         }
+    }
+
+    fn recovered_transfer_resp(
+        tx_hash: &str,
+        transaction_fee: &str,
+        transaction_time_ms: u128,
+    ) -> TransferResp {
+        let mut resp = TransferResp {
+            tx_hash: tx_hash.to_string(),
+            fee: transaction_fee.to_string(),
+            consumer: None,
+            transaction_time_ms: None,
+        };
+        resp.with_transaction_time(transaction_time_ms);
+        resp
     }
 
     fn is_recovered_tx_status_success(tx_hash: &str, status: i8) -> bool {
