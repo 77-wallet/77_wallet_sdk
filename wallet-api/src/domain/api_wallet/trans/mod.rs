@@ -265,6 +265,11 @@ enum EvmRecoverMissingTxHashState {
     LocalNonceAheadOfChainNonce,
 }
 
+const RECOVER_OP_GET_ADAPTER: &str = "process_recovered_tx:get_adapter";
+const RECOVER_OP_QUERY_TX_RES: &str = "process_recovered_tx:query_tx_res";
+const RECOVER_OP_SOL_VISIBILITY_PROBE: &str = "process_recovered_tx:sol_visibility_probe";
+const RECOVER_OP_TRON_PENDING_POOL: &str = "process_recovered_tx:tron_pending_pool";
+
 impl ApiTransDomain {
     fn is_evm_chain(chain_code: &str) -> bool {
         chain_code == ChainCode::Ethereum.to_string()
@@ -1271,7 +1276,7 @@ impl ApiTransDomain {
                         Self::refresh_rpc_auth_and_prepare_retry(
                             ctx,
                             chain_code,
-                            "process_recovered_tx:get_adapter",
+                            RECOVER_OP_GET_ADAPTER,
                             None,
                             &e,
                         )
@@ -1298,7 +1303,7 @@ impl ApiTransDomain {
                 // === A. 链上查到了 ===
                 Ok(Some(tx_result)) => {
                     if auth_retry_attempted {
-                        tracing::info!(chain_code=%chain_code, rpc=%rpc, op="process_recovered_tx:query_tx_res", "auth retry succeeded");
+                        tracing::info!(chain_code=%chain_code, rpc=%rpc, op=RECOVER_OP_QUERY_TX_RES, "auth retry succeeded");
                     }
                     return Self::handle_recovered_tx_result(
                         ctx,
@@ -1332,7 +1337,7 @@ impl ApiTransDomain {
                         Self::refresh_rpc_auth_and_prepare_retry(
                             ctx,
                             chain_code,
-                            "process_recovered_tx:query_tx_res",
+                            RECOVER_OP_QUERY_TX_RES,
                             Some(&rpc),
                             &service_err,
                         )
@@ -1444,7 +1449,7 @@ impl ApiTransDomain {
                         chain_code,
                         tx_hash,
                         rpc,
-                        "process_recovered_tx:sol_visibility_probe",
+                        RECOVER_OP_SOL_VISIBILITY_PROBE,
                     ),
                     "Solana visibility probe failed during recover",
                 );
@@ -1477,13 +1482,8 @@ impl ApiTransDomain {
             }
             Err(err) => {
                 let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
-                Self::recover_failure_log(
-                    chain_code,
-                    tx_hash,
-                    rpc,
-                    "process_recovered_tx:tron_pending_pool",
-                )
-                .warn(&rpc_error, "Tron pending pool query failed; keep uncertain");
+                Self::recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_TRON_PENDING_POOL)
+                    .warn(&rpc_error, "Tron pending pool query failed; keep uncertain");
                 Ok(None)
             }
         }
@@ -1554,12 +1554,8 @@ impl ApiTransDomain {
         service_err: ServiceError,
         auth_retry_attempted: bool,
     ) -> Result<Option<TransferResp>, ServiceError> {
-        let failure_log = Self::recover_failure_log(
-            chain_code,
-            tx_hash,
-            rpc,
-            "process_recovered_tx:query_tx_res",
-        );
+        let failure_log =
+            Self::recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_QUERY_TX_RES);
         let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&service_err);
         if rpc_error.is_transient() {
             failure_log.warn(
@@ -1572,7 +1568,7 @@ impl ApiTransDomain {
         }
         rpc_error.record_transient_failure();
         if auth_retry_attempted {
-            tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="process_recovered_tx:query_tx_res", error=%service_err, "auth retry failed");
+            tracing::warn!(chain_code=%chain_code, rpc=%rpc, op=RECOVER_OP_QUERY_TX_RES, error=%service_err, "auth retry failed");
         }
         Ok(None)
     }
