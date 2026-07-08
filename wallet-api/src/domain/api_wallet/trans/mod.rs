@@ -1196,9 +1196,7 @@ impl ApiTransDomain {
             match recover_query_outcome(adapter.query_tx_res(tx_hash).await) {
                 // === A. 链上查到了 ===
                 RecoverQueryOutcome::Found(tx_result) => {
-                    if auth_retry.attempted() {
-                        tracing::info!(chain_code=%chain_code, rpc=%rpc, op=RECOVER_OP_QUERY_TX_RES, "auth retry succeeded");
-                    }
+                    Self::log_recover_auth_retry_success(chain_code, &rpc, &auth_retry);
                     return Self::handle_recovered_tx_result(
                         ctx,
                         chain_code,
@@ -1240,6 +1238,16 @@ impl ApiTransDomain {
                     }
                 }
             }
+        }
+    }
+
+    fn log_recover_auth_retry_success(
+        chain_code: &str,
+        rpc: &str,
+        auth_retry: &RecoverAuthRetryState,
+    ) {
+        if auth_retry.attempted() {
+            tracing::info!(chain_code=%chain_code, rpc=%rpc, op=RECOVER_OP_QUERY_TX_RES, "auth retry succeeded");
         }
     }
 
