@@ -1,4 +1,5 @@
 use crate::{error::service::ServiceError, infrastructure::chain_rpc_guard};
+use std::fmt::Display;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
 
@@ -179,6 +180,29 @@ pub(super) fn log_evm_missing_tx_hash_state(tx_hash: &str, chain_nonce: u64, loc
     );
 }
 
+pub(super) fn log_sol_visibility_probe_error(
+    chain_code: &str,
+    tx_hash: &str,
+    rpc: &str,
+    err: &impl Display,
+) {
+    let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(err);
+    recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_SOL_VISIBILITY_PROBE)
+        .warn(&rpc_error, "Solana visibility probe failed during recover");
+    rpc_error.record_transient_failure();
+}
+
+pub(super) fn log_tron_pending_pool_query_error(
+    chain_code: &str,
+    tx_hash: &str,
+    rpc: &str,
+    err: &impl Display,
+) {
+    let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(err);
+    recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_TRON_PENDING_POOL)
+        .warn(&rpc_error, "Tron pending pool query failed; keep uncertain");
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -186,6 +210,7 @@ mod tests {
         RecoverMissingTxRoute, RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state,
         classify_recover_adapter_error, classify_recover_missing_tx_route,
         classify_recover_query_error, log_evm_missing_tx_hash_state, log_recover_query_error,
+        log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
     };
     use crate::error::service::ServiceError;
     use wallet_types::chain::chain::ChainCode;
@@ -214,6 +239,20 @@ mod tests {
     #[test]
     fn evm_recover_missing_tx_hash_state_log_keeps_uncertain() {
         log_evm_missing_tx_hash_state("0xtx", 4, 3);
+    }
+
+    #[test]
+    fn sol_visibility_probe_error_log_keeps_uncertain() {
+        let err = ServiceError::Parameter("Node response error: code=503".to_string());
+
+        log_sol_visibility_probe_error("sol", "solsig", "https://sol.example", &err);
+    }
+
+    #[test]
+    fn tron_pending_pool_query_error_log_keeps_uncertain() {
+        let err = ServiceError::Parameter("Node response error: code=503".to_string());
+
+        log_tron_pending_pool_query_error("tron", "0xtx", "https://api.nileex.io", &err);
     }
 
     #[test]

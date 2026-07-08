@@ -25,10 +25,10 @@ mod recover_mechanism;
 pub(crate) mod withdraw;
 
 use recover_mechanism::{
-    RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, RECOVER_OP_SOL_VISIBILITY_PROBE,
-    RECOVER_OP_TRON_PENDING_POOL, RecoverAdapterErrorDecision, RecoverAuthRetryState,
-    RecoverMissingTxRoute, RecoverQueryErrorDecision, classify_recover_missing_tx_route,
-    log_evm_missing_tx_hash_state, log_recover_query_error, recover_failure_log,
+    RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, RecoverAdapterErrorDecision,
+    RecoverAuthRetryState, RecoverMissingTxRoute, RecoverQueryErrorDecision,
+    classify_recover_missing_tx_route, log_evm_missing_tx_hash_state, log_recover_query_error,
+    log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
 };
 
 #[cfg(test)]
@@ -1380,11 +1380,7 @@ impl ApiTransDomain {
                 );
             }
             Err(e) => {
-                Self::warn_chain_rpc_failure(
-                    &e,
-                    recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_SOL_VISIBILITY_PROBE),
-                    "Solana visibility probe failed during recover",
-                );
+                log_sol_visibility_probe_error(chain_code, tx_hash, rpc, &e);
             }
         }
     }
@@ -1413,9 +1409,7 @@ impl ApiTransDomain {
                 )))
             }
             Err(err) => {
-                let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
-                recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_TRON_PENDING_POOL)
-                    .warn(&rpc_error, "Tron pending pool query failed; keep uncertain");
+                log_tron_pending_pool_query_error(chain_code, tx_hash, rpc, &err);
                 Ok(None)
             }
         }
