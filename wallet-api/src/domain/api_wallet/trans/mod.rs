@@ -21,7 +21,14 @@ use wallet_utils::RetryableError as _;
 
 pub(crate) mod collect;
 pub(crate) mod fee;
+mod recover_mechanism;
 pub(crate) mod withdraw;
+
+use recover_mechanism::{
+    RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, RECOVER_OP_SOL_VISIBILITY_PROBE,
+    RECOVER_OP_TRON_PENDING_POOL, RecoverAdapterErrorDecision, RecoverQueryErrorDecision,
+    classify_recover_adapter_error, classify_recover_query_error, recover_failure_log,
+};
 
 #[cfg(test)]
 mod confirm_tx_tests;
@@ -170,7 +177,7 @@ mod recover_chain_kind_tests {
 
 #[cfg(test)]
 mod recover_query_error_tests {
-    use super::{ApiTransDomain, RecoverQueryErrorDecision};
+    use super::ApiTransDomain;
     use crate::error::service::ServiceError;
 
     #[test]
@@ -206,69 +213,6 @@ mod recover_query_error_tests {
         .expect("recover query errors should be tolerated");
 
         assert!(result.is_none());
-    }
-
-    #[test]
-    fn recover_query_unauthorized_refreshes_auth_before_retry() {
-        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
-            401,
-            Some("Unauthorized".to_string()),
-        ));
-
-        let decision = ApiTransDomain::classify_recover_query_error(&err, false);
-
-        assert_eq!(decision, RecoverQueryErrorDecision::RefreshAuthAndRetry);
-    }
-
-    #[test]
-    fn recover_query_unauthorized_after_auth_retry_stays_uncertain() {
-        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
-            401,
-            Some("Unauthorized".to_string()),
-        ));
-
-        let decision = ApiTransDomain::classify_recover_query_error(&err, true);
-
-        assert_eq!(decision, RecoverQueryErrorDecision::StayUncertain);
-    }
-}
-
-#[cfg(test)]
-mod recover_adapter_error_tests {
-    use super::{ApiTransDomain, RecoverAdapterErrorDecision};
-    use crate::error::service::ServiceError;
-
-    #[test]
-    fn recover_adapter_unauthorized_refreshes_auth_before_retry() {
-        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
-            401,
-            Some("Unauthorized".to_string()),
-        ));
-
-        let decision = ApiTransDomain::classify_recover_adapter_error(&err, false);
-
-        assert_eq!(decision, RecoverAdapterErrorDecision::RefreshAuthAndRetry);
-    }
-
-    #[test]
-    fn recover_adapter_unauthorized_after_auth_retry_is_fatal() {
-        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
-            401,
-            Some("Unauthorized".to_string()),
-        ));
-
-        let decision = ApiTransDomain::classify_recover_adapter_error(&err, true);
-
-        assert_eq!(decision, RecoverAdapterErrorDecision::Fatal);
-    }
-
-    #[test]
-    fn recover_adapter_rate_limited_stays_uncertain() {
-        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::RateLimited);
-
-        let decision = ApiTransDomain::classify_recover_adapter_error(&err, false);
-
-        assert_eq!(decision, RecoverAdapterErrorDecision::StayUncertain);
     }
 }
 
@@ -349,24 +293,6 @@ enum EvmRecoverMissingTxHashState {
     LocalNonceAheadOfChainNonce,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RecoverAdapterErrorDecision {
-    RefreshAuthAndRetry,
-    StayUncertain,
-    Fatal,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RecoverQueryErrorDecision {
-    RefreshAuthAndRetry,
-    StayUncertain,
-}
-
-const RECOVER_OP_GET_ADAPTER: &str = "process_recovered_tx:get_adapter";
-const RECOVER_OP_QUERY_TX_RES: &str = "process_recovered_tx:query_tx_res";
-const RECOVER_OP_SOL_VISIBILITY_PROBE: &str = "process_recovered_tx:sol_visibility_probe";
-const RECOVER_OP_TRON_PENDING_POOL: &str = "process_recovered_tx:tron_pending_pool";
-
 impl ApiTransDomain {
     fn is_evm_chain(chain_code: &str) -> bool {
         chain_code == ChainCode::Ethereum.to_string()
@@ -383,30 +309,6 @@ impl ApiTransDomain {
             Ordering::Greater => EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing,
             Ordering::Equal => EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce,
             Ordering::Less => EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce,
-        }
-    }
-
-    fn classify_recover_adapter_error(
-        err: &ServiceError,
-        auth_retry_attempted: bool,
-    ) -> RecoverAdapterErrorDecision {
-        if !auth_retry_attempted && err.is_rpc_auth_unauthorized() {
-            RecoverAdapterErrorDecision::RefreshAuthAndRetry
-        } else if err.is_delay_retryable() {
-            RecoverAdapterErrorDecision::StayUncertain
-        } else {
-            RecoverAdapterErrorDecision::Fatal
-        }
-    }
-
-    fn classify_recover_query_error(
-        err: &ServiceError,
-        auth_retry_attempted: bool,
-    ) -> RecoverQueryErrorDecision {
-        if !auth_retry_attempted && err.is_rpc_auth_unauthorized() {
-            RecoverQueryErrorDecision::RefreshAuthAndRetry
-        } else {
-            RecoverQueryErrorDecision::StayUncertain
         }
     }
 
@@ -442,20 +344,6 @@ impl ApiTransDomain {
         log.error(&rpc_error, reason);
         rpc_error.record_transient_failure();
         rpc_error
-    }
-
-    fn recover_failure_log<'a>(
-        chain_code: &'a str,
-        tx_hash: &'a str,
-        rpc: &'a str,
-        op: &'a str,
-    ) -> chain_rpc_guard::ChainRpcFailureLog<'a> {
-        chain_rpc_guard::ChainRpcFailureLog::new()
-            .trade_no(tx_hash)
-            .tx_hash(tx_hash)
-            .chain_code(chain_code)
-            .rpc(rpc)
-            .op(op)
     }
 
     fn log_visibility_probe(
@@ -1396,36 +1284,31 @@ impl ApiTransDomain {
                     .await
                 {
                     Ok(adapter) => adapter,
-                    Err(e) => {
-                        match Self::classify_recover_adapter_error(&e, auth_retry_attempted) {
-                            RecoverAdapterErrorDecision::RefreshAuthAndRetry => {
-                                auth_retry_attempted = true;
-                                Self::refresh_rpc_auth_and_prepare_retry(
-                                    ctx,
-                                    chain_code,
-                                    RECOVER_OP_GET_ADAPTER,
-                                    None,
-                                    &e,
-                                )
-                                .await?;
-                                continue 'recover_auth_retry;
-                            }
-                            RecoverAdapterErrorDecision::StayUncertain => {
-                                tracing::warn!(
-                                    "process_recovered_tx: 延迟重试, 适配器创建失败: {}",
-                                    e
-                                );
-                                return Ok(None);
-                            }
-                            RecoverAdapterErrorDecision::Fatal => {
-                                tracing::error!(
-                                    "process_recovered_tx: 非延迟重试, 适配器创建失败: {}",
-                                    e
-                                );
-                                return Err(e);
-                            }
+                    Err(e) => match classify_recover_adapter_error(&e, auth_retry_attempted) {
+                        RecoverAdapterErrorDecision::RefreshAuthAndRetry => {
+                            auth_retry_attempted = true;
+                            Self::refresh_rpc_auth_and_prepare_retry(
+                                ctx,
+                                chain_code,
+                                RECOVER_OP_GET_ADAPTER,
+                                None,
+                                &e,
+                            )
+                            .await?;
+                            continue 'recover_auth_retry;
                         }
-                    }
+                        RecoverAdapterErrorDecision::StayUncertain => {
+                            tracing::warn!("process_recovered_tx: 延迟重试, 适配器创建失败: {}", e);
+                            return Ok(None);
+                        }
+                        RecoverAdapterErrorDecision::Fatal => {
+                            tracing::error!(
+                                "process_recovered_tx: 非延迟重试, 适配器创建失败: {}",
+                                e
+                            );
+                            return Err(e);
+                        }
+                    },
                 };
             let rpc = adapter.rpc_endpoint_for_log().unwrap_or_else(|| "<unknown>".to_string());
 
@@ -1463,7 +1346,7 @@ impl ApiTransDomain {
                 // === C. RPC 异常 ===
                 Err(err) => {
                     let service_err: ServiceError = err.into();
-                    match Self::classify_recover_query_error(&service_err, auth_retry_attempted) {
+                    match classify_recover_query_error(&service_err, auth_retry_attempted) {
                         RecoverQueryErrorDecision::RefreshAuthAndRetry => {
                             auth_retry_attempted = true;
                             Self::refresh_rpc_auth_and_prepare_retry(
@@ -1587,12 +1470,7 @@ impl ApiTransDomain {
             Err(e) => {
                 Self::warn_chain_rpc_failure(
                     &e,
-                    Self::recover_failure_log(
-                        chain_code,
-                        tx_hash,
-                        rpc,
-                        RECOVER_OP_SOL_VISIBILITY_PROBE,
-                    ),
+                    recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_SOL_VISIBILITY_PROBE),
                     "Solana visibility probe failed during recover",
                 );
             }
@@ -1624,7 +1502,7 @@ impl ApiTransDomain {
             }
             Err(err) => {
                 let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
-                Self::recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_TRON_PENDING_POOL)
+                recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_TRON_PENDING_POOL)
                     .warn(&rpc_error, "Tron pending pool query failed; keep uncertain");
                 Ok(None)
             }
@@ -1696,8 +1574,7 @@ impl ApiTransDomain {
         service_err: ServiceError,
         auth_retry_attempted: bool,
     ) -> Result<Option<TransferResp>, ServiceError> {
-        let failure_log =
-            Self::recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_QUERY_TX_RES);
+        let failure_log = recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_QUERY_TX_RES);
         let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&service_err);
         if rpc_error.is_transient() {
             failure_log.warn(
