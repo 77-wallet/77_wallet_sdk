@@ -1,4 +1,5 @@
 use crate::{error::service::ServiceError, infrastructure::chain_rpc_guard};
+use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
 
 pub(super) const RECOVER_OP_GET_ADAPTER: &str = "process_recovered_tx:get_adapter";
@@ -34,6 +35,14 @@ pub(super) enum EvmRecoverMissingTxHashState {
     LocalNonceAheadOfChainNonce,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RecoverMissingTxRoute {
+    SolanaVisibilityProbe,
+    TronPendingPool,
+    EvmNonceCheck,
+    WaitForScanner,
+}
+
 pub(super) fn classify_evm_missing_tx_hash_state(
     chain_nonce: u64,
     local_nonce: u64,
@@ -44,6 +53,20 @@ pub(super) fn classify_evm_missing_tx_hash_state(
         Ordering::Greater => EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing,
         Ordering::Equal => EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce,
         Ordering::Less => EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce,
+    }
+}
+
+pub(super) fn classify_recover_missing_tx_route(chain_code: &str) -> RecoverMissingTxRoute {
+    if chain_code == ChainCode::Solana.to_string() {
+        RecoverMissingTxRoute::SolanaVisibilityProbe
+    } else if chain_code == ChainCode::Tron.to_string() {
+        RecoverMissingTxRoute::TronPendingPool
+    } else if chain_code == ChainCode::Ethereum.to_string()
+        || chain_code == ChainCode::BnbSmartChain.to_string()
+    {
+        RecoverMissingTxRoute::EvmNonceCheck
+    } else {
+        RecoverMissingTxRoute::WaitForScanner
     }
 }
 
@@ -88,11 +111,13 @@ pub(super) fn recover_failure_log<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        EvmRecoverMissingTxHashState, RecoverAdapterErrorDecision, RecoverQueryErrorDecision,
-        classify_evm_missing_tx_hash_state, classify_recover_adapter_error,
+        EvmRecoverMissingTxHashState, RecoverAdapterErrorDecision, RecoverMissingTxRoute,
+        RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state,
+        classify_recover_adapter_error, classify_recover_missing_tx_route,
         classify_recover_query_error,
     };
     use crate::error::service::ServiceError;
+    use wallet_types::chain::chain::ChainCode;
 
     #[test]
     fn evm_recover_missing_tx_hash_treats_nonce_consumed_as_uncertain() {
@@ -167,5 +192,31 @@ mod tests {
         let decision = classify_recover_query_error(&err, true);
 
         assert_eq!(decision, RecoverQueryErrorDecision::StayUncertain);
+    }
+
+    #[test]
+    fn recover_missing_tx_routes_solana_to_visibility_probe() {
+        let route = classify_recover_missing_tx_route(&ChainCode::Solana.to_string());
+        assert_eq!(route, RecoverMissingTxRoute::SolanaVisibilityProbe);
+    }
+
+    #[test]
+    fn recover_missing_tx_routes_tron_to_pending_pool() {
+        let route = classify_recover_missing_tx_route(&ChainCode::Tron.to_string());
+        assert_eq!(route, RecoverMissingTxRoute::TronPendingPool);
+    }
+
+    #[test]
+    fn recover_missing_tx_routes_evm_chains_to_nonce_check() {
+        for chain_code in [ChainCode::Ethereum.to_string(), ChainCode::BnbSmartChain.to_string()] {
+            let route = classify_recover_missing_tx_route(&chain_code);
+            assert_eq!(route, RecoverMissingTxRoute::EvmNonceCheck);
+        }
+    }
+
+    #[test]
+    fn recover_missing_tx_routes_unknown_chain_to_wait() {
+        let route = classify_recover_missing_tx_route("aptos");
+        assert_eq!(route, RecoverMissingTxRoute::WaitForScanner);
     }
 }

@@ -27,7 +27,8 @@ pub(crate) mod withdraw;
 use recover_mechanism::{
     EvmRecoverMissingTxHashState, RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES,
     RECOVER_OP_SOL_VISIBILITY_PROBE, RECOVER_OP_TRON_PENDING_POOL, RecoverAdapterErrorDecision,
-    RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state, classify_recover_adapter_error,
+    RecoverMissingTxRoute, RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state,
+    classify_recover_adapter_error, classify_recover_missing_tx_route,
     classify_recover_query_error, recover_failure_log,
 };
 
@@ -143,17 +144,6 @@ mod sol_broadcast_error_tests {
 }
 
 #[cfg(test)]
-mod recover_chain_kind_tests {
-    use super::ApiTransDomain;
-
-    #[test]
-    fn recover_tron_chain_kind_matches_tron_only() {
-        assert!(ApiTransDomain::is_tron_chain("tron"));
-        assert!(!ApiTransDomain::is_tron_chain("eth"));
-    }
-}
-
-#[cfg(test)]
 mod recover_query_error_tests {
     use super::ApiTransDomain;
     use crate::error::service::ServiceError;
@@ -265,10 +255,6 @@ impl ApiTransDomain {
 
     fn is_sol_chain(chain_code: &str) -> bool {
         chain_code == ChainCode::Solana.to_string()
-    }
-
-    fn is_tron_chain(chain_code: &str) -> bool {
-        chain_code == ChainCode::Tron.to_string()
     }
 
     fn need_broadcast_visibility_check(chain_code: &str) -> bool {
@@ -1383,20 +1369,24 @@ impl ApiTransDomain {
     ) -> Result<Option<TransferResp>, ServiceError> {
         tracing::info!(trade_no=?tx_hash, "链上未找到该交易，执行恢复判定");
 
-        if Self::is_sol_chain(chain_code) {
-            Self::probe_sol_visibility_during_recover(chain_code, tx_hash, rpc, adapter).await;
+        match classify_recover_missing_tx_route(chain_code) {
+            RecoverMissingTxRoute::SolanaVisibilityProbe => {
+                Self::probe_sol_visibility_during_recover(chain_code, tx_hash, rpc, adapter).await;
+                tracing::info!(trade_no=?tx_hash, "Solana链上未找到该交易，等待下一轮Scanner重试");
+                Ok(None)
+            }
+            RecoverMissingTxRoute::TronPendingPool => {
+                Self::handle_tron_missing_recovered_tx(chain_code, tx_hash, rpc, adapter).await
+            }
+            RecoverMissingTxRoute::EvmNonceCheck => {
+                Self::handle_evm_missing_recovered_tx(ctx, chain_code, from_addr, tx_hash, nonce)
+                    .await
+            }
+            RecoverMissingTxRoute::WaitForScanner => {
+                tracing::info!(trade_no=?tx_hash, "非EVM链，链上未找到该交易，等待下一轮Scanner重试");
+                Ok(None)
+            }
         }
-
-        if Self::is_tron_chain(chain_code) {
-            return Self::handle_tron_missing_recovered_tx(chain_code, tx_hash, rpc, adapter).await;
-        }
-
-        if !Self::is_evm_chain(chain_code) {
-            tracing::info!(trade_no=?tx_hash, "非EVM链，链上未找到该交易，等待下一轮Scanner重试");
-            return Ok(None);
-        }
-
-        Self::handle_evm_missing_recovered_tx(ctx, chain_code, from_addr, tx_hash, nonce).await
     }
 
     async fn probe_sol_visibility_during_recover(
