@@ -199,6 +199,45 @@ mod recover_query_error_tests {
 }
 
 #[cfg(test)]
+mod recover_adapter_error_tests {
+    use super::{ApiTransDomain, RecoverAdapterErrorDecision};
+    use crate::error::service::ServiceError;
+
+    #[test]
+    fn recover_adapter_unauthorized_refreshes_auth_before_retry() {
+        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+            401,
+            Some("Unauthorized".to_string()),
+        ));
+
+        let decision = ApiTransDomain::classify_recover_adapter_error(&err, false);
+
+        assert_eq!(decision, RecoverAdapterErrorDecision::RefreshAuthAndRetry);
+    }
+
+    #[test]
+    fn recover_adapter_unauthorized_after_auth_retry_is_fatal() {
+        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+            401,
+            Some("Unauthorized".to_string()),
+        ));
+
+        let decision = ApiTransDomain::classify_recover_adapter_error(&err, true);
+
+        assert_eq!(decision, RecoverAdapterErrorDecision::Fatal);
+    }
+
+    #[test]
+    fn recover_adapter_rate_limited_stays_uncertain() {
+        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::RateLimited);
+
+        let decision = ApiTransDomain::classify_recover_adapter_error(&err, false);
+
+        assert_eq!(decision, RecoverAdapterErrorDecision::StayUncertain);
+    }
+}
+
+#[cfg(test)]
 mod recover_tx_status_tests {
     use super::ApiTransDomain;
 
@@ -265,6 +304,13 @@ enum EvmRecoverMissingTxHashState {
     LocalNonceAheadOfChainNonce,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecoverAdapterErrorDecision {
+    RefreshAuthAndRetry,
+    StayUncertain,
+    Fatal,
+}
+
 const RECOVER_OP_GET_ADAPTER: &str = "process_recovered_tx:get_adapter";
 const RECOVER_OP_QUERY_TX_RES: &str = "process_recovered_tx:query_tx_res";
 const RECOVER_OP_SOL_VISIBILITY_PROBE: &str = "process_recovered_tx:sol_visibility_probe";
@@ -286,6 +332,19 @@ impl ApiTransDomain {
             Ordering::Greater => EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing,
             Ordering::Equal => EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce,
             Ordering::Less => EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce,
+        }
+    }
+
+    fn classify_recover_adapter_error(
+        err: &ServiceError,
+        auth_retry_attempted: bool,
+    ) -> RecoverAdapterErrorDecision {
+        if !auth_retry_attempted && err.is_rpc_auth_unauthorized() {
+            RecoverAdapterErrorDecision::RefreshAuthAndRetry
+        } else if err.is_delay_retryable() {
+            RecoverAdapterErrorDecision::StayUncertain
+        } else {
+            RecoverAdapterErrorDecision::Fatal
         }
     }
 
@@ -1271,28 +1330,34 @@ impl ApiTransDomain {
                     .await
                 {
                     Ok(adapter) => adapter,
-                    Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
-                        auth_retry_attempted = true;
-                        Self::refresh_rpc_auth_and_prepare_retry(
-                            ctx,
-                            chain_code,
-                            RECOVER_OP_GET_ADAPTER,
-                            None,
-                            &e,
-                        )
-                        .await?;
-                        continue 'recover_auth_retry;
-                    }
                     Err(e) => {
-                        if e.is_delay_retryable() {
-                            tracing::warn!("process_recovered_tx: 延迟重试, 适配器创建失败: {}", e);
-                            return Ok(None);
-                        } else {
-                            tracing::error!(
-                                "process_recovered_tx: 非延迟重试, 适配器创建失败: {}",
-                                e
-                            );
-                            return Err(e);
+                        match Self::classify_recover_adapter_error(&e, auth_retry_attempted) {
+                            RecoverAdapterErrorDecision::RefreshAuthAndRetry => {
+                                auth_retry_attempted = true;
+                                Self::refresh_rpc_auth_and_prepare_retry(
+                                    ctx,
+                                    chain_code,
+                                    RECOVER_OP_GET_ADAPTER,
+                                    None,
+                                    &e,
+                                )
+                                .await?;
+                                continue 'recover_auth_retry;
+                            }
+                            RecoverAdapterErrorDecision::StayUncertain => {
+                                tracing::warn!(
+                                    "process_recovered_tx: 延迟重试, 适配器创建失败: {}",
+                                    e
+                                );
+                                return Ok(None);
+                            }
+                            RecoverAdapterErrorDecision::Fatal => {
+                                tracing::error!(
+                                    "process_recovered_tx: 非延迟重试, 适配器创建失败: {}",
+                                    e
+                                );
+                                return Err(e);
+                            }
                         }
                     }
                 };
