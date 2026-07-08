@@ -158,6 +158,17 @@ mod evm_recover_nonce_state_tests {
 }
 
 #[cfg(test)]
+mod recover_chain_kind_tests {
+    use super::ApiTransDomain;
+
+    #[test]
+    fn recover_tron_chain_kind_matches_tron_only() {
+        assert!(ApiTransDomain::is_tron_chain("tron"));
+        assert!(!ApiTransDomain::is_tron_chain("eth"));
+    }
+}
+
+#[cfg(test)]
 mod recover_query_error_tests {
     use super::{ApiTransDomain, RecoverQueryErrorDecision};
     use crate::error::service::ServiceError;
@@ -401,6 +412,10 @@ impl ApiTransDomain {
 
     fn is_sol_chain(chain_code: &str) -> bool {
         chain_code == ChainCode::Solana.to_string()
+    }
+
+    fn is_tron_chain(chain_code: &str) -> bool {
+        chain_code == ChainCode::Tron.to_string()
     }
 
     fn need_broadcast_visibility_check(chain_code: &str) -> bool {
@@ -1538,7 +1553,7 @@ impl ApiTransDomain {
             Self::probe_sol_visibility_during_recover(chain_code, tx_hash, rpc, adapter).await;
         }
 
-        if chain_code == ChainCode::Tron.to_string() {
+        if Self::is_tron_chain(chain_code) {
             return Self::handle_tron_missing_recovered_tx(chain_code, tx_hash, rpc, adapter).await;
         }
 
