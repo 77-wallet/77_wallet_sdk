@@ -27,8 +27,8 @@ pub(crate) mod withdraw;
 use recover_mechanism::{
     EvmRecoverMissingTxHashState, RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES,
     RECOVER_OP_SOL_VISIBILITY_PROBE, RECOVER_OP_TRON_PENDING_POOL, RecoverAdapterErrorDecision,
-    RecoverMissingTxRoute, RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state,
-    classify_recover_adapter_error, classify_recover_missing_tx_route,
+    RecoverAuthRetryState, RecoverMissingTxRoute, RecoverQueryErrorDecision,
+    classify_evm_missing_tx_hash_state, classify_recover_missing_tx_route,
     classify_recover_query_error, recover_failure_log,
 };
 
@@ -1214,16 +1214,16 @@ impl ApiTransDomain {
             return Ok(None);
         }
 
-        let mut auth_retry_attempted = false;
+        let mut auth_retry = RecoverAuthRetryState::default();
         'recover_auth_retry: loop {
             let adapter =
                 match ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code)
                     .await
                 {
                     Ok(adapter) => adapter,
-                    Err(e) => match classify_recover_adapter_error(&e, auth_retry_attempted) {
+                    Err(e) => match auth_retry.classify_adapter_error(&e) {
                         RecoverAdapterErrorDecision::RefreshAuthAndRetry => {
-                            auth_retry_attempted = true;
+                            auth_retry.mark_attempted();
                             Self::refresh_rpc_auth_and_prepare_retry(
                                 ctx,
                                 chain_code,
@@ -1253,7 +1253,7 @@ impl ApiTransDomain {
             match adapter.query_tx_res(tx_hash).await {
                 // === A. 链上查到了 ===
                 Ok(Some(tx_result)) => {
-                    if auth_retry_attempted {
+                    if auth_retry.attempted() {
                         tracing::info!(chain_code=%chain_code, rpc=%rpc, op=RECOVER_OP_QUERY_TX_RES, "auth retry succeeded");
                     }
                     return Self::handle_recovered_tx_result(
@@ -1283,9 +1283,9 @@ impl ApiTransDomain {
                 // === C. RPC 异常 ===
                 Err(err) => {
                     let service_err: ServiceError = err.into();
-                    match classify_recover_query_error(&service_err, auth_retry_attempted) {
+                    match auth_retry.classify_query_error(&service_err) {
                         RecoverQueryErrorDecision::RefreshAuthAndRetry => {
-                            auth_retry_attempted = true;
+                            auth_retry.mark_attempted();
                             Self::refresh_rpc_auth_and_prepare_retry(
                                 ctx,
                                 chain_code,
@@ -1303,7 +1303,7 @@ impl ApiTransDomain {
                         tx_hash,
                         &rpc,
                         service_err,
-                        auth_retry_attempted,
+                        auth_retry.attempted(),
                     );
                 }
             }

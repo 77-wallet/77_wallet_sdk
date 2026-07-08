@@ -43,6 +43,29 @@ pub(super) enum RecoverMissingTxRoute {
     WaitForScanner,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RecoverAuthRetryState {
+    attempted: bool,
+}
+
+impl RecoverAuthRetryState {
+    pub(super) fn attempted(&self) -> bool {
+        self.attempted
+    }
+
+    pub(super) fn mark_attempted(&mut self) {
+        self.attempted = true;
+    }
+
+    pub(super) fn classify_adapter_error(&self, err: &ServiceError) -> RecoverAdapterErrorDecision {
+        classify_recover_adapter_error(err, self.attempted)
+    }
+
+    pub(super) fn classify_query_error(&self, err: &ServiceError) -> RecoverQueryErrorDecision {
+        classify_recover_query_error(err, self.attempted)
+    }
+}
+
 pub(super) fn classify_evm_missing_tx_hash_state(
     chain_nonce: u64,
     local_nonce: u64,
@@ -111,8 +134,8 @@ pub(super) fn recover_failure_log<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        EvmRecoverMissingTxHashState, RecoverAdapterErrorDecision, RecoverMissingTxRoute,
-        RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state,
+        EvmRecoverMissingTxHashState, RecoverAdapterErrorDecision, RecoverAuthRetryState,
+        RecoverMissingTxRoute, RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state,
         classify_recover_adapter_error, classify_recover_missing_tx_route,
         classify_recover_query_error,
     };
@@ -192,6 +215,52 @@ mod tests {
         let decision = classify_recover_query_error(&err, true);
 
         assert_eq!(decision, RecoverQueryErrorDecision::StayUncertain);
+    }
+
+    #[test]
+    fn recover_auth_retry_state_tracks_single_retry_attempt() {
+        let mut state = RecoverAuthRetryState::default();
+        assert!(!state.attempted());
+
+        state.mark_attempted();
+
+        assert!(state.attempted());
+    }
+
+    #[test]
+    fn recover_auth_retry_state_classifies_adapter_error_with_attempt_state() {
+        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+            401,
+            Some("Unauthorized".to_string()),
+        ));
+        let mut state = RecoverAuthRetryState::default();
+
+        assert_eq!(
+            state.classify_adapter_error(&err),
+            RecoverAdapterErrorDecision::RefreshAuthAndRetry
+        );
+
+        state.mark_attempted();
+
+        assert_eq!(state.classify_adapter_error(&err), RecoverAdapterErrorDecision::Fatal);
+    }
+
+    #[test]
+    fn recover_auth_retry_state_classifies_query_error_with_attempt_state() {
+        let err = ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+            401,
+            Some("Unauthorized".to_string()),
+        ));
+        let mut state = RecoverAuthRetryState::default();
+
+        assert_eq!(
+            state.classify_query_error(&err),
+            RecoverQueryErrorDecision::RefreshAuthAndRetry
+        );
+
+        state.mark_attempted();
+
+        assert_eq!(state.classify_query_error(&err), RecoverQueryErrorDecision::StayUncertain);
     }
 
     #[test]
