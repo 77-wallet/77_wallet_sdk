@@ -1449,34 +1449,14 @@ impl ApiTransDomain {
             "EVM recover: tx hash missing on-chain, comparing nonce state"
         );
 
-        match classify_evm_missing_tx_hash_state(chain_nonce, local_nonce) {
-            EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing => {
-                tracing::warn!(
-                    trade_no=?tx_hash,
-                    chain_nonce = chain_nonce,
-                    local_nonce = local_nonce,
-                    "EVM recover: local tx hash missing but nonce already consumed on-chain; keep uncertain"
-                );
-                Ok(None)
-            }
-            EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce => {
-                tracing::warn!(
-                    trade_no=?tx_hash,
-                    chain_nonce = chain_nonce,
-                    local_nonce = local_nonce,
-                    "EVM recover: nonce matches next expected nonce but tx hash missing (rpc accepted only / not propagated / dropped)"
-                );
-                Ok(None)
-            }
-            EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce => {
-                tracing::warn!(
-                    trade_no=?tx_hash,
-                    chain_nonce = chain_nonce,
-                    local_nonce = local_nonce,
-                    "EVM recover: local nonce ahead of chain nonce (future nonce / nonce gap suspected)"
-                );
-                Ok(None)
-            }
-        }
+        let state = classify_evm_missing_tx_hash_state(chain_nonce, local_nonce);
+        tracing::warn!(
+            trade_no=?tx_hash,
+            chain_nonce = chain_nonce,
+            local_nonce = local_nonce,
+            reason = state.uncertain_reason(),
+            "EVM recover: tx hash missing on-chain; keep uncertain"
+        );
+        Ok(None)
     }
 }

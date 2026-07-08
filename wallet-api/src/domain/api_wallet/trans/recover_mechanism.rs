@@ -35,6 +35,22 @@ pub(super) enum EvmRecoverMissingTxHashState {
     LocalNonceAheadOfChainNonce,
 }
 
+impl EvmRecoverMissingTxHashState {
+    pub(super) fn uncertain_reason(self) -> &'static str {
+        match self {
+            EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing => {
+                "EVM recover: local tx hash missing but nonce already consumed on-chain; keep uncertain"
+            }
+            EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce => {
+                "EVM recover: nonce matches next expected nonce but tx hash missing (rpc accepted only / not propagated / dropped)"
+            }
+            EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce => {
+                "EVM recover: local nonce ahead of chain nonce (future nonce / nonce gap suspected)"
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RecoverMissingTxRoute {
     SolanaVisibilityProbe,
@@ -167,18 +183,21 @@ mod tests {
     fn evm_recover_missing_tx_hash_treats_nonce_consumed_as_uncertain() {
         let state = classify_evm_missing_tx_hash_state(4, 3);
         assert_eq!(state, EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing);
+        assert!(state.uncertain_reason().contains("nonce already consumed"));
     }
 
     #[test]
     fn evm_recover_missing_tx_hash_detects_equal_nonce_as_uncertain() {
         let state = classify_evm_missing_tx_hash_state(3, 3);
         assert_eq!(state, EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce);
+        assert!(state.uncertain_reason().contains("nonce matches"));
     }
 
     #[test]
     fn evm_recover_missing_tx_hash_detects_local_nonce_ahead() {
         let state = classify_evm_missing_tx_hash_state(2, 3);
         assert_eq!(state, EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce);
+        assert!(state.uncertain_reason().contains("local nonce ahead"));
     }
 
     #[test]
