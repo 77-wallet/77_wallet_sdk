@@ -25,9 +25,10 @@ mod recover_mechanism;
 pub(crate) mod withdraw;
 
 use recover_mechanism::{
-    RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, RECOVER_OP_SOL_VISIBILITY_PROBE,
-    RECOVER_OP_TRON_PENDING_POOL, RecoverAdapterErrorDecision, RecoverQueryErrorDecision,
-    classify_recover_adapter_error, classify_recover_query_error, recover_failure_log,
+    EvmRecoverMissingTxHashState, RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES,
+    RECOVER_OP_SOL_VISIBILITY_PROBE, RECOVER_OP_TRON_PENDING_POOL, RecoverAdapterErrorDecision,
+    RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state, classify_recover_adapter_error,
+    classify_recover_query_error, recover_failure_log,
 };
 
 #[cfg(test)]
@@ -138,29 +139,6 @@ mod sol_broadcast_error_tests {
     #[test]
     fn normalize_chain_time_zero_should_fail() {
         assert!(ApiTransDomain::normalize_chain_time_to_ms(0).is_err());
-    }
-}
-
-#[cfg(test)]
-mod evm_recover_nonce_state_tests {
-    use super::{ApiTransDomain, EvmRecoverMissingTxHashState};
-
-    #[test]
-    fn evm_recover_missing_tx_hash_treats_nonce_consumed_as_uncertain() {
-        let state = ApiTransDomain::classify_evm_missing_tx_hash_state(4, 3);
-        assert_eq!(state, EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing);
-    }
-
-    #[test]
-    fn evm_recover_missing_tx_hash_detects_equal_nonce_as_uncertain() {
-        let state = ApiTransDomain::classify_evm_missing_tx_hash_state(3, 3);
-        assert_eq!(state, EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce);
-    }
-
-    #[test]
-    fn evm_recover_missing_tx_hash_detects_local_nonce_ahead() {
-        let state = ApiTransDomain::classify_evm_missing_tx_hash_state(2, 3);
-        assert_eq!(state, EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce);
     }
 }
 
@@ -279,37 +257,10 @@ mod nonce_broadcast_conflict_tests {
 
 pub(crate) struct ApiTransDomain {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EvmRecoverMissingTxHashState {
-    /// The chain nonce has advanced past the locally recorded nonce.
-    /// This means the recorded hash is no longer the active pending tx,
-    /// but it does not prove final failure.
-    ChainNonceConsumedLocalHashMissing,
-    /// The chain nonce still matches the next expected nonce.
-    /// The tx may still be in flight, dropped, or only accepted by the RPC.
-    ChainNonceMatchesLocalNonce,
-    /// Local nonce is ahead of the chain nonce. This usually means the local
-    /// snapshot is stale or another flow has not yet advanced the chain.
-    LocalNonceAheadOfChainNonce,
-}
-
 impl ApiTransDomain {
     fn is_evm_chain(chain_code: &str) -> bool {
         chain_code == ChainCode::Ethereum.to_string()
             || chain_code == ChainCode::BnbSmartChain.to_string()
-    }
-
-    fn classify_evm_missing_tx_hash_state(
-        chain_nonce: u64,
-        local_nonce: u64,
-    ) -> EvmRecoverMissingTxHashState {
-        use std::cmp::Ordering;
-
-        match chain_nonce.cmp(&local_nonce) {
-            Ordering::Greater => EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing,
-            Ordering::Equal => EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce,
-            Ordering::Less => EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce,
-        }
     }
 
     fn is_sol_chain(chain_code: &str) -> bool {
@@ -1536,7 +1487,7 @@ impl ApiTransDomain {
             "EVM recover: tx hash missing on-chain, comparing nonce state"
         );
 
-        match Self::classify_evm_missing_tx_hash_state(chain_nonce, local_nonce) {
+        match classify_evm_missing_tx_hash_state(chain_nonce, local_nonce) {
             EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing => {
                 tracing::warn!(
                     trade_no=?tx_hash,

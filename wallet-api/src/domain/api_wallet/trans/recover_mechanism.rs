@@ -20,6 +20,33 @@ pub(super) enum RecoverQueryErrorDecision {
     StayUncertain,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum EvmRecoverMissingTxHashState {
+    /// The chain nonce has advanced past the locally recorded nonce.
+    /// This means the recorded hash is no longer the active pending tx,
+    /// but it does not prove final failure.
+    ChainNonceConsumedLocalHashMissing,
+    /// The chain nonce still matches the next expected nonce.
+    /// The tx may still be in flight, dropped, or only accepted by the RPC.
+    ChainNonceMatchesLocalNonce,
+    /// Local nonce is ahead of the chain nonce. This usually means the local
+    /// snapshot is stale or another flow has not yet advanced the chain.
+    LocalNonceAheadOfChainNonce,
+}
+
+pub(super) fn classify_evm_missing_tx_hash_state(
+    chain_nonce: u64,
+    local_nonce: u64,
+) -> EvmRecoverMissingTxHashState {
+    use std::cmp::Ordering;
+
+    match chain_nonce.cmp(&local_nonce) {
+        Ordering::Greater => EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing,
+        Ordering::Equal => EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce,
+        Ordering::Less => EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce,
+    }
+}
+
 pub(super) fn classify_recover_adapter_error(
     err: &ServiceError,
     auth_retry_attempted: bool,
@@ -61,10 +88,29 @@ pub(super) fn recover_failure_log<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        RecoverAdapterErrorDecision, RecoverQueryErrorDecision, classify_recover_adapter_error,
+        EvmRecoverMissingTxHashState, RecoverAdapterErrorDecision, RecoverQueryErrorDecision,
+        classify_evm_missing_tx_hash_state, classify_recover_adapter_error,
         classify_recover_query_error,
     };
     use crate::error::service::ServiceError;
+
+    #[test]
+    fn evm_recover_missing_tx_hash_treats_nonce_consumed_as_uncertain() {
+        let state = classify_evm_missing_tx_hash_state(4, 3);
+        assert_eq!(state, EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing);
+    }
+
+    #[test]
+    fn evm_recover_missing_tx_hash_detects_equal_nonce_as_uncertain() {
+        let state = classify_evm_missing_tx_hash_state(3, 3);
+        assert_eq!(state, EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce);
+    }
+
+    #[test]
+    fn evm_recover_missing_tx_hash_detects_local_nonce_ahead() {
+        let state = classify_evm_missing_tx_hash_state(2, 3);
+        assert_eq!(state, EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce);
+    }
 
     #[test]
     fn recover_adapter_unauthorized_refreshes_auth_before_retry() {
