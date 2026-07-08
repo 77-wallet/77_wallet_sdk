@@ -1223,9 +1223,9 @@ impl ApiTransDomain {
                     Ok(adapter) => adapter,
                     Err(e) => match auth_retry.classify_adapter_error(&e) {
                         RecoverAdapterErrorDecision::RefreshAuthAndRetry => {
-                            auth_retry.mark_attempted();
-                            Self::refresh_rpc_auth_and_prepare_retry(
+                            Self::prepare_recover_auth_retry(
                                 ctx,
+                                &mut auth_retry,
                                 chain_code,
                                 RECOVER_OP_GET_ADAPTER,
                                 None,
@@ -1285,9 +1285,9 @@ impl ApiTransDomain {
                     let service_err: ServiceError = err.into();
                     match auth_retry.classify_query_error(&service_err) {
                         RecoverQueryErrorDecision::RefreshAuthAndRetry => {
-                            auth_retry.mark_attempted();
-                            Self::refresh_rpc_auth_and_prepare_retry(
+                            Self::prepare_recover_auth_retry(
                                 ctx,
+                                &mut auth_retry,
                                 chain_code,
                                 RECOVER_OP_QUERY_TX_RES,
                                 Some(&rpc),
@@ -1308,6 +1308,18 @@ impl ApiTransDomain {
                 }
             }
         }
+    }
+
+    async fn prepare_recover_auth_retry(
+        ctx: &'static Context,
+        auth_retry: &mut RecoverAuthRetryState,
+        chain_code: &str,
+        op: &str,
+        rpc: Option<&str>,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        auth_retry.mark_attempted();
+        Self::refresh_rpc_auth_and_prepare_retry(ctx, chain_code, op, rpc, err).await
     }
 
     async fn handle_recovered_tx_result(
