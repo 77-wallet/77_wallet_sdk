@@ -314,6 +314,20 @@ impl ApiTransDomain {
         rpc_error
     }
 
+    fn recover_failure_log<'a>(
+        chain_code: &'a str,
+        tx_hash: &'a str,
+        rpc: &'a str,
+        op: &'a str,
+    ) -> chain_rpc_guard::ChainRpcFailureLog<'a> {
+        chain_rpc_guard::ChainRpcFailureLog::new()
+            .trade_no(tx_hash)
+            .tx_hash(tx_hash)
+            .chain_code(chain_code)
+            .rpc(rpc)
+            .op(op)
+    }
+
     fn log_visibility_probe(
         chain_code: &str,
         tx_hash: &str,
@@ -1393,7 +1407,7 @@ impl ApiTransDomain {
         }
 
         if chain_code == ChainCode::Tron.to_string() {
-            return Self::handle_tron_missing_recovered_tx(tx_hash, rpc, adapter).await;
+            return Self::handle_tron_missing_recovered_tx(chain_code, tx_hash, rpc, adapter).await;
         }
 
         if !Self::is_evm_chain(chain_code) {
@@ -1426,11 +1440,12 @@ impl ApiTransDomain {
             Err(e) => {
                 Self::warn_chain_rpc_failure(
                     &e,
-                    chain_rpc_guard::ChainRpcFailureLog::new()
-                        .trade_no(tx_hash)
-                        .tx_hash(tx_hash)
-                        .rpc(rpc)
-                        .op("process_recovered_tx:sol_visibility_probe"),
+                    Self::recover_failure_log(
+                        chain_code,
+                        tx_hash,
+                        rpc,
+                        "process_recovered_tx:sol_visibility_probe",
+                    ),
                     "Solana visibility probe failed during recover",
                 );
             }
@@ -1438,6 +1453,7 @@ impl ApiTransDomain {
     }
 
     async fn handle_tron_missing_recovered_tx(
+        chain_code: &str,
         tx_hash: &str,
         rpc: &str,
         adapter: &(dyn Tx + Sync),
@@ -1461,12 +1477,13 @@ impl ApiTransDomain {
             }
             Err(err) => {
                 let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
-                chain_rpc_guard::ChainRpcFailureLog::new()
-                    .trade_no(tx_hash)
-                    .tx_hash(tx_hash)
-                    .rpc(rpc)
-                    .op("process_recovered_tx:tron_pending_pool")
-                    .warn(&rpc_error, "Tron pending pool query failed; keep uncertain");
+                Self::recover_failure_log(
+                    chain_code,
+                    tx_hash,
+                    rpc,
+                    "process_recovered_tx:tron_pending_pool",
+                )
+                .warn(&rpc_error, "Tron pending pool query failed; keep uncertain");
                 Ok(None)
             }
         }
@@ -1537,12 +1554,12 @@ impl ApiTransDomain {
         service_err: ServiceError,
         auth_retry_attempted: bool,
     ) -> Result<Option<TransferResp>, ServiceError> {
-        let failure_log = chain_rpc_guard::ChainRpcFailureLog::new()
-            .trade_no(tx_hash)
-            .tx_hash(tx_hash)
-            .chain_code(chain_code)
-            .rpc(rpc)
-            .op("process_recovered_tx:query_tx_res");
+        let failure_log = Self::recover_failure_log(
+            chain_code,
+            tx_hash,
+            rpc,
+            "process_recovered_tx:query_tx_res",
+        );
         let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&service_err);
         if rpc_error.is_transient() {
             failure_log.warn(
