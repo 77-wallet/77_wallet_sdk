@@ -131,13 +131,34 @@ pub(super) fn recover_failure_log<'a>(
         .op(op)
 }
 
+pub(super) fn log_recover_query_error(
+    chain_code: &str,
+    tx_hash: &str,
+    rpc: &str,
+    service_err: &ServiceError,
+    auth_retry_attempted: bool,
+) {
+    let failure_log = recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_QUERY_TX_RES);
+    let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(service_err);
+    if rpc_error.is_transient() {
+        failure_log
+            .warn(&rpc_error, "查询链上状态失败(瞬时); recovered tx result will stay uncertain");
+    } else {
+        failure_log.error(&rpc_error, "查询链上状态失败; recovered tx result will stay uncertain");
+    }
+    rpc_error.record_transient_failure();
+    if auth_retry_attempted {
+        tracing::warn!(chain_code=%chain_code, rpc=%rpc, op=RECOVER_OP_QUERY_TX_RES, error=%service_err, "auth retry failed");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         EvmRecoverMissingTxHashState, RecoverAdapterErrorDecision, RecoverAuthRetryState,
         RecoverMissingTxRoute, RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state,
         classify_recover_adapter_error, classify_recover_missing_tx_route,
-        classify_recover_query_error,
+        classify_recover_query_error, log_recover_query_error,
     };
     use crate::error::service::ServiceError;
     use wallet_types::chain::chain::ChainCode;
@@ -215,6 +236,23 @@ mod tests {
         let decision = classify_recover_query_error(&err, true);
 
         assert_eq!(decision, RecoverQueryErrorDecision::StayUncertain);
+    }
+
+    #[test]
+    fn recover_transient_query_error_is_logged_and_stays_uncertain() {
+        let err = ServiceError::Parameter(
+            "Node response error: code=503, rpc=https://api.nileex.io/wallet/gettransactioninfobyid"
+                .to_string(),
+        );
+
+        log_recover_query_error("tron", "0xtx", "https://api.nileex.io", &err, false);
+    }
+
+    #[test]
+    fn recover_non_transient_query_error_is_logged_and_stays_uncertain() {
+        let err = ServiceError::Parameter("invalid tx hash".to_string());
+
+        log_recover_query_error("tron", "0xtx", "https://api.nileex.io", &err, true);
     }
 
     #[test]

@@ -28,7 +28,8 @@ use recover_mechanism::{
     EvmRecoverMissingTxHashState, RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES,
     RECOVER_OP_SOL_VISIBILITY_PROBE, RECOVER_OP_TRON_PENDING_POOL, RecoverAdapterErrorDecision,
     RecoverAuthRetryState, RecoverMissingTxRoute, RecoverQueryErrorDecision,
-    classify_evm_missing_tx_hash_state, classify_recover_missing_tx_route, recover_failure_log,
+    classify_evm_missing_tx_hash_state, classify_recover_missing_tx_route, log_recover_query_error,
+    recover_failure_log,
 };
 
 #[cfg(test)]
@@ -139,35 +140,6 @@ mod sol_broadcast_error_tests {
     #[test]
     fn normalize_chain_time_zero_should_fail() {
         assert!(ApiTransDomain::normalize_chain_time_to_ms(0).is_err());
-    }
-}
-
-#[cfg(test)]
-mod recover_query_error_tests {
-    use super::ApiTransDomain;
-    use crate::error::service::ServiceError;
-
-    #[test]
-    fn recover_transient_query_error_stays_uncertain() {
-        let err = ServiceError::Parameter(
-            "Node response error: code=503, rpc=https://api.nileex.io/wallet/gettransactioninfobyid"
-                .to_string(),
-        );
-
-        ApiTransDomain::log_recover_query_error(
-            "tron",
-            "0xtx",
-            "https://api.nileex.io",
-            err,
-            false,
-        );
-    }
-
-    #[test]
-    fn recover_non_transient_query_error_stays_uncertain() {
-        let err = ServiceError::Parameter("invalid tx hash".to_string());
-
-        ApiTransDomain::log_recover_query_error("tron", "0xtx", "https://api.nileex.io", err, true);
     }
 }
 
@@ -1285,11 +1257,11 @@ impl ApiTransDomain {
                         }
                         RecoverQueryErrorDecision::StayUncertain => {}
                     }
-                    Self::log_recover_query_error(
+                    log_recover_query_error(
                         chain_code,
                         tx_hash,
                         &rpc,
-                        service_err,
+                        &service_err,
                         auth_retry.attempted(),
                     );
                     return Ok(None);
@@ -1505,30 +1477,6 @@ impl ApiTransDomain {
                 );
                 Ok(None)
             }
-        }
-    }
-
-    fn log_recover_query_error(
-        chain_code: &str,
-        tx_hash: &str,
-        rpc: &str,
-        service_err: ServiceError,
-        auth_retry_attempted: bool,
-    ) {
-        let failure_log = recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_QUERY_TX_RES);
-        let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&service_err);
-        if rpc_error.is_transient() {
-            failure_log.warn(
-                &rpc_error,
-                "查询链上状态失败(瞬时); recovered tx result will stay uncertain",
-            );
-        } else {
-            failure_log
-                .error(&rpc_error, "查询链上状态失败; recovered tx result will stay uncertain");
-        }
-        rpc_error.record_transient_failure();
-        if auth_retry_attempted {
-            tracing::warn!(chain_code=%chain_code, rpc=%rpc, op=RECOVER_OP_QUERY_TX_RES, error=%service_err, "auth retry failed");
         }
     }
 }
