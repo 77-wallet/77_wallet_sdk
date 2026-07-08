@@ -168,13 +168,24 @@ pub(super) fn log_recover_query_error(
     }
 }
 
+pub(super) fn log_evm_missing_tx_hash_state(tx_hash: &str, chain_nonce: u64, local_nonce: u64) {
+    let state = classify_evm_missing_tx_hash_state(chain_nonce, local_nonce);
+    tracing::warn!(
+        trade_no=?tx_hash,
+        chain_nonce = chain_nonce,
+        local_nonce = local_nonce,
+        reason = state.uncertain_reason(),
+        "EVM recover: tx hash missing on-chain; keep uncertain"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         EvmRecoverMissingTxHashState, RecoverAdapterErrorDecision, RecoverAuthRetryState,
         RecoverMissingTxRoute, RecoverQueryErrorDecision, classify_evm_missing_tx_hash_state,
         classify_recover_adapter_error, classify_recover_missing_tx_route,
-        classify_recover_query_error, log_recover_query_error,
+        classify_recover_query_error, log_evm_missing_tx_hash_state, log_recover_query_error,
     };
     use crate::error::service::ServiceError;
     use wallet_types::chain::chain::ChainCode;
@@ -198,6 +209,11 @@ mod tests {
         let state = classify_evm_missing_tx_hash_state(2, 3);
         assert_eq!(state, EvmRecoverMissingTxHashState::LocalNonceAheadOfChainNonce);
         assert!(state.uncertain_reason().contains("local nonce ahead"));
+    }
+
+    #[test]
+    fn evm_recover_missing_tx_hash_state_log_keeps_uncertain() {
+        log_evm_missing_tx_hash_state("0xtx", 4, 3);
     }
 
     #[test]

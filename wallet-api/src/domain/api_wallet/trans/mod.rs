@@ -25,11 +25,10 @@ mod recover_mechanism;
 pub(crate) mod withdraw;
 
 use recover_mechanism::{
-    EvmRecoverMissingTxHashState, RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES,
-    RECOVER_OP_SOL_VISIBILITY_PROBE, RECOVER_OP_TRON_PENDING_POOL, RecoverAdapterErrorDecision,
-    RecoverAuthRetryState, RecoverMissingTxRoute, RecoverQueryErrorDecision,
-    classify_evm_missing_tx_hash_state, classify_recover_missing_tx_route, log_recover_query_error,
-    recover_failure_log,
+    RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, RECOVER_OP_SOL_VISIBILITY_PROBE,
+    RECOVER_OP_TRON_PENDING_POOL, RecoverAdapterErrorDecision, RecoverAuthRetryState,
+    RecoverMissingTxRoute, RecoverQueryErrorDecision, classify_recover_missing_tx_route,
+    log_evm_missing_tx_hash_state, log_recover_query_error, recover_failure_log,
 };
 
 #[cfg(test)]
@@ -1449,14 +1448,7 @@ impl ApiTransDomain {
             "EVM recover: tx hash missing on-chain, comparing nonce state"
         );
 
-        let state = classify_evm_missing_tx_hash_state(chain_nonce, local_nonce);
-        tracing::warn!(
-            trade_no=?tx_hash,
-            chain_nonce = chain_nonce,
-            local_nonce = local_nonce,
-            reason = state.uncertain_reason(),
-            "EVM recover: tx hash missing on-chain; keep uncertain"
-        );
+        log_evm_missing_tx_hash_state(tx_hash, chain_nonce, local_nonce);
         Ok(None)
     }
 }
