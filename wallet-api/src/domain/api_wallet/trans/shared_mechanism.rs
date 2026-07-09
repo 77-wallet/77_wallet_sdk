@@ -224,6 +224,23 @@ pub(crate) async fn handle_accepted_broadcast_nonce_self_heal(
     Ok(())
 }
 
+pub(crate) async fn handle_nonce_too_low_before_terminal_fail(
+    ctx: &'static Context,
+    trade_no: &str,
+    from_addr: &str,
+    chain_code: &str,
+    error_msg: &str,
+    source: &str,
+) -> Result<(), ServiceError> {
+    tracing::info!(
+        trade_no = %trade_no,
+        source = %source,
+        "Detected nonce too low error, syncing nonce from chain"
+    );
+
+    try_nonce_self_heal(ctx, trade_no, from_addr, chain_code, error_msg, source).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::normalize_chain_time_to_ms;
