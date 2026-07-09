@@ -2262,7 +2262,7 @@ impl ShadowWithdrawWorker {
                 withdraw.tx_hash.is_some(),
                 withdraw.last_broadcast_at.is_some(),
                 matches!(stage, WithdrawFailureStage::Broadcast),
-                false,
+                broadcast_mechanism::DuplicateBroadcastAcceptance::AllowWithoutLocalTxFacts,
             ),
         );
 

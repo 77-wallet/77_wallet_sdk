@@ -112,13 +112,28 @@ pub(crate) fn is_recoverable_sol_broadcast_error(_err: &ServiceError) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DuplicateBroadcastAcceptance {
+    RequireLocalTxFacts,
+    AllowWithoutLocalTxFacts,
+}
+
+impl DuplicateBroadcastAcceptance {
+    fn accepts(self, raw_tx_present: bool, tx_hash_present: bool) -> bool {
+        match self {
+            DuplicateBroadcastAcceptance::RequireLocalTxFacts => raw_tx_present && tx_hash_present,
+            DuplicateBroadcastAcceptance::AllowWithoutLocalTxFacts => true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BroadcastFailureFacts<'a> {
     pub(crate) chain_code: &'a str,
     pub(crate) raw_tx_present: bool,
     pub(crate) tx_hash_present: bool,
     pub(crate) last_broadcast_at_present: bool,
     pub(crate) broadcast_stage: bool,
-    pub(crate) duplicate_requires_local_tx_facts: bool,
+    pub(crate) duplicate_acceptance: DuplicateBroadcastAcceptance,
 }
 
 impl<'a> BroadcastFailureFacts<'a> {
@@ -128,7 +143,7 @@ impl<'a> BroadcastFailureFacts<'a> {
         tx_hash_present: bool,
         last_broadcast_at_present: bool,
         broadcast_stage: bool,
-        duplicate_requires_local_tx_facts: bool,
+        duplicate_acceptance: DuplicateBroadcastAcceptance,
     ) -> Self {
         Self {
             chain_code,
@@ -136,7 +151,7 @@ impl<'a> BroadcastFailureFacts<'a> {
             tx_hash_present,
             last_broadcast_at_present,
             broadcast_stage,
-            duplicate_requires_local_tx_facts,
+            duplicate_acceptance,
         }
     }
 
@@ -152,7 +167,7 @@ impl<'a> BroadcastFailureFacts<'a> {
             tx_hash_present,
             last_broadcast_at_present,
             true,
-            true,
+            DuplicateBroadcastAcceptance::RequireLocalTxFacts,
         )
     }
 }
@@ -298,8 +313,7 @@ pub(crate) fn classify_broadcast_failure(
 
     if facts.broadcast_stage
         && is_duplicate_broadcast_error(err)
-        && (!facts.duplicate_requires_local_tx_facts
-            || (facts.raw_tx_present && facts.tx_hash_present))
+        && facts.duplicate_acceptance.accepts(facts.raw_tx_present, facts.tx_hash_present)
     {
         return BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate;
     }
@@ -439,7 +453,14 @@ mod tests {
 
         let decision = classify_broadcast_failure(
             &err,
-            BroadcastFailureFacts::new("eth", true, true, false, false, true),
+            BroadcastFailureFacts::new(
+                "eth",
+                true,
+                true,
+                false,
+                false,
+                DuplicateBroadcastAcceptance::RequireLocalTxFacts,
+            ),
         );
 
         assert_eq!(decision, BroadcastFailureDecision::FailAfterNonceTooLowSelfHeal);
@@ -467,7 +488,14 @@ mod tests {
         );
         let permissive_decision = classify_broadcast_failure(
             &err,
-            BroadcastFailureFacts::new("tron", false, false, false, true, false),
+            BroadcastFailureFacts::new(
+                "tron",
+                false,
+                false,
+                false,
+                true,
+                DuplicateBroadcastAcceptance::AllowWithoutLocalTxFacts,
+            ),
         );
 
         assert_eq!(default_decision, BroadcastFailureDecision::Unhandled);
