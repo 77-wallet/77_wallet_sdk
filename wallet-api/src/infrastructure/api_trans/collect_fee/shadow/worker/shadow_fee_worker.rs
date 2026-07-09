@@ -1257,17 +1257,11 @@ impl ShadowFeeWorker {
             ),
         );
 
-        // Solana 广播常见可恢复错误：
-        // - blockhash 过期（Blockhash not found）
-        // 这类错误不应直接写失败事实，而应作废 raw_tx/tx_hash 触发重建。
-        if matches!(
-            broadcast_failure_decision,
-            broadcast_mechanism::BroadcastFailureDecision::RebuildSolBlockhash
-        ) {
+        if let Some(rebuild_reason) = broadcast_failure_decision.raw_rebuild_reason() {
             let rows_affected = ApiFeeRepo::invalidate_raw_tx(&self.ctx.api_transaction_pool()?, trade_no, None, None, None)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to invalidate raw_tx for sol blockhash rebuild");
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "{}", rebuild_reason.db_error_message());
                     ServiceError::Database(db_err.into())
                 })?;
             info!(
@@ -1275,88 +1269,41 @@ impl ShadowFeeWorker {
                 rows_affected = %rows_affected,
                 error = %err,
                 source = "shadow_fee_worker",
-                "SOL blockhash not found detected, invalidated raw_tx for rebuild"
+                "{}", rebuild_reason.log_message()
             );
             if rows_affected > 0 {
                 self.scanner.try_advance(trade_no).await;
             }
-            return Ok(());
-        }
-
-        let should_rebuild_tron_expired_raw = matches!(
-            broadcast_failure_decision,
-            broadcast_mechanism::BroadcastFailureDecision::RebuildTronExpired
-        );
-
-        // TRON raw tx can expire before the node accepts broadcast. Retrying the
-        // same raw cannot make progress, so clear build facts and let the
-        // scanner rebuild.
-        if should_rebuild_tron_expired_raw {
-            let rows_affected = ApiFeeRepo::invalidate_raw_tx(&self.ctx.api_transaction_pool()?, trade_no, None, None, None)
-                .await
-                .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to invalidate raw_tx for tron expired rebuild");
-                    ServiceError::Database(db_err.into())
-                })?;
-            info!(
-                trade_no = %trade_no,
-                rows_affected = %rows_affected,
-                error = %err,
-                source = "shadow_fee_worker",
-                "TRON transaction expired detected, invalidated raw_tx for rebuild"
-            );
-            if rows_affected > 0 {
-                self.scanner.try_advance(trade_no).await;
-            }
-            return Ok(());
-        }
-
-        // "already exists" 表示节点已接收广播，作为幂等成功兜底处理。
-        // 避免误写 SendingTxFailed 并冻结到错误分支。
-        if matches!(
-            broadcast_failure_decision,
-            broadcast_mechanism::BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate
-        ) {
-            let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
-                .await
-                .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to mark broadcast executed for duplicate broadcast");
-                    ServiceError::Database(db_err.into())
-                })?;
-            info!(
-                trade_no = %trade_no,
-                rows_affected = %rows_affected,
-                error = %err,
-                source = "shadow_fee_worker",
-                "Duplicate broadcast detected, treat as idempotent success and continue"
-            );
-            self.scanner.try_advance(trade_no).await;
             return Ok(());
         }
 
         let error_msg = format!("{}", err);
-        if matches!(
-            broadcast_failure_decision,
-            broadcast_mechanism::BroadcastFailureDecision::MarkBroadcastExecutedForNonceTooLow
-        ) {
-            info!(
-                trade_no = %trade_no,
-                source = "shadow_fee_worker",
-                "Detected EVM nonce too low on broadcast, treat as idempotent success"
-            );
+        if let Some(accepted_reason) = broadcast_failure_decision.accepted_reason() {
+            if let Some(message) = accepted_reason.pre_self_heal_log_message() {
+                info!(
+                    trade_no = %trade_no,
+                    source = "shadow_fee_worker",
+                    "{}", message
+                );
+            }
 
-            let nonce_engine =
-                crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?;
-            if let Err(e) =
-                nonce_engine.handle_nonce_error(&fee.from_addr, &fee.chain_code, &error_msg).await
-            {
-                warn!(trade_no = %trade_no, error = %e, source = "shadow_fee_worker", "Nonce self-heal failed");
+            if accepted_reason.requires_nonce_self_heal() {
+                let nonce_engine =
+                    crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(
+                        self.ctx,
+                    )?;
+                if let Err(e) = nonce_engine
+                    .handle_nonce_error(&fee.from_addr, &fee.chain_code, &error_msg)
+                    .await
+                {
+                    warn!(trade_no = %trade_no, error = %e, source = "shadow_fee_worker", "Nonce self-heal failed");
+                }
             }
 
             let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to mark broadcast executed for nonce too low broadcast conflict");
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "{}", accepted_reason.db_error_message());
                     ServiceError::Database(db_err.into())
                 })?;
             info!(
@@ -1364,17 +1311,14 @@ impl ShadowFeeWorker {
                 rows_affected = %rows_affected,
                 error = %err,
                 source = "shadow_fee_worker",
-                "Nonce too low broadcast conflict treated as idempotent success"
+                "{}", accepted_reason.log_message()
             );
             self.scanner.try_advance(trade_no).await;
             return Ok(());
         }
 
         // 处理 nonce too low 错误
-        if matches!(
-            broadcast_failure_decision,
-            broadcast_mechanism::BroadcastFailureDecision::FailAfterNonceTooLowSelfHeal
-        ) {
+        if broadcast_failure_decision.should_fail_after_nonce_self_heal() {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
 
             let nonce_engine =

@@ -157,6 +157,109 @@ pub(crate) enum BroadcastFailureDecision {
     Unhandled,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BroadcastRawRebuildReason {
+    SolBlockhash,
+    TronExpired,
+}
+
+impl BroadcastRawRebuildReason {
+    pub(crate) fn db_error_message(self) -> &'static str {
+        match self {
+            BroadcastRawRebuildReason::SolBlockhash => {
+                "Failed to invalidate raw_tx for sol blockhash rebuild"
+            }
+            BroadcastRawRebuildReason::TronExpired => {
+                "Failed to invalidate raw_tx for tron expired rebuild"
+            }
+        }
+    }
+
+    pub(crate) fn log_message(self) -> &'static str {
+        match self {
+            BroadcastRawRebuildReason::SolBlockhash => {
+                "SOL blockhash not found detected, invalidated raw_tx for rebuild"
+            }
+            BroadcastRawRebuildReason::TronExpired => {
+                "TRON transaction expired detected, invalidated raw_tx for rebuild"
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BroadcastAcceptedReason {
+    Duplicate,
+    NonceTooLow,
+}
+
+impl BroadcastAcceptedReason {
+    pub(crate) fn requires_nonce_self_heal(self) -> bool {
+        matches!(self, BroadcastAcceptedReason::NonceTooLow)
+    }
+
+    pub(crate) fn db_error_message(self) -> &'static str {
+        match self {
+            BroadcastAcceptedReason::Duplicate => {
+                "Failed to mark broadcast executed for duplicate broadcast"
+            }
+            BroadcastAcceptedReason::NonceTooLow => {
+                "Failed to mark broadcast executed for nonce too low broadcast conflict"
+            }
+        }
+    }
+
+    pub(crate) fn log_message(self) -> &'static str {
+        match self {
+            BroadcastAcceptedReason::Duplicate => {
+                "Duplicate broadcast detected, treat as idempotent success and continue"
+            }
+            BroadcastAcceptedReason::NonceTooLow => {
+                "Nonce too low broadcast conflict treated as idempotent success"
+            }
+        }
+    }
+
+    pub(crate) fn pre_self_heal_log_message(self) -> Option<&'static str> {
+        match self {
+            BroadcastAcceptedReason::Duplicate => None,
+            BroadcastAcceptedReason::NonceTooLow => {
+                Some("Detected EVM nonce too low on broadcast, treat as idempotent success")
+            }
+        }
+    }
+}
+
+impl BroadcastFailureDecision {
+    pub(crate) fn raw_rebuild_reason(self) -> Option<BroadcastRawRebuildReason> {
+        match self {
+            BroadcastFailureDecision::RebuildSolBlockhash => {
+                Some(BroadcastRawRebuildReason::SolBlockhash)
+            }
+            BroadcastFailureDecision::RebuildTronExpired => {
+                Some(BroadcastRawRebuildReason::TronExpired)
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn accepted_reason(self) -> Option<BroadcastAcceptedReason> {
+        match self {
+            BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate => {
+                Some(BroadcastAcceptedReason::Duplicate)
+            }
+            BroadcastFailureDecision::MarkBroadcastExecutedForNonceTooLow => {
+                Some(BroadcastAcceptedReason::NonceTooLow)
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn should_fail_after_nonce_self_heal(self) -> bool {
+        matches!(self, BroadcastFailureDecision::FailAfterNonceTooLowSelfHeal)
+    }
+}
+
 pub(crate) fn classify_broadcast_failure(
     err: &ServiceError,
     facts: BroadcastFailureFacts<'_>,
