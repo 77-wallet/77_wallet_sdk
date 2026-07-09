@@ -40,8 +40,11 @@ use wallet_utils::RetryableError as _;
 use crate::{
     domain::{
         api_wallet::{
-            adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain,
-            trans::ApiTransDomain, wallet::ApiWalletDomain,
+            adapter::tx::RawTx,
+            adapter_factory::ApiChainAdapterFactory,
+            coin::ApiCoinDomain,
+            trans::{ApiTransDomain, broadcast_mechanism},
+            wallet::ApiWalletDomain,
         },
         chain::adapter::ChainAdapterFactory,
     },
@@ -2256,7 +2259,7 @@ impl ShadowWithdrawWorker {
         // 这类错误不应直接写失败事实，而应作废 raw_tx/tx_hash 触发重建。
         if matches!(stage, WithdrawFailureStage::Broadcast)
             && withdraw.chain_code.eq_ignore_ascii_case("sol")
-            && ApiTransDomain::is_blockhash_not_found_error(&err)
+            && broadcast_mechanism::is_blockhash_not_found_error(&err)
             && withdraw.raw_tx.is_some()
             && withdraw.tx_hash.is_some()
             && withdraw.last_broadcast_at.is_none()
@@ -2282,7 +2285,7 @@ impl ShadowWithdrawWorker {
         }
 
         let should_rebuild_tron_expired_raw = matches!(stage, WithdrawFailureStage::Broadcast)
-            && ApiTransDomain::should_invalidate_tron_expired_broadcast(
+            && broadcast_mechanism::should_invalidate_tron_expired_broadcast(
                 &withdraw.chain_code,
                 &err,
                 withdraw.raw_tx.is_some(),
@@ -2317,7 +2320,7 @@ impl ShadowWithdrawWorker {
         // 广播阶段的 "already exists" 表示链节点已接受该交易，属于幂等成功。
         // 兜底处理：即使上游未命中 duplicate 判定，也不应写 SendingTxFailed。
         if matches!(stage, WithdrawFailureStage::Broadcast)
-            && ApiTransDomain::is_duplicate_broadcast_error(&err)
+            && broadcast_mechanism::is_duplicate_broadcast_error(&err)
         {
             let rows_affected = ApiWithdrawRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
@@ -2339,7 +2342,7 @@ impl ShadowWithdrawWorker {
 
         let error_msg = format!("{}", err);
         if matches!(stage, WithdrawFailureStage::Broadcast)
-            && ApiTransDomain::should_treat_nonce_too_low_as_broadcast_success(
+            && broadcast_mechanism::should_treat_nonce_too_low_as_broadcast_success(
                 &withdraw.chain_code,
                 &err,
                 withdraw.raw_tx.is_some(),
@@ -2380,7 +2383,7 @@ impl ShadowWithdrawWorker {
         }
 
         // 处理 nonce too low 错误
-        if ApiTransDomain::is_nonce_too_low_error(&err) {
+        if broadcast_mechanism::is_nonce_too_low_error(&err) {
             info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Detected nonce too low error, syncing nonce from chain");
 
             let nonce_engine =

@@ -51,9 +51,12 @@ use crate::{
 use crate::{
     domain::{
         api_wallet::{
-            adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory,
-            chain::ApiChainTransDomain, coin::ApiCoinDomain, strategy::StrategyDomain,
-            trans::ApiTransDomain,
+            adapter::tx::RawTx,
+            adapter_factory::ApiChainAdapterFactory,
+            chain::ApiChainTransDomain,
+            coin::ApiCoinDomain,
+            strategy::StrategyDomain,
+            trans::{ApiTransDomain, broadcast_mechanism},
         },
         chain::adapter::{ChainAdapterFactory, sol_tx::SYSTEM_ACCOUNT_RENT},
     },
@@ -3368,7 +3371,7 @@ impl ShadowCollectWorker {
         // - blockhash 过期（Blockhash not found）
         // 这类错误不应直接写失败事实，而应作废 raw_tx/tx_hash 触发重建。
         if req.chain_code.eq_ignore_ascii_case("sol")
-            && crate::domain::api_wallet::trans::ApiTransDomain::is_blockhash_not_found_error(&err)
+            && broadcast_mechanism::is_blockhash_not_found_error(&err)
             && req.raw_tx.is_some()
             && req.tx_hash.is_some()
             && req.last_broadcast_at.is_none()
@@ -3399,7 +3402,7 @@ impl ShadowCollectWorker {
         }
 
         let should_rebuild_tron_expired_raw =
-            ApiTransDomain::should_invalidate_tron_expired_broadcast(
+            broadcast_mechanism::should_invalidate_tron_expired_broadcast(
                 &req.chain_code,
                 &err,
                 req.raw_tx.is_some(),
@@ -3438,7 +3441,7 @@ impl ShadowCollectWorker {
 
         // "already exists" 表示节点已接收广播，作为幂等成功兜底处理。
         // 避免误写 SendingTxFailed 并冻结到错误分支。
-        if crate::domain::api_wallet::trans::ApiTransDomain::is_duplicate_broadcast_error(&err)
+        if broadcast_mechanism::is_duplicate_broadcast_error(&err)
             && req.raw_tx.is_some()
             && req.tx_hash.is_some()
         {
@@ -3464,7 +3467,7 @@ impl ShadowCollectWorker {
         }
 
         let error_msg = format!("{}", err);
-        if ApiTransDomain::should_treat_nonce_too_low_as_broadcast_success(
+        if broadcast_mechanism::should_treat_nonce_too_low_as_broadcast_success(
             &req.chain_code,
             &err,
             req.raw_tx.is_some(),
@@ -3507,7 +3510,7 @@ impl ShadowCollectWorker {
         }
 
         // 处理 nonce too low 错误
-        if ApiTransDomain::is_nonce_too_low_error(&err) {
+        if broadcast_mechanism::is_nonce_too_low_error(&err) {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Detected nonce too low error, syncing nonce from chain");
 
             let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;

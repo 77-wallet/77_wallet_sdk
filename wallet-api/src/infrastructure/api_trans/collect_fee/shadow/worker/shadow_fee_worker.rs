@@ -15,8 +15,11 @@ use wallet_utils::RetryableError as _;
 
 use crate::{
     domain::api_wallet::{
-        adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain,
-        trans::ApiTransDomain, wallet::ApiWalletDomain,
+        adapter::tx::RawTx,
+        adapter_factory::ApiChainAdapterFactory,
+        coin::ApiCoinDomain,
+        trans::{ApiTransDomain, broadcast_mechanism},
+        wallet::ApiWalletDomain,
     },
     error::{
         business::api_wallet::{ApiWalletError, trans::TransError},
@@ -1248,7 +1251,7 @@ impl ShadowFeeWorker {
         // - blockhash 过期（Blockhash not found）
         // 这类错误不应直接写失败事实，而应作废 raw_tx/tx_hash 触发重建。
         if fee.chain_code.eq_ignore_ascii_case("sol")
-            && ApiTransDomain::is_blockhash_not_found_error(&err)
+            && broadcast_mechanism::is_blockhash_not_found_error(&err)
             && fee.raw_tx.is_some()
             && fee.tx_hash.is_some()
             && fee.last_broadcast_at.is_none()
@@ -1273,7 +1276,7 @@ impl ShadowFeeWorker {
         }
 
         let should_rebuild_tron_expired_raw =
-            ApiTransDomain::should_invalidate_tron_expired_broadcast(
+            broadcast_mechanism::should_invalidate_tron_expired_broadcast(
                 &fee.chain_code,
                 &err,
                 fee.raw_tx.is_some(),
@@ -1306,7 +1309,7 @@ impl ShadowFeeWorker {
 
         // "already exists" 表示节点已接收广播，作为幂等成功兜底处理。
         // 避免误写 SendingTxFailed 并冻结到错误分支。
-        if ApiTransDomain::is_duplicate_broadcast_error(&err)
+        if broadcast_mechanism::is_duplicate_broadcast_error(&err)
             && fee.raw_tx.is_some()
             && fee.tx_hash.is_some()
         {
@@ -1328,7 +1331,7 @@ impl ShadowFeeWorker {
         }
 
         let error_msg = format!("{}", err);
-        if ApiTransDomain::should_treat_nonce_too_low_as_broadcast_success(
+        if broadcast_mechanism::should_treat_nonce_too_low_as_broadcast_success(
             &fee.chain_code,
             &err,
             fee.raw_tx.is_some(),
@@ -1366,7 +1369,7 @@ impl ShadowFeeWorker {
         }
 
         // 处理 nonce too low 错误
-        if ApiTransDomain::is_nonce_too_low_error(&err) {
+        if broadcast_mechanism::is_nonce_too_low_error(&err) {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
 
             let nonce_engine =
