@@ -3441,7 +3441,9 @@ impl ShadowCollectWorker {
 
         // 处理 nonce too low 错误
         if broadcast_failure_decision.should_fail_after_nonce_self_heal() {
-            shared_mechanism::handle_nonce_too_low_before_terminal_fail(
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Detected nonce too low error, syncing nonce from chain");
+
+            shared_mechanism::try_nonce_self_heal(
                 self.ctx,
                 trade_no,
                 &req.from_addr,
