@@ -112,6 +112,18 @@ pub(crate) fn is_recoverable_sol_broadcast_error(_err: &ServiceError) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BroadcastFailureStage {
+    Broadcast,
+    Other,
+}
+
+impl BroadcastFailureStage {
+    fn is_broadcast(self) -> bool {
+        matches!(self, BroadcastFailureStage::Broadcast)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DuplicateBroadcastAcceptance {
     RequireLocalTxFacts,
     AllowWithoutLocalTxFacts,
@@ -132,7 +144,7 @@ pub(crate) struct BroadcastFailureFacts<'a> {
     pub(crate) raw_tx_present: bool,
     pub(crate) tx_hash_present: bool,
     pub(crate) last_broadcast_at_present: bool,
-    pub(crate) broadcast_stage: bool,
+    pub(crate) stage: BroadcastFailureStage,
     pub(crate) duplicate_acceptance: DuplicateBroadcastAcceptance,
 }
 
@@ -142,7 +154,7 @@ impl<'a> BroadcastFailureFacts<'a> {
         raw_tx_present: bool,
         tx_hash_present: bool,
         last_broadcast_at_present: bool,
-        broadcast_stage: bool,
+        stage: BroadcastFailureStage,
         duplicate_acceptance: DuplicateBroadcastAcceptance,
     ) -> Self {
         Self {
@@ -150,7 +162,7 @@ impl<'a> BroadcastFailureFacts<'a> {
             raw_tx_present,
             tx_hash_present,
             last_broadcast_at_present,
-            broadcast_stage,
+            stage,
             duplicate_acceptance,
         }
     }
@@ -166,7 +178,7 @@ impl<'a> BroadcastFailureFacts<'a> {
             raw_tx_present,
             tx_hash_present,
             last_broadcast_at_present,
-            true,
+            BroadcastFailureStage::Broadcast,
             DuplicateBroadcastAcceptance::RequireLocalTxFacts,
         )
     }
@@ -289,7 +301,7 @@ pub(crate) fn classify_broadcast_failure(
     err: &ServiceError,
     facts: BroadcastFailureFacts<'_>,
 ) -> BroadcastFailureDecision {
-    if facts.broadcast_stage
+    if facts.stage.is_broadcast()
         && facts.chain_code.eq_ignore_ascii_case("sol")
         && is_blockhash_not_found_error(err)
         && facts.raw_tx_present
@@ -299,7 +311,7 @@ pub(crate) fn classify_broadcast_failure(
         return BroadcastFailureDecision::RebuildSolBlockhash;
     }
 
-    if facts.broadcast_stage
+    if facts.stage.is_broadcast()
         && should_invalidate_tron_expired_broadcast(
             facts.chain_code,
             err,
@@ -311,14 +323,14 @@ pub(crate) fn classify_broadcast_failure(
         return BroadcastFailureDecision::RebuildTronExpired;
     }
 
-    if facts.broadcast_stage
+    if facts.stage.is_broadcast()
         && is_duplicate_broadcast_error(err)
         && facts.duplicate_acceptance.accepts(facts.raw_tx_present, facts.tx_hash_present)
     {
         return BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate;
     }
 
-    if facts.broadcast_stage
+    if facts.stage.is_broadcast()
         && should_treat_nonce_too_low_as_broadcast_success(
             facts.chain_code,
             err,
@@ -458,7 +470,7 @@ mod tests {
                 true,
                 true,
                 false,
-                false,
+                BroadcastFailureStage::Other,
                 DuplicateBroadcastAcceptance::RequireLocalTxFacts,
             ),
         );
@@ -493,7 +505,7 @@ mod tests {
                 false,
                 false,
                 false,
-                true,
+                BroadcastFailureStage::Broadcast,
                 DuplicateBroadcastAcceptance::AllowWithoutLocalTxFacts,
             ),
         );

@@ -18,7 +18,7 @@ use crate::{
         adapter::tx::RawTx,
         adapter_factory::ApiChainAdapterFactory,
         coin::ApiCoinDomain,
-        trans::{ApiTransDomain, broadcast_mechanism},
+        trans::{ApiTransDomain, broadcast_mechanism, shared_mechanism},
         wallet::ApiWalletDomain,
     },
     error::{
@@ -1288,16 +1288,15 @@ impl ShadowFeeWorker {
             }
 
             if accepted_reason.requires_nonce_self_heal() {
-                let nonce_engine =
-                    crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(
-                        self.ctx,
-                    )?;
-                if let Err(e) = nonce_engine
-                    .handle_nonce_error(&fee.from_addr, &fee.chain_code, &error_msg)
-                    .await
-                {
-                    warn!(trade_no = %trade_no, error = %e, source = "shadow_fee_worker", "Nonce self-heal failed");
-                }
+                shared_mechanism::try_nonce_self_heal(
+                    self.ctx,
+                    trade_no,
+                    &fee.from_addr,
+                    &fee.chain_code,
+                    &error_msg,
+                    "shadow_fee_worker",
+                )
+                .await?;
             }
 
             let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
@@ -1321,13 +1320,15 @@ impl ShadowFeeWorker {
         if broadcast_failure_decision.should_fail_after_nonce_self_heal() {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
 
-            let nonce_engine =
-                crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?;
-            if let Err(e) =
-                nonce_engine.handle_nonce_error(&fee.from_addr, &fee.chain_code, &error_msg).await
-            {
-                warn!(trade_no = %trade_no, error = %e, source = "shadow_fee_worker", "Nonce self-heal failed");
-            }
+            shared_mechanism::try_nonce_self_heal(
+                self.ctx,
+                trade_no,
+                &fee.from_addr,
+                &fee.chain_code,
+                &error_msg,
+                "shadow_fee_worker",
+            )
+            .await?;
 
             let rows_affected = ApiFeeRepo::update_api_fee_status_and_err(
                 &self.ctx.api_transaction_pool()?,

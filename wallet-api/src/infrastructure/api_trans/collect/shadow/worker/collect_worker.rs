@@ -56,7 +56,7 @@ use crate::{
             chain::ApiChainTransDomain,
             coin::ApiCoinDomain,
             strategy::StrategyDomain,
-            trans::{ApiTransDomain, broadcast_mechanism},
+            trans::{ApiTransDomain, broadcast_mechanism, shared_mechanism},
         },
         chain::adapter::{ChainAdapterFactory, sol_tx::SYSTEM_ACCOUNT_RENT},
     },
@@ -3414,13 +3414,15 @@ impl ShadowCollectWorker {
             }
 
             if accepted_reason.requires_nonce_self_heal() {
-                let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                if let Err(e) = nonce_engine
-                    .handle_nonce_error(&req.from_addr, &req.chain_code, &error_msg)
-                    .await
-                {
-                    warn!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Nonce self-heal failed");
-                }
+                shared_mechanism::try_nonce_self_heal(
+                    self.ctx,
+                    trade_no,
+                    &req.from_addr,
+                    &req.chain_code,
+                    &error_msg,
+                    "shadow_worker_v2",
+                )
+                .await?;
             }
 
             let rows_affected =
@@ -3450,12 +3452,15 @@ impl ShadowCollectWorker {
         if broadcast_failure_decision.should_fail_after_nonce_self_heal() {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Detected nonce too low error, syncing nonce from chain");
 
-            let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-            if let Err(e) =
-                nonce_engine.handle_nonce_error(&req.from_addr, &req.chain_code, &error_msg).await
-            {
-                warn!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Nonce self-heal failed");
-            }
+            shared_mechanism::try_nonce_self_heal(
+                self.ctx,
+                trade_no,
+                &req.from_addr,
+                &req.chain_code,
+                &error_msg,
+                "shadow_worker_v2",
+            )
+            .await?;
 
             let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
                 &self.ctx.api_transaction_pool()?,

@@ -43,7 +43,7 @@ use crate::{
             adapter::tx::RawTx,
             adapter_factory::ApiChainAdapterFactory,
             coin::ApiCoinDomain,
-            trans::{ApiTransDomain, broadcast_mechanism},
+            trans::{ApiTransDomain, broadcast_mechanism, shared_mechanism},
             wallet::ApiWalletDomain,
         },
         chain::adapter::ChainAdapterFactory,
@@ -2254,6 +2254,13 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
+        let broadcast_failure_stage = match stage {
+            WithdrawFailureStage::Broadcast => {
+                broadcast_mechanism::BroadcastFailureStage::Broadcast
+            }
+            _ => broadcast_mechanism::BroadcastFailureStage::Other,
+        };
+
         let broadcast_failure_decision = broadcast_mechanism::classify_broadcast_failure(
             &err,
             broadcast_mechanism::BroadcastFailureFacts::new(
@@ -2261,7 +2268,7 @@ impl ShadowWithdrawWorker {
                 withdraw.raw_tx.is_some(),
                 withdraw.tx_hash.is_some(),
                 withdraw.last_broadcast_at.is_some(),
-                matches!(stage, WithdrawFailureStage::Broadcast),
+                broadcast_failure_stage,
                 broadcast_mechanism::DuplicateBroadcastAcceptance::AllowWithoutLocalTxFacts,
             ),
         );
@@ -2298,16 +2305,15 @@ impl ShadowWithdrawWorker {
             }
 
             if accepted_reason.requires_nonce_self_heal() {
-                let nonce_engine =
-                    crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(
-                        self.ctx,
-                    )?;
-                if let Err(e) = nonce_engine
-                    .handle_nonce_error(&withdraw.from_addr, &withdraw.chain_code, &error_msg)
-                    .await
-                {
-                    warn!(trade_no = %trade_no, error = %e, source = "shadow_withdraw_worker", "Nonce self-heal failed");
-                }
+                shared_mechanism::try_nonce_self_heal(
+                    self.ctx,
+                    trade_no,
+                    &withdraw.from_addr,
+                    &withdraw.chain_code,
+                    &error_msg,
+                    "shadow_withdraw_worker",
+                )
+                .await?;
             }
 
             let rows_affected = ApiWithdrawRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
@@ -2332,14 +2338,15 @@ impl ShadowWithdrawWorker {
         if broadcast_failure_decision.should_fail_after_nonce_self_heal() {
             info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Detected nonce too low error, syncing nonce from chain");
 
-            let nonce_engine =
-                crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(self.ctx)?;
-            if let Err(e) = nonce_engine
-                .handle_nonce_error(&withdraw.from_addr, &withdraw.chain_code, &error_msg)
-                .await
-            {
-                warn!(trade_no = %trade_no, error = %e, source = "shadow_withdraw_worker", "Nonce self-heal failed");
-            }
+            shared_mechanism::try_nonce_self_heal(
+                self.ctx,
+                trade_no,
+                &withdraw.from_addr,
+                &withdraw.chain_code,
+                &error_msg,
+                "shadow_withdraw_worker",
+            )
+            .await?;
 
             let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
                 &self.ctx.api_transaction_pool()?,
