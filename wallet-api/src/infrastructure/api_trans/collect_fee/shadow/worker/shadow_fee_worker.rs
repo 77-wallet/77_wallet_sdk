@@ -1247,15 +1247,23 @@ impl ShadowFeeWorker {
             return Ok(());
         }
 
+        let broadcast_failure_decision = broadcast_mechanism::classify_broadcast_failure(
+            &err,
+            broadcast_mechanism::BroadcastFailureFacts::broadcast_stage(
+                &fee.chain_code,
+                fee.raw_tx.is_some(),
+                fee.tx_hash.is_some(),
+                fee.last_broadcast_at.is_some(),
+            ),
+        );
+
         // Solana 广播常见可恢复错误：
         // - blockhash 过期（Blockhash not found）
         // 这类错误不应直接写失败事实，而应作废 raw_tx/tx_hash 触发重建。
-        if fee.chain_code.eq_ignore_ascii_case("sol")
-            && broadcast_mechanism::is_blockhash_not_found_error(&err)
-            && fee.raw_tx.is_some()
-            && fee.tx_hash.is_some()
-            && fee.last_broadcast_at.is_none()
-        {
+        if matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::RebuildSolBlockhash
+        ) {
             let rows_affected = ApiFeeRepo::invalidate_raw_tx(&self.ctx.api_transaction_pool()?, trade_no, None, None, None)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
@@ -1275,14 +1283,10 @@ impl ShadowFeeWorker {
             return Ok(());
         }
 
-        let should_rebuild_tron_expired_raw =
-            broadcast_mechanism::should_invalidate_tron_expired_broadcast(
-                &fee.chain_code,
-                &err,
-                fee.raw_tx.is_some(),
-                fee.tx_hash.is_some(),
-                fee.last_broadcast_at.is_some(),
-            );
+        let should_rebuild_tron_expired_raw = matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::RebuildTronExpired
+        );
 
         // TRON raw tx can expire before the node accepts broadcast. Retrying the
         // same raw cannot make progress, so clear build facts and let the
@@ -1309,10 +1313,10 @@ impl ShadowFeeWorker {
 
         // "already exists" 表示节点已接收广播，作为幂等成功兜底处理。
         // 避免误写 SendingTxFailed 并冻结到错误分支。
-        if broadcast_mechanism::is_duplicate_broadcast_error(&err)
-            && fee.raw_tx.is_some()
-            && fee.tx_hash.is_some()
-        {
+        if matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate
+        ) {
             let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
@@ -1331,11 +1335,9 @@ impl ShadowFeeWorker {
         }
 
         let error_msg = format!("{}", err);
-        if broadcast_mechanism::should_treat_nonce_too_low_as_broadcast_success(
-            &fee.chain_code,
-            &err,
-            fee.raw_tx.is_some(),
-            fee.tx_hash.is_some(),
+        if matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::MarkBroadcastExecutedForNonceTooLow
         ) {
             info!(
                 trade_no = %trade_no,
@@ -1369,7 +1371,10 @@ impl ShadowFeeWorker {
         }
 
         // 处理 nonce too low 错误
-        if broadcast_mechanism::is_nonce_too_low_error(&err) {
+        if matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::FailAfterNonceTooLowSelfHeal
+        ) {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
 
             let nonce_engine =

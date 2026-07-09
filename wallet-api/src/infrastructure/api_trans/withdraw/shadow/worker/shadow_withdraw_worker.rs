@@ -2254,16 +2254,24 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
+        let broadcast_failure_decision = broadcast_mechanism::classify_broadcast_failure(
+            &err,
+            broadcast_mechanism::BroadcastFailureFacts::new(
+                &withdraw.chain_code,
+                withdraw.raw_tx.is_some(),
+                withdraw.tx_hash.is_some(),
+                withdraw.last_broadcast_at.is_some(),
+                matches!(stage, WithdrawFailureStage::Broadcast),
+            ),
+        );
+
         // Solana 广播常见可恢复错误：
         // - blockhash 过期（Blockhash not found）
         // 这类错误不应直接写失败事实，而应作废 raw_tx/tx_hash 触发重建。
-        if matches!(stage, WithdrawFailureStage::Broadcast)
-            && withdraw.chain_code.eq_ignore_ascii_case("sol")
-            && broadcast_mechanism::is_blockhash_not_found_error(&err)
-            && withdraw.raw_tx.is_some()
-            && withdraw.tx_hash.is_some()
-            && withdraw.last_broadcast_at.is_none()
-        {
+        if matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::RebuildSolBlockhash
+        ) {
             let rows_affected =
                 ApiWithdrawRepo::invalidate_raw_tx(&self.ctx.api_transaction_pool()?, trade_no, None, None, None)
                     .await
@@ -2284,14 +2292,10 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
-        let should_rebuild_tron_expired_raw = matches!(stage, WithdrawFailureStage::Broadcast)
-            && broadcast_mechanism::should_invalidate_tron_expired_broadcast(
-                &withdraw.chain_code,
-                &err,
-                withdraw.raw_tx.is_some(),
-                withdraw.tx_hash.is_some(),
-                withdraw.last_broadcast_at.is_some(),
-            );
+        let should_rebuild_tron_expired_raw = matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::RebuildTronExpired
+        );
 
         // TRON raw tx can expire before the node accepts broadcast. Retrying the
         // same raw forever cannot make progress, so clear build facts and let
@@ -2319,9 +2323,10 @@ impl ShadowWithdrawWorker {
 
         // 广播阶段的 "already exists" 表示链节点已接受该交易，属于幂等成功。
         // 兜底处理：即使上游未命中 duplicate 判定，也不应写 SendingTxFailed。
-        if matches!(stage, WithdrawFailureStage::Broadcast)
-            && broadcast_mechanism::is_duplicate_broadcast_error(&err)
-        {
+        if matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate
+        ) {
             let rows_affected = ApiWithdrawRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {
@@ -2341,14 +2346,10 @@ impl ShadowWithdrawWorker {
         }
 
         let error_msg = format!("{}", err);
-        if matches!(stage, WithdrawFailureStage::Broadcast)
-            && broadcast_mechanism::should_treat_nonce_too_low_as_broadcast_success(
-                &withdraw.chain_code,
-                &err,
-                withdraw.raw_tx.is_some(),
-                withdraw.tx_hash.is_some(),
-            )
-        {
+        if matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::MarkBroadcastExecutedForNonceTooLow
+        ) {
             info!(
                 trade_no = %trade_no,
                 source = "shadow_withdraw_worker",
@@ -2383,7 +2384,10 @@ impl ShadowWithdrawWorker {
         }
 
         // 处理 nonce too low 错误
-        if broadcast_mechanism::is_nonce_too_low_error(&err) {
+        if matches!(
+            broadcast_failure_decision,
+            broadcast_mechanism::BroadcastFailureDecision::FailAfterNonceTooLowSelfHeal
+        ) {
             info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Detected nonce too low error, syncing nonce from chain");
 
             let nonce_engine =

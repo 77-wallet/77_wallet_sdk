@@ -111,6 +111,104 @@ pub(crate) fn is_recoverable_sol_broadcast_error(_err: &ServiceError) -> bool {
     false
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BroadcastFailureFacts<'a> {
+    pub(crate) chain_code: &'a str,
+    pub(crate) raw_tx_present: bool,
+    pub(crate) tx_hash_present: bool,
+    pub(crate) last_broadcast_at_present: bool,
+    pub(crate) broadcast_stage: bool,
+}
+
+impl<'a> BroadcastFailureFacts<'a> {
+    pub(crate) fn new(
+        chain_code: &'a str,
+        raw_tx_present: bool,
+        tx_hash_present: bool,
+        last_broadcast_at_present: bool,
+        broadcast_stage: bool,
+    ) -> Self {
+        Self {
+            chain_code,
+            raw_tx_present,
+            tx_hash_present,
+            last_broadcast_at_present,
+            broadcast_stage,
+        }
+    }
+
+    pub(crate) fn broadcast_stage(
+        chain_code: &'a str,
+        raw_tx_present: bool,
+        tx_hash_present: bool,
+        last_broadcast_at_present: bool,
+    ) -> Self {
+        Self::new(chain_code, raw_tx_present, tx_hash_present, last_broadcast_at_present, true)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BroadcastFailureDecision {
+    RebuildSolBlockhash,
+    RebuildTronExpired,
+    MarkBroadcastExecutedForDuplicate,
+    MarkBroadcastExecutedForNonceTooLow,
+    FailAfterNonceTooLowSelfHeal,
+    Unhandled,
+}
+
+pub(crate) fn classify_broadcast_failure(
+    err: &ServiceError,
+    facts: BroadcastFailureFacts<'_>,
+) -> BroadcastFailureDecision {
+    if facts.broadcast_stage
+        && facts.chain_code.eq_ignore_ascii_case("sol")
+        && is_blockhash_not_found_error(err)
+        && facts.raw_tx_present
+        && facts.tx_hash_present
+        && !facts.last_broadcast_at_present
+    {
+        return BroadcastFailureDecision::RebuildSolBlockhash;
+    }
+
+    if facts.broadcast_stage
+        && should_invalidate_tron_expired_broadcast(
+            facts.chain_code,
+            err,
+            facts.raw_tx_present,
+            facts.tx_hash_present,
+            facts.last_broadcast_at_present,
+        )
+    {
+        return BroadcastFailureDecision::RebuildTronExpired;
+    }
+
+    if facts.broadcast_stage
+        && is_duplicate_broadcast_error(err)
+        && facts.raw_tx_present
+        && facts.tx_hash_present
+    {
+        return BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate;
+    }
+
+    if facts.broadcast_stage
+        && should_treat_nonce_too_low_as_broadcast_success(
+            facts.chain_code,
+            err,
+            facts.raw_tx_present,
+            facts.tx_hash_present,
+        )
+    {
+        return BroadcastFailureDecision::MarkBroadcastExecutedForNonceTooLow;
+    }
+
+    if is_nonce_too_low_error(err) {
+        return BroadcastFailureDecision::FailAfterNonceTooLowSelfHeal;
+    }
+
+    BroadcastFailureDecision::Unhandled
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +302,45 @@ mod tests {
 
         assert!(!should_treat_nonce_too_low_as_broadcast_success("eth", &err, false, true,));
         assert!(!should_treat_nonce_too_low_as_broadcast_success("sol", &err, true, true,));
+    }
+
+    #[test]
+    fn classify_broadcast_failure_prefers_rebuildable_sol_blockhash() {
+        let err = ServiceError::Parameter(
+            "node response: Transaction simulation failed: Blockhash not found".to_string(),
+        );
+
+        let decision = classify_broadcast_failure(
+            &err,
+            BroadcastFailureFacts::broadcast_stage("sol", true, true, false),
+        );
+
+        assert_eq!(decision, BroadcastFailureDecision::RebuildSolBlockhash);
+    }
+
+    #[test]
+    fn classify_broadcast_failure_keeps_nonce_failure_available_outside_broadcast_stage() {
+        let err = ServiceError::Parameter(
+            "node response: Node response error: code=-32000, message=nonce too low".to_string(),
+        );
+
+        let decision = classify_broadcast_failure(
+            &err,
+            BroadcastFailureFacts::new("eth", true, true, false, false),
+        );
+
+        assert_eq!(decision, BroadcastFailureDecision::FailAfterNonceTooLowSelfHeal);
+    }
+
+    #[test]
+    fn classify_broadcast_failure_marks_duplicate_only_with_local_tx_facts() {
+        let err = ServiceError::Parameter("rpc error Transaction already exists.".to_string());
+
+        let decision = classify_broadcast_failure(
+            &err,
+            BroadcastFailureFacts::broadcast_stage("tron", true, true, false),
+        );
+
+        assert_eq!(decision, BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate);
     }
 }
