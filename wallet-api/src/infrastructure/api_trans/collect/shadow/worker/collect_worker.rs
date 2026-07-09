@@ -3405,25 +3405,16 @@ impl ShadowCollectWorker {
 
         let error_msg = format!("{}", err);
         if let Some(accepted_reason) = broadcast_failure_decision.accepted_reason() {
-            if let Some(message) = accepted_reason.pre_self_heal_log_message() {
-                info!(
-                    trade_no = %trade_no,
-                    source = "shadow_worker_v2",
-                    "{}", message
-                );
-            }
-
-            if accepted_reason.requires_nonce_self_heal() {
-                shared_mechanism::try_nonce_self_heal(
-                    self.ctx,
-                    trade_no,
-                    &req.from_addr,
-                    &req.chain_code,
-                    &error_msg,
-                    "shadow_worker_v2",
-                )
-                .await?;
-            }
+            shared_mechanism::handle_accepted_broadcast_nonce_self_heal(
+                self.ctx,
+                trade_no,
+                &req.from_addr,
+                &req.chain_code,
+                &error_msg,
+                "shadow_worker_v2",
+                accepted_reason,
+            )
+            .await?;
 
             let rows_affected =
                 wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_broadcast_executed(

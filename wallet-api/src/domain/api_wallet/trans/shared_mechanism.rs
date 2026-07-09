@@ -1,6 +1,9 @@
 use crate::{
     context::Context,
-    domain::api_wallet::{adapter::tx::TxVisibilityProbe, adapter_factory::ApiChainAdapterFactory},
+    domain::api_wallet::{
+        adapter::tx::TxVisibilityProbe, adapter_factory::ApiChainAdapterFactory,
+        trans::broadcast_mechanism::BroadcastAcceptedReason,
+    },
     error::service::ServiceError,
     infrastructure::{chain_rpc_guard, nonce::nonce_engine::get_nonce_engine_with_ctx},
 };
@@ -194,6 +197,30 @@ pub(crate) async fn try_nonce_self_heal(
             "Nonce self-heal failed"
         );
     }
+    Ok(())
+}
+
+pub(crate) async fn handle_accepted_broadcast_nonce_self_heal(
+    ctx: &'static Context,
+    trade_no: &str,
+    from_addr: &str,
+    chain_code: &str,
+    error_msg: &str,
+    source: &str,
+    accepted_reason: BroadcastAcceptedReason,
+) -> Result<(), ServiceError> {
+    if let Some(message) = accepted_reason.pre_self_heal_log_message() {
+        tracing::info!(
+            trade_no = %trade_no,
+            source = %source,
+            "{}", message
+        );
+    }
+
+    if accepted_reason.requires_nonce_self_heal() {
+        try_nonce_self_heal(ctx, trade_no, from_addr, chain_code, error_msg, source).await?;
+    }
+
     Ok(())
 }
 

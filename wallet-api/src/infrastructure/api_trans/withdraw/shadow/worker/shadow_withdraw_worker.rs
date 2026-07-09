@@ -2296,25 +2296,16 @@ impl ShadowWithdrawWorker {
 
         let error_msg = format!("{}", err);
         if let Some(accepted_reason) = broadcast_failure_decision.accepted_reason() {
-            if let Some(message) = accepted_reason.pre_self_heal_log_message() {
-                info!(
-                    trade_no = %trade_no,
-                    source = "shadow_withdraw_worker",
-                    "{}", message
-                );
-            }
-
-            if accepted_reason.requires_nonce_self_heal() {
-                shared_mechanism::try_nonce_self_heal(
-                    self.ctx,
-                    trade_no,
-                    &withdraw.from_addr,
-                    &withdraw.chain_code,
-                    &error_msg,
-                    "shadow_withdraw_worker",
-                )
-                .await?;
-            }
+            shared_mechanism::handle_accepted_broadcast_nonce_self_heal(
+                self.ctx,
+                trade_no,
+                &withdraw.from_addr,
+                &withdraw.chain_code,
+                &error_msg,
+                "shadow_withdraw_worker",
+                accepted_reason,
+            )
+            .await?;
 
             let rows_affected = ApiWithdrawRepo::mark_broadcast_executed(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
