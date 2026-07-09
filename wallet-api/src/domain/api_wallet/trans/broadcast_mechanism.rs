@@ -118,6 +118,7 @@ pub(crate) struct BroadcastFailureFacts<'a> {
     pub(crate) tx_hash_present: bool,
     pub(crate) last_broadcast_at_present: bool,
     pub(crate) broadcast_stage: bool,
+    pub(crate) duplicate_requires_local_tx_facts: bool,
 }
 
 impl<'a> BroadcastFailureFacts<'a> {
@@ -127,6 +128,7 @@ impl<'a> BroadcastFailureFacts<'a> {
         tx_hash_present: bool,
         last_broadcast_at_present: bool,
         broadcast_stage: bool,
+        duplicate_requires_local_tx_facts: bool,
     ) -> Self {
         Self {
             chain_code,
@@ -134,6 +136,7 @@ impl<'a> BroadcastFailureFacts<'a> {
             tx_hash_present,
             last_broadcast_at_present,
             broadcast_stage,
+            duplicate_requires_local_tx_facts,
         }
     }
 
@@ -143,7 +146,14 @@ impl<'a> BroadcastFailureFacts<'a> {
         tx_hash_present: bool,
         last_broadcast_at_present: bool,
     ) -> Self {
-        Self::new(chain_code, raw_tx_present, tx_hash_present, last_broadcast_at_present, true)
+        Self::new(
+            chain_code,
+            raw_tx_present,
+            tx_hash_present,
+            last_broadcast_at_present,
+            true,
+            true,
+        )
     }
 }
 
@@ -288,8 +298,8 @@ pub(crate) fn classify_broadcast_failure(
 
     if facts.broadcast_stage
         && is_duplicate_broadcast_error(err)
-        && facts.raw_tx_present
-        && facts.tx_hash_present
+        && (!facts.duplicate_requires_local_tx_facts
+            || (facts.raw_tx_present && facts.tx_hash_present))
     {
         return BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate;
     }
@@ -429,7 +439,7 @@ mod tests {
 
         let decision = classify_broadcast_failure(
             &err,
-            BroadcastFailureFacts::new("eth", true, true, false, false),
+            BroadcastFailureFacts::new("eth", true, true, false, false, true),
         );
 
         assert_eq!(decision, BroadcastFailureDecision::FailAfterNonceTooLowSelfHeal);
@@ -445,5 +455,25 @@ mod tests {
         );
 
         assert_eq!(decision, BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate);
+    }
+
+    #[test]
+    fn classify_broadcast_failure_can_accept_duplicate_without_local_tx_facts() {
+        let err = ServiceError::Parameter("rpc error Transaction already exists.".to_string());
+
+        let default_decision = classify_broadcast_failure(
+            &err,
+            BroadcastFailureFacts::broadcast_stage("tron", false, false, false),
+        );
+        let permissive_decision = classify_broadcast_failure(
+            &err,
+            BroadcastFailureFacts::new("tron", false, false, false, true, false),
+        );
+
+        assert_eq!(default_decision, BroadcastFailureDecision::Unhandled);
+        assert_eq!(
+            permissive_decision,
+            BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate
+        );
     }
 }
