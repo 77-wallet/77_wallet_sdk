@@ -107,10 +107,6 @@ pub(crate) fn should_invalidate_tron_expired_broadcast(
         && !last_broadcast_at_present
 }
 
-pub(crate) fn is_recoverable_sol_broadcast_error(_err: &ServiceError) -> bool {
-    false
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BroadcastFailureStage {
     Broadcast,
@@ -358,7 +354,6 @@ mod tests {
             "Transaction simulation failed: This transn has already been processed".to_string(),
         );
         assert!(is_duplicate_broadcast_error(&err));
-        assert!(!is_recoverable_sol_broadcast_error(&err));
     }
 
     #[test]
@@ -367,7 +362,6 @@ mod tests {
             "node response: Transaction simulation failed: Blockhash not found".to_string(),
         );
         assert!(is_blockhash_not_found_error(&err));
-        assert!(!is_recoverable_sol_broadcast_error(&err));
     }
 
     #[test]
@@ -397,7 +391,11 @@ mod tests {
             "node response: Transaction simulation failed: Transaction results in an account (0) with insufficient funds for rent"
                 .to_string(),
         );
-        assert!(!is_recoverable_sol_broadcast_error(&err));
+        let decision = classify_broadcast_failure(
+            &err,
+            BroadcastFailureFacts::broadcast_stage("sol", true, true, false),
+        );
+        assert_eq!(decision, BroadcastFailureDecision::Unhandled);
     }
 
     #[test]
@@ -405,7 +403,11 @@ mod tests {
         let err = ServiceError::Parameter(
             "node response: Transaction simulation failed: custom program error: 0x1".to_string(),
         );
-        assert!(!is_recoverable_sol_broadcast_error(&err));
+        let decision = classify_broadcast_failure(
+            &err,
+            BroadcastFailureFacts::broadcast_stage("sol", true, true, false),
+        );
+        assert_eq!(decision, BroadcastFailureDecision::Unhandled);
     }
 
     #[test]
