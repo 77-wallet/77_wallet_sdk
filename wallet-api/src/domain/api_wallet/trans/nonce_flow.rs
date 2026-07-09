@@ -1,4 +1,4 @@
-use super::ApiTransDomain;
+use super::{ApiTransDomain, shared_mechanism};
 use crate::{
     context::Context, domain::api_wallet::adapter_factory::ApiChainAdapterFactory,
     error::service::ServiceError,
@@ -41,7 +41,7 @@ impl ApiTransDomain {
                     Ok(adapter) => adapter,
                     Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                         auth_retry_attempted = true;
-                        Self::refresh_rpc_auth_and_prepare_retry(
+                        shared_mechanism::refresh_rpc_auth_and_prepare_retry(
                             ctx,
                             chain_code,
                             "nonce:get_adapter",
@@ -69,7 +69,7 @@ impl ApiTransDomain {
                 }
                 Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                     auth_retry_attempted = true;
-                    Self::refresh_rpc_auth_and_prepare_retry(
+                    shared_mechanism::refresh_rpc_auth_and_prepare_retry(
                         ctx,
                         chain_code,
                         "nonce:rpc_call",

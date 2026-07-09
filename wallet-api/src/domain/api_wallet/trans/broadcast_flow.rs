@@ -1,4 +1,4 @@
-use super::{ApiTransDomain, broadcast_mechanism};
+use super::{ApiTransDomain, broadcast_mechanism, shared_mechanism};
 use crate::{
     context::Context,
     domain::{
@@ -86,7 +86,7 @@ impl ApiTransDomain {
                     Ok(adapter) => adapter,
                     Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                         auth_retry_attempted = true;
-                        Self::refresh_rpc_auth_and_prepare_retry(
+                        shared_mechanism::refresh_rpc_auth_and_prepare_retry(
                             ctx,
                             chain_code,
                             "broadcast_transfer:get_adapter",
@@ -128,7 +128,7 @@ impl ApiTransDomain {
                 Ok(resp) => resp,
                 Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                     auth_retry_attempted = true;
-                    Self::refresh_rpc_auth_and_prepare_retry(
+                    shared_mechanism::refresh_rpc_auth_and_prepare_retry(
                         ctx,
                         chain_code,
                         "broadcast_transfer:broadcast",
@@ -155,7 +155,7 @@ impl ApiTransDomain {
                             return Ok(None);
                         };
                         let synthetic = TransferResp::new(tx_hash, String::new());
-                        if Self::need_broadcast_visibility_check(chain_code) {
+                        if shared_mechanism::need_broadcast_visibility_check(chain_code) {
                             tracing::warn!(
                                 chain_code = %chain_code,
                                 tx_hash = %synthetic.tx_hash,
@@ -175,7 +175,7 @@ impl ApiTransDomain {
                     } else if chain_code.eq_ignore_ascii_case(&ChainCode::Tron.to_string())
                         && broadcast_mechanism::is_transaction_expired_error(&e)
                     {
-                        Self::warn_chain_rpc_failure(
+                        shared_mechanism::warn_chain_rpc_failure(
                             &e,
                             chain_rpc_guard::ChainRpcFailureLog::new()
                                 .chain_code(chain_code)
@@ -185,7 +185,7 @@ impl ApiTransDomain {
                         );
                         return Err(e);
                     } else if e.is_network_error() {
-                        Self::error_chain_rpc_failure(
+                        shared_mechanism::error_chain_rpc_failure(
                             &e,
                             chain_rpc_guard::ChainRpcFailureLog::new()
                                 .chain_code(chain_code)
@@ -214,13 +214,14 @@ impl ApiTransDomain {
                 "broadcast_transfer response received"
             );
 
-            if Self::need_broadcast_visibility_check(chain_code) {
-                let visibility_kind = if Self::is_sol_chain(chain_code) { "sol" } else { "evm" };
+            if shared_mechanism::need_broadcast_visibility_check(chain_code) {
+                let visibility_kind =
+                    if shared_mechanism::is_sol_chain(chain_code) { "sol" } else { "evm" };
                 let visibility_probe = match adapter.tx_visibility_probe(&resp.tx_hash).await {
                     Ok(probe) => probe,
                     Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                         auth_retry_attempted = true;
-                        Self::refresh_rpc_auth_and_prepare_retry(
+                        shared_mechanism::refresh_rpc_auth_and_prepare_retry(
                             ctx,
                             chain_code,
                             "broadcast_transfer:visibility_probe",
@@ -232,7 +233,7 @@ impl ApiTransDomain {
                     }
                     Err(e) => {
                         if e.is_delay_retryable() {
-                            Self::warn_chain_rpc_failure(
+                            shared_mechanism::warn_chain_rpc_failure(
                                 &e,
                                 chain_rpc_guard::ChainRpcFailureLog::new()
                                     .chain_code(chain_code)
@@ -243,7 +244,7 @@ impl ApiTransDomain {
                                 "broadcast visibility probe failed with delay retryable error",
                             );
                         } else {
-                            Self::error_chain_rpc_failure(
+                            shared_mechanism::error_chain_rpc_failure(
                                 &e,
                                 chain_rpc_guard::ChainRpcFailureLog::new()
                                     .chain_code(chain_code)
@@ -262,7 +263,7 @@ impl ApiTransDomain {
                 };
 
                 if let Some(probe) = &visibility_probe {
-                    Self::log_visibility_probe(
+                    shared_mechanism::log_visibility_probe(
                         chain_code,
                         &resp.tx_hash,
                         &rpc,
@@ -288,7 +289,7 @@ impl ApiTransDomain {
 
                     if let Some(probe) = &visibility_probe {
                         if probe.seen_on_node {
-                            Self::log_visibility_probe(
+                            shared_mechanism::log_visibility_probe(
                                 chain_code,
                                 &resp.tx_hash,
                                 &rpc,
@@ -308,7 +309,7 @@ impl ApiTransDomain {
                             return Ok(Some(resp));
                         }
 
-                        Self::log_visibility_probe(
+                        shared_mechanism::log_visibility_probe(
                             chain_code,
                             &resp.tx_hash,
                             &rpc,
@@ -352,7 +353,7 @@ impl ApiTransDomain {
                             }
                             Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                                 auth_retry_attempted = true;
-                                Self::refresh_rpc_auth_and_prepare_retry(
+                                shared_mechanism::refresh_rpc_auth_and_prepare_retry(
                                     ctx,
                                     chain_code,
                                     "broadcast_transfer:visibility_check",
@@ -363,7 +364,7 @@ impl ApiTransDomain {
                                 continue 'auth_retry;
                             }
                             Err(e) => {
-                                Self::warn_chain_rpc_failure(
+                                shared_mechanism::warn_chain_rpc_failure(
                                     &e,
                                     chain_rpc_guard::ChainRpcFailureLog::new()
                                         .chain_code(chain_code)

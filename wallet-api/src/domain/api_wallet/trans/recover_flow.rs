@@ -7,6 +7,7 @@ use super::{
         log_recover_query_error, log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
         recover_query_outcome,
     },
+    shared_mechanism,
 };
 use crate::{
     context::Context,
@@ -198,7 +199,7 @@ impl ApiTransDomain {
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
         auth_retry.mark_attempted();
-        Self::refresh_rpc_auth_and_prepare_retry(ctx, chain_code, op, rpc, err).await
+        shared_mechanism::refresh_rpc_auth_and_prepare_retry(ctx, chain_code, op, rpc, err).await
     }
 
     async fn handle_recover_query_error_action(
@@ -243,7 +244,7 @@ impl ApiTransDomain {
         tx_result: wallet_chain_interact::QueryTransactionResult,
     ) -> Result<Option<TransferResp>, ServiceError> {
         let is_success = Self::is_recovered_tx_status_success(tx_hash, tx_result.status);
-        let time_ms = Self::normalize_chain_time_to_ms(tx_result.transaction_time)?;
+        let time_ms = shared_mechanism::normalize_chain_time_to_ms(tx_result.transaction_time)?;
 
         if is_success {
             tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
@@ -331,7 +332,7 @@ impl ApiTransDomain {
     ) {
         match adapter.tx_visibility_probe(tx_hash).await {
             Ok(Some(probe)) => {
-                Self::log_visibility_probe(
+                shared_mechanism::log_visibility_probe(
                     chain_code, tx_hash, rpc, "sol", &probe, None, None, "recover",
                 );
             }
