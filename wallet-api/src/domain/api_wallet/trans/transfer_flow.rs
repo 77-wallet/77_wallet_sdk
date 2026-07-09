@@ -3,17 +3,62 @@ use crate::{
     context::Context,
     domain::{
         api_wallet::{
-            account::ApiAccountDomain, adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory,
+            account::ApiAccountDomain,
+            adapter::tx::{RawTx, Tx},
+            adapter_factory::ApiChainAdapterFactory,
         },
         chain::TransferResp,
     },
     error::service::ServiceError,
     request::api_wallet::trans::ApiTransferReq,
 };
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 use wallet_chain_interact::types::ChainPrivateKey;
 
+struct PreparedTransferExecution {
+    chain_code: String,
+    private_key: ChainPrivateKey,
+    adapter: Arc<dyn Tx + Send + Sync>,
+}
+
 impl ApiTransDomain {
+    async fn prepare_transfer_execution(
+        ctx: &'static Context,
+        params: &ApiTransferReq,
+        preloaded_private_key: Option<ChainPrivateKey>,
+    ) -> Result<PreparedTransferExecution, ServiceError> {
+        tracing::info!("transfer: 获取私钥");
+        let private_key_time = Instant::now();
+        let private_key = match preloaded_private_key {
+            Some(pk) => pk,
+            None => {
+                ApiAccountDomain::get_private_key_with_ctx(
+                    ctx,
+                    &params.base.from,
+                    &params.base.chain_code,
+                )
+                .await?
+            }
+        };
+        tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
+
+        tracing::info!("transfer: 原始链代码: {}", params.base.chain_code);
+        let chain_code_time = Instant::now();
+        let chain_code = params.base.chain_code.clone();
+        tracing::info!(
+            "transfer: 转换后链代码: {}, 耗时: {:?}",
+            chain_code,
+            chain_code_time.elapsed()
+        );
+
+        let adapter_time = Instant::now();
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, &chain_code).await?;
+        tracing::info!("transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
+
+        Ok(PreparedTransferExecution { chain_code, private_key, adapter })
+    }
+
     // transfer（显式上下文签名）
     pub async fn transfer(
         ctx: &'static Context,
@@ -37,39 +82,12 @@ impl ApiTransDomain {
             start_time
         );
 
-        tracing::info!("transfer: 获取私钥");
-        let private_key_time = Instant::now();
-        let private_key = match preloaded_private_key {
-            Some(pk) => pk,
-            None => {
-                ApiAccountDomain::get_private_key_with_ctx(
-                    ctx,
-                    &params.base.from,
-                    &params.base.chain_code,
-                )
-                .await?
-            }
-        };
-        tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
-
-        tracing::info!("transfer: 原始链代码: {}", params.base.chain_code);
-        let chain_code_time = Instant::now();
-        let chain_code = params.base.chain_code.as_str();
-        tracing::info!(
-            "transfer: 转换后链代码: {}, 耗时: {:?}",
-            chain_code,
-            chain_code_time.elapsed()
-        );
-
-        let adapter_time = Instant::now();
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code).await?;
-        tracing::info!("transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
+        let prepared =
+            Self::prepare_transfer_execution(ctx, &params, preloaded_private_key).await?;
 
         tracing::info!("transfer: 执行转账");
-        // TODO：可优化
         let transfer_time = Instant::now();
-        let resp = adapter.transfer_with_ctx(ctx, &params, private_key).await?;
+        let resp = prepared.adapter.transfer_with_ctx(ctx, &params, prepared.private_key).await?;
         tracing::info!("transfer: 转账操作完成, 耗时: {:?}", transfer_time.elapsed());
 
         if let Some(request_id) = params.base.request_resource_id {
@@ -111,37 +129,10 @@ impl ApiTransDomain {
             start_time
         );
 
-        tracing::info!("transfer: 获取私钥");
-        let private_key_time = Instant::now();
-        let private_key = match preloaded_private_key {
-            Some(pk) => pk,
-            None => {
-                ApiAccountDomain::get_private_key_with_ctx(
-                    ctx,
-                    &params.base.from,
-                    &params.base.chain_code,
-                )
-                .await?
-            }
-        };
-        tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
-
-        tracing::info!("transfer: 原始链代码: {}", params.base.chain_code);
-        let chain_code_time = Instant::now();
-        let chain_code = params.base.chain_code.as_str();
-        tracing::info!(
-            "transfer: 转换后链代码: {}, 耗时: {:?}",
-            chain_code,
-            chain_code_time.elapsed()
-        );
-
-        let adapter_time = Instant::now();
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, chain_code).await?;
-        tracing::info!("transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
+        let prepared =
+            Self::prepare_transfer_execution(ctx, &params, preloaded_private_key).await?;
 
         tracing::info!("transfer: 执行转账");
-        // TODO：可优化
         let transfer_time = Instant::now();
         tracing::info!(
             chain_code = %params.base.chain_code,
@@ -153,10 +144,10 @@ impl ApiTransDomain {
             nonce = params.nonce,
             "transfer: 构建原始交易"
         );
-        let resp = adapter.build_transfer_raw(&params, private_key).await?;
+        let resp = prepared.adapter.build_transfer_raw(&params, prepared.private_key).await?;
         tracing::info!("transfer: 转账操作完成, 耗时: {:?}", transfer_time.elapsed());
         tracing::info!(
-            chain_code = %chain_code,
+            chain_code = %prepared.chain_code,
             request_resource_id = ?params.base.request_resource_id,
             "transfer: 构建原始交易完成"
         );
