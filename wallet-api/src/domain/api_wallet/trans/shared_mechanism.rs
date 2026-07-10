@@ -8,7 +8,6 @@ use crate::{
     infrastructure::{chain_rpc_guard, nonce::nonce_engine::get_nonce_engine_with_ctx},
 };
 use chrono::{DateTime, Utc};
-use std::fmt::Display;
 use wallet_types::chain::chain::ChainCode;
 
 pub(crate) const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
@@ -190,28 +189,6 @@ pub(crate) fn should_retry_after_tron_missing_confirmed_and_pending(
         return false;
     };
     now.signed_duration_since(last_broadcast_at).num_seconds() >= timeout_secs
-}
-
-pub(crate) fn warn_chain_rpc_failure(
-    error: &impl Display,
-    log: chain_rpc_guard::ChainRpcFailureLog<'_>,
-    reason: &str,
-) -> chain_rpc_guard::ChainRpcErrorContext {
-    let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(error);
-    log.warn(&rpc_error, reason);
-    rpc_error.record_transient_failure();
-    rpc_error
-}
-
-pub(crate) fn error_chain_rpc_failure(
-    error: &impl Display,
-    log: chain_rpc_guard::ChainRpcFailureLog<'_>,
-    reason: &str,
-) -> chain_rpc_guard::ChainRpcErrorContext {
-    let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(error);
-    log.error(&rpc_error, reason);
-    rpc_error.record_transient_failure();
-    rpc_error
 }
 
 pub(crate) fn log_visibility_probe(

@@ -799,6 +799,28 @@ impl<'a> ChainRpcFailureLog<'a> {
     }
 }
 
+pub fn warn_failure_and_record<E: std::fmt::Display>(
+    error: &E,
+    log: ChainRpcFailureLog<'_>,
+    reason: &str,
+) -> ChainRpcErrorContext {
+    let rpc_error = ChainRpcErrorContext::from_display(error);
+    log.warn(&rpc_error, reason);
+    rpc_error.record_transient_failure();
+    rpc_error
+}
+
+pub fn error_failure_and_record<E: std::fmt::Display>(
+    error: &E,
+    log: ChainRpcFailureLog<'_>,
+    reason: &str,
+) -> ChainRpcErrorContext {
+    let rpc_error = ChainRpcErrorContext::from_display(error);
+    log.error(&rpc_error, reason);
+    rpc_error.record_transient_failure();
+    rpc_error
+}
+
 pub fn guarded_chain_rpc_host_from_message(msg: &str) -> Option<String> {
     GUARDED_HOSTS.iter().find(|h| msg.contains(h.as_str())).cloned()
 }

@@ -175,7 +175,7 @@ impl ApiTransDomain {
                     } else if chain_code.eq_ignore_ascii_case(&ChainCode::Tron.to_string())
                         && broadcast_mechanism::is_transaction_expired_error(&e)
                     {
-                        shared_mechanism::warn_chain_rpc_failure(
+                        chain_rpc_guard::warn_failure_and_record(
                             &e,
                             chain_rpc_guard::ChainRpcFailureLog::new()
                                 .chain_code(chain_code)
@@ -185,7 +185,7 @@ impl ApiTransDomain {
                         );
                         return Err(e);
                     } else if e.is_network_error() {
-                        shared_mechanism::error_chain_rpc_failure(
+                        chain_rpc_guard::error_failure_and_record(
                             &e,
                             chain_rpc_guard::ChainRpcFailureLog::new()
                                 .chain_code(chain_code)
@@ -233,7 +233,7 @@ impl ApiTransDomain {
                     }
                     Err(e) => {
                         if e.is_delay_retryable() {
-                            shared_mechanism::warn_chain_rpc_failure(
+                            chain_rpc_guard::warn_failure_and_record(
                                 &e,
                                 chain_rpc_guard::ChainRpcFailureLog::new()
                                     .chain_code(chain_code)
@@ -244,7 +244,7 @@ impl ApiTransDomain {
                                 "broadcast visibility probe failed with delay retryable error",
                             );
                         } else {
-                            shared_mechanism::error_chain_rpc_failure(
+                            chain_rpc_guard::error_failure_and_record(
                                 &e,
                                 chain_rpc_guard::ChainRpcFailureLog::new()
                                     .chain_code(chain_code)
@@ -364,7 +364,7 @@ impl ApiTransDomain {
                                 continue 'auth_retry;
                             }
                             Err(e) => {
-                                shared_mechanism::warn_chain_rpc_failure(
+                                chain_rpc_guard::warn_failure_and_record(
                                     &e,
                                     chain_rpc_guard::ChainRpcFailureLog::new()
                                         .chain_code(chain_code)
