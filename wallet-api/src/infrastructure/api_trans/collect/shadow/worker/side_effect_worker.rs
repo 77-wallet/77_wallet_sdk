@@ -48,7 +48,7 @@ use wallet_utils::{conversion, unit};
 
 use crate::{
     domain::{
-        api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain},
+        api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain, trans::shared_mechanism},
         chain::adapter::sol_tx::SYSTEM_ACCOUNT_RENT,
     },
     error::service::ServiceError,
@@ -1429,7 +1429,7 @@ impl SideEffectWorker {
         chain_code: &str,
         token_addr: &AssetTokenKey,
     ) -> Result<Decimal, ServiceError> {
-        if chain_code.eq_ignore_ascii_case("sol") && token_addr.is_contract() {
+        if shared_mechanism::is_sol_chain(chain_code) && token_addr.is_contract() {
             return Ok(conversion::decimal_from_str(&SYSTEM_ACCOUNT_RENT.to_string())?);
         }
 

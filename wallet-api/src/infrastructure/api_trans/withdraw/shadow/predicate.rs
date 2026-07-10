@@ -20,7 +20,7 @@ pub struct StageEval {
 }
 
 fn withdraw_resource_gate_released_for_build(withdraw: &ApiWithdrawEntity) -> bool {
-    !withdraw.chain_code.eq_ignore_ascii_case("tron")
+    !shared_mechanism::is_tron_chain(&withdraw.chain_code)
         || withdraw.resource_gate_released_at.is_some()
 }
 
@@ -54,7 +54,7 @@ fn evaluate_need_resource_gate(withdraw: &ApiWithdrawEntity) -> StageEval {
             message: "Audit not passed yet".to_string(),
         });
     }
-    if !withdraw.chain_code.eq_ignore_ascii_case("tron") {
+    if !shared_mechanism::is_tron_chain(&withdraw.chain_code) {
         reasons.push(StageReason {
             code: "not_tron",
             message: "Resource gate is only required for TRON withdraw".to_string(),
@@ -102,7 +102,7 @@ fn evaluate_need_resource_gate(withdraw: &ApiWithdrawEntity) -> StageEval {
 
     let can_advance = withdraw.tx_ack_sent_at.is_some()
         && withdraw.audit_passed_at.is_some()
-        && withdraw.chain_code.eq_ignore_ascii_case("tron")
+        && shared_mechanism::is_tron_chain(&withdraw.chain_code)
         && withdraw.resource_gate_released_at.is_none()
         && (withdraw.resource_block_reason.is_none()
             || (withdraw.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)

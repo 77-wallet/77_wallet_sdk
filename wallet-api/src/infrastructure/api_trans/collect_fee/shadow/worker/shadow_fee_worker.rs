@@ -179,7 +179,7 @@ impl ShadowFeeWorker {
     }
 
     fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
-        if !chain_code.eq_ignore_ascii_case("tron") {
+        if !shared_mechanism::is_tron_chain(chain_code) {
             return false;
         }
         let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
@@ -198,7 +198,7 @@ impl ShadowFeeWorker {
     }
 
     fn should_rebroadcast_tron_missing_confirmed_and_pending(req: &ApiFeeEntity) -> bool {
-        if !req.chain_code.eq_ignore_ascii_case("tron") {
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
             return false;
         }
         let Some(last_broadcast_at) = req.last_broadcast_at else {

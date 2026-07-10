@@ -251,7 +251,7 @@ impl ShadowWithdrawWorker {
     }
 
     fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
-        if !chain_code.eq_ignore_ascii_case("tron") {
+        if !shared_mechanism::is_tron_chain(chain_code) {
             return false;
         }
         let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
@@ -270,7 +270,7 @@ impl ShadowWithdrawWorker {
     }
 
     fn should_rebroadcast_tron_missing_confirmed_and_pending(req: &ApiWithdrawEntity) -> bool {
-        if !req.chain_code.eq_ignore_ascii_case("tron") {
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
             return false;
         }
         let Some(last_broadcast_at) = req.last_broadcast_at else {
@@ -297,13 +297,9 @@ impl ShadowWithdrawWorker {
         Ok(balance < value)
     }
 
-    fn is_tron_withdraw(chain_code: &str) -> bool {
-        chain_code.eq_ignore_ascii_case("tron")
-    }
-
     fn can_write_fee_estimate_snapshot(req: &ApiWithdrawEntity) -> bool {
         req.trade_type == ApiTradeType::Withdraw
-            && Self::is_tron_withdraw(&req.chain_code)
+            && shared_mechanism::is_tron_chain(&req.chain_code)
             && req.fee_estimated_at.is_none()
             && req.raw_tx.is_none()
             && req.transaction_time.is_none()
@@ -597,7 +593,7 @@ impl ShadowWithdrawWorker {
     async fn process_resource_gate_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
         let req = self.get_withdraw_entity(trade_no).await?;
 
-        if !Self::is_tron_withdraw(&req.chain_code) {
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
             return Ok(());
         }
         if req.resource_gate_released_at.is_some()
@@ -1992,7 +1988,7 @@ impl ShadowWithdrawWorker {
         &self,
         delegation: &ApiResourceDelegationEntity,
     ) -> Result<String, ServiceError> {
-        if !delegation.chain_code.eq_ignore_ascii_case("tron") {
+        if !shared_mechanism::is_tron_chain(&delegation.chain_code) {
             return Err(ServiceError::Parameter(format!(
                 "resource delegation only supports tron, got {}",
                 delegation.chain_code

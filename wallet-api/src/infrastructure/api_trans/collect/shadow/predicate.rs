@@ -38,7 +38,8 @@ pub fn evaluate_stage(stage: CollectStage, collect: &ApiCollectEntity) -> StageE
 }
 
 fn collect_resource_gate_released_for_build(collect: &ApiCollectEntity) -> bool {
-    !collect.chain_code.eq_ignore_ascii_case("tron") || collect.resource_gate_released_at.is_some()
+    !shared_mechanism::is_tron_chain(&collect.chain_code)
+        || collect.resource_gate_released_at.is_some()
 }
 
 fn evaluate_need_resource_gate(collect: &ApiCollectEntity) -> StageEval {
@@ -51,7 +52,7 @@ fn evaluate_need_resource_gate(collect: &ApiCollectEntity) -> StageEval {
         });
     }
 
-    if !collect.chain_code.eq_ignore_ascii_case("tron") {
+    if !shared_mechanism::is_tron_chain(&collect.chain_code) {
         reasons.push(StageReason {
             code: "not_tron",
             message: "Resource gate is only required for TRON collect".to_string(),
@@ -105,7 +106,7 @@ fn evaluate_need_resource_gate(collect: &ApiCollectEntity) -> StageEval {
     }
 
     let can_advance = collect.order_ack_sent_at.is_some()
-        && collect.chain_code.eq_ignore_ascii_case("tron")
+        && shared_mechanism::is_tron_chain(&collect.chain_code)
         && collect.resource_gate_released_at.is_none()
         && (collect.resource_block_reason.is_none()
             || (collect.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)

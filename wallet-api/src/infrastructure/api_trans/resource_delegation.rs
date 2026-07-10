@@ -1,6 +1,9 @@
 use crate::{
     context::Context,
-    domain::{api_wallet::trans::ApiTransDomain, chain::adapter::ChainAdapterFactory},
+    domain::{
+        api_wallet::trans::{ApiTransDomain, shared_mechanism},
+        chain::adapter::ChainAdapterFactory,
+    },
     error::{service::ServiceError, system::SystemError},
     infrastructure::api_trans::{
         resource_amount::parse_resource_delegation_native_trx_units,
@@ -62,7 +65,7 @@ async fn execute_resource_delegation_once(
     ctx: &'static Context,
     delegation: &ApiResourceDelegationEntity,
 ) -> Result<String, ServiceError> {
-    if !delegation.chain_code.eq_ignore_ascii_case("tron") {
+    if !shared_mechanism::is_tron_chain(&delegation.chain_code) {
         return Err(ServiceError::Parameter(format!(
             "resource delegation only supports tron, got {}",
             delegation.chain_code

@@ -1,3 +1,5 @@
+use crate::domain::api_wallet::trans::shared_mechanism;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CollectStage {
     NeedOrderAck,
@@ -147,7 +149,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             CollectStage::NeedOrderAck => |collect| collect.order_ack_sent_at.is_none(),
             CollectStage::NeedResourceGate => |collect| {
                 collect.order_ack_sent_at.is_some()
-                    && collect.chain_code.eq_ignore_ascii_case("tron")
+                    && shared_mechanism::is_tron_chain(&collect.chain_code)
                     && collect.resource_gate_released_at.is_none()
                     && collect.raw_tx.is_none()
                     && collect.transaction_time.is_none()
@@ -159,7 +161,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 collect.order_ack_sent_at.is_some()
                     && collect.raw_tx.is_none()
                     && collect.need_service_fee != Some(true)
-                    && (!collect.chain_code.eq_ignore_ascii_case("tron")
+                    && (!shared_mechanism::is_tron_chain(&collect.chain_code)
                         || collect.resource_gate_released_at.is_some())
                     && (collect.service_fee_uploaded_at.is_none()
                         || collect.tx_fee_res_ack_sent_at.is_some())

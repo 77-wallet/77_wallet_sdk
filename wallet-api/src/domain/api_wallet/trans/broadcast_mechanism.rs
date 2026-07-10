@@ -100,7 +100,7 @@ pub(crate) fn should_invalidate_tron_expired_broadcast(
     has_tx_hash: bool,
     last_broadcast_at_present: bool,
 ) -> bool {
-    chain_code.eq_ignore_ascii_case("tron")
+    shared_mechanism::is_tron_chain(chain_code)
         && is_transaction_expired_error(err)
         && has_raw_tx
         && has_tx_hash
@@ -298,7 +298,7 @@ pub(crate) fn classify_broadcast_failure(
     facts: BroadcastFailureFacts<'_>,
 ) -> BroadcastFailureDecision {
     if facts.stage.is_broadcast()
-        && facts.chain_code.eq_ignore_ascii_case("sol")
+        && shared_mechanism::is_sol_chain(facts.chain_code)
         && is_blockhash_not_found_error(err)
         && facts.raw_tx_present
         && facts.tx_hash_present

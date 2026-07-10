@@ -178,14 +178,14 @@ impl ShadowCollectWorker {
     const BUILD_503_RETRY_WINDOW_SECS: i64 = 3 * 60;
 
     fn should_spend_all_native_collect(chain_code: &str, token_key: &AssetTokenKey) -> bool {
-        chain_code.eq_ignore_ascii_case("sol") && token_key.is_native()
+        shared_mechanism::is_sol_chain(chain_code) && token_key.is_native()
     }
 
     fn sol_token_collect_sender_rent_reserve(
         chain_code: &str,
         token_key: &AssetTokenKey,
     ) -> Result<Decimal, ServiceError> {
-        if chain_code.eq_ignore_ascii_case("sol") && token_key.is_contract() {
+        if shared_mechanism::is_sol_chain(chain_code) && token_key.is_contract() {
             return Ok(conversion::decimal_from_str(&SYSTEM_ACCOUNT_RENT.to_string())?);
         }
 
@@ -261,7 +261,7 @@ impl ShadowCollectWorker {
     }
 
     fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
-        if !chain_code.eq_ignore_ascii_case("tron") {
+        if !shared_mechanism::is_tron_chain(chain_code) {
             return false;
         }
         let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
@@ -381,7 +381,7 @@ impl ShadowCollectWorker {
         req: &ApiCollectEntity,
         err: &ServiceError,
     ) -> bool {
-        req.chain_code.eq_ignore_ascii_case("sol")
+        shared_mechanism::is_sol_chain(&req.chain_code)
             && req.token_addr.is_contract()
             && Self::is_solana_rent_exempt_reserve_balance_error(req, err)
     }
@@ -397,7 +397,7 @@ impl ShadowCollectWorker {
     fn should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
         req: &ApiCollectEntity,
     ) -> bool {
-        req.chain_code.eq_ignore_ascii_case("sol")
+        shared_mechanism::is_sol_chain(&req.chain_code)
             && req.token_addr.is_contract()
             && req.service_fee_uploaded_at.is_some()
     }
@@ -406,7 +406,7 @@ impl ShadowCollectWorker {
         req: &ApiCollectEntity,
         err: &ServiceError,
     ) -> bool {
-        if !req.chain_code.eq_ignore_ascii_case("sol") {
+        if !shared_mechanism::is_sol_chain(&req.chain_code) {
             return false;
         }
 
@@ -441,7 +441,7 @@ impl ShadowCollectWorker {
     }
 
     fn should_rebroadcast_tron_missing_confirmed_and_pending(req: &ApiCollectEntity) -> bool {
-        if !req.chain_code.eq_ignore_ascii_case("tron") {
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
             return false;
         }
         let Some(last_broadcast_at) = req.last_broadcast_at else {
@@ -735,7 +735,7 @@ impl ShadowCollectWorker {
     async fn process_resource_gate_inner(&self, origin_trade_no: &str) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(origin_trade_no).await?;
 
-        if !Self::is_tron_collect(&req.chain_code) {
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
             return Ok(());
         }
 
@@ -784,10 +784,6 @@ impl ShadowCollectWorker {
         Ok(())
     }
 
-    fn is_tron_collect(chain_code: &str) -> bool {
-        chain_code.eq_ignore_ascii_case("tron")
-    }
-
     fn resource_gate_already_resolved(req: &ApiCollectEntity) -> bool {
         req.resource_gate_released_at.is_some()
             || req.raw_tx.is_some()
@@ -801,7 +797,7 @@ impl ShadowCollectWorker {
         origin_trade_no: String,
     ) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(&origin_trade_no).await?;
-        if !Self::is_tron_collect(&req.chain_code) {
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
             return Ok(());
         }
         if req.resource_gate_released_at.is_some() {
@@ -850,7 +846,7 @@ impl ShadowCollectWorker {
         origin_trade_no: String,
     ) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(&origin_trade_no).await?;
-        if !Self::is_tron_collect(&req.chain_code) {
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
             return Ok(());
         }
         if Self::resource_gate_already_resolved(&req) {
@@ -1630,7 +1626,7 @@ impl ShadowCollectWorker {
                 }
 
                 if !shared_mechanism::is_evm_chain(&refreshed.chain_code)
-                    && !refreshed.chain_code.eq_ignore_ascii_case("sol")
+                    && !shared_mechanism::is_sol_chain(&refreshed.chain_code)
                 {
                     warn!(
                         trade_no = %refreshed.trade_no,
@@ -1643,7 +1639,7 @@ impl ShadowCollectWorker {
                     return Ok(());
                 }
 
-                if refreshed.chain_code.eq_ignore_ascii_case("sol") {
+                if shared_mechanism::is_sol_chain(&refreshed.chain_code) {
                     warn!(
                         trade_no = %refreshed.trade_no,
                         tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
