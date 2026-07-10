@@ -1426,6 +1426,15 @@ impl ShadowScanner {
                 }
                 continue;
             }
+            let recover_key = shadow_rpc_policy::recover_dispatch_key(&record.trade_no);
+            if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
+                trace!(
+                    trade_no = %record.trade_no,
+                    cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
+                    "recover_skip_because_cooldown: collect safety scan skipped"
+                );
+                continue;
+            }
             let intent = CollectIntent::Chain(ChainIntent::RecoverTx(record.trade_no));
             self.dispatch_intent(intent).await;
         }
@@ -1637,12 +1646,11 @@ impl ShadowScanner {
                             }
                             return Ok(());
                         }
-                        if !shadow_rpc_policy::allow_recover_dispatch(&format!(
-                            "collect:{trade_no}"
-                        )) {
+                        let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
+                        if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
                             trace!(
                                 trade_no = %trade_no,
-                                cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&format!("collect:{trade_no}")),
+                                cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
                                 "recover_skip_because_cooldown: collect recover skipped"
                             );
                             return Ok(());

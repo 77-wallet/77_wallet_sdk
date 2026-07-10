@@ -762,6 +762,15 @@ impl ShadowScanner {
                 }
                 continue;
             }
+            let recover_key = shadow_rpc_policy::recover_dispatch_key(&record.trade_no);
+            if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
+                trace!(
+                    trade_no = %record.trade_no,
+                    cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
+                    "recover_skip_because_cooldown: fee safety scan skipped"
+                );
+                continue;
+            }
             let intent = FeeIntent::Chain(FeeChainIntent::RecoverTx(record.trade_no));
             self.dispatch_intent(intent);
         }
@@ -955,10 +964,11 @@ impl ShadowScanner {
                         }
                         return Ok(());
                     }
-                    if !shadow_rpc_policy::allow_recover_dispatch(&format!("fee:{trade_no}")) {
+                    let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
+                    if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
                         trace!(
                             trade_no = %trade_no,
-                            cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&format!("fee:{trade_no}")),
+                            cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
                             "recover_skip_because_cooldown: fee recover skipped"
                         );
                         return Ok(());

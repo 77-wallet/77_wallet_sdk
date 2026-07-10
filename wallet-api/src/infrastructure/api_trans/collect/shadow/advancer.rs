@@ -445,12 +445,11 @@ impl ShadowAdvancer {
                             }
                             return Ok(());
                         }
-                        if !shadow_rpc_policy::allow_recover_dispatch(&format!(
-                            "collect_advancer:{trade_no}"
-                        )) {
+                        let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
+                        if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
                             debug!(
                                 trade_no = %trade_no,
-                                cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&format!("collect_advancer:{trade_no}")),
+                                cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
                                 "recover_skip_because_cooldown: collect advancer recover skipped"
                             );
                             return Ok(());

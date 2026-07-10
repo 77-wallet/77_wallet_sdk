@@ -69,6 +69,10 @@ pub(crate) fn allow_recover_dispatch(key: &str) -> bool {
     true
 }
 
+pub(crate) fn recover_dispatch_key(trade_no: &str) -> String {
+    format!("recover:{trade_no}")
+}
+
 pub(crate) fn recover_dispatch_cooldown(key: &str) -> Duration {
     RECOVER_LAST_DISPATCH_TS
         .get(key)
@@ -144,7 +148,7 @@ pub(crate) fn record_chain_intent_dispatch(intent_kind: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{next_recover_cooldown, parse_u64_env, parse_usize_env};
+    use super::{next_recover_cooldown, parse_u64_env, parse_usize_env, recover_dispatch_key};
     use std::time::Duration;
 
     #[test]
@@ -153,6 +157,11 @@ mod tests {
         assert_eq!(next_recover_cooldown(Duration::from_secs(120)), Duration::from_secs(240));
         assert_eq!(next_recover_cooldown(Duration::from_secs(240)), Duration::from_secs(300));
         assert_eq!(next_recover_cooldown(Duration::from_secs(300)), Duration::from_secs(300));
+    }
+
+    #[test]
+    fn recover_dispatch_key_is_shared_across_recover_entry_points() {
+        assert_eq!(recover_dispatch_key("trade-1"), "recover:trade-1");
     }
 
     #[test]
