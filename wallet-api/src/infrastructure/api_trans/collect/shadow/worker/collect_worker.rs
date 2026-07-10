@@ -206,11 +206,11 @@ impl ShadowCollectWorker {
     }
 
     fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
-        match retry_count {
-            0..=3 => 0,
-            4..=6 => Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
-            _ => Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
-        }
+        shared_mechanism::broadcast_uncertain_backoff_secs(
+            retry_count,
+            Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
+            Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
+        )
     }
 
     fn should_force_align_prebuild_nonce_gap(chain_nonce: u64, local_nonce: u64) -> bool {
@@ -218,31 +218,27 @@ impl ShadowCollectWorker {
     }
 
     fn broadcast_uncertain_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
-        req.broadcast_uncertain_since_at
-            .map(|since| now.signed_duration_since(since).num_seconds().max(0))
+        shared_mechanism::broadcast_uncertain_elapsed_secs(req.broadcast_uncertain_since_at, now)
     }
 
     fn should_auto_fail_broadcast_uncertain(req: &ApiCollectEntity, now: DateTime<Utc>) -> bool {
-        Self::broadcast_uncertain_elapsed_secs(req, now)
-            .is_some_and(|elapsed| elapsed >= Self::EVM_UNCERTAIN_TIMEOUT_SECS)
+        shared_mechanism::is_broadcast_uncertain_timed_out(
+            req.broadcast_uncertain_since_at,
+            Self::EVM_UNCERTAIN_TIMEOUT_SECS,
+            now,
+        )
     }
 
     fn should_throttle_evm_uncertain_recover(req: &ApiCollectEntity, now: DateTime<Utc>) -> bool {
-        let Some(since) = req.broadcast_uncertain_since_at else {
-            return false;
-        };
-        let elapsed = now.signed_duration_since(since).num_seconds();
-        if elapsed >= Self::EVM_UNCERTAIN_TIMEOUT_SECS {
-            return false;
-        }
-        let Some(last_checked) = req.broadcast_uncertain_last_checked_at else {
-            return false;
-        };
-        let wait_secs = Self::evm_uncertain_backoff_secs(req.broadcast_uncertain_retry_count);
-        if wait_secs <= 0 {
-            return false;
-        }
-        now.signed_duration_since(last_checked).num_seconds() < wait_secs
+        shared_mechanism::should_throttle_broadcast_uncertain_recover(
+            req.broadcast_uncertain_since_at,
+            req.broadcast_uncertain_last_checked_at,
+            req.broadcast_uncertain_retry_count,
+            Self::EVM_UNCERTAIN_TIMEOUT_SECS,
+            Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
+            Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
+            now,
+        )
     }
 
     fn is_stale_build_slot(building_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {

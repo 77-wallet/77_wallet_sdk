@@ -160,28 +160,29 @@ impl ShadowWithdrawWorker {
     }
 
     fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
-        match retry_count {
-            0..=3 => 0,
-            4..=6 => Self::evm_uncertain_backoff_mid_secs(),
-            _ => Self::evm_uncertain_backoff_max_secs(),
-        }
+        shared_mechanism::broadcast_uncertain_backoff_secs(
+            retry_count,
+            Self::evm_uncertain_backoff_mid_secs(),
+            Self::evm_uncertain_backoff_max_secs(),
+        )
     }
 
     fn evm_uncertain_elapsed_secs(
         req: &ApiWithdrawEntity,
         now: chrono::DateTime<Utc>,
     ) -> Option<i64> {
-        req.broadcast_uncertain_since_at
-            .map(|since| now.signed_duration_since(since).num_seconds().max(0))
+        shared_mechanism::broadcast_uncertain_elapsed_secs(req.broadcast_uncertain_since_at, now)
     }
 
     fn should_mark_evm_uncertain_for_manual_review(
         req: &ApiWithdrawEntity,
         now: chrono::DateTime<Utc>,
     ) -> bool {
-        Self::evm_uncertain_elapsed_secs(req, now)
-            .map(|elapsed| elapsed >= Self::EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS)
-            .unwrap_or(false)
+        shared_mechanism::is_broadcast_uncertain_timed_out(
+            req.broadcast_uncertain_since_at,
+            Self::EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS,
+            now,
+        )
     }
 
     fn should_nudge_advance_after_recover_skip(req: &ApiWithdrawEntity) -> bool {
@@ -225,9 +226,6 @@ impl ShadowWithdrawWorker {
             return false;
         };
         let elapsed = now.signed_duration_since(since).num_seconds();
-        let Some(last_checked) = req.broadcast_uncertain_last_checked_at else {
-            return false;
-        };
         let wait_secs = if elapsed >= Self::evm_uncertain_timeout_secs() {
             if req.broadcast_uncertain_reconciled_at.is_some() {
                 Self::evm_uncertain_backoff_max_secs()
@@ -240,7 +238,11 @@ impl ShadowWithdrawWorker {
         if wait_secs <= 0 {
             return false;
         }
-        now.signed_duration_since(last_checked).num_seconds() < wait_secs
+        shared_mechanism::should_throttle_broadcast_uncertain_after_last_check(
+            req.broadcast_uncertain_last_checked_at,
+            wait_secs,
+            now,
+        )
     }
 
     fn should_rebroadcast_tron_missing_confirmed_and_pending(req: &ApiWithdrawEntity) -> bool {

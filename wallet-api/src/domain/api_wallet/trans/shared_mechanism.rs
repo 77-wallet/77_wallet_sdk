@@ -34,6 +34,64 @@ pub(crate) fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
     is_evm_chain(chain_code) || is_sol_chain(chain_code) || is_tron_chain(chain_code)
 }
 
+pub(crate) fn broadcast_uncertain_backoff_secs(
+    retry_count: u32,
+    mid_secs: i64,
+    max_secs: i64,
+) -> i64 {
+    match retry_count {
+        0..=3 => 0,
+        4..=6 => mid_secs,
+        _ => max_secs,
+    }
+}
+
+pub(crate) fn broadcast_uncertain_elapsed_secs(
+    since: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> Option<i64> {
+    since.map(|since| now.signed_duration_since(since).num_seconds().max(0))
+}
+
+pub(crate) fn is_broadcast_uncertain_timed_out(
+    since: Option<DateTime<Utc>>,
+    timeout_secs: i64,
+    now: DateTime<Utc>,
+) -> bool {
+    broadcast_uncertain_elapsed_secs(since, now).is_some_and(|elapsed| elapsed >= timeout_secs)
+}
+
+pub(crate) fn should_throttle_broadcast_uncertain_after_last_check(
+    last_checked_at: Option<DateTime<Utc>>,
+    wait_secs: i64,
+    now: DateTime<Utc>,
+) -> bool {
+    if wait_secs <= 0 {
+        return false;
+    }
+    let Some(last_checked_at) = last_checked_at else {
+        return false;
+    };
+    now.signed_duration_since(last_checked_at).num_seconds() < wait_secs
+}
+
+pub(crate) fn should_throttle_broadcast_uncertain_recover(
+    since: Option<DateTime<Utc>>,
+    last_checked_at: Option<DateTime<Utc>>,
+    retry_count: u32,
+    timeout_secs: i64,
+    mid_backoff_secs: i64,
+    max_backoff_secs: i64,
+    now: DateTime<Utc>,
+) -> bool {
+    if is_broadcast_uncertain_timed_out(since, timeout_secs, now) {
+        return false;
+    }
+    let wait_secs =
+        broadcast_uncertain_backoff_secs(retry_count, mid_backoff_secs, max_backoff_secs);
+    should_throttle_broadcast_uncertain_after_last_check(last_checked_at, wait_secs, now)
+}
+
 pub(crate) fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
     let RawTx::Tron(raw, ..) = raw_tx else { return None };
     let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
@@ -269,9 +327,12 @@ pub(crate) async fn try_nonce_self_heal(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_evm_chain, is_sol_chain, is_tron_chain, normalize_chain_time_to_ms,
-        should_invalidate_expired_tron_raw_for_recover,
-        should_retry_after_tron_missing_confirmed_and_pending, tracks_broadcast_uncertain_state,
+        broadcast_uncertain_backoff_secs, broadcast_uncertain_elapsed_secs,
+        is_broadcast_uncertain_timed_out, is_evm_chain, is_sol_chain, is_tron_chain,
+        normalize_chain_time_to_ms, should_invalidate_expired_tron_raw_for_recover,
+        should_retry_after_tron_missing_confirmed_and_pending,
+        should_throttle_broadcast_uncertain_after_last_check,
+        should_throttle_broadcast_uncertain_recover, tracks_broadcast_uncertain_state,
     };
     use crate::domain::api_wallet::adapter::tx::RawTx;
     use chrono::{Duration, Utc};
@@ -294,6 +355,65 @@ mod tests {
         assert!(tracks_broadcast_uncertain_state("sol"));
         assert!(tracks_broadcast_uncertain_state("tron"));
         assert!(!tracks_broadcast_uncertain_state("unknown"));
+    }
+
+    #[test]
+    fn broadcast_uncertain_backoff_has_fast_mid_and_max_windows() {
+        assert_eq!(broadcast_uncertain_backoff_secs(0, 15, 30), 0);
+        assert_eq!(broadcast_uncertain_backoff_secs(3, 15, 30), 0);
+        assert_eq!(broadcast_uncertain_backoff_secs(4, 15, 30), 15);
+        assert_eq!(broadcast_uncertain_backoff_secs(6, 15, 30), 15);
+        assert_eq!(broadcast_uncertain_backoff_secs(7, 15, 30), 30);
+    }
+
+    #[test]
+    fn broadcast_uncertain_throttle_stops_at_timeout() {
+        let now = Utc::now();
+        let since = Some(now - Duration::seconds(20));
+        let last_checked = Some(now - Duration::seconds(5));
+
+        assert_eq!(broadcast_uncertain_elapsed_secs(since, now), Some(20));
+        assert!(!is_broadcast_uncertain_timed_out(since, 30, now));
+        assert!(should_throttle_broadcast_uncertain_recover(
+            since,
+            last_checked,
+            4,
+            30,
+            15,
+            30,
+            now
+        ));
+        assert!(!should_throttle_broadcast_uncertain_recover(
+            Some(now - Duration::seconds(30)),
+            last_checked,
+            4,
+            30,
+            15,
+            30,
+            now
+        ));
+    }
+
+    #[test]
+    fn broadcast_uncertain_last_check_requires_positive_wait_and_timestamp() {
+        let now = Utc::now();
+
+        assert!(!should_throttle_broadcast_uncertain_after_last_check(None, 15, now));
+        assert!(!should_throttle_broadcast_uncertain_after_last_check(
+            Some(now - Duration::seconds(1)),
+            0,
+            now
+        ));
+        assert!(should_throttle_broadcast_uncertain_after_last_check(
+            Some(now - Duration::seconds(1)),
+            15,
+            now
+        ));
+        assert!(!should_throttle_broadcast_uncertain_after_last_check(
+            Some(now - Duration::seconds(15)),
+            15,
+            now
+        ));
     }
 
     fn tron_raw_tx_json(expiration_ms: i64) -> String {
