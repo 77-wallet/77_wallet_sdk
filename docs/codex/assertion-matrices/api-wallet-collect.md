@@ -570,6 +570,24 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   `tx_hash` / `raw_tx` so recover can query chain facts after the current
   `ChainTx` attempt exits.
 
+### Chain RPC 503 Circuit Isolation
+
+- Layer: unit / component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/chain_rpc_guard.rs
+  rpc_circuit_breaker_opens_quickly_for_503
+  rpc_circuit_breaker_keeps_normal_failure_threshold
+  rpc_circuit_breaker_half_open_allows_one_probe
+  ```
+
+- Backend: none.
+- Chain/RPC facts: 503 failures use a stricter endpoint-local breaker policy;
+  the runtime network, chain code, and RPC host form the breaker identity.
+- Invariant: testnet and mainnet failures do not share breaker state, and a
+  cooled-down endpoint admits only one half-open probe.
+
 ## Template Contract
 
 `collect_notification/mod.rs` uses the role-trait Given-When-Then shape:

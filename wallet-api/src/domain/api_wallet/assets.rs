@@ -1129,13 +1129,13 @@ impl ApiChainBalance {
             chain_rpc_guard::acquire_if_guarded_with_ctx(ctx, &chain_code).await;
 
         // 获取余额
-        let raw =
-            adapter.balance_token_key(&address, token_address.clone()).await.map_err(|e| {
+        let raw = match adapter.balance_token_key(&address, token_address.clone()).await {
+            Ok(raw) => raw,
+            Err(e) => {
                 let err = crate::error::service::ServiceError::from(e);
                 let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
-                // 记录瞬时链路错误（503/HTML 错页/异常响应），驱动熔断器统计与打开。
-                rpc_error.record_transient_failure();
-                // 在错误处理中克隆所有需要的值
+                // 记录瞬时链路错误（503/HTML 错页/异常响应），驱动网络隔离后的熔断器。
+                rpc_error.record_transient_failure_for_chain_code_with_ctx(ctx, &chain_code).await;
                 let address_clone = address.clone();
                 let chain_code_clone = chain_code.clone();
                 let symbol_clone = symbol.clone();
@@ -1148,8 +1148,7 @@ impl ApiChainBalance {
                     .token(&token_log)
                     .op("balance_token_key")
                     .error(&rpc_error, "获取API余额出错");
-                // 重新构造 BalanceTask 以便返回
-                (
+                return Err((
                     BalanceTask {
                         address: address_clone,
                         chain_code: chain_code_clone,
@@ -1158,8 +1157,9 @@ impl ApiChainBalance {
                         token_address: token_address_clone,
                     },
                     err,
-                )
-            })?;
+                ));
+            }
+        };
         // 成功请求后立即回写成功，允许熔断器尽快恢复关闭状态。
         chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, &chain_code).await;
 

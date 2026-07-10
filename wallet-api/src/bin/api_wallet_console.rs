@@ -7,7 +7,7 @@ fn main() {
         native,
         Box::new(|cc| {
             install_chinese_font(&cc.egui_ctx);
-            Box::new(ApiWalletConsoleApp::new())
+            Ok(Box::new(ApiWalletConsoleApp::new()))
         }),
     );
 

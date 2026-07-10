@@ -51,27 +51,18 @@ impl ApiTransDomain {
             );
         }
 
-        if let Some((host, remaining)) =
-            chain_rpc_guard::breaker_open_for_chain_code_with_ctx(ctx, chain_code).await
+        let _breaker_probe = match chain_rpc_guard::admit_breaker_for_attempt_with_ctx(
+            ctx,
+            chain_code,
+            tx_hash_hint.as_deref().unwrap_or(""),
+            "broadcast_transfer",
+            "api_wallet",
+        )
+        .await
         {
-            if let Some(tx_hash) = tx_hash_hint.as_deref() {
-                tracing::warn!(
-                    chain_code = %chain_code,
-                    host = %host,
-                    remaining = ?remaining,
-                    tx_hash = %tx_hash,
-                    "chain rpc circuit breaker open; skip broadcast in this round"
-                );
-            } else {
-                tracing::warn!(
-                    chain_code = %chain_code,
-                    host = %host,
-                    remaining = ?remaining,
-                    "chain rpc circuit breaker open; skip broadcast in this round"
-                );
-            }
-            return Ok(None);
-        }
+            chain_rpc_guard::ChainRpcBreakerAttempt::Proceed(probe) => probe,
+            chain_rpc_guard::ChainRpcBreakerAttempt::Skip => return Ok(None),
+        };
 
         let adapter_time = Instant::now();
         let mut auth_retry_attempted = false;
@@ -175,24 +166,30 @@ impl ApiTransDomain {
                     } else if chain_code.eq_ignore_ascii_case(&ChainCode::Tron.to_string())
                         && broadcast_mechanism::is_transaction_expired_error(&e)
                     {
-                        chain_rpc_guard::warn_failure_and_record(
+                        chain_rpc_guard::warn_failure_and_record_with_ctx(
+                            ctx,
+                            chain_code,
                             &e,
                             chain_rpc_guard::ChainRpcFailureLog::new()
                                 .chain_code(chain_code)
                                 .rpc(&rpc)
                                 .op("broadcast_transfer"),
                             "broadcast transaction expired; return error so raw tx can be rebuilt",
-                        );
+                        )
+                        .await;
                         return Err(e);
                     } else if e.is_network_error() {
-                        chain_rpc_guard::error_failure_and_record(
+                        chain_rpc_guard::error_failure_and_record_with_ctx(
+                            ctx,
+                            chain_code,
                             &e,
                             chain_rpc_guard::ChainRpcFailureLog::new()
                                 .chain_code(chain_code)
                                 .rpc(&rpc)
                                 .op("broadcast_transfer"),
                             "broadcast_transfer: 网络错误, 交易广播失败",
-                        );
+                        )
+                        .await;
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                         }
@@ -233,7 +230,9 @@ impl ApiTransDomain {
                     }
                     Err(e) => {
                         if e.is_delay_retryable() {
-                            chain_rpc_guard::warn_failure_and_record(
+                            chain_rpc_guard::warn_failure_and_record_with_ctx(
+                                ctx,
+                                chain_code,
                                 &e,
                                 chain_rpc_guard::ChainRpcFailureLog::new()
                                     .chain_code(chain_code)
@@ -242,9 +241,12 @@ impl ApiTransDomain {
                                     .visibility_kind(visibility_kind)
                                     .op("broadcast_transfer:visibility_probe"),
                                 "broadcast visibility probe failed with delay retryable error",
-                            );
+                            )
+                            .await;
                         } else {
-                            chain_rpc_guard::error_failure_and_record(
+                            chain_rpc_guard::error_failure_and_record_with_ctx(
+                                ctx,
+                                chain_code,
                                 &e,
                                 chain_rpc_guard::ChainRpcFailureLog::new()
                                     .chain_code(chain_code)
@@ -253,7 +255,8 @@ impl ApiTransDomain {
                                     .visibility_kind(visibility_kind)
                                     .op("broadcast_transfer:visibility_probe"),
                                 "broadcast visibility probe failed",
-                            );
+                            )
+                            .await;
                         }
                         if auth_retry_attempted {
                             tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
@@ -364,7 +367,9 @@ impl ApiTransDomain {
                                 continue 'auth_retry;
                             }
                             Err(e) => {
-                                chain_rpc_guard::warn_failure_and_record(
+                                chain_rpc_guard::warn_failure_and_record_with_ctx(
+                                    ctx,
+                                    chain_code,
                                     &e,
                                     chain_rpc_guard::ChainRpcFailureLog::new()
                                         .chain_code(chain_code)
@@ -375,7 +380,8 @@ impl ApiTransDomain {
                                         .attempt(attempt as u32)
                                         .delay_ms(*delay_ms as u64),
                                     "broadcast visibility check miss (uncertain)",
-                                );
+                                )
+                                .await;
                                 if auth_retry_attempted {
                                     tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
                                 }

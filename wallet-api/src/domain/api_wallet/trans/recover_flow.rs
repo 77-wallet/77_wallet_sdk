@@ -14,13 +14,16 @@ use crate::{
         chain::TransferResp,
     },
     error::service::ServiceError,
-    infrastructure::api_trans::{
-        recover_rpc_observability::{
-            RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, log_recover_query_error,
-            log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
-            record_recover_rpc_success, skip_recover_if_rpc_breaker_open,
+    infrastructure::{
+        api_trans::{
+            recover_rpc_observability::{
+                RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, log_recover_query_error_with_ctx,
+                log_sol_visibility_probe_error_with_ctx,
+                log_tron_pending_pool_query_error_with_ctx, record_recover_rpc_success,
+            },
+            rpc_auth_retry_mechanism,
         },
-        rpc_auth_retry_mechanism,
+        chain_rpc_guard,
     },
 };
 use std::sync::Arc;
@@ -85,9 +88,18 @@ impl ApiTransDomain {
     ) -> Result<Option<TransferResp>, ServiceError> {
         tracing::info!(tx_hash=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
-        if skip_recover_if_rpc_breaker_open(ctx, chain_code, tx_hash).await {
-            return Ok(None);
-        }
+        let _breaker_probe = match chain_rpc_guard::admit_breaker_for_attempt_with_ctx(
+            ctx,
+            chain_code,
+            tx_hash,
+            RECOVER_OP_QUERY_TX_RES,
+            "recover",
+        )
+        .await
+        {
+            chain_rpc_guard::ChainRpcBreakerAttempt::Proceed(probe) => probe,
+            chain_rpc_guard::ChainRpcBreakerAttempt::Skip => return Ok(None),
+        };
 
         let mut auth_retry = RecoverAuthRetryState::default();
         'recover_auth_retry: loop {
@@ -219,13 +231,15 @@ impl ApiTransDomain {
                 Ok(RecoverQueryErrorAction::RetryAuth)
             }
             RecoverQueryErrorDecision::StayUncertain => {
-                log_recover_query_error(
+                log_recover_query_error_with_ctx(
+                    ctx,
                     chain_code,
                     tx_hash,
                     rpc,
                     service_err,
                     auth_retry.attempted(),
-                );
+                )
+                .await;
                 Ok(RecoverQueryErrorAction::StayUncertain)
             }
         }
@@ -292,7 +306,8 @@ impl ApiTransDomain {
 
         match classify_recover_missing_tx_route(chain_code) {
             RecoverMissingTxRoute::SolanaVisibilityProbe => {
-                Self::probe_sol_visibility_during_recover(chain_code, tx_hash, rpc, adapter).await;
+                Self::probe_sol_visibility_during_recover(ctx, chain_code, tx_hash, rpc, adapter)
+                    .await;
                 Self::log_recover_missing_tx_wait(
                     tx_hash,
                     RecoverMissingTxRoute::SolanaVisibilityProbe,
@@ -300,7 +315,7 @@ impl ApiTransDomain {
                 Ok(None)
             }
             RecoverMissingTxRoute::TronPendingPool => {
-                Self::handle_tron_missing_recovered_tx(chain_code, tx_hash, rpc, adapter).await
+                Self::handle_tron_missing_recovered_tx(ctx, chain_code, tx_hash, rpc, adapter).await
             }
             RecoverMissingTxRoute::EvmNonceCheck => {
                 Self::handle_evm_missing_recovered_tx(ctx, chain_code, from_addr, tx_hash, nonce)
@@ -320,6 +335,7 @@ impl ApiTransDomain {
     }
 
     async fn probe_sol_visibility_during_recover(
+        ctx: &'static Context,
         chain_code: &str,
         tx_hash: &str,
         rpc: &str,
@@ -339,12 +355,13 @@ impl ApiTransDomain {
                 );
             }
             Err(e) => {
-                log_sol_visibility_probe_error(chain_code, tx_hash, rpc, &e);
+                log_sol_visibility_probe_error_with_ctx(ctx, chain_code, tx_hash, rpc, &e).await;
             }
         }
     }
 
     async fn handle_tron_missing_recovered_tx(
+        ctx: &'static Context,
         chain_code: &str,
         tx_hash: &str,
         rpc: &str,
@@ -368,7 +385,8 @@ impl ApiTransDomain {
                 )))
             }
             Err(err) => {
-                log_tron_pending_pool_query_error(chain_code, tx_hash, rpc, &err);
+                log_tron_pending_pool_query_error_with_ctx(ctx, chain_code, tx_hash, rpc, &err)
+                    .await;
                 Ok(None)
             }
         }

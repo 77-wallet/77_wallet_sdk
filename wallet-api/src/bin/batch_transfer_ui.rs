@@ -14,7 +14,7 @@ fn main() {
     let run = eframe::run_native(
         "Batch Transfer Test Tool",
         native,
-        Box::new(|_| Box::new(BatchTransferUiApp::new())),
+        Box::new(|_| Ok(Box::new(BatchTransferUiApp::new()))),
     );
 
     if let Err(err) = run {
