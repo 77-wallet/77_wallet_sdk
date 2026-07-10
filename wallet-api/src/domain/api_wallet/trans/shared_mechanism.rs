@@ -4,7 +4,7 @@ use crate::{
         adapter::tx::{RawTx, TxVisibilityProbe},
         adapter_factory::ApiChainAdapterFactory,
     },
-    error::service::ServiceError,
+    error::{service::ServiceError, system::SystemError},
     infrastructure::{chain_rpc_guard, nonce::nonce_engine::get_nonce_engine_with_ctx},
 };
 use chrono::{DateTime, Utc};
@@ -90,6 +90,40 @@ pub(crate) fn should_throttle_broadcast_uncertain_recover(
     let wait_secs =
         broadcast_uncertain_backoff_secs(retry_count, mid_backoff_secs, max_backoff_secs);
     should_throttle_broadcast_uncertain_after_last_check(last_checked_at, wait_secs, now)
+}
+
+pub(crate) fn normalized_tx_hash(tx_hash: Option<&str>) -> Option<&str> {
+    tx_hash.map(str::trim).filter(|s| !s.is_empty())
+}
+
+pub(crate) fn validate_recovered_tx_hash(
+    trade_no: &str,
+    existing_tx_hash: Option<&str>,
+    recovered_tx_hash: &str,
+    source: &str,
+) -> Result<(), ServiceError> {
+    if let Some(existing_tx_hash) = existing_tx_hash {
+        if recovered_tx_hash != existing_tx_hash {
+            tracing::error!(
+                observability_event = "shadow_recover_hash_mismatch",
+                reason = "tx_hash_fact_conflict",
+                trade_no = %trade_no,
+                existing_tx_hash = %existing_tx_hash,
+                recover_tx_hash = %recovered_tx_hash,
+                source = %source,
+                "tx_hash mismatch during recover - fact integrity violated"
+            );
+            return Err(ServiceError::System(SystemError::Internal(
+                "recover tx_hash mismatch".to_string(),
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn should_nudge_advance_after_recover_skip(transaction_time_present: bool) -> bool {
+    transaction_time_present
 }
 
 pub(crate) fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
@@ -329,10 +363,12 @@ mod tests {
     use super::{
         broadcast_uncertain_backoff_secs, broadcast_uncertain_elapsed_secs,
         is_broadcast_uncertain_timed_out, is_evm_chain, is_sol_chain, is_tron_chain,
-        normalize_chain_time_to_ms, should_invalidate_expired_tron_raw_for_recover,
+        normalize_chain_time_to_ms, normalized_tx_hash,
+        should_invalidate_expired_tron_raw_for_recover, should_nudge_advance_after_recover_skip,
         should_retry_after_tron_missing_confirmed_and_pending,
         should_throttle_broadcast_uncertain_after_last_check,
         should_throttle_broadcast_uncertain_recover, tracks_broadcast_uncertain_state,
+        validate_recovered_tx_hash,
     };
     use crate::domain::api_wallet::adapter::tx::RawTx;
     use chrono::{Duration, Utc};
@@ -355,6 +391,32 @@ mod tests {
         assert!(tracks_broadcast_uncertain_state("sol"));
         assert!(tracks_broadcast_uncertain_state("tron"));
         assert!(!tracks_broadcast_uncertain_state("unknown"));
+    }
+
+    #[test]
+    fn normalized_tx_hash_trims_blank_values() {
+        assert_eq!(normalized_tx_hash(Some(" 0xabc ")), Some("0xabc"));
+        assert_eq!(normalized_tx_hash(Some("   ")), None);
+        assert_eq!(normalized_tx_hash(None), None);
+    }
+
+    #[test]
+    fn recover_hash_validation_allows_backfill_and_rejects_mismatch() {
+        validate_recovered_tx_hash("trade-no", None, "0xrecover", "test")
+            .expect("missing local hash should be accepted for backfill");
+        validate_recovered_tx_hash("trade-no", Some("0xrecover"), "0xrecover", "test")
+            .expect("matching hash should be accepted");
+
+        let err = validate_recovered_tx_hash("trade-no", Some("0xlocal"), "0xrecover", "test")
+            .expect_err("mismatched hash must fail");
+
+        assert!(err.to_string().contains("recover tx_hash mismatch"));
+    }
+
+    #[test]
+    fn recover_skip_nudge_depends_on_chain_fact() {
+        assert!(should_nudge_advance_after_recover_skip(true));
+        assert!(!should_nudge_advance_after_recover_skip(false));
     }
 
     #[test]

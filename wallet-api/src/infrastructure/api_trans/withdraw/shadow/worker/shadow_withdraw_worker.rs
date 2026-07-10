@@ -186,36 +186,7 @@ impl ShadowWithdrawWorker {
     }
 
     fn should_nudge_advance_after_recover_skip(req: &ApiWithdrawEntity) -> bool {
-        req.transaction_time.is_some()
-    }
-
-    fn normalized_tx_hash<'a>(req: &'a ApiWithdrawEntity) -> Option<&'a str> {
-        req.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
-    }
-
-    fn validate_recovered_tx_hash(
-        trade_no: &str,
-        existing_tx_hash: Option<&str>,
-        recovered_tx_hash: &str,
-    ) -> Result<(), ServiceError> {
-        if let Some(existing_tx_hash) = existing_tx_hash {
-            if recovered_tx_hash != existing_tx_hash {
-                error!(
-                    observability_event = "shadow_recover_hash_mismatch",
-                    reason = "tx_hash_fact_conflict",
-                    trade_no = %trade_no,
-                    existing_tx_hash = %existing_tx_hash,
-                    recover_tx_hash = %recovered_tx_hash,
-                    source = "shadow_withdraw_worker",
-                    "tx_hash mismatch during recover - fact integrity violated"
-                );
-                return Err(ServiceError::System(SystemError::Internal(
-                    "recover tx_hash mismatch".to_string(),
-                )));
-            }
-        }
-
-        Ok(())
+        shared_mechanism::should_nudge_advance_after_recover_skip(req.transaction_time.is_some())
     }
 
     fn should_throttle_evm_uncertain_recover(
@@ -1026,7 +997,8 @@ impl ShadowWithdrawWorker {
                     // 🔒 必须重新读取，确保基于最新状态做决策
                     let fresh_req = self.get_withdraw_entity(trade_no).await?;
 
-                    let existing_tx_hash = Self::normalized_tx_hash(&fresh_req);
+                    let existing_tx_hash =
+                        shared_mechanism::normalized_tx_hash(fresh_req.tx_hash.as_deref());
 
                     if fresh_req.transaction_time.is_some() {
                         let should_nudge =
@@ -1064,10 +1036,11 @@ impl ShadowWithdrawWorker {
                     }
 
                     // 🔒 事实保护：检查 tx_hash 一致性，防止事实被覆盖
-                    Self::validate_recovered_tx_hash(
+                    shared_mechanism::validate_recovered_tx_hash(
                         &fresh_req.trade_no,
                         existing_tx_hash,
                         &tx_resp.tx_hash,
+                        "shadow_withdraw_worker",
                     )?;
 
                     let resource_consume = if let Some(consumer) = tx_resp.consumer {
@@ -2816,27 +2789,6 @@ oss:
     fn withdraw_evm_prebroadcast_nonce_gap_does_not_align_for_small_gap() {
         assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(3, 4));
         assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(5, 3));
-    }
-
-    #[test]
-    fn recover_hash_validation_accepts_missing_existing_hash() {
-        ShadowWithdrawWorker::validate_recovered_tx_hash("trade-no", None, "0xrecover")
-            .expect("missing hash should be allowed");
-    }
-
-    #[test]
-    fn recover_hash_validation_rejects_mismatch() {
-        let err = ShadowWithdrawWorker::validate_recovered_tx_hash(
-            "trade-no",
-            Some("0xexisting"),
-            "0xrecover",
-        )
-        .expect_err("mismatch must fail");
-
-        assert!(matches!(
-            err,
-            crate::error::service::ServiceError::System(SystemError::Internal(_))
-        ));
     }
 
     #[test]
