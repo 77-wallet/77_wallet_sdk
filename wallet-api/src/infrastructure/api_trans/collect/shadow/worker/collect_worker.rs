@@ -167,7 +167,6 @@ pub struct ShadowCollectWorker {
 }
 
 impl ShadowCollectWorker {
-    const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
     const TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
@@ -252,38 +251,6 @@ impl ShadowCollectWorker {
         };
 
         now.signed_duration_since(building_at).num_seconds() >= Self::BUILD_SLOT_STALE_SECS
-    }
-
-    fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
-        let RawTx::Tron(raw, ..) = raw_tx else { return None };
-        let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
-        v.get("expiration").and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
-    }
-
-    fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
-        if !shared_mechanism::is_tron_chain(chain_code) {
-            return false;
-        }
-        let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
-            Ok(raw_tx) => raw_tx,
-            Err(_) => return false,
-        };
-        let Some(exp_ms) = Self::tron_raw_expiration_ms(&raw_tx) else {
-            return false;
-        };
-        let now_ms = Utc::now().timestamp_millis();
-        exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
-    }
-
-    fn should_invalidate_expired_tron_raw_for_recover(
-        chain_code: &str,
-        raw_tx_json: &str,
-        last_broadcast_at_present: bool,
-        tx_hash_present: bool,
-    ) -> bool {
-        !last_broadcast_at_present
-            && !tx_hash_present
-            && Self::should_invalidate_expired_tron_raw(chain_code, raw_tx_json)
     }
 
     fn should_nudge_advance_after_recover_skip(req: &ApiCollectEntity) -> bool {
@@ -436,19 +403,13 @@ impl ShadowCollectWorker {
         }
     }
 
-    fn is_tron_missing_confirmed_and_pending_error(err: &ServiceError) -> bool {
-        err.to_string().contains("tron tx missing from confirmed and pending pools")
-    }
-
     fn should_rebroadcast_tron_missing_confirmed_and_pending(req: &ApiCollectEntity) -> bool {
-        if !shared_mechanism::is_tron_chain(&req.chain_code) {
-            return false;
-        }
-        let Some(last_broadcast_at) = req.last_broadcast_at else {
-            return false;
-        };
-        Utc::now().signed_duration_since(last_broadcast_at).num_seconds()
-            >= Self::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS
+        shared_mechanism::should_retry_after_tron_missing_confirmed_and_pending(
+            &req.chain_code,
+            req.last_broadcast_at,
+            Self::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS,
+            Utc::now(),
+        )
     }
 
     fn apply_exec_to_addr(req: &mut ApiCollectEntity, exec_to_addr: &str) -> bool {
@@ -1557,11 +1518,12 @@ impl ShadowCollectWorker {
             }
             Ok(None) => {
                 if let Some(raw_tx_json) = req.raw_tx.as_deref() {
-                    if Self::should_invalidate_expired_tron_raw_for_recover(
+                    if shared_mechanism::should_invalidate_expired_tron_raw_for_recover(
                         &req.chain_code,
                         raw_tx_json,
                         req.last_broadcast_at.is_some(),
                         req.tx_hash.as_deref().is_some_and(|tx_hash| !tx_hash.trim().is_empty()),
+                        Utc::now().timestamp_millis(),
                     ) {
                         warn!(
                             trade_no = %req.trade_no,
@@ -1786,7 +1748,7 @@ impl ShadowCollectWorker {
                     self.advancer.try_advance(&refreshed.trade_no).await;
                 }
             }
-            Err(err) if Self::is_tron_missing_confirmed_and_pending_error(&err) => {
+            Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
                 if !Self::should_rebroadcast_tron_missing_confirmed_and_pending(&req) {
                     info!(
                         trade_no = %trade_no,
@@ -3770,45 +3732,6 @@ oss:
         .await
         .expect("init test context");
         Box::leak(Box::new(ctx))
-    }
-
-    fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
-        let raw = RawTransactionParams {
-            tx_id: "expired-tron-collect-tx".to_string(),
-            raw_data: serde_json::json!({ "expiration": expiration_ms }).to_string(),
-            raw_data_hex: "00".to_string(),
-            signature: vec![],
-        };
-        let raw_tx = crate::domain::api_wallet::adapter::tx::RawTx::Tron(
-            raw,
-            BillResourceConsume { net_used: 0, energy_used: 0 },
-            String::new(),
-        );
-        wallet_utils::serde_func::serde_to_string(&raw_tx).expect("serialize expired tron raw tx")
-    }
-
-    #[test]
-    fn collect_expired_tron_raw_with_tx_hash_is_not_invalidated_for_recover() {
-        let raw_tx_json = expired_tron_raw_tx_json(123);
-
-        assert!(ShadowCollectWorker::should_invalidate_expired_tron_raw_for_recover(
-            "tron",
-            &raw_tx_json,
-            false,
-            false
-        ));
-        assert!(!ShadowCollectWorker::should_invalidate_expired_tron_raw_for_recover(
-            "tron",
-            &raw_tx_json,
-            true,
-            false
-        ));
-        assert!(!ShadowCollectWorker::should_invalidate_expired_tron_raw_for_recover(
-            "tron",
-            &raw_tx_json,
-            false,
-            true
-        ));
     }
 
     fn base_collect() -> ApiCollectEntity {

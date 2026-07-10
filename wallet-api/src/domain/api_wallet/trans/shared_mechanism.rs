@@ -1,11 +1,17 @@
 use crate::{
     context::Context,
-    domain::api_wallet::{adapter::tx::TxVisibilityProbe, adapter_factory::ApiChainAdapterFactory},
+    domain::api_wallet::{
+        adapter::tx::{RawTx, TxVisibilityProbe},
+        adapter_factory::ApiChainAdapterFactory,
+    },
     error::service::ServiceError,
     infrastructure::{chain_rpc_guard, nonce::nonce_engine::get_nonce_engine_with_ctx},
 };
+use chrono::{DateTime, Utc};
 use std::fmt::Display;
 use wallet_types::chain::chain::ChainCode;
+
+pub(crate) const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
 
 pub(crate) fn is_evm_chain(chain_code: &str) -> bool {
     chain_code.eq_ignore_ascii_case(&ChainCode::Ethereum.to_string())
@@ -26,6 +32,61 @@ pub(crate) fn need_broadcast_visibility_check(chain_code: &str) -> bool {
 
 pub(crate) fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
     is_evm_chain(chain_code) || is_sol_chain(chain_code) || is_tron_chain(chain_code)
+}
+
+pub(crate) fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
+    let RawTx::Tron(raw, ..) = raw_tx else { return None };
+    let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
+    v.get("expiration").and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
+}
+
+pub(crate) fn should_invalidate_expired_tron_raw(
+    chain_code: &str,
+    raw_tx_json: &str,
+    now_ms: i64,
+) -> bool {
+    if !is_tron_chain(chain_code) {
+        return false;
+    }
+    let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
+        Ok(raw_tx) => raw_tx,
+        Err(_) => return false,
+    };
+    let Some(exp_ms) = tron_raw_expiration_ms(&raw_tx) else {
+        return false;
+    };
+    exp_ms <= now_ms.saturating_add(TRON_RAW_EXPIRY_GUARD_MS)
+}
+
+pub(crate) fn should_invalidate_expired_tron_raw_for_recover(
+    chain_code: &str,
+    raw_tx_json: &str,
+    last_broadcast_at_present: bool,
+    tx_hash_present: bool,
+    now_ms: i64,
+) -> bool {
+    !last_broadcast_at_present
+        && !tx_hash_present
+        && should_invalidate_expired_tron_raw(chain_code, raw_tx_json, now_ms)
+}
+
+pub(crate) fn is_tron_missing_confirmed_and_pending_error(err: &ServiceError) -> bool {
+    err.to_string().contains("tron tx missing from confirmed and pending pools")
+}
+
+pub(crate) fn should_retry_after_tron_missing_confirmed_and_pending(
+    chain_code: &str,
+    last_broadcast_at: Option<DateTime<Utc>>,
+    timeout_secs: i64,
+    now: DateTime<Utc>,
+) -> bool {
+    if !is_tron_chain(chain_code) {
+        return false;
+    }
+    let Some(last_broadcast_at) = last_broadcast_at else {
+        return false;
+    };
+    now.signed_duration_since(last_broadcast_at).num_seconds() >= timeout_secs
 }
 
 pub(crate) fn warn_chain_rpc_failure(
@@ -209,8 +270,12 @@ pub(crate) async fn try_nonce_self_heal(
 mod tests {
     use super::{
         is_evm_chain, is_sol_chain, is_tron_chain, normalize_chain_time_to_ms,
-        tracks_broadcast_uncertain_state,
+        should_invalidate_expired_tron_raw_for_recover,
+        should_retry_after_tron_missing_confirmed_and_pending, tracks_broadcast_uncertain_state,
     };
+    use crate::domain::api_wallet::adapter::tx::RawTx;
+    use chrono::{Duration, Utc};
+    use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
 
     #[test]
     fn chain_kind_helpers_are_case_insensitive() {
@@ -229,6 +294,78 @@ mod tests {
         assert!(tracks_broadcast_uncertain_state("sol"));
         assert!(tracks_broadcast_uncertain_state("tron"));
         assert!(!tracks_broadcast_uncertain_state("unknown"));
+    }
+
+    fn tron_raw_tx_json(expiration_ms: i64) -> String {
+        let raw = RawTransactionParams {
+            raw_data: serde_json::json!({ "expiration": expiration_ms }).to_string(),
+            raw_data_hex: "00".to_string(),
+            tx_id: "txid".to_string(),
+            signature: vec![],
+        };
+        let raw_tx =
+            RawTx::Tron(raw, BillResourceConsume { net_used: 0, energy_used: 0 }, String::new());
+        wallet_utils::serde_func::serde_to_string(&raw_tx).expect("serialize tron raw tx")
+    }
+
+    #[test]
+    fn expired_tron_raw_recover_guard_requires_no_broadcast_evidence() {
+        let raw_tx_json = tron_raw_tx_json(123);
+        let now_ms = Utc::now().timestamp_millis();
+
+        assert!(should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            false,
+            false,
+            now_ms
+        ));
+        assert!(!should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            true,
+            false,
+            now_ms
+        ));
+        assert!(!should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            false,
+            true,
+            now_ms
+        ));
+        assert!(!should_invalidate_expired_tron_raw_for_recover(
+            "sol",
+            &raw_tx_json,
+            false,
+            false,
+            now_ms
+        ));
+    }
+
+    #[test]
+    fn tron_missing_confirmed_and_pending_retry_waits_for_timeout() {
+        let now = Utc::now();
+
+        assert!(!should_retry_after_tron_missing_confirmed_and_pending(
+            "tron",
+            Some(now - Duration::seconds(10)),
+            60,
+            now
+        ));
+        assert!(should_retry_after_tron_missing_confirmed_and_pending(
+            "tron",
+            Some(now - Duration::seconds(60)),
+            60,
+            now
+        ));
+        assert!(!should_retry_after_tron_missing_confirmed_and_pending(
+            "sol",
+            Some(now - Duration::seconds(60)),
+            60,
+            now
+        ));
+        assert!(!should_retry_after_tron_missing_confirmed_and_pending("tron", None, 60, now));
     }
 
     #[test]

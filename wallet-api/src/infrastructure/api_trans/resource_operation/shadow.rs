@@ -616,29 +616,7 @@ impl ResourceOperationWorker {
         }
     }
 
-    const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
     const BROADCAST_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
-
-    fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
-        let RawTx::Tron(raw, ..) = raw_tx else { return None };
-        let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
-        v.get("expiration").and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
-    }
-
-    fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
-        if !shared_mechanism::is_tron_chain(chain_code) {
-            return false;
-        }
-        let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
-            Ok(raw_tx) => raw_tx,
-            Err(_) => return false,
-        };
-        let Some(exp_ms) = Self::tron_raw_expiration_ms(&raw_tx) else {
-            return false;
-        };
-        let now_ms = Utc::now().timestamp_millis();
-        exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
-    }
 
     fn broadcast_uncertain_elapsed_secs(
         operation: &ApiResourceOperationEntity,
@@ -685,7 +663,11 @@ impl ResourceOperationWorker {
                 ServiceError::Parameter("resource operation broadcast requires tx_hash".to_string())
             })?;
 
-        if Self::should_invalidate_expired_tron_raw(&operation.chain_code, raw_tx_json) {
+        if shared_mechanism::should_invalidate_expired_tron_raw(
+            &operation.chain_code,
+            raw_tx_json,
+            Utc::now().timestamp_millis(),
+        ) {
             warn!(
                 resource_trade_no = %resource_trade_no,
                 tx_hash = %tx_hash,
