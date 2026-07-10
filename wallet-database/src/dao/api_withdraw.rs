@@ -2091,6 +2091,7 @@ impl ApiWithdrawDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND last_broadcast_at IS NULL
+              AND transaction_time IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -2279,6 +2280,7 @@ impl ApiWithdrawDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
+              AND (tx_hash IS NULL OR tx_hash = $2)
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -3989,6 +3991,72 @@ mod tests {
         assert!(after.err_code.is_none());
         assert!(after.err_msg.is_none());
         assert!(after.chain_failed_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn recover_and_late_broadcast_cannot_overwrite_confirmed_fact() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_fact_cas");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_FACT_CAS",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let rows = ApiWithdrawDao::confirm_onchain_transaction_fact_with_recover(
+            pool.as_ref(),
+            "W_FACT_CAS",
+            "hash-first",
+            &now,
+            &now,
+            "0.00001",
+            "0",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let rows = ApiWithdrawDao::confirm_onchain_transaction_fact_with_recover(
+            pool.as_ref(),
+            "W_FACT_CAS",
+            "hash-conflict",
+            &now,
+            &now,
+            "0.00002",
+            "1",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0, "a conflicting recover hash must not overwrite facts");
+
+        let rows =
+            ApiWithdrawDao::mark_broadcast_executed(pool.as_ref(), "W_FACT_CAS").await.unwrap();
+        assert_eq!(rows, 0, "late broadcast must not clear confirmed facts");
     }
 
     #[tokio::test]

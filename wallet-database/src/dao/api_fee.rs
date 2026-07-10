@@ -1224,6 +1224,7 @@ impl ApiFeeDao {
                 broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND transaction_time IS NULL
         "#;
 
         let res = sqlx::query(sql)
@@ -1538,6 +1539,7 @@ impl ApiFeeDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
+              AND (tx_hash IS NULL OR tx_hash = $2)
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
