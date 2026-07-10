@@ -24,7 +24,8 @@ use super::CollectIntent;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
     EvalResourceGate(String),
-    ChainTx(String),
+    TxMutation(String),
+    RecoverTx(String),
     ExecuteLocalResourceDelegation(String),
     SendOrderAck(String),
     SendResultAck(String),
@@ -44,13 +45,13 @@ impl RunningKey {
                 RunningKey::EvalResourceGate(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+                RunningKey::RecoverTx(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) => {
                 RunningKey::ExecuteLocalResourceDelegation(trade_no.clone())
@@ -89,7 +90,7 @@ mod tests {
     use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     #[test]
-    fn chain_tx_actions_share_running_key() {
+    fn build_and_broadcast_share_mutation_key_but_recover_is_independent() {
         let trade_no = "C_KEY";
         let build = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BuildTx(
             trade_no.to_string(),
@@ -101,8 +102,9 @@ mod tests {
             trade_no.to_string(),
         )));
         assert_eq!(build, broadcast);
-        assert_eq!(broadcast, recover);
-        assert!(matches!(build, RunningKey::ChainTx(_)));
+        assert_ne!(broadcast, recover);
+        assert!(matches!(build, RunningKey::TxMutation(_)));
+        assert!(matches!(recover, RunningKey::RecoverTx(_)));
     }
 
     #[test]

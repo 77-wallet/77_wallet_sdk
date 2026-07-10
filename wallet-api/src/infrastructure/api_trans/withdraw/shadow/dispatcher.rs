@@ -24,7 +24,8 @@ use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 pub enum RunningKey {
     EstimateFee(String),
     EvalResourceGate(String),
-    ChainTx(String),
+    TxMutation(String),
+    RecoverTx(String),
     ExecuteResourceDelegation(String),
     SendTxAck(String),
     SendTxResAck(String),
@@ -45,13 +46,13 @@ impl RunningKey {
                 RunningKey::EvalResourceGate(trade_no.clone())
             }
             WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+                RunningKey::RecoverTx(trade_no.clone())
             }
             WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(trade_no)) => {
                 RunningKey::ExecuteResourceDelegation(trade_no.clone())
@@ -84,7 +85,7 @@ mod tests {
     use crate::infrastructure::api_trans::withdraw::shadow::{WithdrawChainIntent, WithdrawIntent};
 
     #[test]
-    fn chain_tx_actions_share_running_key() {
+    fn build_and_broadcast_share_mutation_key_but_recover_is_independent() {
         let trade_no = "W_KEY";
         let build = RunningKey::from_intent(&WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(
             trade_no.to_string(),
@@ -96,8 +97,9 @@ mod tests {
             WithdrawChainIntent::RecoverTx(trade_no.to_string()),
         ));
         assert_eq!(build, broadcast);
-        assert_eq!(broadcast, recover);
-        assert!(matches!(build, RunningKey::ChainTx(_)));
+        assert_ne!(broadcast, recover);
+        assert!(matches!(build, RunningKey::TxMutation(_)));
+        assert!(matches!(recover, RunningKey::RecoverTx(_)));
     }
 }
 

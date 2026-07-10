@@ -23,7 +23,8 @@ use super::FeeIntent;
 /// 用于 trade_no + intent_type 级别的互斥执行
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
-    ChainTx(String),
+    TxMutation(String),
+    RecoverTx(String),
     SendTxAck(String),
     SendTxResAck(String),
     UploadTxExecReceipt(String),
@@ -34,13 +35,13 @@ impl RunningKey {
     pub fn from_intent(intent: &FeeIntent) -> Self {
         match intent {
             FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+                RunningKey::RecoverTx(trade_no.clone())
             }
             FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => {
                 RunningKey::SendTxAck(trade_no.clone())
@@ -61,7 +62,7 @@ mod tests {
     use crate::infrastructure::api_trans::collect_fee::shadow::{FeeChainIntent, FeeIntent};
 
     #[test]
-    fn chain_tx_actions_share_running_key() {
+    fn build_and_broadcast_share_mutation_key_but_recover_is_independent() {
         let trade_no = "F_KEY";
         let build = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BuildTx(
             trade_no.to_string(),
@@ -73,8 +74,9 @@ mod tests {
             trade_no.to_string(),
         )));
         assert_eq!(build, broadcast);
-        assert_eq!(broadcast, recover);
-        assert!(matches!(build, RunningKey::ChainTx(_)));
+        assert_ne!(broadcast, recover);
+        assert!(matches!(build, RunningKey::TxMutation(_)));
+        assert!(matches!(recover, RunningKey::RecoverTx(_)));
     }
 }
 
