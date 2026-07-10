@@ -69,6 +69,7 @@ use crate::{
         service::ServiceError,
     },
     infrastructure::api_trans::{
+        build_retry_mechanism,
         collect::legacy::AddressLockManager,
         resource_amount::energy_shortfall_to_apply_amounts,
         resource_apply_outcome::PlatformApplyOutcome,
@@ -242,11 +243,11 @@ impl ShadowCollectWorker {
     }
 
     fn is_collect_build_503_error(err: &ServiceError) -> bool {
-        shared_mechanism::is_build_service_unavailable(err)
+        build_retry_mechanism::is_build_service_unavailable(err)
     }
 
     fn build_503_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
-        shared_mechanism::build_retry_elapsed_secs(req.updated_at, now)
+        build_retry_mechanism::build_retry_elapsed_secs(req.updated_at, now)
     }
 
     fn should_terminal_fail_collect_build_503(
@@ -254,7 +255,7 @@ impl ShadowCollectWorker {
         err: &ServiceError,
         now: DateTime<Utc>,
     ) -> bool {
-        shared_mechanism::should_terminal_fail_build_service_unavailable(
+        build_retry_mechanism::should_terminal_fail_build_service_unavailable(
             req.updated_at,
             err,
             Self::BUILD_503_RETRY_WINDOW_SECS,

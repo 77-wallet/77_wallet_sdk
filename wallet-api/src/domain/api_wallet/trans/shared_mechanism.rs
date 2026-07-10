@@ -137,28 +137,6 @@ pub(crate) fn should_force_align_nonce_gap(chain_nonce: u64, local_nonce: u64) -
     local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
 }
 
-pub(crate) fn is_build_service_unavailable(err: &ServiceError) -> bool {
-    chain_rpc_guard::ChainRpcErrorContext::from_display(err).is_service_unavailable()
-}
-
-pub(crate) fn build_retry_elapsed_secs(
-    updated_at: Option<DateTime<Utc>>,
-    now: DateTime<Utc>,
-) -> Option<i64> {
-    updated_at.map(|updated_at| now.signed_duration_since(updated_at).num_seconds().max(0))
-}
-
-pub(crate) fn should_terminal_fail_build_service_unavailable(
-    updated_at: Option<DateTime<Utc>>,
-    err: &ServiceError,
-    retry_window_secs: i64,
-    now: DateTime<Utc>,
-) -> bool {
-    is_build_service_unavailable(err)
-        && build_retry_elapsed_secs(updated_at, now)
-            .is_some_and(|elapsed| elapsed >= retry_window_secs)
-}
-
 pub(crate) fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
     let RawTx::Tron(raw, ..) = raw_tx else { return None };
     let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
@@ -395,12 +373,10 @@ pub(crate) async fn try_nonce_self_heal(
 mod tests {
     use super::{
         broadcast_uncertain_backoff_secs, broadcast_uncertain_elapsed_secs,
-        build_retry_elapsed_secs, is_broadcast_uncertain_timed_out, is_build_service_unavailable,
-        is_evm_chain, is_sol_chain, is_stale_slot, is_tron_chain, normalize_chain_time_to_ms,
-        normalized_tx_hash, should_force_align_nonce_gap,
+        is_broadcast_uncertain_timed_out, is_evm_chain, is_sol_chain, is_stale_slot, is_tron_chain,
+        normalize_chain_time_to_ms, normalized_tx_hash, should_force_align_nonce_gap,
         should_invalidate_expired_tron_raw_for_recover,
         should_retry_after_tron_missing_confirmed_and_pending,
-        should_terminal_fail_build_service_unavailable,
         should_throttle_broadcast_uncertain_after_last_check,
         should_throttle_broadcast_uncertain_recover, tracks_broadcast_uncertain_state,
         validate_recovered_tx_hash,
@@ -462,44 +438,6 @@ mod tests {
         assert!(should_force_align_nonce_gap(3, 5));
         assert!(!should_force_align_nonce_gap(3, 4));
         assert!(!should_force_align_nonce_gap(5, 3));
-    }
-
-    #[test]
-    fn build_service_unavailable_detector_matches_node_503_message() {
-        let err = crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::Internal(
-                "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
-                    .to_string(),
-            ),
-        );
-
-        assert!(is_build_service_unavailable(&err));
-    }
-
-    #[test]
-    fn build_service_unavailable_terminal_failure_waits_for_retry_window() {
-        let now = Utc::now();
-        let err = crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::Internal(
-                "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
-                    .to_string(),
-            ),
-        );
-
-        assert_eq!(build_retry_elapsed_secs(Some(now - Duration::minutes(4)), now), Some(240));
-        assert!(should_terminal_fail_build_service_unavailable(
-            Some(now - Duration::minutes(4)),
-            &err,
-            180,
-            now
-        ));
-        assert!(!should_terminal_fail_build_service_unavailable(
-            Some(now - Duration::minutes(2)),
-            &err,
-            180,
-            now
-        ));
-        assert!(!should_terminal_fail_build_service_unavailable(None, &err, 180, now));
     }
 
     #[test]
