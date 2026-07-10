@@ -109,15 +109,7 @@ impl ShadowFeeWorker {
     }
 
     fn is_stale_build_slot(building_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
-        let Some(building_at) = building_at else {
-            return false;
-        };
-
-        now.signed_duration_since(building_at).num_seconds() >= Self::BUILD_SLOT_STALE_SECS
-    }
-
-    fn should_nudge_advance_after_recover_skip(req: &ApiFeeEntity) -> bool {
-        shared_mechanism::should_nudge_advance_after_recover_skip(req.transaction_time.is_some())
+        shared_mechanism::is_stale_slot(building_at, Self::BUILD_SLOT_STALE_SECS, now)
     }
 
     fn should_throttle_evm_uncertain_recover(
@@ -283,9 +275,6 @@ impl ShadowFeeWorker {
                         shared_mechanism::normalized_tx_hash(fresh_req.tx_hash.as_deref());
 
                     if fresh_req.transaction_time.is_some() {
-                        let should_nudge =
-                            Self::should_nudge_advance_after_recover_skip(&fresh_req);
-
                         if existing_tx_hash.is_none() {
                             let rows_affected = ApiFeeRepo::backfill_tx_hash_if_missing(
                                 &self.ctx.api_transaction_pool()?,
@@ -306,14 +295,12 @@ impl ShadowFeeWorker {
                         }
 
                         info!(trade_no = %trade_no, source = "shadow_fee_worker", "tx_hash empty or transaction_time exists, skipping Recover fact commit");
-                        if should_nudge {
-                            info!(
-                                trade_no = %trade_no,
-                                source = "shadow_fee_worker",
-                                "Recover facts already present; nudging scanner for downstream stages"
-                            );
-                            self.scanner.try_advance(&fresh_req.trade_no).await;
-                        }
+                        info!(
+                            trade_no = %trade_no,
+                            source = "shadow_fee_worker",
+                            "Recover facts already present; nudging scanner for downstream stages"
+                        );
+                        self.scanner.try_advance(&fresh_req.trade_no).await;
                         return Ok(());
                     }
 

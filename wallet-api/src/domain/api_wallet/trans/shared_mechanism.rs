@@ -122,8 +122,19 @@ pub(crate) fn validate_recovered_tx_hash(
     Ok(())
 }
 
-pub(crate) fn should_nudge_advance_after_recover_skip(transaction_time_present: bool) -> bool {
-    transaction_time_present
+pub(crate) fn is_stale_slot(
+    started_at: Option<DateTime<Utc>>,
+    stale_secs: i64,
+    now: DateTime<Utc>,
+) -> bool {
+    let Some(started_at) = started_at else {
+        return false;
+    };
+    now.signed_duration_since(started_at).num_seconds() >= stale_secs
+}
+
+pub(crate) fn should_force_align_nonce_gap(chain_nonce: u64, local_nonce: u64) -> bool {
+    local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
 }
 
 pub(crate) fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
@@ -362,9 +373,9 @@ pub(crate) async fn try_nonce_self_heal(
 mod tests {
     use super::{
         broadcast_uncertain_backoff_secs, broadcast_uncertain_elapsed_secs,
-        is_broadcast_uncertain_timed_out, is_evm_chain, is_sol_chain, is_tron_chain,
-        normalize_chain_time_to_ms, normalized_tx_hash,
-        should_invalidate_expired_tron_raw_for_recover, should_nudge_advance_after_recover_skip,
+        is_broadcast_uncertain_timed_out, is_evm_chain, is_sol_chain, is_stale_slot, is_tron_chain,
+        normalize_chain_time_to_ms, normalized_tx_hash, should_force_align_nonce_gap,
+        should_invalidate_expired_tron_raw_for_recover,
         should_retry_after_tron_missing_confirmed_and_pending,
         should_throttle_broadcast_uncertain_after_last_check,
         should_throttle_broadcast_uncertain_recover, tracks_broadcast_uncertain_state,
@@ -414,9 +425,19 @@ mod tests {
     }
 
     #[test]
-    fn recover_skip_nudge_depends_on_chain_fact() {
-        assert!(should_nudge_advance_after_recover_skip(true));
-        assert!(!should_nudge_advance_after_recover_skip(false));
+    fn stale_slot_requires_started_at_and_elapsed_timeout() {
+        let now = Utc::now();
+
+        assert!(!is_stale_slot(None, 30, now));
+        assert!(!is_stale_slot(Some(now - Duration::seconds(29)), 30, now));
+        assert!(is_stale_slot(Some(now - Duration::seconds(30)), 30, now));
+    }
+
+    #[test]
+    fn nonce_gap_alignment_requires_local_nonce_at_least_two_ahead() {
+        assert!(should_force_align_nonce_gap(3, 5));
+        assert!(!should_force_align_nonce_gap(3, 4));
+        assert!(!should_force_align_nonce_gap(5, 3));
     }
 
     #[test]

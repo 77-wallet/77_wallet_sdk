@@ -213,10 +213,6 @@ impl ShadowCollectWorker {
         )
     }
 
-    fn should_force_align_prebuild_nonce_gap(chain_nonce: u64, local_nonce: u64) -> bool {
-        local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
-    }
-
     fn broadcast_uncertain_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
         shared_mechanism::broadcast_uncertain_elapsed_secs(req.broadcast_uncertain_since_at, now)
     }
@@ -242,15 +238,7 @@ impl ShadowCollectWorker {
     }
 
     fn is_stale_build_slot(building_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
-        let Some(building_at) = building_at else {
-            return false;
-        };
-
-        now.signed_duration_since(building_at).num_seconds() >= Self::BUILD_SLOT_STALE_SECS
-    }
-
-    fn should_nudge_advance_after_recover_skip(req: &ApiCollectEntity) -> bool {
-        shared_mechanism::should_nudge_advance_after_recover_skip(req.transaction_time.is_some())
+        shared_mechanism::is_stale_slot(building_at, Self::BUILD_SLOT_STALE_SECS, now)
     }
 
     fn is_collect_build_503_error(err: &ServiceError) -> bool {
@@ -1387,8 +1375,7 @@ impl ShadowCollectWorker {
 
                     // 事实校验：如果链上确认已经落库，补齐缺失的 tx_hash 后直接推进后续阶段
                     if fresh_req.transaction_time.is_some() {
-                        let mut should_nudge =
-                            Self::should_nudge_advance_after_recover_skip(&fresh_req);
+                        let mut should_nudge = true;
 
                         if existing_tx_hash.is_none() {
                             let rows_affected = ApiCollectRepo::backfill_tx_hash_if_missing(
@@ -1950,7 +1937,7 @@ impl ShadowCollectWorker {
         if shared_mechanism::is_evm_chain(&req.chain_code) {
             let chain_nonce =
                 ApiTransDomain::nonce(&self.ctx, &req.from_addr, &req.chain_code).await?;
-            if Self::should_force_align_prebuild_nonce_gap(chain_nonce, nonce) {
+            if shared_mechanism::should_force_align_nonce_gap(chain_nonce, nonce) {
                 let old_nonce = nonce;
                 let gap = old_nonce.saturating_sub(chain_nonce);
                 warn!(

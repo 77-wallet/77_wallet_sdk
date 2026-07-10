@@ -155,10 +155,6 @@ impl ShadowWithdrawWorker {
             .max(0)
     }
 
-    fn should_force_align_prebroadcast_nonce_gap(chain_nonce: u64, local_nonce: u64) -> bool {
-        local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
-    }
-
     fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
         shared_mechanism::broadcast_uncertain_backoff_secs(
             retry_count,
@@ -183,10 +179,6 @@ impl ShadowWithdrawWorker {
             Self::EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS,
             now,
         )
-    }
-
-    fn should_nudge_advance_after_recover_skip(req: &ApiWithdrawEntity) -> bool {
-        shared_mechanism::should_nudge_advance_after_recover_skip(req.transaction_time.is_some())
     }
 
     fn should_throttle_evm_uncertain_recover(
@@ -1001,8 +993,7 @@ impl ShadowWithdrawWorker {
                         shared_mechanism::normalized_tx_hash(fresh_req.tx_hash.as_deref());
 
                     if fresh_req.transaction_time.is_some() {
-                        let should_nudge =
-                            Self::should_nudge_advance_after_recover_skip(&fresh_req);
+                        let should_nudge = true;
 
                         if existing_tx_hash.is_none() {
                             let rows_affected = ApiWithdrawRepo::backfill_tx_hash_if_missing(
@@ -1541,7 +1532,7 @@ impl ShadowWithdrawWorker {
                 .await
                 {
                     Ok(chain_nonce) => {
-                        if Self::should_force_align_prebroadcast_nonce_gap(
+                        if shared_mechanism::should_force_align_nonce_gap(
                             chain_nonce,
                             fresh_withdraw.nonce as u64,
                         ) {
@@ -2719,11 +2710,6 @@ oss:
     }
 
     #[test]
-    fn withdraw_evm_prebroadcast_nonce_gap_aligns_when_local_nonce_is_far_ahead() {
-        assert!(ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(3, 5));
-    }
-
-    #[test]
     fn withdraw_platform_resource_apply_amounts_match_collect_semantics() {
         let amounts =
             crate::infrastructure::api_trans::resource_amount::energy_shortfall_to_apply_amounts(
@@ -2783,12 +2769,6 @@ oss:
                 &err
             )
         );
-    }
-
-    #[test]
-    fn withdraw_evm_prebroadcast_nonce_gap_does_not_align_for_small_gap() {
-        assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(3, 4));
-        assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(5, 3));
     }
 
     #[test]
