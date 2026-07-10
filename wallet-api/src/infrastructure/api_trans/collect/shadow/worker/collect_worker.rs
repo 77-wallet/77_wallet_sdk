@@ -242,12 +242,11 @@ impl ShadowCollectWorker {
     }
 
     fn is_collect_build_503_error(err: &ServiceError) -> bool {
-        crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(err)
-            .is_service_unavailable()
+        shared_mechanism::is_build_service_unavailable(err)
     }
 
     fn build_503_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
-        req.updated_at.map(|updated_at| now.signed_duration_since(updated_at).num_seconds().max(0))
+        shared_mechanism::build_retry_elapsed_secs(req.updated_at, now)
     }
 
     fn should_terminal_fail_collect_build_503(
@@ -255,17 +254,12 @@ impl ShadowCollectWorker {
         err: &ServiceError,
         now: DateTime<Utc>,
     ) -> bool {
-        if !Self::is_collect_build_503_error(err) {
-            return false;
-        }
-
-        if Self::build_503_elapsed_secs(req, now)
-            .is_some_and(|elapsed| elapsed >= Self::BUILD_503_RETRY_WINDOW_SECS)
-        {
-            return true;
-        }
-
-        false
+        shared_mechanism::should_terminal_fail_build_service_unavailable(
+            req.updated_at,
+            err,
+            Self::BUILD_503_RETRY_WINDOW_SECS,
+            now,
+        )
     }
 
     fn tron_resource_ready(
@@ -4604,35 +4598,5 @@ oss:
         req.broadcast_uncertain_since_at = Some(Utc::now() - chrono::TimeDelta::minutes(5));
 
         assert!(ShadowCollectWorker::should_auto_fail_broadcast_uncertain(&req, Utc::now()));
-    }
-
-    #[test]
-    fn build_503_error_detector_matches_node_503_message() {
-        let err = crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::Internal(
-                "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
-                    .to_string(),
-            ),
-        );
-
-        assert!(ShadowCollectWorker::is_collect_build_503_error(&err));
-    }
-
-    #[test]
-    fn build_503_terminal_failure_trips_after_time_window() {
-        let mut req = base_collect();
-        req.updated_at = Some(Utc::now() - chrono::TimeDelta::minutes(4));
-        let err = crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::Internal(
-                "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
-                    .to_string(),
-            ),
-        );
-
-        assert!(ShadowCollectWorker::should_terminal_fail_collect_build_503(
-            &req,
-            &err,
-            Utc::now()
-        ));
     }
 }
