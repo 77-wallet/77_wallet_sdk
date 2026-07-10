@@ -5,14 +5,20 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-const DEFAULT_RECOVER_COOLDOWN_MS: u64 = 5_000;
-const MIN_RECOVER_COOLDOWN_MS: u64 = 1_000;
-const MAX_RECOVER_COOLDOWN_MS: u64 = 30_000;
+const DEFAULT_RECOVER_COOLDOWN: Duration = Duration::from_secs(60);
+const MAX_RECOVER_COOLDOWN: Duration = Duration::from_secs(300);
 const BREAKER_WARN_COOLDOWN: Duration = Duration::from_secs(10);
 const MAX_RECOVER_COOLDOWN_MAP_SIZE: usize = 100_000;
 const INTENT_REPORT_WINDOW_SECS: u64 = 60;
 
-static RECOVER_LAST_DISPATCH_TS: Lazy<DashMap<String, Instant>> = Lazy::new(DashMap::new);
+#[derive(Clone, Copy)]
+struct RecoverDispatchState {
+    last_dispatch: Instant,
+    next_cooldown: Duration,
+}
+
+static RECOVER_LAST_DISPATCH_TS: Lazy<DashMap<String, RecoverDispatchState>> =
+    Lazy::new(DashMap::new);
 static BREAKER_WARN_LAST_LOG_TS: Lazy<DashMap<String, Instant>> = Lazy::new(DashMap::new);
 static BROADCAST_INTENT_DISPATCH_COUNT: AtomicU64 = AtomicU64::new(0);
 static RECOVER_INTENT_DISPATCH_COUNT: AtomicU64 = AtomicU64::new(0);
@@ -36,34 +42,42 @@ pub(crate) fn read_u64_env(name: &str, default: u64, min: u64, max: u64) -> u64 
     parse_u64_env(std::env::var(name).ok().as_deref(), default, min, max)
 }
 
-pub(crate) fn recover_cooldown() -> Duration {
-    Duration::from_millis(read_u64_env(
-        "SHADOW_RECOVER_COOLDOWN_MS",
-        DEFAULT_RECOVER_COOLDOWN_MS,
-        MIN_RECOVER_COOLDOWN_MS,
-        MAX_RECOVER_COOLDOWN_MS,
-    ))
+fn next_recover_cooldown(current: Duration) -> Duration {
+    current.saturating_mul(2).min(MAX_RECOVER_COOLDOWN)
 }
 
 pub(crate) fn allow_recover_dispatch(key: &str) -> bool {
     let now = Instant::now();
-    let cooldown = recover_cooldown();
-
-    if let Some(last_ts) = RECOVER_LAST_DISPATCH_TS.get(key) {
-        if now.duration_since(*last_ts) < cooldown {
+    if let Some(state) = RECOVER_LAST_DISPATCH_TS.get(key) {
+        if now.duration_since(state.last_dispatch) < state.next_cooldown {
             return false;
         }
     }
 
-    RECOVER_LAST_DISPATCH_TS.insert(key.to_string(), now);
+    let next_cooldown = RECOVER_LAST_DISPATCH_TS
+        .get(key)
+        .map(|state| next_recover_cooldown(state.next_cooldown))
+        .unwrap_or(DEFAULT_RECOVER_COOLDOWN);
+    RECOVER_LAST_DISPATCH_TS
+        .insert(key.to_string(), RecoverDispatchState { last_dispatch: now, next_cooldown });
 
     if RECOVER_LAST_DISPATCH_TS.len() > MAX_RECOVER_COOLDOWN_MAP_SIZE {
-        let ttl_ms = (cooldown.as_millis() as u64).saturating_mul(8);
-        let ttl = Duration::from_millis(ttl_ms);
-        RECOVER_LAST_DISPATCH_TS.retain(|_, ts| now.duration_since(*ts) < ttl);
+        let ttl = MAX_RECOVER_COOLDOWN.saturating_mul(2);
+        RECOVER_LAST_DISPATCH_TS.retain(|_, state| now.duration_since(state.last_dispatch) < ttl);
     }
 
     true
+}
+
+pub(crate) fn recover_dispatch_cooldown(key: &str) -> Duration {
+    RECOVER_LAST_DISPATCH_TS
+        .get(key)
+        .map(|state| state.next_cooldown)
+        .unwrap_or(DEFAULT_RECOVER_COOLDOWN)
+}
+
+pub(crate) fn recover_cooldown() -> Duration {
+    DEFAULT_RECOVER_COOLDOWN
 }
 
 pub(crate) async fn breaker_open_for_chain_code(
@@ -130,7 +144,16 @@ pub(crate) fn record_chain_intent_dispatch(intent_kind: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_u64_env, parse_usize_env};
+    use super::{next_recover_cooldown, parse_u64_env, parse_usize_env};
+    use std::time::Duration;
+
+    #[test]
+    fn recover_backoff_doubles_and_is_capped() {
+        assert_eq!(next_recover_cooldown(Duration::from_secs(60)), Duration::from_secs(120));
+        assert_eq!(next_recover_cooldown(Duration::from_secs(120)), Duration::from_secs(240));
+        assert_eq!(next_recover_cooldown(Duration::from_secs(240)), Duration::from_secs(300));
+        assert_eq!(next_recover_cooldown(Duration::from_secs(300)), Duration::from_secs(300));
+    }
 
     #[test]
     fn parse_usize_env_uses_default_when_missing_or_invalid() {

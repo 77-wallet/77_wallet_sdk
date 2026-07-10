@@ -450,7 +450,7 @@ impl ShadowAdvancer {
                         )) {
                             debug!(
                                 trade_no = %trade_no,
-                                cooldown = ?shadow_rpc_policy::recover_cooldown(),
+                                cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&format!("collect_advancer:{trade_no}")),
                                 "recover_skip_because_cooldown: collect advancer recover skipped"
                             );
                             return Ok(());

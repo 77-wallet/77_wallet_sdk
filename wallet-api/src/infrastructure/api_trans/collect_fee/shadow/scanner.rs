@@ -958,7 +958,7 @@ impl ShadowScanner {
                     if !shadow_rpc_policy::allow_recover_dispatch(&format!("fee:{trade_no}")) {
                         trace!(
                             trade_no = %trade_no,
-                            cooldown = ?shadow_rpc_policy::recover_cooldown(),
+                            cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&format!("fee:{trade_no}")),
                             "recover_skip_because_cooldown: fee recover skipped"
                         );
                         return Ok(());
