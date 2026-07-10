@@ -1,14 +1,7 @@
-use crate::{error::service::ServiceError, infrastructure::chain_rpc_guard};
-use std::fmt::Display;
+use crate::error::service::ServiceError;
 use wallet_chain_interact::QueryTransactionResult;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
-
-pub(super) const RECOVER_OP_GET_ADAPTER: &str = "process_recovered_tx:get_adapter";
-pub(super) const RECOVER_OP_QUERY_TX_RES: &str = "process_recovered_tx:query_tx_res";
-pub(super) const RECOVER_OP_SOL_VISIBILITY_PROBE: &str =
-    "process_recovered_tx:sol_visibility_probe";
-pub(super) const RECOVER_OP_TRON_PENDING_POOL: &str = "process_recovered_tx:tron_pending_pool";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RecoverAdapterErrorDecision {
@@ -165,41 +158,6 @@ pub(super) fn recover_query_outcome(
     }
 }
 
-pub(super) fn recover_failure_log<'a>(
-    chain_code: &'a str,
-    tx_hash: &'a str,
-    rpc: &'a str,
-    op: &'a str,
-) -> chain_rpc_guard::ChainRpcFailureLog<'a> {
-    chain_rpc_guard::ChainRpcFailureLog::new()
-        .trade_no(tx_hash)
-        .tx_hash(tx_hash)
-        .chain_code(chain_code)
-        .rpc(rpc)
-        .op(op)
-}
-
-pub(super) fn log_recover_query_error(
-    chain_code: &str,
-    tx_hash: &str,
-    rpc: &str,
-    service_err: &ServiceError,
-    auth_retry_attempted: bool,
-) {
-    let failure_log = recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_QUERY_TX_RES);
-    let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(service_err);
-    if rpc_error.is_transient() {
-        failure_log
-            .warn(&rpc_error, "查询链上状态失败(瞬时); recovered tx result will stay uncertain");
-    } else {
-        failure_log.error(&rpc_error, "查询链上状态失败; recovered tx result will stay uncertain");
-    }
-    rpc_error.record_transient_failure();
-    if auth_retry_attempted {
-        tracing::warn!(chain_code=%chain_code, rpc=%rpc, op=RECOVER_OP_QUERY_TX_RES, error=%service_err, "auth retry failed");
-    }
-}
-
 pub(super) fn log_evm_missing_tx_hash_state(tx_hash: &str, chain_nonce: u64, local_nonce: u64) {
     let state = classify_evm_missing_tx_hash_state(chain_nonce, local_nonce);
     tracing::warn!(
@@ -211,29 +169,6 @@ pub(super) fn log_evm_missing_tx_hash_state(tx_hash: &str, chain_nonce: u64, loc
     );
 }
 
-pub(super) fn log_sol_visibility_probe_error(
-    chain_code: &str,
-    tx_hash: &str,
-    rpc: &str,
-    err: &impl Display,
-) {
-    let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(err);
-    recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_SOL_VISIBILITY_PROBE)
-        .warn(&rpc_error, "Solana visibility probe failed during recover");
-    rpc_error.record_transient_failure();
-}
-
-pub(super) fn log_tron_pending_pool_query_error(
-    chain_code: &str,
-    tx_hash: &str,
-    rpc: &str,
-    err: &impl Display,
-) {
-    let rpc_error = chain_rpc_guard::ChainRpcErrorContext::from_display(err);
-    recover_failure_log(chain_code, tx_hash, rpc, RECOVER_OP_TRON_PENDING_POOL)
-        .warn(&rpc_error, "Tron pending pool query failed; keep uncertain");
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -241,8 +176,7 @@ mod tests {
         RecoverMissingTxRoute, RecoverQueryErrorDecision, RecoverQueryOutcome,
         classify_evm_missing_tx_hash_state, classify_recover_adapter_error,
         classify_recover_missing_tx_route, classify_recover_query_error,
-        log_evm_missing_tx_hash_state, log_recover_query_error, log_sol_visibility_probe_error,
-        log_tron_pending_pool_query_error, recover_query_outcome,
+        log_evm_missing_tx_hash_state, recover_query_outcome,
     };
     use crate::error::service::ServiceError;
     use wallet_chain_interact::QueryTransactionResult;
@@ -272,20 +206,6 @@ mod tests {
     #[test]
     fn evm_recover_missing_tx_hash_state_log_keeps_uncertain() {
         log_evm_missing_tx_hash_state("0xtx", 4, 3);
-    }
-
-    #[test]
-    fn sol_visibility_probe_error_log_keeps_uncertain() {
-        let err = ServiceError::Parameter("Node response error: code=503".to_string());
-
-        log_sol_visibility_probe_error("sol", "solsig", "https://sol.example", &err);
-    }
-
-    #[test]
-    fn tron_pending_pool_query_error_log_keeps_uncertain() {
-        let err = ServiceError::Parameter("Node response error: code=503".to_string());
-
-        log_tron_pending_pool_query_error("tron", "0xtx", "https://api.nileex.io", &err);
     }
 
     #[test]
@@ -390,23 +310,6 @@ mod tests {
                 panic!("expected query error")
             }
         }
-    }
-
-    #[test]
-    fn recover_transient_query_error_is_logged_and_stays_uncertain() {
-        let err = ServiceError::Parameter(
-            "Node response error: code=503, rpc=https://api.nileex.io/wallet/gettransactioninfobyid"
-                .to_string(),
-        );
-
-        log_recover_query_error("tron", "0xtx", "https://api.nileex.io", &err, false);
-    }
-
-    #[test]
-    fn recover_non_transient_query_error_is_logged_and_stays_uncertain() {
-        let err = ServiceError::Parameter("invalid tx hash".to_string());
-
-        log_recover_query_error("tron", "0xtx", "https://api.nileex.io", &err, true);
     }
 
     #[test]

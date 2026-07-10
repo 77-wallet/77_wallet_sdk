@@ -183,6 +183,7 @@ pub(crate) mod collect;
 pub(crate) mod collect_fee;
 pub(crate) mod diagnose_common;
 pub(crate) mod nonce_recovery_mechanism;
+pub(crate) mod recover_rpc_observability;
 pub(crate) mod resource_ack_type;
 pub(crate) mod resource_amount;
 pub(crate) mod resource_apply_outcome;

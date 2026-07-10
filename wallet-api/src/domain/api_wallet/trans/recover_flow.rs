@@ -1,11 +1,9 @@
 use super::{
     ApiTransDomain,
     recover_mechanism::{
-        RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, RecoverAdapterErrorDecision,
-        RecoverAuthRetryState, RecoverMissingTxRoute, RecoverQueryErrorDecision,
-        RecoverQueryOutcome, classify_recover_missing_tx_route, log_evm_missing_tx_hash_state,
-        log_recover_query_error, log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
-        recover_query_outcome,
+        RecoverAdapterErrorDecision, RecoverAuthRetryState, RecoverMissingTxRoute,
+        RecoverQueryErrorDecision, RecoverQueryOutcome, classify_recover_missing_tx_route,
+        log_evm_missing_tx_hash_state, recover_query_outcome,
     },
     shared_mechanism,
 };
@@ -16,7 +14,16 @@ use crate::{
         chain::TransferResp,
     },
     error::service::ServiceError,
-    infrastructure::{api_trans::rpc_auth_retry_mechanism, chain_rpc_guard},
+    infrastructure::{
+        api_trans::{
+            recover_rpc_observability::{
+                RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, log_recover_query_error,
+                log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
+            },
+            rpc_auth_retry_mechanism,
+        },
+        chain_rpc_guard,
+    },
 };
 use std::sync::Arc;
 use wallet_utils::RetryableError as _;
