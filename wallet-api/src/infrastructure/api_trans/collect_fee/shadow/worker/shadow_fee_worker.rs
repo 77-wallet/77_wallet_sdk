@@ -27,7 +27,10 @@ use crate::{
         system::SystemError,
     },
     infrastructure::{
-        api_trans::collect_fee::{legacy::AddressLockManager, shadow::ShadowScanner},
+        api_trans::{
+            collect_fee::{legacy::AddressLockManager, shadow::ShadowScanner},
+            nonce_recovery_mechanism,
+        },
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -1193,7 +1196,7 @@ impl ShadowFeeWorker {
             }
 
             if accepted_reason.requires_nonce_self_heal() {
-                shared_mechanism::try_nonce_self_heal(
+                nonce_recovery_mechanism::try_nonce_self_heal(
                     self.ctx,
                     trade_no,
                     &fee.from_addr,
@@ -1225,7 +1228,7 @@ impl ShadowFeeWorker {
         if broadcast_failure_decision.should_fail_after_nonce_self_heal() {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
 
-            shared_mechanism::try_nonce_self_heal(
+            nonce_recovery_mechanism::try_nonce_self_heal(
                 self.ctx,
                 trade_no,
                 &fee.from_addr,

@@ -6,7 +6,7 @@ use crate::{
         chain::TransferResp,
     },
     error::service::ServiceError,
-    infrastructure::chain_rpc_guard,
+    infrastructure::{api_trans::rpc_auth_retry_mechanism, chain_rpc_guard},
 };
 use std::time::Instant;
 use tokio::time::sleep;
@@ -86,7 +86,7 @@ impl ApiTransDomain {
                     Ok(adapter) => adapter,
                     Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                         auth_retry_attempted = true;
-                        shared_mechanism::refresh_rpc_auth_and_prepare_retry(
+                        rpc_auth_retry_mechanism::refresh_rpc_auth_and_prepare_retry(
                             ctx,
                             chain_code,
                             "broadcast_transfer:get_adapter",
@@ -128,7 +128,7 @@ impl ApiTransDomain {
                 Ok(resp) => resp,
                 Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                     auth_retry_attempted = true;
-                    shared_mechanism::refresh_rpc_auth_and_prepare_retry(
+                    rpc_auth_retry_mechanism::refresh_rpc_auth_and_prepare_retry(
                         ctx,
                         chain_code,
                         "broadcast_transfer:broadcast",
@@ -221,7 +221,7 @@ impl ApiTransDomain {
                     Ok(probe) => probe,
                     Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                         auth_retry_attempted = true;
-                        shared_mechanism::refresh_rpc_auth_and_prepare_retry(
+                        rpc_auth_retry_mechanism::refresh_rpc_auth_and_prepare_retry(
                             ctx,
                             chain_code,
                             "broadcast_transfer:visibility_probe",
@@ -353,7 +353,7 @@ impl ApiTransDomain {
                             }
                             Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                                 auth_retry_attempted = true;
-                                shared_mechanism::refresh_rpc_auth_and_prepare_retry(
+                                rpc_auth_retry_mechanism::refresh_rpc_auth_and_prepare_retry(
                                     ctx,
                                     chain_code,
                                     "broadcast_transfer:visibility_check",

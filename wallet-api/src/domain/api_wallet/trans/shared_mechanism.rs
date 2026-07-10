@@ -1,11 +1,6 @@
 use crate::{
-    context::Context,
-    domain::api_wallet::{
-        adapter::tx::{RawTx, TxVisibilityProbe},
-        adapter_factory::ApiChainAdapterFactory,
-    },
+    domain::api_wallet::adapter::tx::{RawTx, TxVisibilityProbe},
     error::{service::ServiceError, system::SystemError},
-    infrastructure::{chain_rpc_guard, nonce::nonce_engine::get_nonce_engine_with_ctx},
 };
 use chrono::{DateTime, Utc};
 use wallet_types::chain::chain::ChainCode;
@@ -265,85 +260,6 @@ pub(crate) fn normalize_chain_time_to_ms(raw: u128) -> Result<u128, ServiceError
     }
 
     Ok(normalized)
-}
-
-pub(crate) async fn refresh_rpc_auth_and_prepare_retry(
-    ctx: &'static Context,
-    chain_code: &str,
-    op: &str,
-    rpc: Option<&str>,
-    err: &ServiceError,
-) -> Result<(), ServiceError> {
-    let rpc = rpc.unwrap_or("<unknown>");
-    tracing::warn!(
-        chain_code = %chain_code,
-        op = %op,
-        rpc = %rpc,
-        error = %err,
-        retry = "auth_refresh_once",
-        "rpc auth unauthorized detected"
-    );
-
-    ctx.invalidate_rpc_token_cache().await;
-
-    tracing::warn!(
-        chain_code = %chain_code,
-        op = %op,
-        rpc = %rpc,
-        client_id = %ctx.get_client_id(),
-        "force refresh rpc token"
-    );
-    match ctx.get_rpc_header_force_refresh().await {
-        Ok(_) => {
-            tracing::info!(
-                chain_code = %chain_code,
-                op = %op,
-                rpc = %rpc,
-                client_id = %ctx.get_client_id(),
-                "force refresh rpc token success"
-            );
-        }
-        Err(refresh_err) => {
-            tracing::error!(
-                chain_code = %chain_code,
-                op = %op,
-                rpc = %rpc,
-                error = %refresh_err,
-                "force refresh rpc token failed"
-            );
-            return Err(refresh_err);
-        }
-    }
-
-    let removed_count = ApiChainAdapterFactory::invalidate_all_cached_adapters();
-    tracing::warn!(
-        chain_code = %chain_code,
-        op = %op,
-        rpc = %rpc,
-        removed_count = removed_count,
-        "invalidate cached adapters after rpc auth refresh"
-    );
-    Ok(())
-}
-
-pub(crate) async fn try_nonce_self_heal(
-    ctx: &'static Context,
-    trade_no: &str,
-    from_addr: &str,
-    chain_code: &str,
-    error_msg: &str,
-    source: &str,
-) -> Result<(), ServiceError> {
-    let nonce_engine = get_nonce_engine_with_ctx(ctx)?;
-    if let Err(err) = nonce_engine.handle_nonce_error(from_addr, chain_code, error_msg).await {
-        tracing::warn!(
-            trade_no = %trade_no,
-            error = %err,
-            source = %source,
-            "Nonce self-heal failed"
-        );
-    }
-    Ok(())
 }
 
 #[cfg(test)]

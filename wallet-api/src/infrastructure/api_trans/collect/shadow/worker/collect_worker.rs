@@ -71,6 +71,7 @@ use crate::{
     infrastructure::api_trans::{
         build_retry_mechanism,
         collect::legacy::AddressLockManager,
+        nonce_recovery_mechanism,
         resource_amount::energy_shortfall_to_apply_amounts,
         resource_apply_outcome::PlatformApplyOutcome,
         resource_delegation::{
@@ -3313,7 +3314,7 @@ impl ShadowCollectWorker {
             }
 
             if accepted_reason.requires_nonce_self_heal() {
-                shared_mechanism::try_nonce_self_heal(
+                nonce_recovery_mechanism::try_nonce_self_heal(
                     self.ctx,
                     trade_no,
                     &req.from_addr,
@@ -3351,7 +3352,7 @@ impl ShadowCollectWorker {
         if broadcast_failure_decision.should_fail_after_nonce_self_heal() {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Detected nonce too low error, syncing nonce from chain");
 
-            shared_mechanism::try_nonce_self_heal(
+            nonce_recovery_mechanism::try_nonce_self_heal(
                 self.ctx,
                 trade_no,
                 &req.from_addr,

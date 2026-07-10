@@ -1,7 +1,7 @@
 use crate::{
     context::{Context, get_context},
-    domain::api_wallet::trans::shared_mechanism,
     error::service::ServiceError,
+    infrastructure::api_trans::rpc_auth_retry_mechanism,
 };
 use std::future::Future;
 
@@ -16,7 +16,7 @@ pub(crate) async fn refresh_and_prepare_retry(
     resource_trade_no: &str,
     err: &ServiceError,
 ) -> Result<(), ServiceError> {
-    shared_mechanism::refresh_rpc_auth_and_prepare_retry(
+    rpc_auth_retry_mechanism::refresh_rpc_auth_and_prepare_retry(
         ctx,
         chain_code,
         operation,

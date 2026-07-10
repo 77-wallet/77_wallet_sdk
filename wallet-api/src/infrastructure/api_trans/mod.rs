@@ -182,6 +182,7 @@ pub(crate) mod build_retry_mechanism;
 pub(crate) mod collect;
 pub(crate) mod collect_fee;
 pub(crate) mod diagnose_common;
+pub(crate) mod nonce_recovery_mechanism;
 pub(crate) mod resource_ack_type;
 pub(crate) mod resource_amount;
 pub(crate) mod resource_apply_outcome;
@@ -192,6 +193,7 @@ pub(crate) mod resource_operation;
 pub(crate) mod resource_reclaim;
 pub(crate) mod resource_reservation;
 pub(crate) mod resource_rpc_auth;
+pub(crate) mod rpc_auth_retry_mechanism;
 pub(crate) mod shadow_rpc_policy;
 pub(crate) mod withdraw;
 pub use collect::{

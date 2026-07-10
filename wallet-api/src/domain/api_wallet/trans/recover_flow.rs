@@ -16,7 +16,7 @@ use crate::{
         chain::TransferResp,
     },
     error::service::ServiceError,
-    infrastructure::chain_rpc_guard,
+    infrastructure::{api_trans::rpc_auth_retry_mechanism, chain_rpc_guard},
 };
 use std::sync::Arc;
 use wallet_utils::RetryableError as _;
@@ -199,7 +199,8 @@ impl ApiTransDomain {
         err: &ServiceError,
     ) -> Result<(), ServiceError> {
         auth_retry.mark_attempted();
-        shared_mechanism::refresh_rpc_auth_and_prepare_retry(ctx, chain_code, op, rpc, err).await
+        rpc_auth_retry_mechanism::refresh_rpc_auth_and_prepare_retry(ctx, chain_code, op, rpc, err)
+            .await
     }
 
     async fn handle_recover_query_error_action(

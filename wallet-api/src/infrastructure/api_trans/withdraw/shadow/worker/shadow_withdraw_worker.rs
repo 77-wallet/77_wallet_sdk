@@ -55,6 +55,7 @@ use crate::{
     },
     infrastructure::{
         api_trans::{
+            nonce_recovery_mechanism,
             resource_amount::{
                 energy_shortfall_to_apply_amounts, parse_resource_delegation_native_trx_units,
             },
@@ -2219,7 +2220,7 @@ impl ShadowWithdrawWorker {
             }
 
             if accepted_reason.requires_nonce_self_heal() {
-                shared_mechanism::try_nonce_self_heal(
+                nonce_recovery_mechanism::try_nonce_self_heal(
                     self.ctx,
                     trade_no,
                     &withdraw.from_addr,
@@ -2252,7 +2253,7 @@ impl ShadowWithdrawWorker {
         if broadcast_failure_decision.should_fail_after_nonce_self_heal() {
             info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Detected nonce too low error, syncing nonce from chain");
 
-            shared_mechanism::try_nonce_self_heal(
+            nonce_recovery_mechanism::try_nonce_self_heal(
                 self.ctx,
                 trade_no,
                 &withdraw.from_addr,
