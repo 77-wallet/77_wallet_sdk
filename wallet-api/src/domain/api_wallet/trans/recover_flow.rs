@@ -14,15 +14,13 @@ use crate::{
         chain::TransferResp,
     },
     error::service::ServiceError,
-    infrastructure::{
-        api_trans::{
-            recover_rpc_observability::{
-                RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, log_recover_query_error,
-                log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
-            },
-            rpc_auth_retry_mechanism,
+    infrastructure::api_trans::{
+        recover_rpc_observability::{
+            RECOVER_OP_GET_ADAPTER, RECOVER_OP_QUERY_TX_RES, log_recover_query_error,
+            log_sol_visibility_probe_error, log_tron_pending_pool_query_error,
+            record_recover_rpc_success, skip_recover_if_rpc_breaker_open,
         },
-        chain_rpc_guard,
+        rpc_auth_retry_mechanism,
     },
 };
 use std::sync::Arc;
@@ -87,18 +85,7 @@ impl ApiTransDomain {
     ) -> Result<Option<TransferResp>, ServiceError> {
         tracing::info!(tx_hash=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
-        if let Some(detail) =
-            chain_rpc_guard::breaker_open_detail_for_chain_code_with_ctx(ctx, chain_code).await
-        {
-            tracing::warn!(
-                reason = "rpc_circuit_breaker_open",
-                chain_code = %chain_code,
-                host = %detail.host,
-                remaining = ?detail.remaining,
-                last_error_code = ?detail.last_error_code,
-                tx_hash = %tx_hash,
-                "Recover query skipped because chain RPC circuit breaker is open"
-            );
+        if skip_recover_if_rpc_breaker_open(ctx, chain_code, tx_hash).await {
             return Ok(None);
         }
 
@@ -256,7 +243,7 @@ impl ApiTransDomain {
 
         if is_success {
             tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
-            chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code).await;
+            record_recover_rpc_success(ctx, chain_code).await;
             Ok(Some(Self::recovered_transfer_resp(tx_hash, transaction_fee, time_ms)))
         } else {
             tracing::warn!(trade_no=?tx_hash, "链上失败，直接标记失败");

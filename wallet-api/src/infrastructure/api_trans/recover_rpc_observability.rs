@@ -1,4 +1,4 @@
-use crate::{error::service::ServiceError, infrastructure::chain_rpc_guard};
+use crate::{context::Context, error::service::ServiceError, infrastructure::chain_rpc_guard};
 use std::fmt::Display;
 
 pub(crate) const RECOVER_OP_GET_ADAPTER: &str = "process_recovered_tx:get_adapter";
@@ -6,6 +6,33 @@ pub(crate) const RECOVER_OP_QUERY_TX_RES: &str = "process_recovered_tx:query_tx_
 pub(crate) const RECOVER_OP_SOL_VISIBILITY_PROBE: &str =
     "process_recovered_tx:sol_visibility_probe";
 pub(crate) const RECOVER_OP_TRON_PENDING_POOL: &str = "process_recovered_tx:tron_pending_pool";
+
+pub(crate) async fn skip_recover_if_rpc_breaker_open(
+    ctx: &'static Context,
+    chain_code: &str,
+    tx_hash: &str,
+) -> bool {
+    let Some(detail) =
+        chain_rpc_guard::breaker_open_detail_for_chain_code_with_ctx(ctx, chain_code).await
+    else {
+        return false;
+    };
+
+    tracing::warn!(
+        reason = "rpc_circuit_breaker_open",
+        chain_code = %chain_code,
+        host = %detail.host,
+        remaining = ?detail.remaining,
+        last_error_code = ?detail.last_error_code,
+        tx_hash = %tx_hash,
+        "Recover query skipped because chain RPC circuit breaker is open"
+    );
+    true
+}
+
+pub(crate) async fn record_recover_rpc_success(ctx: &'static Context, chain_code: &str) {
+    chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code).await;
+}
 
 fn recover_failure_log<'a>(
     chain_code: &'a str,
