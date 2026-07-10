@@ -22,6 +22,26 @@ use wallet_utils::{RetryableError as _, error::RetryPolicy};
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
 
+fn is_rpc_service_unavailable(error: &ServiceError) -> bool {
+    crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(error)
+        .is_service_unavailable()
+}
+
+fn next_retry_delay_ms(
+    current_delay_ms: u64,
+    is_rpc_503: bool,
+    is_rate_limit: bool,
+    is_retryable: bool,
+) -> u64 {
+    if is_rpc_503 || is_rate_limit {
+        current_delay_ms.saturating_mul(2).min(60_000)
+    } else if is_retryable {
+        current_delay_ms.saturating_add(1_000).min(30_000)
+    } else {
+        current_delay_ms.saturating_mul(2).min(120_000)
+    }
+}
+
 #[derive(Clone)]
 pub struct TaskManager {
     ctx: &'static crate::context::Context,
@@ -155,6 +175,7 @@ impl TaskManager {
                             wallet_transport_backend::error::Error::ApiBackend(code, _)
                         ) if *code == 429
                     );
+                    let is_rpc_503 = is_rpc_service_unavailable(&e);
 
                     if is_retryable {
                         // 如果是可重试错误，则重试
@@ -208,15 +229,15 @@ impl TaskManager {
                     }
 
                     // 根据错误类型调整延迟策略
-                    if is_rate_limit {
-                        // 限流错误使用指数退避，每次延迟时间翻倍
-                        delay = std::cmp::min(delay * 2, 60_000); // 最大延迟设为60秒
+                    if is_rpc_503 || is_rate_limit {
+                        // RPC 503 和限流都使用指数退避，避免恢复时多个任务同时重试。
+                        delay = next_retry_delay_ms(delay, is_rpc_503, is_rate_limit, is_retryable);
                     } else if is_retryable {
                         // 其他可重试错误使用线性退避，每次增加1秒
-                        delay = std::cmp::min(delay + 1000, 30_000); // 最大延迟设为30秒
+                        delay = next_retry_delay_ms(delay, false, false, true);
                     } else {
                         // 不可重试错误继续使用原来的指数退避策略
-                        delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为120秒
+                        delay = next_retry_delay_ms(delay, false, false, false);
                     }
 
                     let jitter = std::time::Duration::from_millis(
@@ -226,7 +247,7 @@ impl TaskManager {
                     retry_count += 1;
 
                     tracing::debug!(
-                        "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}, is_rate_limit: {is_rate_limit}, is_retryable: {is_retryable}"
+                        "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}, is_rpc_503: {is_rpc_503}, is_rate_limit: {is_rate_limit}, is_retryable: {is_retryable}"
                     );
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
@@ -342,5 +363,28 @@ impl TaskManager {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_rpc_service_unavailable, next_retry_delay_ms};
+    use crate::error::{service::ServiceError, system::SystemError};
+
+    #[test]
+    fn rpc_503_uses_bounded_exponential_backoff() {
+        assert!(is_rpc_service_unavailable(&ServiceError::System(SystemError::Internal(
+            "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
+                .to_string(),
+        ))));
+        assert_eq!(next_retry_delay_ms(200, true, false, true), 400);
+        assert_eq!(next_retry_delay_ms(30_000, true, false, true), 60_000);
+        assert_eq!(next_retry_delay_ms(60_000, true, false, true), 60_000);
+    }
+
+    #[test]
+    fn non_503_retryable_backoff_keeps_linear_curve() {
+        assert_eq!(next_retry_delay_ms(200, false, false, true), 1_200);
+        assert_eq!(next_retry_delay_ms(29_500, false, false, true), 30_000);
     }
 }

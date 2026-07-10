@@ -26,6 +26,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 /// - `CHAIN_RPC_GUARD_RPC_TIMEOUT_MS`: max guarded RPC await time (default: 60000)
 const DEFAULT_GUARDED_HOSTS: &str = "api.nileex.io";
 const DEFAULT_MAX_CONCURRENCY: usize = 6;
+const DEFAULT_ENDPOINT_MAX_CONCURRENCY: usize = 3;
 const DEFAULT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_RPC_TIMEOUT: Duration = Duration::from_secs(60);
 const CHAIN_HOST_CACHE_TTL: Duration = Duration::from_secs(60);
@@ -93,6 +94,7 @@ fn breaker_open_duration(error_code: Option<u16>, open_count: u32) -> Duration {
 
 static CHAIN_RPC_SEM: Lazy<Arc<Semaphore>> =
     Lazy::new(|| Arc::new(Semaphore::new(max_concurrency())));
+static CHAIN_RPC_ENDPOINT_SEMS: Lazy<DashMap<String, Arc<Semaphore>>> = Lazy::new(DashMap::new);
 static TRANSIENT_503_COUNT: AtomicU64 = AtomicU64::new(0);
 static LAST_TRANSIENT_503_REPORT_MS: AtomicU64 = AtomicU64::new(0);
 
@@ -100,15 +102,32 @@ pub fn shared_chain_rpc_semaphore() -> Arc<Semaphore> {
     CHAIN_RPC_SEM.clone()
 }
 
+fn endpoint_semaphore(endpoint: &GuardedRpcEndpoint) -> Arc<Semaphore> {
+    CHAIN_RPC_ENDPOINT_SEMS
+        .entry(endpoint.key())
+        .or_insert_with(|| Arc::new(Semaphore::new(DEFAULT_ENDPOINT_MAX_CONCURRENCY)))
+        .clone()
+}
+
 pub struct ChainRpcGuardPermit {
     host: String,
-    _permit: OwnedSemaphorePermit,
+    _global_permit: OwnedSemaphorePermit,
+    _endpoint_permit: OwnedSemaphorePermit,
     acquired_at: std::time::Instant,
 }
 
 impl ChainRpcGuardPermit {
-    fn new(host: String, permit: OwnedSemaphorePermit) -> Self {
-        Self { host, _permit: permit, acquired_at: std::time::Instant::now() }
+    fn new(
+        host: String,
+        global_permit: OwnedSemaphorePermit,
+        endpoint_permit: OwnedSemaphorePermit,
+    ) -> Self {
+        Self {
+            host,
+            _global_permit: global_permit,
+            _endpoint_permit: endpoint_permit,
+            acquired_at: std::time::Instant::now(),
+        }
     }
 }
 
@@ -218,6 +237,12 @@ impl RpcCircuitBreaker {
     }
 
     pub fn record_success(&self) {
+        // A request admitted before the breaker opened may finish later. Its
+        // success must not close the breaker while the endpoint is still in
+        // the cooldown window.
+        if self.is_open() {
+            return;
+        }
         self.consecutive_failures.store(0, Ordering::Relaxed);
         self.last_failure_ms.store(0, Ordering::Relaxed);
         self.last_error_code.store(0, Ordering::Relaxed);
@@ -232,6 +257,12 @@ impl RpcCircuitBreaker {
     }
 
     pub fn record_failure(&self, error_code: Option<u16>) {
+        // Do not let failures from already-admitted in-flight requests keep
+        // moving the cooldown window. A half-open probe reaches this method
+        // only after open_until has elapsed, so its failure is still counted.
+        if self.is_open() {
+            return;
+        }
         self.half_open_probe.store(false, Ordering::Release);
         if let Some(code) = error_code {
             self.last_error_code.store(code as u32, Ordering::Relaxed);
@@ -403,35 +434,49 @@ pub async fn breaker_open_detail_for_chain_code_with_ctx(
 pub async fn acquire_if_guarded_with_ctx(
     ctx: &Context,
     chain_code: &str,
-) -> Option<OwnedSemaphorePermit> {
-    let _endpoint = guarded_endpoint_for_chain_code(chain_code, ctx).await?;
-    let sem = shared_chain_rpc_semaphore();
-    match sem.acquire_owned().await {
-        Ok(p) => Some(p),
+) -> Option<ChainRpcGuardPermit> {
+    let endpoint = guarded_endpoint_for_chain_code(chain_code, ctx).await?;
+    let endpoint_permit = match endpoint_semaphore(&endpoint).acquire_owned().await {
+        Ok(permit) => permit,
         Err(_) => {
-            tracing::error!("chain rpc semaphore closed; skip guard acquire");
-            None
+            tracing::error!(host = %endpoint.host, "chain rpc endpoint semaphore closed; skip guard acquire");
+            return None;
         }
-    }
+    };
+    let global_permit = match shared_chain_rpc_semaphore().acquire_owned().await {
+        Ok(permit) => permit,
+        Err(_) => {
+            tracing::error!(host = %endpoint.host, "chain rpc semaphore closed; skip guard acquire");
+            return None;
+        }
+    };
+    Some(ChainRpcGuardPermit::new(endpoint.host, global_permit, endpoint_permit))
 }
 
 async fn acquire_guarded_host_permit(
     host: String,
-    sem: Arc<Semaphore>,
+    endpoint_sem: Arc<Semaphore>,
+    global_sem: Arc<Semaphore>,
     timeout: Duration,
 ) -> ChainRpcGuardAcquire {
     let started_at = std::time::Instant::now();
     tracing::debug!(host = %host, timeout = ?timeout, "waiting for chain rpc guard permit");
-    match tokio::time::timeout(timeout, sem.acquire_owned()).await {
-        Ok(Ok(permit)) => {
+    let permits = tokio::time::timeout(timeout, async move {
+        let endpoint_permit = endpoint_sem.acquire_owned().await.map_err(|_| ())?;
+        let global_permit = global_sem.acquire_owned().await.map_err(|_| ())?;
+        Ok::<_, ()>((global_permit, endpoint_permit))
+    })
+    .await;
+    match permits {
+        Ok(Ok((global_permit, endpoint_permit))) => {
             let waited = started_at.elapsed();
             ChainRpcGuardAcquire::Acquired {
                 host: host.clone(),
-                permit: ChainRpcGuardPermit::new(host, permit),
+                permit: ChainRpcGuardPermit::new(host, global_permit, endpoint_permit),
                 waited,
             }
         }
-        Ok(Err(_)) => {
+        Ok(Err(())) => {
             tracing::error!(host = %host, "chain rpc semaphore closed; skip guard acquire");
             ChainRpcGuardAcquire::Closed { host }
         }
@@ -456,8 +501,14 @@ pub async fn acquire_if_guarded_with_ctx_timeout(
     let Some(endpoint) = guarded_endpoint_for_chain_code(chain_code, ctx).await else {
         return ChainRpcGuardAcquire::NotGuarded;
     };
-    acquire_guarded_host_permit(endpoint.host, shared_chain_rpc_semaphore(), acquire_timeout())
-        .await
+    let host = endpoint.host.clone();
+    acquire_guarded_host_permit(
+        host,
+        endpoint_semaphore(&endpoint),
+        shared_chain_rpc_semaphore(),
+        acquire_timeout(),
+    )
+    .await
 }
 
 pub async fn acquire_for_attempt_with_ctx(
@@ -1194,6 +1245,12 @@ mod tests {
         assert_eq!(breaker.last_error_code(), Some(503));
 
         breaker.record_success();
+        assert!(breaker.is_open());
+
+        breaker
+            .open_until_ms
+            .store(RpcCircuitBreaker::now_ms().saturating_sub(1), Ordering::Release);
+        breaker.record_success();
         assert!(!breaker.is_open());
         assert!(breaker.remaining().is_none());
         assert_eq!(breaker.last_error_code(), None);
@@ -1244,6 +1301,21 @@ mod tests {
     }
 
     #[test]
+    fn rpc_circuit_breaker_ignores_stale_outcomes_during_cooldown() {
+        let breaker = RpcCircuitBreaker::default();
+        breaker.record_failure(Some(503));
+        breaker.record_failure(Some(503));
+        let open_until = breaker.open_until_ms.load(Ordering::Acquire);
+
+        breaker.record_failure(Some(503));
+        assert_eq!(breaker.open_until_ms.load(Ordering::Acquire), open_until);
+
+        breaker.record_success();
+        assert_eq!(breaker.open_until_ms.load(Ordering::Acquire), open_until);
+        assert!(breaker.is_open());
+    }
+
+    #[test]
     fn guarded_endpoint_key_includes_network_chain_and_host() {
         let testnet = GuardedRpcEndpoint {
             network: "testnet".to_string(),
@@ -1274,10 +1346,15 @@ mod tests {
 
     #[tokio::test]
     async fn guarded_permit_acquire_times_out_without_permit() {
-        let sem = Arc::new(Semaphore::new(0));
-        let result =
-            acquire_guarded_host_permit("api.nileex.io".to_string(), sem, Duration::from_millis(1))
-                .await;
+        let endpoint_sem = Arc::new(Semaphore::new(0));
+        let global_sem = Arc::new(Semaphore::new(1));
+        let result = acquire_guarded_host_permit(
+            "api.nileex.io".to_string(),
+            endpoint_sem,
+            global_sem,
+            Duration::from_millis(1),
+        )
+        .await;
 
         assert!(matches!(
             result,
@@ -1288,15 +1365,54 @@ mod tests {
 
     #[tokio::test]
     async fn guarded_permit_acquire_returns_permit_when_available() {
-        let sem = Arc::new(Semaphore::new(1));
-        let result =
-            acquire_guarded_host_permit("api.nileex.io".to_string(), sem, Duration::from_secs(1))
-                .await;
+        let endpoint_sem = Arc::new(Semaphore::new(1));
+        let global_sem = Arc::new(Semaphore::new(1));
+        let result = acquire_guarded_host_permit(
+            "api.nileex.io".to_string(),
+            endpoint_sem,
+            global_sem,
+            Duration::from_secs(1),
+        )
+        .await;
 
         assert!(matches!(
             result,
             ChainRpcGuardAcquire::Acquired { host, .. } if host == "api.nileex.io"
         ));
+    }
+
+    #[tokio::test]
+    async fn endpoint_permits_are_isolated_from_each_other() {
+        let endpoint_a = Arc::new(Semaphore::new(1));
+        let endpoint_b = Arc::new(Semaphore::new(1));
+        let global = Arc::new(Semaphore::new(2));
+
+        let first = acquire_guarded_host_permit(
+            "api.nileex.io".to_string(),
+            endpoint_a.clone(),
+            global.clone(),
+            Duration::from_secs(1),
+        )
+        .await;
+        assert!(matches!(first, ChainRpcGuardAcquire::Acquired { .. }));
+
+        let blocked_same_endpoint = acquire_guarded_host_permit(
+            "api.nileex.io".to_string(),
+            endpoint_a,
+            global.clone(),
+            Duration::from_millis(1),
+        )
+        .await;
+        assert!(matches!(blocked_same_endpoint, ChainRpcGuardAcquire::TimedOut { .. }));
+
+        let different_endpoint = acquire_guarded_host_permit(
+            "rpc.example.com".to_string(),
+            endpoint_b,
+            global,
+            Duration::from_secs(1),
+        )
+        .await;
+        assert!(matches!(different_endpoint, ChainRpcGuardAcquire::Acquired { .. }));
     }
 
     #[tokio::test]
