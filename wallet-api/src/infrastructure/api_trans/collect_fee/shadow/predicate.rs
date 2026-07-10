@@ -1,6 +1,8 @@
 use smallvec::SmallVec;
 use wallet_database::entities::api_fee::ApiFeeEntity;
 
+use crate::domain::api_wallet::trans::shared_mechanism;
+
 use super::stage::AdvancementPoint;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,10 +29,6 @@ pub fn evaluate_point(point: AdvancementPoint, fee: &ApiFeeEntity) -> StageEval 
             StageEval { can_advance: false, reasons: SmallVec::new() }
         }
     }
-}
-
-fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
-    matches!(chain_code.to_ascii_lowercase().as_str(), "tron" | "eth" | "bnb" | "sol")
 }
 
 fn evaluate_need_tx_ack(fee: &ApiFeeEntity) -> StageEval {
@@ -120,7 +118,7 @@ fn evaluate_can_broadcast(fee: &ApiFeeEntity) -> StageEval {
     if fee.err_code.is_some() {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
-    if tracks_broadcast_uncertain_state(&fee.chain_code)
+    if shared_mechanism::tracks_broadcast_uncertain_state(&fee.chain_code)
         && fee.broadcast_uncertain_since_at.is_some()
     {
         reasons.push(StageReason {
@@ -135,7 +133,7 @@ fn evaluate_can_broadcast(fee: &ApiFeeEntity) -> StageEval {
         && fee.transaction_time.is_none()
         && fee.finished_at.is_none()
         && fee.err_code.is_none()
-        && (!tracks_broadcast_uncertain_state(&fee.chain_code)
+        && (!shared_mechanism::tracks_broadcast_uncertain_state(&fee.chain_code)
             || fee.broadcast_uncertain_since_at.is_none());
 
     StageEval { can_advance, reasons }
@@ -169,7 +167,7 @@ fn evaluate_need_recover(fee: &ApiFeeEntity) -> StageEval {
             message: "Tx exec receipt already uploaded".to_string(),
         });
     }
-    if tracks_broadcast_uncertain_state(&fee.chain_code)
+    if shared_mechanism::tracks_broadcast_uncertain_state(&fee.chain_code)
         && fee.raw_tx.is_some()
         && fee.last_broadcast_at.is_none()
         && fee.broadcast_uncertain_since_at.is_none()

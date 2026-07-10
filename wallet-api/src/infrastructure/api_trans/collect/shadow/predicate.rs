@@ -3,6 +3,8 @@ use wallet_database::entities::{
     api_collect::ApiCollectEntity, api_resource_gate::ApiResourceBlockReason,
 };
 
+use crate::domain::api_wallet::trans::shared_mechanism;
+
 use super::stage::CollectStage;
 
 /// 推进原因
@@ -33,10 +35,6 @@ pub fn evaluate_stage(stage: CollectStage, collect: &ApiCollectEntity) -> StageE
         CollectStage::NeedServiceFeeUpload => evaluate_need_service_fee_upload(collect),
         CollectStage::FullyBlocked => StageEval { can_advance: false, reasons: SmallVec::new() },
     }
-}
-
-fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
-    matches!(chain_code.to_ascii_lowercase().as_str(), "tron" | "eth" | "bnb" | "sol")
 }
 
 fn collect_resource_gate_released_for_build(collect: &ApiCollectEntity) -> bool {
@@ -341,8 +339,9 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - 当前周期已经进入服务费上传的交易：必须先完成 TxFeeResAck，才能广播
 fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
-    let broadcast_uncertain_in_progress = tracks_broadcast_uncertain_state(&collect.chain_code)
-        && collect.broadcast_uncertain_since_at.is_some();
+    let broadcast_uncertain_in_progress =
+        shared_mechanism::tracks_broadcast_uncertain_state(&collect.chain_code)
+            && collect.broadcast_uncertain_since_at.is_some();
 
     if collect.raw_tx.is_none() {
         reasons.push(StageReason {
@@ -416,10 +415,11 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
 /// - 只看不可逆事实是否缺失，不做时间推断
 fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
-    let broadcast_not_attempted = tracks_broadcast_uncertain_state(&collect.chain_code)
-        && collect.raw_tx.is_some()
-        && collect.last_broadcast_at.is_none()
-        && collect.broadcast_uncertain_since_at.is_none();
+    let broadcast_not_attempted =
+        shared_mechanism::tracks_broadcast_uncertain_state(&collect.chain_code)
+            && collect.raw_tx.is_some()
+            && collect.last_broadcast_at.is_none()
+            && collect.broadcast_uncertain_since_at.is_none();
 
     if collect.tx_hash.is_none() {
         reasons.push(StageReason {

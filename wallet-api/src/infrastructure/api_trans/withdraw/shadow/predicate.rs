@@ -3,6 +3,8 @@ use wallet_database::entities::{
     api_resource_gate::ApiResourceBlockReason, api_withdraw::ApiWithdrawEntity,
 };
 
+use crate::domain::api_wallet::trans::shared_mechanism;
+
 use super::stage::AdvancementPoint;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,10 +17,6 @@ pub struct StageReason {
 pub struct StageEval {
     pub can_advance: bool,
     pub reasons: SmallVec<[StageReason; 4]>,
-}
-
-fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
-    matches!(chain_code.to_ascii_lowercase().as_str(), "tron" | "eth" | "bnb" | "sol")
 }
 
 fn withdraw_resource_gate_released_for_build(withdraw: &ApiWithdrawEntity) -> bool {
@@ -219,7 +217,7 @@ fn evaluate_can_broadcast(withdraw: &ApiWithdrawEntity) -> StageEval {
     if withdraw.err_code.is_some() {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
-    if tracks_broadcast_uncertain_state(&withdraw.chain_code)
+    if shared_mechanism::tracks_broadcast_uncertain_state(&withdraw.chain_code)
         && withdraw.broadcast_uncertain_since_at.is_some()
     {
         reasons.push(StageReason {
@@ -231,7 +229,7 @@ fn evaluate_can_broadcast(withdraw: &ApiWithdrawEntity) -> StageEval {
     let can_advance = withdraw.tx_ack_sent_at.is_some()
         && withdraw.raw_tx.is_some()
         && withdraw.last_broadcast_at.is_none()
-        && (!tracks_broadcast_uncertain_state(&withdraw.chain_code)
+        && (!shared_mechanism::tracks_broadcast_uncertain_state(&withdraw.chain_code)
             || withdraw.broadcast_uncertain_since_at.is_none())
         && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none();
@@ -260,7 +258,7 @@ fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
             message: "Tx exec receipt already uploaded; auto recover disabled".to_string(),
         });
     }
-    if tracks_broadcast_uncertain_state(&withdraw.chain_code)
+    if shared_mechanism::tracks_broadcast_uncertain_state(&withdraw.chain_code)
         && withdraw.raw_tx.is_some()
         && withdraw.last_broadcast_at.is_none()
         && withdraw.broadcast_uncertain_since_at.is_none()
@@ -282,7 +280,7 @@ fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
     let can_advance = withdraw.tx_hash.is_some()
         && withdraw.transaction_time.is_none()
         && withdraw.tx_exec_receipt_uploaded_at.is_none()
-        && !(tracks_broadcast_uncertain_state(&withdraw.chain_code)
+        && !(shared_mechanism::tracks_broadcast_uncertain_state(&withdraw.chain_code)
             && withdraw.raw_tx.is_some()
             && withdraw.last_broadcast_at.is_none()
             && withdraw.broadcast_uncertain_since_at.is_none())
