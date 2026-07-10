@@ -90,16 +90,6 @@ impl ShadowFeeWorker {
     const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
     const BUILD_SLOT_STALE_SECS: i64 = 30;
 
-    fn is_evm_chain_code(chain_code: &str) -> bool {
-        chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
-    }
-
-    fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
-        Self::is_evm_chain_code(chain_code)
-            || chain_code.eq_ignore_ascii_case("sol")
-            || chain_code.eq_ignore_ascii_case("tron")
-    }
-
     pub(crate) fn is_solana_recipient_rent_error(err: &ServiceError) -> bool {
         let msg = err.to_string();
         msg.contains("recipient account is not initialized")
@@ -282,7 +272,7 @@ impl ShadowFeeWorker {
                 return Ok(());
             }
 
-            if Self::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
+            if shared_mechanism::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
                 && fresh_req.raw_tx.is_some()
                 && fresh_req.last_broadcast_at.is_none()
                 && fresh_req.broadcast_uncertain_since_at.is_none()
@@ -303,7 +293,7 @@ impl ShadowFeeWorker {
         };
         // 🔓 锁在这里已经释放
 
-        if Self::is_evm_chain_code(&req.chain_code) {
+        if shared_mechanism::is_evm_chain(&req.chain_code) {
             let now = Utc::now();
             if Self::should_throttle_evm_uncertain_recover(&req, now) {
                 let elapsed = Self::evm_uncertain_elapsed_secs(&req, now).unwrap_or_default();
@@ -489,7 +479,7 @@ impl ShadowFeeWorker {
                     }
                 }
 
-                if !Self::tracks_broadcast_uncertain_state(&req.chain_code) {
+                if !shared_mechanism::tracks_broadcast_uncertain_state(&req.chain_code) {
                     // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
                     // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
                     self.scanner.try_advance(trade_no).await;
@@ -519,7 +509,7 @@ impl ShadowFeeWorker {
                     "Recover uncertain state recorded"
                 );
 
-                if !Self::is_evm_chain_code(&refreshed.chain_code) {
+                if !shared_mechanism::is_evm_chain(&refreshed.chain_code) {
                     return Ok(());
                 }
 
@@ -844,7 +834,7 @@ impl ShadowFeeWorker {
                 return Ok(());
             }
 
-            if Self::tracks_broadcast_uncertain_state(&fresh_fee.chain_code)
+            if shared_mechanism::tracks_broadcast_uncertain_state(&fresh_fee.chain_code)
                 && fresh_fee.broadcast_uncertain_since_at.is_some()
                 && fresh_fee.last_broadcast_at.is_none()
                 && fresh_fee.transaction_time.is_none()
@@ -963,7 +953,7 @@ impl ShadowFeeWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction broadcast result is uncertain");
-                if !Self::tracks_broadcast_uncertain_state(&fee.chain_code) {
+                if !shared_mechanism::tracks_broadcast_uncertain_state(&fee.chain_code) {
                     return Ok(());
                 }
                 let had_uncertain_since = fee.broadcast_uncertain_since_at.is_some();

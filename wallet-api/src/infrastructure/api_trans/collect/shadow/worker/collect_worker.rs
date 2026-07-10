@@ -177,16 +177,6 @@ impl ShadowCollectWorker {
     const BUILD_SLOT_STALE_SECS: i64 = 30;
     const BUILD_503_RETRY_WINDOW_SECS: i64 = 3 * 60;
 
-    fn is_evm_chain_code(chain_code: &str) -> bool {
-        chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
-    }
-
-    fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
-        Self::is_evm_chain_code(chain_code)
-            || chain_code.eq_ignore_ascii_case("sol")
-            || chain_code.eq_ignore_ascii_case("tron")
-    }
-
     fn should_spend_all_native_collect(chain_code: &str, token_key: &AssetTokenKey) -> bool {
         chain_code.eq_ignore_ascii_case("sol") && token_key.is_native()
     }
@@ -1386,7 +1376,7 @@ impl ShadowCollectWorker {
                 return Ok(());
             }
 
-            if Self::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
+            if shared_mechanism::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
                 && fresh_req.raw_tx.is_some()
                 && fresh_req.last_broadcast_at.is_none()
                 && fresh_req.broadcast_uncertain_since_at.is_none()
@@ -1407,7 +1397,7 @@ impl ShadowCollectWorker {
         };
         // 🔓 锁在这里已经释放
 
-        if Self::is_evm_chain_code(&req.chain_code) {
+        if shared_mechanism::is_evm_chain(&req.chain_code) {
             let now = Utc::now();
             if Self::should_throttle_evm_uncertain_recover(&req, now) {
                 let elapsed = Self::broadcast_uncertain_elapsed_secs(&req, now).unwrap_or_default();
@@ -1604,7 +1594,7 @@ impl ShadowCollectWorker {
                 }
 
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recover result is uncertain");
-                if !Self::tracks_broadcast_uncertain_state(&req.chain_code) {
+                if !shared_mechanism::tracks_broadcast_uncertain_state(&req.chain_code) {
                     // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
                     // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
                     self.advancer.try_advance(trade_no).await;
@@ -1639,7 +1629,7 @@ impl ShadowCollectWorker {
                     return Ok(());
                 }
 
-                if !Self::is_evm_chain_code(&refreshed.chain_code)
+                if !shared_mechanism::is_evm_chain(&refreshed.chain_code)
                     && !refreshed.chain_code.eq_ignore_ascii_case("sol")
                 {
                     warn!(
@@ -2030,7 +2020,7 @@ impl ShadowCollectWorker {
         // 🔓 锁在这里已经释放
 
         // ====== phase 1.5: 锁外 · EVM nonce-gap 前置纠偏（单次最多一次） ======
-        if Self::is_evm_chain_code(&req.chain_code) {
+        if shared_mechanism::is_evm_chain(&req.chain_code) {
             let chain_nonce =
                 ApiTransDomain::nonce(&self.ctx, &req.from_addr, &req.chain_code).await?;
             if Self::should_force_align_prebuild_nonce_gap(chain_nonce, nonce) {
@@ -2213,7 +2203,7 @@ impl ShadowCollectWorker {
                 return Ok(());
             }
 
-            if Self::is_evm_chain_code(&fresh_req.chain_code)
+            if shared_mechanism::is_evm_chain(&fresh_req.chain_code)
                 && fresh_req.broadcast_uncertain_since_at.is_some()
                 && fresh_req.transaction_time.is_none()
                 && fresh_req.tx_exec_receipt_uploaded_at.is_none()
@@ -2343,7 +2333,7 @@ impl ShadowCollectWorker {
             None => {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction broadcast result is uncertain");
 
-                if Self::tracks_broadcast_uncertain_state(&req.chain_code) {
+                if shared_mechanism::tracks_broadcast_uncertain_state(&req.chain_code) {
                     let had_uncertain_since = req.broadcast_uncertain_since_at.is_some();
                     let rows_affected = ApiCollectRepo::mark_broadcast_uncertain_attempt(
                         &self.ctx.api_transaction_pool()?,
@@ -4765,15 +4755,6 @@ oss:
         )));
 
         assert!(!ShadowCollectWorker::is_solana_rent_exempt_reserve_balance_error(&req, &err));
-    }
-
-    #[test]
-    fn tron_chain_tracks_broadcast_uncertain_state() {
-        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("tron"));
-        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("sol"));
-        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("eth"));
-        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("bnb"));
-        assert!(!ShadowCollectWorker::tracks_broadcast_uncertain_state("unknown"));
     }
 
     #[test]

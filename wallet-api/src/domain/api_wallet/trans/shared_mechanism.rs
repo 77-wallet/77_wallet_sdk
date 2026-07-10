@@ -8,16 +8,24 @@ use std::fmt::Display;
 use wallet_types::chain::chain::ChainCode;
 
 pub(crate) fn is_evm_chain(chain_code: &str) -> bool {
-    chain_code == ChainCode::Ethereum.to_string()
-        || chain_code == ChainCode::BnbSmartChain.to_string()
+    chain_code.eq_ignore_ascii_case(&ChainCode::Ethereum.to_string())
+        || chain_code.eq_ignore_ascii_case(&ChainCode::BnbSmartChain.to_string())
 }
 
 pub(crate) fn is_sol_chain(chain_code: &str) -> bool {
-    chain_code == ChainCode::Solana.to_string()
+    chain_code.eq_ignore_ascii_case(&ChainCode::Solana.to_string())
+}
+
+pub(crate) fn is_tron_chain(chain_code: &str) -> bool {
+    chain_code.eq_ignore_ascii_case(&ChainCode::Tron.to_string())
 }
 
 pub(crate) fn need_broadcast_visibility_check(chain_code: &str) -> bool {
     is_evm_chain(chain_code) || is_sol_chain(chain_code)
+}
+
+pub(crate) fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
+    is_evm_chain(chain_code) || is_sol_chain(chain_code) || is_tron_chain(chain_code)
 }
 
 pub(crate) fn warn_chain_rpc_failure(
@@ -199,7 +207,29 @@ pub(crate) async fn try_nonce_self_heal(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_chain_time_to_ms;
+    use super::{
+        is_evm_chain, is_sol_chain, is_tron_chain, normalize_chain_time_to_ms,
+        tracks_broadcast_uncertain_state,
+    };
+
+    #[test]
+    fn chain_kind_helpers_are_case_insensitive() {
+        assert!(is_evm_chain("eth"));
+        assert!(is_evm_chain("BNB"));
+        assert!(is_sol_chain("sol"));
+        assert!(is_sol_chain("SOL"));
+        assert!(is_tron_chain("tron"));
+        assert!(is_tron_chain("TRON"));
+    }
+
+    #[test]
+    fn uncertain_state_tracking_chains_are_explicit() {
+        assert!(tracks_broadcast_uncertain_state("eth"));
+        assert!(tracks_broadcast_uncertain_state("bnb"));
+        assert!(tracks_broadcast_uncertain_state("sol"));
+        assert!(tracks_broadcast_uncertain_state("tron"));
+        assert!(!tracks_broadcast_uncertain_state("unknown"));
+    }
 
     #[test]
     fn normalize_chain_time_seconds_to_ms() {

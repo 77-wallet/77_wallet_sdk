@@ -156,16 +156,6 @@ impl ShadowWithdrawWorker {
             .max(0)
     }
 
-    fn is_evm_chain_code(chain_code: &str) -> bool {
-        chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
-    }
-
-    fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
-        Self::is_evm_chain_code(chain_code)
-            || chain_code.eq_ignore_ascii_case("sol")
-            || chain_code.eq_ignore_ascii_case("tron")
-    }
-
     fn should_force_align_prebroadcast_nonce_gap(chain_nonce: u64, local_nonce: u64) -> bool {
         local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
     }
@@ -1000,7 +990,7 @@ impl ShadowWithdrawWorker {
                 return Ok(());
             }
 
-            if Self::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
+            if shared_mechanism::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
                 && fresh_req.raw_tx.is_some()
                 && fresh_req.last_broadcast_at.is_none()
                 && fresh_req.broadcast_uncertain_since_at.is_none()
@@ -1020,7 +1010,7 @@ impl ShadowWithdrawWorker {
             fresh_req
         };
 
-        if Self::is_evm_chain_code(&req.chain_code) {
+        if shared_mechanism::is_evm_chain(&req.chain_code) {
             let now = Utc::now();
             if Self::should_throttle_evm_uncertain_recover(&req, now) {
                 let elapsed = Self::evm_uncertain_elapsed_secs(&req, now).unwrap_or_default();
@@ -1203,7 +1193,7 @@ impl ShadowWithdrawWorker {
                     }
                 }
 
-                if !Self::tracks_broadcast_uncertain_state(&req.chain_code) {
+                if !shared_mechanism::tracks_broadcast_uncertain_state(&req.chain_code) {
                     // 未纳入 broadcast-uncertain 轨道的链保持原行为：立即尝试推进一次
                     self.scanner.try_advance(trade_no).await;
                     return Ok(());
@@ -1232,7 +1222,7 @@ impl ShadowWithdrawWorker {
                     "Recover uncertain state recorded"
                 );
 
-                if !Self::is_evm_chain_code(&refreshed.chain_code) {
+                if !shared_mechanism::is_evm_chain(&refreshed.chain_code) {
                     return Ok(());
                 }
 
@@ -1590,7 +1580,7 @@ impl ShadowWithdrawWorker {
                 return Ok(());
             }
 
-            if Self::tracks_broadcast_uncertain_state(&fresh_withdraw.chain_code)
+            if shared_mechanism::tracks_broadcast_uncertain_state(&fresh_withdraw.chain_code)
                 && fresh_withdraw.broadcast_uncertain_since_at.is_some()
                 && fresh_withdraw.last_broadcast_at.is_none()
                 && fresh_withdraw.transaction_time.is_none()
@@ -1609,7 +1599,7 @@ impl ShadowWithdrawWorker {
                 return Ok(());
             }
 
-            if Self::is_evm_chain_code(&fresh_withdraw.chain_code) {
+            if shared_mechanism::is_evm_chain(&fresh_withdraw.chain_code) {
                 match ApiTransDomain::nonce(
                     &self.ctx,
                     &fresh_withdraw.from_addr,
@@ -1766,7 +1756,7 @@ impl ShadowWithdrawWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Transaction broadcast result is uncertain");
-                if !Self::tracks_broadcast_uncertain_state(&withdraw.chain_code) {
+                if !shared_mechanism::tracks_broadcast_uncertain_state(&withdraw.chain_code) {
                     return Ok(());
                 }
                 let had_uncertain_since = withdraw.broadcast_uncertain_since_at.is_some();
@@ -2150,7 +2140,7 @@ impl ShadowWithdrawWorker {
         let tx_hash = withdraw.tx_hash.as_ref().unwrap();
         info!(trade_no = %withdraw.trade_no, tx_hash = %tx_hash, source = "shadow_withdraw_worker", "Processing recovered tx");
 
-        if Self::is_evm_chain_code(&withdraw.chain_code) {
+        if shared_mechanism::is_evm_chain(&withdraw.chain_code) {
             info!(
                 trade_no = %withdraw.trade_no,
                 tx_hash = %tx_hash,
@@ -2164,7 +2154,7 @@ impl ShadowWithdrawWorker {
             );
         }
 
-        if Self::is_evm_chain_code(&withdraw.chain_code)
+        if shared_mechanism::is_evm_chain(&withdraw.chain_code)
             && Self::test_force_withdraw_evm_recover_none()
         {
             warn!(
