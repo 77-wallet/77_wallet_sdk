@@ -550,6 +550,26 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Worker behavior: after timeout, collect and collect-fee retain their existing
   rebroadcast transitions.
 
+### Collect Resource Gate Uses Shared Single Lane
+
+- Layer: unit.
+- Entrypoints:
+
+  ```text
+  src/infrastructure/api_trans/shadow_rpc_policy.rs
+  shared_resource_gate_semaphore_allows_only_one_cross_flow_permit
+
+  src/infrastructure/api_trans/collect/shadow/dispatcher.rs
+  resource_gate_uses_shared_lane_while_transaction_actions_use_chain_lane
+  ```
+
+- Backend: none.
+- Dispatcher facts: Collect `EvalResourceGate` uses the same process-wide
+  one-permit lane as Withdraw resource evaluation; Build, Broadcast, and Recover
+  remain on the Collect chain lane.
+- Invariant: Collect and Withdraw resource evaluations must not overlap or
+  consume transaction execution and recovery dispatcher capacity.
+
 ### Chain RPC Guard Acquire Timeout
 
 - Layer: unit.

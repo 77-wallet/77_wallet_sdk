@@ -269,11 +269,11 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   ```
 
 - Backend: none.
-- Dispatcher facts: all `EvalResourceGate` intents use a one-permit lane;
-  Build, Broadcast, and Recover continue using the chain lane.
+- Dispatcher facts: all `EvalResourceGate` intents use the process-wide shared
+  one-permit lane; Build, Broadcast, and Recover continue using the chain lane.
 - Invariant: an audit batch must not create concurrent TRON resource-gate RPC
-  evaluations or consume the dispatcher capacity reserved for transaction
-  execution and recovery.
+  evaluations, overlap Collect resource evaluation, or consume the dispatcher
+  capacity reserved for transaction execution and recovery.
 
 ## Template Contract
 

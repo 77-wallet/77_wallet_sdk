@@ -37,6 +37,31 @@ pub enum RunningKey {
     UploadResourceTxExecReceipt(String),
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum DispatcherLane {
+    Chain,
+    ResourceGate,
+    SideEffect,
+}
+
+impl DispatcherLane {
+    fn for_intent(intent: &CollectIntent) -> Self {
+        match intent {
+            CollectIntent::SideEffect(_) => Self::SideEffect,
+            CollectIntent::Chain(ChainIntent::EvalResourceGate(_)) => Self::ResourceGate,
+            CollectIntent::Chain(_) => Self::Chain,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Chain => "chain",
+            Self::ResourceGate => "resource_gate",
+            Self::SideEffect => "side_effect",
+        }
+    }
+}
+
 impl RunningKey {
     /// 从 CollectIntent 生成对应的 RunningKey
     pub fn from_intent(intent: &CollectIntent) -> Self {
@@ -86,7 +111,7 @@ impl RunningKey {
 
 #[cfg(test)]
 mod tests {
-    use super::RunningKey;
+    use super::{DispatcherLane, RunningKey};
     use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     #[test]
@@ -119,6 +144,18 @@ mod tests {
 
         assert!(matches!(resource_exec, RunningKey::ExecuteLocalResourceDelegation(_)));
         assert_ne!(resource_exec, collect_build);
+    }
+
+    #[test]
+    fn resource_gate_uses_shared_lane_while_transaction_actions_use_chain_lane() {
+        let resource_gate =
+            CollectIntent::Chain(ChainIntent::EvalResourceGate("C_RESOURCE".to_string()));
+        let broadcast = CollectIntent::Chain(ChainIntent::BroadcastTx("C_BROADCAST".to_string()));
+        let recover = CollectIntent::Chain(ChainIntent::RecoverTx("C_RECOVER".to_string()));
+
+        assert_eq!(DispatcherLane::for_intent(&resource_gate), DispatcherLane::ResourceGate);
+        assert_eq!(DispatcherLane::for_intent(&broadcast), DispatcherLane::Chain);
+        assert_eq!(DispatcherLane::for_intent(&recover), DispatcherLane::Chain);
     }
 }
 
@@ -460,10 +497,11 @@ impl ShadowDispatcher {
         let trace = DispatchTrace::from_intent(&intent, running_key.clone());
         let running = self.running.clone();
         let running_times = self.running_times.clone();
-        let semaphore = if trace.side_effect {
-            self.side_effect_semaphore.clone()
-        } else {
-            self.chain_semaphore.clone()
+        let lane = DispatcherLane::for_intent(&intent);
+        let semaphore = match lane {
+            DispatcherLane::Chain => self.chain_semaphore.clone(),
+            DispatcherLane::ResourceGate => shadow_rpc_policy::shared_resource_gate_semaphore(),
+            DispatcherLane::SideEffect => self.side_effect_semaphore.clone(),
         };
         let shadow_worker = self.shadow_worker.clone();
         let side_effect_worker = self.side_effect_worker.clone();
@@ -478,7 +516,7 @@ impl ShadowDispatcher {
                     debug!(
                         key = ?running_key,
                         duration = ?acquire_duration,
-                        side_effect = trace.side_effect,
+                        dispatcher_lane = lane.as_str(),
                         "Acquired dispatcher semaphore permit"
                     );
                     p

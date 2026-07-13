@@ -1,9 +1,13 @@
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::{
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::Semaphore;
 
 const DEFAULT_RECOVER_COOLDOWN: Duration = Duration::from_secs(60);
 const MAX_RECOVER_COOLDOWN: Duration = Duration::from_secs(300);
@@ -23,6 +27,12 @@ static BREAKER_WARN_LAST_LOG_TS: Lazy<DashMap<String, Instant>> = Lazy::new(Dash
 static BROADCAST_INTENT_DISPATCH_COUNT: AtomicU64 = AtomicU64::new(0);
 static RECOVER_INTENT_DISPATCH_COUNT: AtomicU64 = AtomicU64::new(0);
 static LAST_INTENT_REPORT_TS: AtomicU64 = AtomicU64::new(0);
+static SHARED_RESOURCE_GATE_SEMAPHORE: Lazy<Arc<Semaphore>> =
+    Lazy::new(|| Arc::new(Semaphore::new(1)));
+
+pub(crate) fn shared_resource_gate_semaphore() -> Arc<Semaphore> {
+    SHARED_RESOURCE_GATE_SEMAPHORE.clone()
+}
 
 fn parse_usize_env(raw: Option<&str>, default: usize, min: usize, max: usize) -> usize {
     let parsed = raw.and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(default);
@@ -148,8 +158,11 @@ pub(crate) fn record_chain_intent_dispatch(intent_kind: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{next_recover_cooldown, parse_u64_env, parse_usize_env, recover_dispatch_key};
-    use std::time::Duration;
+    use super::{
+        next_recover_cooldown, parse_u64_env, parse_usize_env, recover_dispatch_key,
+        shared_resource_gate_semaphore,
+    };
+    use std::{sync::Arc, time::Duration};
 
     #[test]
     fn recover_backoff_doubles_and_is_capped() {
@@ -162,6 +175,18 @@ mod tests {
     #[test]
     fn recover_dispatch_key_is_shared_across_recover_entry_points() {
         assert_eq!(recover_dispatch_key("trade-1"), "recover:trade-1");
+    }
+
+    #[test]
+    fn shared_resource_gate_semaphore_allows_only_one_cross_flow_permit() {
+        let withdraw_handle = shared_resource_gate_semaphore();
+        let collect_handle = shared_resource_gate_semaphore();
+        assert!(Arc::ptr_eq(&withdraw_handle, &collect_handle));
+
+        let permit = withdraw_handle.clone().try_acquire_owned().unwrap();
+        assert!(collect_handle.clone().try_acquire_owned().is_err());
+        drop(permit);
+        assert!(collect_handle.try_acquire_owned().is_ok());
     }
 
     #[test]
