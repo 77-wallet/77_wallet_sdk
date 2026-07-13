@@ -213,6 +213,7 @@ impl ShadowWithdrawWorker {
         shared_mechanism::should_retry_after_tron_missing_confirmed_and_pending(
             &req.chain_code,
             req.last_broadcast_at,
+            req.broadcast_uncertain_since_at,
             Self::TRON_MISSING_CONFIRMED_AND_PENDING_MANUAL_REVIEW_TIMEOUT_SECS,
             Utc::now(),
         )

@@ -174,16 +174,17 @@ pub(crate) fn is_tron_missing_confirmed_and_pending_error(err: &ServiceError) ->
 pub(crate) fn should_retry_after_tron_missing_confirmed_and_pending(
     chain_code: &str,
     last_broadcast_at: Option<DateTime<Utc>>,
+    broadcast_uncertain_since_at: Option<DateTime<Utc>>,
     timeout_secs: i64,
     now: DateTime<Utc>,
 ) -> bool {
     if !is_tron_chain(chain_code) {
         return false;
     }
-    let Some(last_broadcast_at) = last_broadcast_at else {
+    let Some(timeout_base) = last_broadcast_at.or(broadcast_uncertain_since_at) else {
         return false;
     };
-    now.signed_duration_since(last_broadcast_at).num_seconds() >= timeout_secs
+    now.signed_duration_since(timeout_base).num_seconds() >= timeout_secs
 }
 
 pub(crate) fn log_visibility_probe(
@@ -446,11 +447,20 @@ mod tests {
         assert!(!should_retry_after_tron_missing_confirmed_and_pending(
             "tron",
             Some(now - Duration::seconds(10)),
+            Some(now - Duration::seconds(120)),
             60,
             now
         ));
         assert!(should_retry_after_tron_missing_confirmed_and_pending(
             "tron",
+            Some(now - Duration::seconds(60)),
+            None,
+            60,
+            now
+        ));
+        assert!(should_retry_after_tron_missing_confirmed_and_pending(
+            "tron",
+            None,
             Some(now - Duration::seconds(60)),
             60,
             now
@@ -458,10 +468,13 @@ mod tests {
         assert!(!should_retry_after_tron_missing_confirmed_and_pending(
             "sol",
             Some(now - Duration::seconds(60)),
+            Some(now - Duration::seconds(60)),
             60,
             now
         ));
-        assert!(!should_retry_after_tron_missing_confirmed_and_pending("tron", None, 60, now));
+        assert!(!should_retry_after_tron_missing_confirmed_and_pending(
+            "tron", None, None, 60, now
+        ));
     }
 
     #[test]

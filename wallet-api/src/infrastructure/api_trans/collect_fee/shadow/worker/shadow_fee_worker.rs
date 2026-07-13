@@ -134,6 +134,7 @@ impl ShadowFeeWorker {
         shared_mechanism::should_retry_after_tron_missing_confirmed_and_pending(
             &req.chain_code,
             req.last_broadcast_at,
+            req.broadcast_uncertain_since_at,
             Self::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS,
             Utc::now(),
         )

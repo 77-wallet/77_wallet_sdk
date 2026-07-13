@@ -239,6 +239,10 @@ impl TronTx {
 
 #[async_trait::async_trait]
 impl Tx for TronTx {
+    fn rpc_endpoint_for_log(&self) -> Option<String> {
+        Some(self.rpc_url.clone())
+    }
+
     async fn account_resource(
         &self,
         owner_address: &str,

@@ -532,6 +532,24 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: recover must not clear `raw_tx` / `tx_hash` for rebuild when the
   fee row already has a transaction hash.
 
+### Collect Missing TRON Transaction Uses Uncertain Timestamp
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  src/domain/api_wallet/trans/shared_mechanism.rs
+  tron_missing_confirmed_and_pending_retry_waits_for_timeout
+  ```
+
+- Backend: none.
+- DB facts: historical collect and collect-fee rows may have no
+  `last_broadcast_at` while retaining `broadcast_uncertain_since_at`.
+- Invariant: Recover uses `last_broadcast_at` when present, otherwise falls back
+  to `broadcast_uncertain_since_at`; with neither timestamp it must keep waiting.
+- Worker behavior: after timeout, collect and collect-fee retain their existing
+  rebroadcast transitions.
+
 ### Chain RPC Guard Acquire Timeout
 
 - Layer: unit.
