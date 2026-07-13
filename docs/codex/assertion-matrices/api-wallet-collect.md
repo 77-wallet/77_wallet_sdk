@@ -4,6 +4,23 @@ Scope: `wallet-api` API wallet collect flow.
 
 Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
+### Collect Fee TRON Uncertain Rebuild
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  wallet-database/src/dao/api_fee.rs
+  invalidate_uncertain_fee_raw_tx_for_rebroadcast_preserves_confirmed_rows
+  ```
+
+- Backend: none; the test uses a temporary SQLite database.
+- DB facts: an uncertain TRON fee row may have
+  `broadcast_uncertain_since_at IS NOT NULL` while `last_broadcast_at IS NULL`.
+- Retry: invalidation clears raw transaction, hash, and uncertain tracking so
+  the scanner can emit `BuildTx` again.
+- Invariant: a row with `transaction_time IS NOT NULL` is never invalidated.
+
 ## Current Standard Tests
 
 ### Collect Order Notification Retry

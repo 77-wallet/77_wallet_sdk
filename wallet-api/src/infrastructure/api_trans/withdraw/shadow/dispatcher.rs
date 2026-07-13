@@ -106,7 +106,11 @@ impl RunningKey {
 
 #[cfg(test)]
 mod tests {
-    use super::{DispatcherLane, RunningKey};
+    use std::sync::Arc;
+
+    use dashmap::{DashMap, DashSet};
+
+    use super::{DispatcherLane, RunningGuard, RunningKey};
     use crate::infrastructure::api_trans::withdraw::shadow::{WithdrawChainIntent, WithdrawIntent};
 
     #[test]
@@ -140,6 +144,24 @@ mod tests {
         assert_eq!(DispatcherLane::for_intent(&broadcast), DispatcherLane::Chain);
         assert_eq!(DispatcherLane::for_intent(&recover), DispatcherLane::Chain);
     }
+
+    #[test]
+    fn queued_intent_is_not_watchdog_tracked_until_execution_starts() {
+        let key = RunningKey::EvalResourceGate("W_QUEUED".to_string());
+        let running = Arc::new(DashSet::new());
+        let running_times = Arc::new(DashMap::new());
+
+        running.insert(key.clone());
+        assert!(running.contains(&key));
+        assert!(!running_times.contains_key(&key));
+
+        let guard = RunningGuard::start(key.clone(), running.clone(), running_times.clone());
+        assert!(running_times.contains_key(&key));
+
+        drop(guard);
+        assert!(!running.contains(&key));
+        assert!(!running_times.contains_key(&key));
+    }
 }
 
 /// RunningGuard 用于 RAII 方式管理 running 标记
@@ -151,13 +173,14 @@ pub struct RunningGuard {
 }
 
 impl RunningGuard {
-    /// 创建一个新的 RunningGuard
-    /// 注意：调用者需要确保 key 已经被插入到 running_set 中
-    pub fn new(
+    /// 开始执行并创建 RunningGuard。
+    /// 调用者需要先将 key 插入 running_set；watchdog 从这里开始计时。
+    pub fn start(
         key: RunningKey,
         running_set: Arc<DashSet<RunningKey>>,
         running_times: Arc<DashMap<RunningKey, Instant>>,
     ) -> Self {
+        running_times.insert(key.clone(), Instant::now());
         Self { key, running_set, running_times }
     }
 }
@@ -279,10 +302,7 @@ impl ShadowDispatcher {
             return Ok(());
         }
 
-        // 3. 记录任务开始时间
-        self.running_times.insert(running_key.clone(), Instant::now());
-
-        // 4. 克隆需要的字段，用于 spawn 的任务中
+        // 3. 克隆需要的字段，用于 spawn 的任务中
         let running = self.running.clone();
         let running_times = self.running_times.clone();
         let lane = DispatcherLane::for_intent(&intent);
@@ -321,7 +341,7 @@ impl ShadowDispatcher {
             let running_key_for_log = running_key.clone();
 
             // 创建 RunningGuard，确保无论如何都会释放 running 标记
-            let _guard = RunningGuard::new(running_key, running, running_times);
+            let _guard = RunningGuard::start(running_key, running, running_times);
 
             // 路由 Intent 到正确的 Worker
             if let Err(e) = match intent {

@@ -2,6 +2,21 @@
 
 Scope: `wallet-api` API wallet withdraw flow.
 
+### Withdraw Dispatcher Watchdog Timing
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/dispatcher.rs
+  queued_intent_is_not_watchdog_tracked_until_execution_starts
+  ```
+
+- Queue: an intent waiting for a dispatcher lane permit remains in duplicate
+  suppression but has no watchdog start timestamp.
+- Execution: watchdog timing begins only after the permit is acquired.
+- Invariant: dropping the execution guard clears both tracking structures.
+
 Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Current Standard Tests
