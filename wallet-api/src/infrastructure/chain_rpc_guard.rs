@@ -703,17 +703,20 @@ pub async fn run_guarded_raw_with_ctx_and_log<T, Fut>(
 where
     Fut: Future<Output = T>,
 {
-    let _breaker_probe =
-        match admit_breaker_for_attempt_with_ctx(ctx, chain_code, trade_no, action, source).await {
-            ChainRpcBreakerAttempt::Proceed(probe) => probe,
-            ChainRpcBreakerAttempt::Skip => return Ok(None),
-        };
-
     let _guard = match acquire_for_attempt_with_ctx(ctx, chain_code, trade_no, action, source).await
     {
         ChainRpcGuardAttempt::Proceed(permit) => permit,
         ChainRpcGuardAttempt::Skip => return Ok(None),
     };
+
+    // Breaker admission must happen after semaphore waiting. Otherwise a burst
+    // admitted while closed can keep hitting the endpoint after queued requests
+    // ahead of it open the breaker.
+    let _breaker_probe =
+        match admit_breaker_for_attempt_with_ctx(ctx, chain_code, trade_no, action, source).await {
+            ChainRpcBreakerAttempt::Proceed(probe) => probe,
+            ChainRpcBreakerAttempt::Skip => return Ok(None),
+        };
 
     match run_with_rpc_timeout(future, chain_code, trade_no, action, source).await {
         Ok(value) => Ok(Some(value)),
@@ -1378,6 +1381,41 @@ mod tests {
         assert!(matches!(
             result,
             ChainRpcGuardAcquire::Acquired { host, .. } if host == "api.nileex.io"
+        ));
+    }
+
+    #[tokio::test]
+    async fn queued_request_rechecks_breaker_after_permit_acquire() {
+        let endpoint_sem = Arc::new(Semaphore::new(1));
+        let global_sem = Arc::new(Semaphore::new(1));
+        let held_endpoint_permit = endpoint_sem.clone().acquire_owned().await.unwrap();
+        let breaker = Arc::new(RpcCircuitBreaker::default());
+
+        let queued = {
+            let endpoint_sem = endpoint_sem.clone();
+            let global_sem = global_sem.clone();
+            let breaker = breaker.clone();
+            tokio::spawn(async move {
+                let acquired = acquire_guarded_host_permit(
+                    "api.nileex.io".to_string(),
+                    endpoint_sem,
+                    global_sem,
+                    Duration::from_secs(1),
+                )
+                .await;
+                assert!(matches!(acquired, ChainRpcGuardAcquire::Acquired { .. }));
+                breaker.try_admit()
+            })
+        };
+
+        tokio::task::yield_now().await;
+        breaker.record_failure(Some(503));
+        breaker.record_failure(Some(503));
+        drop(held_endpoint_permit);
+
+        assert!(matches!(
+            queued.await.unwrap(),
+            RpcCircuitBreakerAdmission::Open(remaining) if remaining > Duration::ZERO
         ));
     }
 

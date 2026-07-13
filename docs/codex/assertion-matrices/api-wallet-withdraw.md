@@ -258,6 +258,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   `tx_hash` / `raw_tx` so recover can query chain facts after the current
   `ChainTx` attempt exits.
 
+### Withdraw Resource Gate Uses Independent Single Lane
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/dispatcher.rs
+  resource_gate_uses_single_independent_dispatcher_lane
+  ```
+
+- Backend: none.
+- Dispatcher facts: all `EvalResourceGate` intents use a one-permit lane;
+  Build, Broadcast, and Recover continue using the chain lane.
+- Invariant: an audit batch must not create concurrent TRON resource-gate RPC
+  evaluations or consume the dispatcher capacity reserved for transaction
+  execution and recovery.
+
 ## Template Contract
 
 `withdraw_notification/mod.rs` uses the role-trait Given-When-Then shape:

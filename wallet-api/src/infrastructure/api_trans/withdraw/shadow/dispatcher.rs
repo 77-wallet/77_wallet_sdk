@@ -35,6 +35,31 @@ pub enum RunningKey {
     UploadResourceTxExecReceipt(String),
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum DispatcherLane {
+    Chain,
+    ResourceGate,
+    SideEffect,
+}
+
+impl DispatcherLane {
+    fn for_intent(intent: &WithdrawIntent) -> Self {
+        match intent {
+            WithdrawIntent::SideEffect(_) => Self::SideEffect,
+            WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(_)) => Self::ResourceGate,
+            WithdrawIntent::Chain(_) => Self::Chain,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Chain => "chain",
+            Self::ResourceGate => "resource_gate",
+            Self::SideEffect => "side_effect",
+        }
+    }
+}
+
 impl RunningKey {
     /// 从 WithdrawIntent 生成对应的 RunningKey
     pub fn from_intent(intent: &WithdrawIntent) -> Self {
@@ -81,7 +106,7 @@ impl RunningKey {
 
 #[cfg(test)]
 mod tests {
-    use super::RunningKey;
+    use super::{DispatcherConfig, DispatcherLane, RunningKey};
     use crate::infrastructure::api_trans::withdraw::shadow::{WithdrawChainIntent, WithdrawIntent};
 
     #[test]
@@ -100,6 +125,21 @@ mod tests {
         assert_ne!(broadcast, recover);
         assert!(matches!(build, RunningKey::TxMutation(_)));
         assert!(matches!(recover, RunningKey::RecoverTx(_)));
+    }
+
+    #[test]
+    fn resource_gate_uses_single_independent_dispatcher_lane() {
+        let resource_gate =
+            WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate("W_RESOURCE".to_string()));
+        let broadcast =
+            WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx("W_BROADCAST".to_string()));
+        let recover =
+            WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx("W_RECOVER".to_string()));
+
+        assert_eq!(DispatcherLane::for_intent(&resource_gate), DispatcherLane::ResourceGate);
+        assert_eq!(DispatcherLane::for_intent(&broadcast), DispatcherLane::Chain);
+        assert_eq!(DispatcherLane::for_intent(&recover), DispatcherLane::Chain);
+        assert_eq!(DispatcherConfig::default().resource_gate_semaphore_size, 1);
     }
 }
 
@@ -137,6 +177,8 @@ impl Drop for RunningGuard {
 pub struct DispatcherConfig {
     /// 链路任务并发配额（Build/Broadcast/Recover）
     pub chain_semaphore_size: usize,
+    /// 资源评估单独串行，避免审核批次形成节点请求峰值。
+    pub resource_gate_semaphore_size: usize,
     /// 副作用任务并发配额（ACK/回执）
     pub side_effect_semaphore_size: usize,
     /// 二次校验超时时间
@@ -155,6 +197,7 @@ impl Default for DispatcherConfig {
         );
         Self {
             chain_semaphore_size,
+            resource_gate_semaphore_size: 1,
             side_effect_semaphore_size,
             db_check_timeout: Duration::from_secs(5), // 5秒
         }
@@ -177,6 +220,8 @@ pub(crate) struct ShadowDispatcher {
     running_times: Arc<DashMap<RunningKey, Instant>>,
     /// 链路任务并发控制信号量
     chain_semaphore: Arc<Semaphore>,
+    /// 提币资源评估独立并发控制，不占用广播和 Recover 配额。
+    resource_gate_semaphore: Arc<Semaphore>,
     /// 副作用任务并发控制信号量
     side_effect_semaphore: Arc<Semaphore>,
     /// Shadow Worker，处理链相关操作
@@ -196,6 +241,7 @@ impl ShadowDispatcher {
         intent_tx: tokio::sync::mpsc::Sender<WithdrawIntent>,
     ) -> Self {
         let chain_semaphore_size = config.chain_semaphore_size;
+        let resource_gate_semaphore_size = config.resource_gate_semaphore_size;
         let side_effect_semaphore_size = config.side_effect_semaphore_size;
         Self {
             pool,
@@ -203,6 +249,7 @@ impl ShadowDispatcher {
             running: Arc::new(DashSet::new()),
             running_times: Arc::new(DashMap::new()),
             chain_semaphore: Arc::new(Semaphore::new(chain_semaphore_size)),
+            resource_gate_semaphore: Arc::new(Semaphore::new(resource_gate_semaphore_size)),
             side_effect_semaphore: Arc::new(Semaphore::new(side_effect_semaphore_size)),
             shadow_worker,
             side_effect_worker,
@@ -246,11 +293,11 @@ impl ShadowDispatcher {
         // 4. 克隆需要的字段，用于 spawn 的任务中
         let running = self.running.clone();
         let running_times = self.running_times.clone();
-        let is_side_effect_intent = matches!(&intent, WithdrawIntent::SideEffect(_));
-        let semaphore = if is_side_effect_intent {
-            self.side_effect_semaphore.clone()
-        } else {
-            self.chain_semaphore.clone()
+        let lane = DispatcherLane::for_intent(&intent);
+        let semaphore = match lane {
+            DispatcherLane::Chain => self.chain_semaphore.clone(),
+            DispatcherLane::ResourceGate => self.resource_gate_semaphore.clone(),
+            DispatcherLane::SideEffect => self.side_effect_semaphore.clone(),
         };
         let shadow_worker = self.shadow_worker.clone();
         let side_effect_worker = self.side_effect_worker.clone();
@@ -265,7 +312,7 @@ impl ShadowDispatcher {
                     info!(
                         key = ?running_key,
                         duration = ?acquire_duration,
-                        side_effect = is_side_effect_intent,
+                        dispatcher_lane = lane.as_str(),
                         "Acquired dispatcher semaphore permit"
                     );
                     p
