@@ -268,6 +268,12 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
         if app.is_busy {
             ui.label(RichText::new("Command running").color(Color32::from_rgb(166, 116, 0)));
         }
+        if ui
+            .add_enabled(client_ready && !app.is_busy, egui::Button::new("Use Nile TronGrid"))
+            .clicked()
+        {
+            app.use_nile_trongrid_for_selected_client();
+        }
     });
 
     ui.add_space(10.0);

@@ -10,6 +10,29 @@ pub enum ConsoleCommand {
     ScanBind { app_id: String, org_id: String, subaccount_uid: String, withdrawal_uid: String },
     FetchPendingWithdrawOrders { withdrawal_uid: String, page_size: i64 },
     ReviewWithdrawOrders { trade_nos: Vec<String>, approve: bool },
+    SetChainNode { chain_code: String, rpc_url: String },
     LoadTransferTargets { chain_code: String, sub_wallet_address: String },
     RunBatchTransfer { config: BatchTransferConfig },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConsoleCommand;
+
+    #[test]
+    fn set_chain_node_command_round_trips() {
+        let command = ConsoleCommand::SetChainNode {
+            chain_code: "tron".to_string(),
+            rpc_url: "https://nile.trongrid.io".to_string(),
+        };
+
+        let encoded = serde_json::to_string(&command).unwrap();
+        let decoded: ConsoleCommand = serde_json::from_str(&encoded).unwrap();
+
+        assert!(matches!(
+            decoded,
+            ConsoleCommand::SetChainNode { chain_code, rpc_url }
+                if chain_code == "tron" && rpc_url == "https://nile.trongrid.io"
+        ));
+    }
 }

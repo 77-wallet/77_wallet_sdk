@@ -102,6 +102,15 @@ pub enum ConsoleEvent {
     WithdrawReviewFinished {
         client_id: ClientId,
     },
+    ChainNodeSet {
+        client_id: ClientId,
+        chain_code: String,
+        rpc_url: String,
+    },
+    ChainNodeSetFailed {
+        client_id: ClientId,
+        error: String,
+    },
     LoadedTargets {
         client_id: ClientId,
         targets: Vec<String>,

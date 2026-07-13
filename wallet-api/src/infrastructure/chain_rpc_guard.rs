@@ -20,11 +20,11 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 /// - Best-effort: guard failures MUST NOT block business flows.
 ///
 /// Configuration (env):
-/// - `CHAIN_RPC_GUARD_HOSTS`: comma-separated hosts to guard (default: `api.nileex.io`)
+/// - `CHAIN_RPC_GUARD_HOSTS`: comma-separated hosts to guard (default: Nile public HTTP hosts)
 /// - `CHAIN_RPC_GUARD_MAX_CONCURRENCY`: guarded-endpoint global concurrency (default: 6)
 /// - `CHAIN_RPC_GUARD_ACQUIRE_TIMEOUT_MS`: max wait for a guarded permit (default: 30000)
 /// - `CHAIN_RPC_GUARD_RPC_TIMEOUT_MS`: max guarded RPC await time (default: 60000)
-const DEFAULT_GUARDED_HOSTS: &str = "api.nileex.io";
+const DEFAULT_GUARDED_HOSTS: &str = "api.nileex.io,nile.trongrid.io";
 const DEFAULT_MAX_CONCURRENCY: usize = 6;
 const DEFAULT_ENDPOINT_MAX_CONCURRENCY: usize = 3;
 const DEFAULT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -1187,18 +1187,18 @@ mod tests {
 
     #[test]
     fn transient_chain_rpc_error_message_detects_503_and_html_payloads() {
-        let nile_503 = "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract";
+        let nile_503 = "Node response error: code=503, rpc=https://nile.trongrid.io/wallet/triggerconstantcontract";
         assert!(is_transient_chain_rpc_error_message(nile_503));
         assert!(is_service_unavailable_error(nile_503));
         assert_eq!(
             chain_rpc_error_code(
-                "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
+                "Node response error: code=503, rpc=https://nile.trongrid.io/wallet/triggerconstantcontract"
             ),
             Some(503)
         );
         assert_eq!(
             chain_rpc_error_code(
-                "NodeResponseError { code: 503, rpc: \"https://api.nileex.io/wallet/triggerconstantcontract\" }"
+                "NodeResponseError { code: 503, rpc: \"https://nile.trongrid.io/wallet/triggerconstantcontract\" }"
             ),
             Some(503)
         );
@@ -1206,10 +1206,13 @@ mod tests {
             chain_rpc_error_code("Node response error: code=-32000, rpc=https://example"),
             None
         );
-        assert_eq!(guarded_chain_rpc_host_from_message(nile_503).as_deref(), Some("api.nileex.io"));
+        assert_eq!(
+            guarded_chain_rpc_host_from_message(nile_503).as_deref(),
+            Some("nile.trongrid.io")
+        );
         let classification = classify_chain_rpc_error_message(nile_503);
         assert_eq!(classification.error_code, Some(503));
-        assert_eq!(classification.guarded_host.as_deref(), Some("api.nileex.io"));
+        assert_eq!(classification.guarded_host.as_deref(), Some("nile.trongrid.io"));
         assert_eq!(classification.transient_reason, Some("http_503"));
         assert!(classification.is_service_unavailable);
         assert!(classification.is_transient);
@@ -1225,12 +1228,12 @@ mod tests {
 
     #[test]
     fn chain_rpc_error_context_exposes_shared_fields() {
-        let err = "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount";
+        let err = "Node response error: code=503, rpc=https://nile.trongrid.io/wallet/getaccount";
         let ctx = ChainRpcErrorContext::from_display(&err);
 
         assert_eq!(ctx.message(), err);
         assert_eq!(ctx.error_code(), Some(503));
-        assert_eq!(ctx.guarded_host(), Some("api.nileex.io"));
+        assert_eq!(ctx.guarded_host(), Some("nile.trongrid.io"));
         assert_eq!(ctx.transient_reason(), Some("http_503"));
         assert!(ctx.is_service_unavailable());
         assert!(ctx.is_transient());

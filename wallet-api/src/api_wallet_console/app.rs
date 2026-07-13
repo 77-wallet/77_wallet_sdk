@@ -230,6 +230,19 @@ impl ApiWalletConsoleApp {
         });
     }
 
+    pub(crate) fn use_nile_trongrid_for_selected_client(&mut self) {
+        if let Some(client) = self.selected_client() {
+            self.append_log(format!(
+                "{}: switch TRON node to Nile TronGrid requested",
+                client.name
+            ));
+        }
+        self.send_command_to_selected(ConsoleCommand::SetChainNode {
+            chain_code: "tron".to_string(),
+            rpc_url: "https://nile.trongrid.io".to_string(),
+        });
+    }
+
     pub(crate) fn fetch_pending_withdraw_orders_for_selected_client(&mut self) {
         let withdrawal_uid = self.bind_form.withdrawal_uid();
         if withdrawal_uid.is_empty() {
@@ -592,6 +605,26 @@ impl ApiWalletConsoleApp {
                     .unwrap_or_else(|| "client".to_string());
                 self.append_log(format!("{client_name}: withdraw review command finished"));
                 self.selected_withdraw_trade_nos.clear();
+                self.is_busy = false;
+            }
+            ConsoleEvent::ChainNodeSet { client_id, chain_code, rpc_url } => {
+                let client_name = self
+                    .clients
+                    .iter()
+                    .find(|client| client.id == client_id)
+                    .map(|client| client.name.clone())
+                    .unwrap_or_else(|| "client".to_string());
+                self.append_log(format!("{client_name}: {chain_code} node switched to {rpc_url}"));
+                self.is_busy = false;
+            }
+            ConsoleEvent::ChainNodeSetFailed { client_id, error } => {
+                let client_name = self
+                    .clients
+                    .iter()
+                    .find(|client| client.id == client_id)
+                    .map(|client| client.name.clone())
+                    .unwrap_or_else(|| "client".to_string());
+                self.append_log(format!("{client_name}: node switch failed - {error}"));
                 self.is_busy = false;
             }
             ConsoleEvent::LoadedTargets { client_id, targets } => {

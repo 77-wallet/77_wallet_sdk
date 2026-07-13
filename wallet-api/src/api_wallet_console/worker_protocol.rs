@@ -18,6 +18,8 @@ pub enum WorkerEvent {
     BalanceAssetsLoaded { wallet_address: String, rows: Vec<BalanceAssetRow> },
     WithdrawOrdersLoaded { rows: Vec<WithdrawOrderRow> },
     WithdrawReviewFinished,
+    ChainNodeSet { chain_code: String, rpc_url: String },
+    ChainNodeSetFailed { error: String },
     LoadedTargets { targets: Vec<String> },
     TransferFinished { summary: BatchTransferSummary },
 }

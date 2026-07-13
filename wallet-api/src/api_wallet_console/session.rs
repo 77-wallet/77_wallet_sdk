@@ -143,6 +143,12 @@ fn forward_worker_event(
             ConsoleEvent::WithdrawOrdersLoaded { client_id, rows }
         }
         WorkerEvent::WithdrawReviewFinished => ConsoleEvent::WithdrawReviewFinished { client_id },
+        WorkerEvent::ChainNodeSet { chain_code, rpc_url } => {
+            ConsoleEvent::ChainNodeSet { client_id, chain_code, rpc_url }
+        }
+        WorkerEvent::ChainNodeSetFailed { error } => {
+            ConsoleEvent::ChainNodeSetFailed { client_id, error }
+        }
         WorkerEvent::LoadedTargets { targets } => {
             ConsoleEvent::LoadedTargets { client_id, targets }
         }

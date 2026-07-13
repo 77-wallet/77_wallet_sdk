@@ -283,6 +283,13 @@ async fn handle_command(
             emit(&WorkerEvent::Log { message: format!("{action} withdraw orders finished") });
             emit(&WorkerEvent::WithdrawReviewFinished);
         }
+        ConsoleCommand::SetChainNode { chain_code, rpc_url } => {
+            let result = set_chain_node_by_rpc_url(wallet_manager, &chain_code, &rpc_url).await;
+            match result {
+                Ok(()) => emit(&WorkerEvent::ChainNodeSet { chain_code, rpc_url }),
+                Err(err) => emit(&WorkerEvent::ChainNodeSetFailed { error: err.to_string() }),
+            }
+        }
         ConsoleCommand::LoadTransferTargets { chain_code, sub_wallet_address } => {
             let res = wallet_manager
                 .list_api_wallet_account(
@@ -317,6 +324,37 @@ async fn handle_command(
                 Err(err) => emit(&WorkerEvent::Failed { error: err.to_string() }),
             }
         }
+    }
+}
+
+async fn set_chain_node_by_rpc_url(
+    wallet_manager: &wallet_api::manager::WalletManager,
+    chain_code: &str,
+    rpc_url: &str,
+) -> anyhow::Result<()> {
+    let target = normalize_rpc_url(rpc_url);
+    let node = wallet_manager
+        .get_node_list(chain_code)
+        .await?
+        .into_iter()
+        .find(|node| normalize_rpc_url(&node.rpc_url) == target)
+        .ok_or_else(|| anyhow::anyhow!("configured node not found: {chain_code} {rpc_url}"))?;
+
+    wallet_manager.set_chain_node(chain_code, &node.node_id).await?;
+    Ok(())
+}
+
+fn normalize_rpc_url(rpc_url: &str) -> &str {
+    rpc_url.trim().trim_end_matches('/')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_rpc_url;
+
+    #[test]
+    fn rpc_url_matching_ignores_whitespace_and_trailing_slash() {
+        assert_eq!(normalize_rpc_url(" https://nile.trongrid.io/ "), "https://nile.trongrid.io");
     }
 }
 
