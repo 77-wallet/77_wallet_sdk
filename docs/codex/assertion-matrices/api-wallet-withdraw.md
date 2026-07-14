@@ -290,6 +290,24 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   evaluations, overlap Collect resource evaluation, or consume the dispatcher
   capacity reserved for transaction execution and recovery.
 
+### Withdraw Fee Estimate Fast Path
+
+- Layer: scanner unit/component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/scanner.rs
+  withdraw_try_advance_dispatches_fee_estimate_before_audit
+  ```
+
+- DB facts: TRON withdraw, `fee_estimated_at IS NULL`, `raw_tx IS NULL`,
+  `transaction_time IS NULL`, `finished_at IS NULL`, `err_code IS NULL`.
+- Intent: point-to-point `try_advance` dispatches `EstimateFee` before TX ACK,
+  resource gate, build, broadcast, or recover intents.
+- Invariant: a newly submitted audit-pending withdraw order should get its
+  display fee snapshot through the fast path instead of waiting for the next
+  periodic scanner round.
+
 ## Template Contract
 
 `withdraw_notification/mod.rs` uses the role-trait Given-When-Then shape:

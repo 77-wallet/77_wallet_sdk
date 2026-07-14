@@ -265,7 +265,10 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 use tracing::{error, trace, warn};
-use wallet_database::{ApiTransactionDbPool, entities::api_withdraw::ApiWithdrawEntity};
+use wallet_database::{
+    ApiTransactionDbPool,
+    entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawEntity},
+};
 
 use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 
@@ -274,6 +277,7 @@ use super::{
     stage::{ADVANCEMENT_ORDER, AdvancementPoint},
 };
 use crate::{
+    domain::api_wallet::trans::shared_mechanism,
     error::service::ServiceError,
     infrastructure::api_trans::{
         shadow_rpc_policy,
@@ -335,6 +339,16 @@ fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
         && withdraw.raw_tx.is_none()           // 执行条件: 未构建
         && withdraw.finished_at.is_none()       // 终止排除: 未结束
         && withdraw.err_code.is_none() // 终止排除: 无错误
+}
+
+fn need_fee_estimate_snapshot(withdraw: &ApiWithdrawEntity) -> bool {
+    withdraw.trade_type == ApiTradeType::Withdraw
+        && shared_mechanism::is_tron_chain(&withdraw.chain_code)
+        && withdraw.fee_estimated_at.is_none()
+        && withdraw.raw_tx.is_none()
+        && withdraw.transaction_time.is_none()
+        && withdraw.finished_at.is_none()
+        && withdraw.err_code.is_none()
 }
 
 /// 检查是否可以广播交易
@@ -1140,6 +1154,27 @@ impl ShadowScanner {
             }
         }
 
+        if need_fee_estimate_snapshot(&withdraw) {
+            if let Some((host, remaining)) =
+                shadow_rpc_policy::breaker_open_for_chain_code(self.ctx, &withdraw.chain_code).await
+            {
+                trace!(
+                    trade_no = %trade_no,
+                    chain_code = %withdraw.chain_code,
+                    host = %host,
+                    remaining = ?remaining,
+                    "try_advance_skip_because_breaker_open: withdraw fee estimate skipped"
+                );
+                return Ok(());
+            }
+
+            trace!(trade_no = %trade_no, "Need to estimate withdraw fee snapshot");
+            let intent =
+                WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(trade_no.to_string()));
+            self.dispatch_intent(intent);
+            return Ok(());
+        }
+
         // err_code 冻结：只允许 UploadTxExecReceipt
         if withdraw.err_code.is_some() {
             let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &withdraw);
@@ -1539,6 +1574,53 @@ mod tests {
             WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(ref trade_no))
                 if trade_no == "W_fee_estimate_before_audit"
         ));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn withdraw_try_advance_dispatches_fee_estimate_before_audit() -> anyhow::Result<()> {
+        let ctx = test_ctx().await;
+        let pool = ctx.api_transaction_pool()?;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_1",
+            "withdraw",
+            "from_addr",
+            "to_addr",
+            "1",
+            "digest",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_fee_estimate_try_advance",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await?;
+
+        scanner.try_advance("W_fee_estimate_try_advance").await;
+
+        let intent = intent_rx.try_recv().expect("fee estimate intent should be dispatched");
+        assert!(matches!(
+            intent,
+            WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(ref trade_no))
+                if trade_no == "W_fee_estimate_try_advance"
+        ));
+        assert!(intent_rx.try_recv().is_err());
 
         Ok(())
     }
