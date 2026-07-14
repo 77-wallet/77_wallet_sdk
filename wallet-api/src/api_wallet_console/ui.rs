@@ -180,6 +180,7 @@ fn draw_observe_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
         observe_tab(ui, app, ObserveTab::Wallets, "Wallets");
         observe_tab(ui, app, ObserveTab::Balances, "Balances");
         observe_tab(ui, app, ObserveTab::Accounts, "Accounts");
+        observe_tab(ui, app, ObserveTab::Diagnostics, "Diagnostics");
     });
     ui.add_space(10.0);
 
@@ -247,6 +248,9 @@ fn draw_observe_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                     });
             }
         }),
+        ObserveTab::Diagnostics => panel(ui, "Diagnostics", |ui| {
+            draw_diagnostics_panel(app, ui);
+        }),
     }
 }
 
@@ -274,6 +278,38 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
         {
             app.use_nile_trongrid_for_selected_client();
         }
+    });
+
+    ui.add_space(10.0);
+    egui::CollapsingHeader::new("Diagnostics").default_open(true).show(ui, |ui| {
+        panel(ui, "Diagnostics", |ui| {
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(
+                        client_ready && !app.is_busy,
+                        egui::Button::new("Refresh task queue"),
+                    )
+                    .clicked()
+                {
+                    app.refresh_task_queue_for_selected_client();
+                }
+            });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label("trade_no");
+                ui.add(
+                    TextEdit::singleline(&mut app.diagnostic_trade_no)
+                        .desired_width(260.0)
+                        .hint_text("withdraw or collect trade_no"),
+                );
+                if ui
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("Diagnose"))
+                    .clicked()
+                {
+                    app.diagnose_trade_for_selected_client();
+                }
+            });
+        });
     });
 
     ui.add_space(10.0);
@@ -552,6 +588,109 @@ fn limited_account_addresses_for_wallet_text(
         .collect::<Vec<_>>();
     rows.sort_by_key(|row| row.account_id);
     rows.into_iter().take(count).map(|row| row.address.as_str()).collect::<Vec<_>>().join("\n")
+}
+
+fn draw_diagnostics_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
+    if let Some(summary) = &app.task_queue_summary {
+        ui.label(RichText::new("Task Queue").strong());
+        Grid::new("task_queue_diagnostics").num_columns(4).spacing([20.0, 6.0]).show(ui, |ui| {
+            ui.label("all");
+            ui.label(summary.all_tasks.to_string());
+            ui.label("pending");
+            ui.label(summary.pending_tasks.to_string());
+            ui.end_row();
+            ui.label("running");
+            ui.label(summary.running_tasks.to_string());
+            ui.label("failed");
+            ui.label(summary.failed_task_count.to_string());
+            ui.end_row();
+            ui.label("done");
+            ui.label(summary.done_tasks.to_string());
+            ui.label("bills");
+            ui.label(summary.bill_count.to_string());
+            ui.end_row();
+            ui.label("expand batches");
+            ui.label(summary.expand_batches.to_string());
+            ui.label("unfinished items");
+            ui.label(summary.unfinished_expand_items.to_string());
+            ui.end_row();
+            ui.label("address states");
+            ui.label(summary.address_query_states.to_string());
+            ui.label("recovery");
+            ui.label(format!("{:.1}%", summary.overall_percent * 100.0));
+            ui.end_row();
+        });
+
+        if !summary.failed_tasks.is_empty() {
+            ui.add_space(8.0);
+            ui.label(RichText::new("Failed Tasks").strong());
+            for task in &summary.failed_tasks {
+                Frame::none()
+                    .fill(Color32::from_rgb(248, 250, 252))
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(220, 226, 234)))
+                    .rounding(6.0)
+                    .inner_margin(Margin::same(8.0))
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(task.id.as_str()).monospace().strong());
+                        ui.label(format!("{} | status {}", task.task_name, task.status));
+                        if let Some(err_msg) = task.err_msg.as_deref() {
+                            ui.label(RichText::new(err_msg).color(Color32::from_rgb(150, 48, 48)));
+                        }
+                        if let Some(remark) = task.remark.as_deref() {
+                            ui.label(remark);
+                        }
+                    });
+                ui.add_space(6.0);
+            }
+        }
+    } else {
+        ui.label(
+            RichText::new("No task queue snapshot loaded. Click Refresh task queue.")
+                .color(Color32::from_rgb(130, 140, 150)),
+        );
+    }
+
+    ui.add_space(12.0);
+    if let Some(diagnostics) = &app.trade_diagnostics {
+        ui.label(RichText::new(format!("Trade {}", diagnostics.trade_no)).strong());
+        if diagnostics.records.is_empty() {
+            ui.label(
+                RichText::new("No local withdraw or collect record found.")
+                    .color(Color32::from_rgb(130, 140, 150)),
+            );
+        }
+        for record in &diagnostics.records {
+            Frame::none()
+                .fill(Color32::from_rgb(248, 250, 252))
+                .stroke(Stroke::new(1.0, Color32::from_rgb(220, 226, 234)))
+                .rounding(6.0)
+                .inner_margin(Margin::same(8.0))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(record.flow.as_str()).strong());
+                        ui.label(format!("{} {}", record.chain_code, record.status));
+                    });
+                    ui.label(format!("{} {}", record.value, record.symbol));
+                    ui.label(RichText::new(format!("from: {}", record.from_addr)).monospace());
+                    ui.label(RichText::new(format!("to: {}", record.to_addr)).monospace());
+                    if let Some(tx_hash) = record.tx_hash.as_deref() {
+                        ui.label(RichText::new(format!("tx: {tx_hash}")).monospace());
+                    }
+                    if let Some(err_msg) = record.err_msg.as_deref() {
+                        ui.label(RichText::new(err_msg).color(Color32::from_rgb(150, 48, 48)));
+                    }
+                    if let Some(notes) = record.notes.as_deref() {
+                        ui.label(notes);
+                    }
+                });
+            ui.add_space(6.0);
+        }
+    } else {
+        ui.label(
+            RichText::new("No trade diagnostics loaded. Enter a trade_no and click Diagnose.")
+                .color(Color32::from_rgb(130, 140, 150)),
+        );
+    }
 }
 
 fn draw_withdraw_order_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {

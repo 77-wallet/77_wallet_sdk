@@ -290,6 +290,18 @@ async fn handle_command(
                 Err(err) => emit(&WorkerEvent::ChainNodeSetFailed { error: err.to_string() }),
             }
         }
+        ConsoleCommand::RefreshTaskQueueStatus => {
+            match wallet_manager.get_console_task_queue_summary().await {
+                Ok(summary) => emit(&WorkerEvent::TaskQueueStatusLoaded { summary }),
+                Err(err) => emit(&WorkerEvent::Failed { error: err.to_string() }),
+            }
+        }
+        ConsoleCommand::DiagnoseTrade { trade_no } => {
+            match wallet_manager.diagnose_trade(&trade_no).await {
+                Ok(diagnostics) => emit(&WorkerEvent::TradeDiagnosticsLoaded { diagnostics }),
+                Err(err) => emit(&WorkerEvent::Failed { error: err.to_string() }),
+            }
+        }
         ConsoleCommand::LoadTransferTargets { chain_code, sub_wallet_address } => {
             let res = wallet_manager
                 .list_api_wallet_account(

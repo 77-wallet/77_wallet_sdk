@@ -2,7 +2,10 @@ use std::{collections::HashSet, sync::mpsc};
 
 use eframe::egui;
 
-use crate::batch_transfer::BatchTransferSummary;
+use crate::{
+    batch_transfer::BatchTransferSummary,
+    response_vo::standard_wallet::diagnostics::{ConsoleTaskQueueSummary, TradeDiagnostics},
+};
 
 use super::{
     bind::BindForm,
@@ -29,8 +32,11 @@ pub struct ApiWalletConsoleApp {
     pub(crate) comma_copy_start_account_id: String,
     pub(crate) comma_copy_count: String,
     pub(crate) withdraw_review_trade_nos: String,
+    pub(crate) diagnostic_trade_no: String,
     pub(crate) pending_withdraw_orders: Vec<WithdrawOrderRow>,
     pub(crate) selected_withdraw_trade_nos: HashSet<String>,
+    pub(crate) task_queue_summary: Option<ConsoleTaskQueueSummary>,
+    pub(crate) trade_diagnostics: Option<TradeDiagnostics>,
     pub(crate) logs: Vec<String>,
     pub(crate) log_panel_widths: Vec<f32>,
     pub(crate) log_filter: LogFilter,
@@ -48,6 +54,7 @@ pub enum ObserveTab {
     Wallets,
     Balances,
     Accounts,
+    Diagnostics,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,8 +93,11 @@ impl ApiWalletConsoleApp {
             comma_copy_start_account_id: "1".to_string(),
             comma_copy_count: "10".to_string(),
             withdraw_review_trade_nos: String::new(),
+            diagnostic_trade_no: String::new(),
             pending_withdraw_orders: Vec::new(),
             selected_withdraw_trade_nos: HashSet::new(),
+            task_queue_summary: None,
+            trade_diagnostics: None,
             logs: Vec::new(),
             log_panel_widths: vec![340.0; client_count],
             log_filter: LogFilter::All,
@@ -137,6 +147,8 @@ impl ApiWalletConsoleApp {
         self.last_summary = None;
         self.pending_withdraw_orders.clear();
         self.selected_withdraw_trade_nos.clear();
+        self.task_queue_summary = None;
+        self.trade_diagnostics = None;
         if let Some(client) = self.selected_client() {
             if let Some(command_tx) = client.command_tx.as_ref() {
                 let _ = command_tx.send(ConsoleCommand::RefreshWallets);
@@ -241,6 +253,25 @@ impl ApiWalletConsoleApp {
             chain_code: "tron".to_string(),
             rpc_url: "https://nile.trongrid.io".to_string(),
         });
+    }
+
+    pub(crate) fn refresh_task_queue_for_selected_client(&mut self) {
+        if let Some(client) = self.selected_client() {
+            self.append_log(format!("{}: task queue status refresh requested", client.name));
+        }
+        self.send_command_to_selected(ConsoleCommand::RefreshTaskQueueStatus);
+    }
+
+    pub(crate) fn diagnose_trade_for_selected_client(&mut self) {
+        let trade_no = self.diagnostic_trade_no.trim().to_string();
+        if trade_no.is_empty() {
+            self.append_log("Trade diagnostics skipped: trade_no is empty");
+            return;
+        }
+        if let Some(client) = self.selected_client() {
+            self.append_log(format!("{}: trade diagnostics requested for {trade_no}", client.name));
+        }
+        self.send_command_to_selected(ConsoleCommand::DiagnoseTrade { trade_no });
     }
 
     pub(crate) fn fetch_pending_withdraw_orders_for_selected_client(&mut self) {
@@ -625,6 +656,40 @@ impl ApiWalletConsoleApp {
                     .map(|client| client.name.clone())
                     .unwrap_or_else(|| "client".to_string());
                 self.append_log(format!("{client_name}: node switch failed - {error}"));
+                self.is_busy = false;
+            }
+            ConsoleEvent::TaskQueueStatusLoaded { client_id, summary } => {
+                let client_name = self
+                    .clients
+                    .iter()
+                    .find(|client| client.id == client_id)
+                    .map(|client| client.name.clone())
+                    .unwrap_or_else(|| "client".to_string());
+                self.append_log(format!(
+                    "{client_name}: task queue loaded all={}, pending={}, running={}, failed={}",
+                    summary.all_tasks,
+                    summary.pending_tasks,
+                    summary.running_tasks,
+                    summary.failed_task_count
+                ));
+                self.task_queue_summary = Some(summary);
+                self.observe_tab = ObserveTab::Diagnostics;
+                self.is_busy = false;
+            }
+            ConsoleEvent::TradeDiagnosticsLoaded { client_id, diagnostics } => {
+                let client_name = self
+                    .clients
+                    .iter()
+                    .find(|client| client.id == client_id)
+                    .map(|client| client.name.clone())
+                    .unwrap_or_else(|| "client".to_string());
+                self.append_log(format!(
+                    "{client_name}: trade {} diagnostics loaded, {} records",
+                    diagnostics.trade_no,
+                    diagnostics.records.len()
+                ));
+                self.trade_diagnostics = Some(diagnostics);
+                self.observe_tab = ObserveTab::Diagnostics;
                 self.is_busy = false;
             }
             ConsoleEvent::LoadedTargets { client_id, targets } => {

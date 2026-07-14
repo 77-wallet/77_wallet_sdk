@@ -11,6 +11,8 @@ pub enum ConsoleCommand {
     FetchPendingWithdrawOrders { withdrawal_uid: String, page_size: i64 },
     ReviewWithdrawOrders { trade_nos: Vec<String>, approve: bool },
     SetChainNode { chain_code: String, rpc_url: String },
+    RefreshTaskQueueStatus,
+    DiagnoseTrade { trade_no: String },
     LoadTransferTargets { chain_code: String, sub_wallet_address: String },
     RunBatchTransfer { config: BatchTransferConfig },
 }
@@ -33,6 +35,19 @@ mod tests {
             decoded,
             ConsoleCommand::SetChainNode { chain_code, rpc_url }
                 if chain_code == "tron" && rpc_url == "https://nile.trongrid.io"
+        ));
+    }
+
+    #[test]
+    fn diagnose_trade_command_round_trips() {
+        let command = ConsoleCommand::DiagnoseTrade { trade_no: "trade-001".to_string() };
+
+        let encoded = serde_json::to_string(&command).unwrap();
+        let decoded: ConsoleCommand = serde_json::from_str(&encoded).unwrap();
+
+        assert!(matches!(
+            decoded,
+            ConsoleCommand::DiagnoseTrade { trade_no } if trade_no == "trade-001"
         ));
     }
 }

@@ -149,6 +149,12 @@ fn forward_worker_event(
         WorkerEvent::ChainNodeSetFailed { error } => {
             ConsoleEvent::ChainNodeSetFailed { client_id, error }
         }
+        WorkerEvent::TaskQueueStatusLoaded { summary } => {
+            ConsoleEvent::TaskQueueStatusLoaded { client_id, summary }
+        }
+        WorkerEvent::TradeDiagnosticsLoaded { diagnostics } => {
+            ConsoleEvent::TradeDiagnosticsLoaded { client_id, diagnostics }
+        }
         WorkerEvent::LoadedTargets { targets } => {
             ConsoleEvent::LoadedTargets { client_id, targets }
         }

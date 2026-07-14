@@ -16,7 +16,8 @@ use crate::{
     },
     messaging::notify::FrontendNotifyEvent,
     service::{
-        api_wallet::wallet::ApiWalletService, device::DeviceService, task_queue::TaskQueueService,
+        api_wallet::wallet::ApiWalletService, console_diagnostics::ConsoleDiagnosticsService,
+        device::DeviceService, task_queue::TaskQueueService,
     },
 };
 use std::sync::Arc;
@@ -153,6 +154,19 @@ impl WalletManager {
         &self,
     ) -> ReturnType<crate::response_vo::standard_wallet::task_queue::TaskQueueStatus> {
         TaskQueueService::new(self.ctx).get_task_queue_status().await
+    }
+
+    pub async fn get_console_task_queue_summary(
+        &self,
+    ) -> ReturnType<crate::response_vo::standard_wallet::diagnostics::ConsoleTaskQueueSummary> {
+        ConsoleDiagnosticsService::new(self.ctx).task_queue_summary().await
+    }
+
+    pub async fn diagnose_trade(
+        &self,
+        trade_no: &str,
+    ) -> ReturnType<crate::response_vo::standard_wallet::diagnostics::TradeDiagnostics> {
+        ConsoleDiagnosticsService::new(self.ctx).diagnose_trade(trade_no).await
     }
 
     pub async fn set_frontend_notify_sender(

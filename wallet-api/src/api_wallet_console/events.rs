@@ -1,4 +1,7 @@
-use crate::batch_transfer::BatchTransferSummary;
+use crate::{
+    batch_transfer::BatchTransferSummary,
+    response_vo::standard_wallet::diagnostics::{ConsoleTaskQueueSummary, TradeDiagnostics},
+};
 
 use super::client::ClientId;
 
@@ -110,6 +113,14 @@ pub enum ConsoleEvent {
     ChainNodeSetFailed {
         client_id: ClientId,
         error: String,
+    },
+    TaskQueueStatusLoaded {
+        client_id: ClientId,
+        summary: ConsoleTaskQueueSummary,
+    },
+    TradeDiagnosticsLoaded {
+        client_id: ClientId,
+        diagnostics: TradeDiagnostics,
     },
     LoadedTargets {
         client_id: ClientId,
