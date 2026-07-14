@@ -16,10 +16,10 @@ pub enum ClientStatus {
 impl ClientStatus {
     pub fn label(&self) -> &'static str {
         match self {
-            ClientStatus::Idle => "idle",
-            ClientStatus::Starting => "starting",
-            ClientStatus::Ready => "ready",
-            ClientStatus::Failed => "failed",
+            ClientStatus::Idle => "未启动",
+            ClientStatus::Starting => "启动中",
+            ClientStatus::Ready => "就绪",
+            ClientStatus::Failed => "失败",
         }
     }
 }

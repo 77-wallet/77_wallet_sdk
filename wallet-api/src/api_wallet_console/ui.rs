@@ -16,8 +16,8 @@ pub fn draw(app: &mut ApiWalletConsoleApp, ctx: &egui::Context) {
     visuals.widgets.active.bg_fill = Color32::from_rgb(202, 216, 230);
     ctx.set_visuals(visuals);
 
-    egui::TopBottomPanel::top("console_top_bar").exact_height(72.0).show(ctx, |ui| {
-        ui.add_space(8.0);
+    egui::TopBottomPanel::top("console_top_bar").exact_height(84.0).show(ctx, |ui| {
+        ui.add_space(6.0);
         draw_top_bar(app, ui);
     });
 
@@ -32,8 +32,8 @@ pub fn draw(app: &mut ApiWalletConsoleApp, ctx: &egui::Context) {
 
     egui::SidePanel::left("console_clients")
         .resizable(true)
-        .default_width(330.0)
-        .min_width(260.0)
+        .default_width(300.0)
+        .min_width(250.0)
         .show(ctx, |ui| {
             ui.add_space(8.0);
             draw_clients_panel(app, ui);
@@ -41,8 +41,8 @@ pub fn draw(app: &mut ApiWalletConsoleApp, ctx: &egui::Context) {
 
     egui::SidePanel::right("console_operations_v2")
         .resizable(true)
-        .default_width(560.0)
-        .min_width(420.0)
+        .default_width(420.0)
+        .min_width(360.0)
         .show(ctx, |ui| {
             ui.add_space(8.0);
             ScrollArea::vertical()
@@ -68,23 +68,24 @@ pub fn draw(app: &mut ApiWalletConsoleApp, ctx: &egui::Context) {
 
 fn draw_top_bar(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     Frame::none()
-        .fill(Color32::from_rgb(32, 43, 54))
+        .fill(Color32::from_rgb(28, 38, 48))
         .rounding(6.0)
         .inner_margin(Margin::same(12.0))
         .show(ui, |ui| {
+            ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("API Wallet Console").size(22.0).color(Color32::WHITE).strong(),
+                    RichText::new("API 钱包测试控制台").size(22.0).color(Color32::WHITE).strong(),
                 );
                 ui.separator();
                 let selected_name =
-                    app.selected_client().map(|client| client.name.as_str()).unwrap_or("none");
+                    app.selected_client().map(|client| client.name.as_str()).unwrap_or("未选择");
                 ui.label(
-                    RichText::new(format!("Selected: {selected_name}"))
+                    RichText::new(format!("当前客户端：{selected_name}"))
                         .color(Color32::from_rgb(210, 220, 230)),
                 );
                 if app.is_busy {
-                    ui.label(RichText::new("Running").color(Color32::from_rgb(255, 206, 86)));
+                    ui.label(RichText::new("命令执行中").color(Color32::from_rgb(255, 206, 86)));
                 }
                 if let Some(sn) = app
                     .selected_client()
@@ -100,17 +101,17 @@ fn draw_top_bar(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new(format!("Chain: {}", app.transfer_form.chain_code))
+                    RichText::new(format!("链：{}", app.transfer_form.chain_code))
                         .color(Color32::from_rgb(210, 220, 230)),
                 );
                 ui.separator();
                 ui.label(
-                    RichText::new(format!("Subwallet: {}", app.transfer_form.sub_wallet_address))
+                    RichText::new(format!("子钱包：{}", app.transfer_form.sub_wallet_address))
                         .color(Color32::from_rgb(210, 220, 230)),
                 );
                 ui.separator();
                 ui.label(
-                    RichText::new("Mode: worker process per client")
+                    RichText::new("模式：每个客户端独立 worker")
                         .color(Color32::from_rgb(145, 220, 170)),
                 );
             });
@@ -118,7 +119,7 @@ fn draw_top_bar(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
 }
 
 fn draw_clients_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
-    panel(ui, "Clients", |ui| {
+    panel(ui, "测试客户端", |ui| {
         let mut selected = app.selected_client;
         let mut next_selected = None;
         let mut start_selected_requested = false;
@@ -148,12 +149,12 @@ fn draw_clients_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                         });
                     });
                     ui.add_space(4.0);
-                    small_field(ui, "config", &mut client.config_file);
-                    small_field(ui, "password", &mut client.password);
+                    small_field(ui, "配置", &mut client.config_file);
+                    small_field(ui, "密码", &mut client.password);
                     if let Some(error) = &client.last_error {
                         ui.colored_label(Color32::from_rgb(190, 45, 45), error);
                     }
-                    if is_selected && ui.button("Start this client").clicked() {
+                    if is_selected && ui.button("启动客户端").clicked() {
                         start_selected_requested = true;
                     }
                 });
@@ -168,7 +169,7 @@ fn draw_clients_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
 
         ui.add_space(4.0);
         ui.label(
-            RichText::new("Select a client to edit config/password and start it.")
+            RichText::new("选择客户端后可修改配置文件、密码并启动独立 worker。")
                 .color(Color32::from_rgb(105, 118, 132)),
         );
     });
@@ -176,25 +177,25 @@ fn draw_clients_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
 
 fn draw_observe_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        observe_tab(ui, app, ObserveTab::Runtime, "Runtime");
-        observe_tab(ui, app, ObserveTab::Wallets, "Wallets");
-        observe_tab(ui, app, ObserveTab::Balances, "Balances");
-        observe_tab(ui, app, ObserveTab::Accounts, "Accounts");
-        observe_tab(ui, app, ObserveTab::Diagnostics, "Diagnostics");
+        observe_tab(ui, app, ObserveTab::Runtime, "运行信息");
+        observe_tab(ui, app, ObserveTab::Wallets, "钱包");
+        observe_tab(ui, app, ObserveTab::Balances, "资产");
+        observe_tab(ui, app, ObserveTab::Accounts, "账户地址");
+        observe_tab(ui, app, ObserveTab::Diagnostics, "测试诊断");
     });
     ui.add_space(10.0);
 
     match app.observe_tab {
-        ObserveTab::Runtime => panel(ui, "Client Runtime", |ui| {
+        ObserveTab::Runtime => panel(ui, "客户端运行信息", |ui| {
             draw_runtime_info(app, ui);
         }),
-        ObserveTab::Wallets => panel(ui, "API Wallets", |ui| {
+        ObserveTab::Wallets => panel(ui, "API 钱包", |ui| {
             draw_api_wallet_table(app, ui);
         }),
-        ObserveTab::Balances => panel(ui, "Balances", |ui| {
+        ObserveTab::Balances => panel(ui, "资产余额", |ui| {
             if app.api_wallet_rows.is_empty() {
                 ui.label(
-                    RichText::new("Start the client and load API wallets first.")
+                    RichText::new("请先启动客户端并加载 API 钱包。")
                         .color(Color32::from_rgb(130, 140, 150)),
                 );
             } else {
@@ -205,10 +206,10 @@ fn draw_observe_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                 }
             }
         }),
-        ObserveTab::Accounts => panel(ui, "Account Addresses", |ui| {
+        ObserveTab::Accounts => panel(ui, "账户地址", |ui| {
             if app.api_wallet_rows.is_empty() {
                 ui.label(
-                    RichText::new("Start the client and load API wallets first.")
+                    RichText::new("请先启动客户端并加载 API 钱包。")
                         .color(Color32::from_rgb(130, 140, 150)),
                 );
             } else {
@@ -216,13 +217,13 @@ fn draw_observe_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!("{} rows", app.account_address_rows.len()))
+                        RichText::new(format!("{} 行", app.account_address_rows.len()))
                             .color(Color32::from_rgb(105, 118, 132)),
                     );
-                    if ui.button("Copy details").clicked() {
+                    if ui.button("复制详情").clicked() {
                         ui.output_mut(|output| output.copied_text = account_details_text(app));
                     }
-                    if ui.button("Copy addresses").clicked() {
+                    if ui.button("复制地址").clicked() {
                         ui.output_mut(|output| {
                             output.copied_text = limited_account_addresses_text(app)
                         });
@@ -248,7 +249,7 @@ fn draw_observe_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                     });
             }
         }),
-        ObserveTab::Diagnostics => panel(ui, "Diagnostics", |ui| {
+        ObserveTab::Diagnostics => panel(ui, "测试诊断", |ui| {
             draw_diagnostics_panel(app, ui);
         }),
     }
@@ -262,18 +263,18 @@ fn observe_tab(ui: &mut egui::Ui, app: &mut ApiWalletConsoleApp, tab: ObserveTab
 
 fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     let client_ready = app.selected_client_ready();
-    panel(ui, "Actions", |ui| {
+    panel(ui, "快捷操作", |ui| {
         let selected_name =
-            app.selected_client().map(|client| client.name.as_str()).unwrap_or("none");
+            app.selected_client().map(|client| client.name.as_str()).unwrap_or("未选择");
         ui.label(
-            RichText::new(format!("Target client: {selected_name}"))
+            RichText::new(format!("目标客户端：{selected_name}"))
                 .color(Color32::from_rgb(105, 118, 132)),
         );
         if app.is_busy {
-            ui.label(RichText::new("Command running").color(Color32::from_rgb(166, 116, 0)));
+            ui.label(RichText::new("命令执行中").color(Color32::from_rgb(166, 116, 0)));
         }
         if ui
-            .add_enabled(client_ready && !app.is_busy, egui::Button::new("Use Nile TronGrid"))
+            .add_enabled(client_ready && !app.is_busy, egui::Button::new("切换到 Nile TronGrid"))
             .clicked()
         {
             app.use_nile_trongrid_for_selected_client();
@@ -281,14 +282,11 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     });
 
     ui.add_space(10.0);
-    egui::CollapsingHeader::new("Diagnostics").default_open(true).show(ui, |ui| {
-        panel(ui, "Diagnostics", |ui| {
+    egui::CollapsingHeader::new("测试诊断").default_open(true).show(ui, |ui| {
+        panel(ui, "测试诊断", |ui| {
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(
-                        client_ready && !app.is_busy,
-                        egui::Button::new("Refresh task queue"),
-                    )
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("刷新任务队列"))
                     .clicked()
                 {
                     app.refresh_task_queue_for_selected_client();
@@ -296,15 +294,13 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
             });
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.label("trade_no");
+                ui.label("交易号");
                 ui.add(
                     TextEdit::singleline(&mut app.diagnostic_trade_no)
-                        .desired_width(260.0)
-                        .hint_text("withdraw or collect trade_no"),
+                        .desired_width(220.0)
+                        .hint_text("提币/归集 trade_no"),
                 );
-                if ui
-                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("Diagnose"))
-                    .clicked()
+                if ui.add_enabled(client_ready && !app.is_busy, egui::Button::new("诊断")).clicked()
                 {
                     app.diagnose_trade_for_selected_client();
                 }
@@ -313,23 +309,17 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     });
 
     ui.add_space(10.0);
-    egui::CollapsingHeader::new("Wallet").default_open(false).show(ui, |ui| {
-        panel(ui, "Wallet", |ui| {
+    egui::CollapsingHeader::new("钱包").default_open(false).show(ui, |ui| {
+        panel(ui, "钱包", |ui| {
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(
-                        client_ready && !app.is_busy,
-                        egui::Button::new("Import configured wallets"),
-                    )
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("导入配置钱包"))
                     .clicked()
                 {
                     app.import_wallets_for_selected_client();
                 }
                 if ui
-                    .add_enabled(
-                        client_ready && !app.is_busy,
-                        egui::Button::new("Refresh wallets from DB"),
-                    )
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("刷新本地钱包"))
                     .clicked()
                 {
                     app.refresh_wallets_for_selected_client();
@@ -339,23 +329,23 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     });
 
     ui.add_space(10.0);
-    egui::CollapsingHeader::new("Bind").default_open(false).show(ui, |ui| {
-        panel(ui, "Bind", |ui| {
+    egui::CollapsingHeader::new("绑定").default_open(false).show(ui, |ui| {
+        panel(ui, "绑定", |ui| {
             two_column_fields(ui, |ui| {
                 field(ui, "App ID", &mut app.bind_form.app_id);
                 field(ui, "Org ID", &mut app.bind_form.org_id);
-                field(ui, "Sub UID", &mut app.bind_form.subaccount_uid);
-                field(ui, "Withdraw UID", &mut app.bind_form.withdrawal_uid);
+                field(ui, "收款 UID", &mut app.bind_form.subaccount_uid);
+                field(ui, "出款 UID", &mut app.bind_form.withdrawal_uid);
             });
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("Import bind"))
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("导入绑定"))
                     .clicked()
                 {
                     app.import_bind_for_selected_client();
                 }
                 if ui
-                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("Scan bind"))
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("扫描绑定"))
                     .clicked()
                 {
                     app.scan_bind_for_selected_client();
@@ -365,31 +355,28 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     });
 
     ui.add_space(10.0);
-    egui::CollapsingHeader::new("Withdraw Review").default_open(false).show(ui, |ui| {
-        panel(ui, "Withdraw Review", |ui| {
+    egui::CollapsingHeader::new("提币审核").default_open(false).show(ui, |ui| {
+        panel(ui, "提币审核", |ui| {
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(
-                        client_ready && !app.is_busy,
-                        egui::Button::new("Refresh pending orders"),
-                    )
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("刷新待审核订单"))
                     .clicked()
                 {
                     app.fetch_pending_withdraw_orders_for_selected_client();
                 }
-                if ui.button("Select all").clicked() {
+                if ui.button("全选").clicked() {
                     app.selected_withdraw_trade_nos = app
                         .pending_withdraw_orders
                         .iter()
                         .map(|order| order.trade_no.clone())
                         .collect();
                 }
-                if ui.button("Clear selection").clicked() {
+                if ui.button("清空选择").clicked() {
                     app.selected_withdraw_trade_nos.clear();
                 }
                 ui.label(
                     RichText::new(format!(
-                        "{} pending, {} selected",
+                        "{} 个待审核，已选 {} 个",
                         app.pending_withdraw_orders.len(),
                         app.selected_withdraw_trade_nos.len()
                     ))
@@ -399,16 +386,13 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
             draw_withdraw_order_table(app, ui);
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(
-                        client_ready && !app.is_busy,
-                        egui::Button::new("Approve selected"),
-                    )
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("通过已选"))
                     .clicked()
                 {
                     app.review_withdraw_orders_for_selected_client(true);
                 }
                 if ui
-                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("Reject selected"))
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("拒绝已选"))
                     .clicked()
                 {
                     app.review_withdraw_orders_for_selected_client(false);
@@ -416,22 +400,22 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
             });
 
             ui.separator();
-            ui.label(RichText::new("Manual trade numbers fallback").strong());
+            ui.label(RichText::new("手动输入交易号").strong());
             ui.add_sized(
                 [ui.available_width(), 70.0],
                 TextEdit::multiline(&mut app.withdraw_review_trade_nos)
                     .font(egui::TextStyle::Monospace)
-                    .hint_text("One trade_no per line, or comma separated"),
+                    .hint_text("每行一个 trade_no，也支持逗号分隔"),
             );
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("Approve orders"))
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("通过订单"))
                     .clicked()
                 {
                     app.review_withdraw_orders_for_selected_client(true);
                 }
                 if ui
-                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("Reject orders"))
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("拒绝订单"))
                     .clicked()
                 {
                     app.review_withdraw_orders_for_selected_client(false);
@@ -441,74 +425,72 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     });
 
     ui.add_space(10.0);
-    egui::CollapsingHeader::new("Batch Transfer").default_open(false).show(ui, |ui| {
-        panel(ui, "Batch Transfer", |ui| {
+    egui::CollapsingHeader::new("批量转账").default_open(false).show(ui, |ui| {
+        panel(ui, "批量转账", |ui| {
             let can_query_accounts = client_ready
                 && !app.is_busy
                 && !app.transfer_form.sub_wallet_address.trim().is_empty()
                 && !app.transfer_form.chain_code.trim().is_empty();
             two_column_fields(ui, |ui| {
-                field(ui, "Chain", &mut app.transfer_form.chain_code);
-                field(ui, "Amount", &mut app.transfer_form.value);
-                field(ui, "From", &mut app.transfer_form.from_address);
-                field(ui, "Symbol", &mut app.transfer_form.symbol);
-                field(ui, "Subwallet", &mut app.transfer_form.sub_wallet_address);
-                field(ui, "Decimals", &mut app.transfer_form.decimals);
-                field(ui, "Concurrency", &mut app.transfer_form.max_in_flight);
-                field(ui, "Interval ms", &mut app.transfer_form.start_interval_ms);
-                field(ui, "Fee setting", &mut app.transfer_form.fee_setting);
+                field(ui, "链", &mut app.transfer_form.chain_code);
+                field(ui, "数量", &mut app.transfer_form.value);
+                field(ui, "转出地址", &mut app.transfer_form.from_address);
+                field(ui, "币种", &mut app.transfer_form.symbol);
+                field(ui, "子钱包", &mut app.transfer_form.sub_wallet_address);
+                field(ui, "精度", &mut app.transfer_form.decimals);
+                field(ui, "并发", &mut app.transfer_form.max_in_flight);
+                field(ui, "间隔 ms", &mut app.transfer_form.start_interval_ms);
+                field(ui, "手续费配置", &mut app.transfer_form.fee_setting);
             });
 
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(can_query_accounts, egui::Button::new("Show account addresses"))
-                    .clicked()
+                if ui.add_enabled(can_query_accounts, egui::Button::new("查询账户地址")).clicked()
                 {
                     app.refresh_account_addresses_for_selected_client();
                 }
-                if ui.button("Copy account details").clicked() {
+                if ui.button("复制账户详情").clicked() {
                     ui.output_mut(|output| output.copied_text = account_details_text(app));
                 }
-                if ui.button("Copy addresses only").clicked() {
+                if ui.button("只复制地址").clicked() {
                     ui.output_mut(|output| output.copied_text = app.account_addresses_only.clone());
                 }
-                if ui.button("Use as targets").clicked() {
+                if ui.button("填入目标").clicked() {
                     app.use_account_addresses_as_targets();
                 }
             });
 
             ui.add_space(6.0);
-            ui.label(RichText::new("Target addresses").strong());
+            ui.label(RichText::new("目标地址").strong());
             ui.add_sized(
                 [ui.available_width(), 145.0],
                 TextEdit::multiline(&mut app.transfer_form.to_addresses_raw)
                     .font(egui::TextStyle::Monospace)
-                    .hint_text("One target address per line"),
+                    .hint_text("每行一个目标地址"),
             );
 
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("Load targets"))
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("加载目标地址"))
                     .clicked()
                 {
                     app.load_targets_for_selected_client();
                 }
                 if ui
-                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("Run transfer"))
+                    .add_enabled(client_ready && !app.is_busy, egui::Button::new("执行转账"))
                     .clicked()
                 {
                     app.run_transfer_for_selected_client();
                 }
                 if app.is_busy {
-                    ui.label(RichText::new("Running...").color(Color32::from_rgb(166, 116, 0)));
+                    ui.label(RichText::new("执行中...").color(Color32::from_rgb(166, 116, 0)));
                 }
             });
 
             if let Some(summary) = &app.last_summary {
                 ui.label(
                     RichText::new(format!(
-                        "Last summary: total={}, success={}, failed={}",
+                        "上次结果：总数 {}，成功 {}，失败 {}",
                         summary.total, summary.success, summary.failed
                     ))
                     .color(Color32::from_rgb(47, 90, 65)),
@@ -520,22 +502,20 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
 
 fn draw_subwallet_comma_copy_controls(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Subwallet comma copy").strong());
-        ui.label("from account");
+        ui.label(RichText::new("子钱包地址复制").strong());
+        ui.label("起始账户");
         ui.add_sized([72.0, 22.0], TextEdit::singleline(&mut app.comma_copy_start_account_id));
-        ui.label("count");
+        ui.label("数量");
         ui.add_sized([72.0, 22.0], TextEdit::singleline(&mut app.comma_copy_count));
 
-        if ui.button("Copy comma addresses").clicked() {
+        if ui.button("复制逗号分隔地址").clicked() {
             let text = subwallet_comma_addresses(app);
             ui.output_mut(|output| output.copied_text = text);
         }
     });
     ui.label(
-        RichText::new(
-            "from/count also limit Copy addresses; comma copy outputs address1,address2,address3",
-        )
-        .color(Color32::from_rgb(105, 118, 132)),
+        RichText::new("起始账户/数量也会限制复制地址；逗号复制格式为 address1,address2,address3")
+            .color(Color32::from_rgb(105, 118, 132)),
     );
 }
 
@@ -592,38 +572,38 @@ fn limited_account_addresses_for_wallet_text(
 
 fn draw_diagnostics_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     if let Some(summary) = &app.task_queue_summary {
-        ui.label(RichText::new("Task Queue").strong());
+        ui.label(RichText::new("任务队列").strong());
         Grid::new("task_queue_diagnostics").num_columns(4).spacing([20.0, 6.0]).show(ui, |ui| {
-            ui.label("all");
+            ui.label("全部");
             ui.label(summary.all_tasks.to_string());
-            ui.label("pending");
+            ui.label("待执行");
             ui.label(summary.pending_tasks.to_string());
             ui.end_row();
-            ui.label("running");
+            ui.label("执行中");
             ui.label(summary.running_tasks.to_string());
-            ui.label("failed");
+            ui.label("失败");
             ui.label(summary.failed_task_count.to_string());
             ui.end_row();
-            ui.label("done");
+            ui.label("完成");
             ui.label(summary.done_tasks.to_string());
-            ui.label("bills");
+            ui.label("账单");
             ui.label(summary.bill_count.to_string());
             ui.end_row();
-            ui.label("expand batches");
+            ui.label("扩容批次");
             ui.label(summary.expand_batches.to_string());
-            ui.label("unfinished items");
+            ui.label("未完成项");
             ui.label(summary.unfinished_expand_items.to_string());
             ui.end_row();
-            ui.label("address states");
+            ui.label("地址状态");
             ui.label(summary.address_query_states.to_string());
-            ui.label("recovery");
+            ui.label("恢复进度");
             ui.label(format!("{:.1}%", summary.overall_percent * 100.0));
             ui.end_row();
         });
 
         if !summary.failed_tasks.is_empty() {
             ui.add_space(8.0);
-            ui.label(RichText::new("Failed Tasks").strong());
+            ui.label(RichText::new("失败任务").strong());
             for task in &summary.failed_tasks {
                 Frame::none()
                     .fill(Color32::from_rgb(248, 250, 252))
@@ -632,7 +612,7 @@ fn draw_diagnostics_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                     .inner_margin(Margin::same(8.0))
                     .show(ui, |ui| {
                         ui.label(RichText::new(task.id.as_str()).monospace().strong());
-                        ui.label(format!("{} | status {}", task.task_name, task.status));
+                        ui.label(format!("{} | 状态 {}", task.task_name, task.status));
                         if let Some(err_msg) = task.err_msg.as_deref() {
                             ui.label(RichText::new(err_msg).color(Color32::from_rgb(150, 48, 48)));
                         }
@@ -645,17 +625,17 @@ fn draw_diagnostics_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
         }
     } else {
         ui.label(
-            RichText::new("No task queue snapshot loaded. Click Refresh task queue.")
+            RichText::new("还没有任务队列快照，请点击“刷新任务队列”。")
                 .color(Color32::from_rgb(130, 140, 150)),
         );
     }
 
     ui.add_space(12.0);
     if let Some(diagnostics) = &app.trade_diagnostics {
-        ui.label(RichText::new(format!("Trade {}", diagnostics.trade_no)).strong());
+        ui.label(RichText::new(format!("交易 {}", diagnostics.trade_no)).strong());
         if diagnostics.records.is_empty() {
             ui.label(
-                RichText::new("No local withdraw or collect record found.")
+                RichText::new("本地没有找到对应的提币或归集记录。")
                     .color(Color32::from_rgb(130, 140, 150)),
             );
         }
@@ -667,14 +647,14 @@ fn draw_diagnostics_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                 .inner_margin(Margin::same(8.0))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(record.flow.as_str()).strong());
+                        ui.label(RichText::new(flow_label(record.flow.as_str())).strong());
                         ui.label(format!("{} {}", record.chain_code, record.status));
                     });
                     ui.label(format!("{} {}", record.value, record.symbol));
-                    ui.label(RichText::new(format!("from: {}", record.from_addr)).monospace());
-                    ui.label(RichText::new(format!("to: {}", record.to_addr)).monospace());
+                    ui.label(RichText::new(format!("from：{}", record.from_addr)).monospace());
+                    ui.label(RichText::new(format!("to：{}", record.to_addr)).monospace());
                     if let Some(tx_hash) = record.tx_hash.as_deref() {
-                        ui.label(RichText::new(format!("tx: {tx_hash}")).monospace());
+                        ui.label(RichText::new(format!("tx：{tx_hash}")).monospace());
                     }
                     if let Some(err_msg) = record.err_msg.as_deref() {
                         ui.label(RichText::new(err_msg).color(Color32::from_rgb(150, 48, 48)));
@@ -687,7 +667,7 @@ fn draw_diagnostics_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
         }
     } else {
         ui.label(
-            RichText::new("No trade diagnostics loaded. Enter a trade_no and click Diagnose.")
+            RichText::new("还没有交易诊断结果，请输入 trade_no 后点击“诊断”。")
                 .color(Color32::from_rgb(130, 140, 150)),
         );
     }
@@ -696,7 +676,7 @@ fn draw_diagnostics_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
 fn draw_withdraw_order_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     if app.pending_withdraw_orders.is_empty() {
         ui.label(
-            RichText::new("No pending orders loaded. Click Refresh pending orders.")
+            RichText::new("还没有加载待审核订单，请点击“刷新待审核订单”。")
                 .color(Color32::from_rgb(130, 140, 150)),
         );
         return;
@@ -728,16 +708,16 @@ fn draw_withdraw_order_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                             ui.label(RichText::new(order.trade_no.as_str()).monospace().strong());
                         });
                         ui.label(format!(
-                            "{} {} on {} | status {}",
+                            "{} {} / {} / 状态 {}",
                             order.value, order.symbol, order.chain_code, order.status
                         ));
                         if let Some(out_order_id) = order.out_order_id.as_deref() {
-                            ui.label(format!("out_order_id: {out_order_id}"));
+                            ui.label(format!("外部订单号：{out_order_id}"));
                         }
                         if let Some(client_id) = order.client_id.as_deref() {
-                            ui.label(format!("client_id: {client_id}"));
+                            ui.label(format!("客户端 ID：{client_id}"));
                         }
-                        ui.label(RichText::new(format!("to: {}", order.to_addr)).monospace());
+                        ui.label(RichText::new(format!("to：{}", order.to_addr)).monospace());
                     });
                 ui.add_space(6.0);
             }
@@ -747,18 +727,18 @@ fn draw_withdraw_order_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
 fn draw_api_wallet_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     if app.api_wallet_rows.is_empty() {
         let message = if app.selected_client_ready() {
-            "No API wallets loaded yet. Click Refresh wallets from DB, or import configured wallets first."
+            "还没有加载 API 钱包。请刷新本地钱包，或先导入配置钱包。"
         } else {
-            "Start this client to auto-load API wallets from its local DB."
+            "启动客户端后会自动从本地 DB 加载 API 钱包。"
         };
         ui.label(RichText::new(message).color(Color32::from_rgb(130, 140, 150)));
         return;
     }
 
     ui.horizontal(|ui| {
-        ui.label(RichText::new("API wallets from local DB").strong());
+        ui.label(RichText::new("本地 DB 中的 API 钱包").strong());
         ui.label(
-            RichText::new(format!("{} rows", app.api_wallet_rows.len()))
+            RichText::new(format!("{} 行", app.api_wallet_rows.len()))
                 .color(Color32::from_rgb(105, 118, 132)),
         );
     });
@@ -771,12 +751,12 @@ fn draw_api_wallet_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                 .num_columns(9)
                 .spacing(Vec2::new(12.0, 4.0))
                 .show(ui, |ui| {
-                    ui.label(RichText::new("Role").strong());
-                    ui.label(RichText::new("Name").strong());
-                    ui.label(RichText::new("Address").strong());
+                    ui.label(RichText::new("角色").strong());
+                    ui.label(RichText::new("名称").strong());
+                    ui.label(RichText::new("地址").strong());
                     ui.label(RichText::new("UID").strong());
-                    ui.label(RichText::new("Accounts").strong());
-                    ui.label(RichText::new("Balances").strong());
+                    ui.label(RichText::new("账户").strong());
+                    ui.label(RichText::new("资产").strong());
                     ui.label("");
                     ui.label("");
                     ui.label("");
@@ -794,23 +774,23 @@ fn draw_api_wallet_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                             .iter()
                             .filter(|row| row.wallet_address == wallet.address)
                             .count();
-                        ui.label(wallet.role.as_str());
+                        ui.label(wallet_role_label(wallet.role.as_str()));
                         ui.label(wallet.name.as_str());
                         ui.label(RichText::new(wallet.address.as_str()).monospace());
                         ui.label(RichText::new(wallet.uid.as_str()).monospace());
                         ui.label(account_count.to_string());
                         ui.label(balance_count.to_string());
-                        if ui.button("Show accounts").clicked() {
+                        if ui.button("查账户").clicked() {
                             app.refresh_account_addresses_for_wallet(
                                 wallet.address.clone(),
                                 app.transfer_form.chain_code.trim().to_string(),
                             );
                         }
-                        if ui.button("Show balances").clicked() {
+                        if ui.button("查资产").clicked() {
                             app.refresh_balances_for_wallet(wallet.address.clone());
                         }
                         if wallet.role == "subwallet" {
-                            if ui.button("Use").clicked() {
+                            if ui.button("使用").clicked() {
                                 app.transfer_form.sub_wallet_address = wallet.address.clone();
                                 if let Some(slot) =
                                     app.transfer_forms.get_mut(app.selected_client.0)
@@ -830,43 +810,43 @@ fn draw_api_wallet_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
 fn draw_runtime_info(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
     let runtime = app.selected_client().and_then(|client| client.runtime_info.as_ref());
     Grid::new("runtime_info_table").num_columns(2).spacing(Vec2::new(14.0, 5.0)).show(ui, |ui| {
-        ui.label(RichText::new("Device SN").strong());
+        ui.label(RichText::new("设备 SN").strong());
         ui.label(
-            RichText::new(runtime.map(|info| info.device_sn.as_str()).unwrap_or("not loaded yet"))
+            RichText::new(runtime.map(|info| info.device_sn.as_str()).unwrap_or("尚未加载"))
                 .monospace(),
         );
         ui.end_row();
 
-        ui.label(RichText::new("Device type").strong());
+        ui.label(RichText::new("设备类型").strong());
         ui.label(runtime.map(|info| info.device_type.as_str()).unwrap_or("-"));
         ui.end_row();
 
-        ui.label(RichText::new("Device Init App ID").strong());
+        ui.label(RichText::new("初始化 App ID").strong());
         ui.label(
             RichText::new(runtime.and_then(|info| info.device_app_id.as_deref()).unwrap_or("-"))
                 .monospace(),
         );
         ui.end_row();
 
-        ui.label(RichText::new("Package / Version").strong());
+        ui.label(RichText::new("包 / 版本").strong());
         let package = runtime.and_then(|info| info.package_id.as_deref()).unwrap_or("-");
         let version = runtime.map(|info| info.app_version.as_str()).unwrap_or("-");
         ui.label(format!("{package} / {version}"));
         ui.end_row();
 
-        ui.label(RichText::new("Binding App ID").strong());
+        ui.label(RichText::new("绑定 App ID").strong());
         ui.label(RichText::new(app.bind_form.app_id.as_str()).monospace());
         ui.end_row();
 
-        ui.label(RichText::new("Bind Org ID").strong());
+        ui.label(RichText::new("绑定 Org ID").strong());
         ui.label(RichText::new(app.bind_form.org_id.as_str()).monospace());
         ui.end_row();
 
-        ui.label(RichText::new("Sub UID").strong());
+        ui.label(RichText::new("收款 UID").strong());
         ui.label(RichText::new(app.bind_form.subaccount_uid.as_str()).monospace());
         ui.end_row();
 
-        ui.label(RichText::new("Withdraw UID").strong());
+        ui.label(RichText::new("出款 UID").strong());
         ui.label(RichText::new(app.bind_form.withdrawal_uid.as_str()).monospace());
         ui.end_row();
     });
@@ -883,17 +863,17 @@ fn draw_messages_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
         .inner_margin(Margin::same(10.0))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Logs").size(18.0).color(Color32::WHITE).strong());
-                if ui.button("Clear").clicked() {
+                ui.label(RichText::new("日志").size(18.0).color(Color32::WHITE).strong());
+                if ui.button("清空").clicked() {
                     app.logs.clear();
                 }
                 ui.separator();
-                selectable_log_filter(ui, app, LogFilter::All, "All");
-                selectable_log_filter(ui, app, LogFilter::Selected, "Selected");
-                selectable_log_filter(ui, app, LogFilter::Notify, "Notify");
-                selectable_log_filter(ui, app, LogFilter::Error, "Error");
+                selectable_log_filter(ui, app, LogFilter::All, "全部");
+                selectable_log_filter(ui, app, LogFilter::Selected, "当前");
+                selectable_log_filter(ui, app, LogFilter::Notify, "通知");
+                selectable_log_filter(ui, app, LogFilter::Error, "错误");
                 ui.label(
-                    RichText::new(format!("{} lines", app.logs.len()))
+                    RichText::new(format!("{} 行", app.logs.len()))
                         .color(Color32::from_rgb(170, 184, 198)),
                 );
             });
@@ -1000,7 +980,7 @@ fn draw_client_log_terminal(app: &ApiWalletConsoleApp, ui: &mut egui::Ui, client
                     RichText::new(client_name).color(Color32::from_rgb(235, 242, 248)).strong(),
                 );
                 ui.label(
-                    RichText::new(format!("{} lines", lines.len()))
+                    RichText::new(format!("{} 行", lines.len()))
                         .color(Color32::from_rgb(145, 160, 174)),
                 );
                 ui.label(
@@ -1023,7 +1003,7 @@ fn draw_client_log_terminal(app: &ApiWalletConsoleApp, ui: &mut egui::Ui, client
                     }
                     if filtered_logs_for_client(app, client_name).is_empty() {
                         ui.label(
-                            RichText::new("No logs yet")
+                            RichText::new("暂无日志")
                                 .monospace()
                                 .color(Color32::from_rgb(105, 118, 132)),
                         );
@@ -1042,31 +1022,28 @@ fn draw_transfer_confirm_dialog(app: &mut ApiWalletConsoleApp, ctx: &egui::Conte
     let selected_name = app
         .selected_client()
         .map(|client| client.name.clone())
-        .unwrap_or_else(|| "none".to_string());
+        .unwrap_or_else(|| "未选择".to_string());
 
-    egui::Window::new("Confirm batch transfer").collapsible(false).resizable(false).show(
-        ctx,
-        |ui| {
-            ui.label(RichText::new("Review before submitting").strong());
-            ui.add_space(8.0);
-            ui.label(format!("Client: {selected_name}"));
-            ui.label(format!("Chain: {}", app.transfer_form.chain_code));
-            ui.label(format!("From: {}", app.transfer_form.from_address));
-            ui.label(format!("Amount per target: {}", app.transfer_form.value));
-            ui.label(format!("Target count: {target_count}"));
-            ui.label(format!("Concurrency: {}", app.transfer_form.max_in_flight));
-            ui.label(format!("Interval ms: {}", app.transfer_form.start_interval_ms));
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                if ui.button("Cancel").clicked() {
-                    app.cancel_run_transfer();
-                }
-                if ui.button("Confirm and run").clicked() {
-                    app.confirm_run_transfer_for_selected_client();
-                }
-            });
-        },
-    );
+    egui::Window::new("确认批量转账").collapsible(false).resizable(false).show(ctx, |ui| {
+        ui.label(RichText::new("提交前确认").strong());
+        ui.add_space(8.0);
+        ui.label(format!("客户端：{selected_name}"));
+        ui.label(format!("链：{}", app.transfer_form.chain_code));
+        ui.label(format!("转出地址：{}", app.transfer_form.from_address));
+        ui.label(format!("单地址数量：{}", app.transfer_form.value));
+        ui.label(format!("目标数量：{target_count}"));
+        ui.label(format!("并发：{}", app.transfer_form.max_in_flight));
+        ui.label(format!("间隔 ms：{}", app.transfer_form.start_interval_ms));
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            if ui.button("取消").clicked() {
+                app.cancel_run_transfer();
+            }
+            if ui.button("确认执行").clicked() {
+                app.confirm_run_transfer_for_selected_client();
+            }
+        });
+    });
 }
 
 fn selectable_log_filter(
@@ -1125,9 +1102,9 @@ fn draw_account_address_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) 
                     .spacing(Vec2::new(14.0, 4.0))
                     .show(ui, |ui| {
                         ui.label(RichText::new("ID").strong());
-                        ui.label(RichText::new("Name").strong());
-                        ui.label(RichText::new("Chain").strong());
-                        ui.label(RichText::new("Address").strong());
+                        ui.label(RichText::new("名称").strong());
+                        ui.label(RichText::new("链").strong());
+                        ui.label(RichText::new("地址").strong());
                         ui.label("");
                         ui.end_row();
 
@@ -1136,7 +1113,7 @@ fn draw_account_address_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) 
                             ui.label(row.name.as_str());
                             ui.label(row.chain_code.as_str());
                             ui.label(RichText::new(row.address.as_str()).monospace());
-                            if ui.button("Copy").clicked() {
+                            if ui.button("复制").clicked() {
                                 ui.output_mut(|output| output.copied_text = row.address.clone());
                             }
                             ui.end_row();
@@ -1165,23 +1142,23 @@ fn draw_account_address_table_for_wallet(
         .inner_margin(Margin::same(8.0))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(wallet.role.as_str()).strong());
+                ui.label(RichText::new(wallet_role_label(wallet.role.as_str())).strong());
                 ui.label(wallet.name.as_str());
                 ui.label(RichText::new(wallet.address.as_str()).monospace());
                 ui.label(
-                    RichText::new(format!("{} accounts", rows.len()))
+                    RichText::new(format!("{} 个账户", rows.len()))
                         .color(Color32::from_rgb(105, 118, 132)),
                 );
-                if ui.button("Show").clicked() {
+                if ui.button("查询").clicked() {
                     app.refresh_account_addresses_for_wallet(
                         wallet.address.clone(),
                         app.transfer_form.chain_code.trim().to_string(),
                     );
                 }
-                if ui.button("Copy details").clicked() {
+                if ui.button("复制详情").clicked() {
                     ui.output_mut(|output| output.copied_text = account_details_rows_text(&rows));
                 }
-                if ui.button("Copy addresses").clicked() {
+                if ui.button("复制地址").clicked() {
                     ui.output_mut(|output| {
                         output.copied_text =
                             limited_account_addresses_for_wallet_text(app, wallet.address.as_str())
@@ -1191,7 +1168,7 @@ fn draw_account_address_table_for_wallet(
 
             if rows.is_empty() {
                 ui.label(
-                    RichText::new("No account addresses loaded for this wallet yet.")
+                    RichText::new("这个钱包还没有加载账户地址。")
                         .color(Color32::from_rgb(130, 140, 150)),
                 );
                 return;
@@ -1219,7 +1196,7 @@ fn draw_account_address_table_for_wallet(
                                         ui.label(row.name.as_str());
                                         ui.label(row.chain_code.as_str());
                                         ui.label(RichText::new(row.address.as_str()).monospace());
-                                        if ui.button("Copy").clicked() {
+                                        if ui.button("复制").clicked() {
                                             ui.output_mut(|output| {
                                                 output.copied_text = row.address.clone()
                                             });
@@ -1251,21 +1228,21 @@ fn draw_balance_table_for_wallet(
         .inner_margin(Margin::same(8.0))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(wallet.role.as_str()).strong());
+                ui.label(RichText::new(wallet_role_label(wallet.role.as_str())).strong());
                 ui.label(wallet.name.as_str());
                 ui.label(RichText::new(wallet.address.as_str()).monospace());
                 ui.label(
-                    RichText::new(format!("{} assets", rows.len()))
+                    RichText::new(format!("{} 项资产", rows.len()))
                         .color(Color32::from_rgb(105, 118, 132)),
                 );
-                if ui.button("Show").clicked() {
+                if ui.button("查询").clicked() {
                     app.refresh_balances_for_wallet(wallet.address.clone());
                 }
             });
 
             if rows.is_empty() {
                 ui.label(
-                    RichText::new("No balances loaded for this wallet yet.")
+                    RichText::new("这个钱包还没有加载资产余额。")
                         .color(Color32::from_rgb(130, 140, 150)),
                 );
                 return;
@@ -1276,11 +1253,11 @@ fn draw_balance_table_for_wallet(
                 .num_columns(5)
                 .spacing(Vec2::new(14.0, 4.0))
                 .show(ui, |ui| {
-                    ui.label(RichText::new("Chain").strong());
-                    ui.label(RichText::new("Symbol").strong());
-                    ui.label(RichText::new("Name").strong());
-                    ui.label(RichText::new("Amount").strong());
-                    ui.label(RichText::new("Fiat").strong());
+                    ui.label(RichText::new("链").strong());
+                    ui.label(RichText::new("币种").strong());
+                    ui.label(RichText::new("名称").strong());
+                    ui.label(RichText::new("数量").strong());
+                    ui.label(RichText::new("法币").strong());
                     ui.end_row();
 
                     for row in rows.iter() {
@@ -1313,6 +1290,22 @@ fn account_details_rows_text(rows: &[super::events::AccountAddressRow]) -> Strin
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn wallet_role_label(role: &str) -> &'static str {
+    match role {
+        "subwallet" => "收款钱包",
+        "withdraw" => "出款钱包",
+        _ => "未知角色",
+    }
+}
+
+fn flow_label(flow: &str) -> &'static str {
+    match flow {
+        "withdraw" => "提币",
+        "collect" => "归集",
+        _ => "未知流程",
+    }
 }
 
 fn panel(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
@@ -1355,13 +1348,11 @@ fn small_field(ui: &mut egui::Ui, label: &str, value: &mut String) {
 
 fn status_badge(status: &ClientStatus) -> RichText {
     match status {
-        ClientStatus::Idle => RichText::new("idle").color(Color32::from_rgb(105, 116, 126)),
-        ClientStatus::Starting => RichText::new("starting").color(Color32::from_rgb(166, 116, 0)),
-        ClientStatus::Ready => {
-            RichText::new("ready").color(Color32::from_rgb(22, 128, 78)).strong()
-        }
+        ClientStatus::Idle => RichText::new("未启动").color(Color32::from_rgb(105, 116, 126)),
+        ClientStatus::Starting => RichText::new("启动中").color(Color32::from_rgb(166, 116, 0)),
+        ClientStatus::Ready => RichText::new("就绪").color(Color32::from_rgb(22, 128, 78)).strong(),
         ClientStatus::Failed => {
-            RichText::new("failed").color(Color32::from_rgb(190, 45, 45)).strong()
+            RichText::new("失败").color(Color32::from_rgb(190, 45, 45)).strong()
         }
     }
 }
