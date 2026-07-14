@@ -165,9 +165,25 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Backend: none.
 - Scanner: collect scanner does not emit `ExecuteLocalUndelegation` or
   `RecoverLocalUndelegation`.
-- DB facts: local undelegation task is present in the local transaction DB.
+- DB facts: local undelegation task is present in the resource task table.
 - Invariant: collect shadow scanner must not own local undelegation execution or
   recovery after those intents move to the local reclaim scanner.
+
+### Collect Result ACK Creates Local Reclaim Before Finish
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/worker/side_effect_worker.rs
+  process_result_ack
+  ```
+
+- Backend: TX_RES ACK succeeds.
+- DB facts: successful local delegation creates `rsc_local_undelegate_*` after
+  `result_ack_sent_at` is persisted and before `finished_at` is persisted.
+- Invariant: collect finalization must not happen before SDK local resource
+  reclaim intent is recorded.
 
 ### Local Reclaim Scanner Owns Local Undelegation
 
