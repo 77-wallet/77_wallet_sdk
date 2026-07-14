@@ -1469,6 +1469,13 @@ impl ApiWithdrawDao {
                         AND (chain_failed_at IS NOT NULL OR err_code IS NOT NULL)
                         AND tx_exec_receipt_uploaded_at IS NOT NULL
                     )
+                    OR (
+                        transaction_time IS NOT NULL
+                        AND chain_success_at IS NULL
+                        AND chain_failed_at IS NOT NULL
+                        AND last_broadcast_at IS NULL
+                        AND tx_exec_receipt_uploaded_at IS NULL
+                    )
               )
         "#;
         let res = sqlx::query(sql)
@@ -1722,6 +1729,7 @@ impl ApiWithdrawDao {
             SELECT * FROM api_withdraws 
             WHERE raw_tx IS NOT NULL 
             AND last_broadcast_at IS NULL 
+            AND transaction_time IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
             AND tx_ack_sent_at IS NOT NULL
@@ -3920,6 +3928,103 @@ mod tests {
         let rows =
             ApiWithdrawDao::mark_chain_finished(pool.as_ref(), "W_FINISH_GATE").await.unwrap();
         assert_eq!(rows, 1, "failure evidence + uploaded receipt can finish");
+    }
+
+    #[tokio::test]
+    async fn scan_can_broadcast_blocks_confirmed_withdraw_rows() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_can_broadcast_confirmed");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_CAN_BROADCAST_CONFIRMED_BLOCKED",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 raw_tx = '{\"tx\":true}',
+                 tx_hash = '0xplatform_cancelled_before_broadcast',
+                 transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 chain_failed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_CAN_BROADCAST_CONFIRMED_BLOCKED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_CAN_BROADCAST_PENDING_READY",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 raw_tx = '{\"tx\":true}',
+                 tx_hash = '0xpending_ready',
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_CAN_BROADCAST_PENDING_READY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiWithdrawRepo::scan_can_broadcast(&pool, 10).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(!trade_nos.contains(&"W_CAN_BROADCAST_CONFIRMED_BLOCKED".to_string()));
+        assert!(trade_nos.contains(&"W_CAN_BROADCAST_PENDING_READY".to_string()));
     }
 
     #[tokio::test]

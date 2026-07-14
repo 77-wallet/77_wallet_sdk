@@ -281,6 +281,7 @@ impl ApiWithdrawDomain {
         };
 
         let mut should_notify = false;
+        let is_pre_broadcast_failure = !status && tx.last_broadcast_at.is_none();
 
         // ====== 必须先确保 transaction_time 事实存在，再做任何 repeat early return ======
         if tx.transaction_time.is_none() {
@@ -356,6 +357,15 @@ impl ApiWithdrawDomain {
                 should_notify = true;
             }
             tracing::info!(trade_no=%trade_no, "设置链上失败事实");
+
+            if is_pre_broadcast_failure {
+                let finished_rows = ApiWithdrawRepo::mark_chain_finished(pool, trade_no).await?;
+                tracing::info!(
+                    trade_no = %trade_no,
+                    rows_affected = finished_rows,
+                    "pre-broadcast withdraw failure finished locally"
+                );
+            }
         }
 
         // 返回最新事实快照
@@ -576,6 +586,63 @@ mod tests {
         assert!(saved.chain_failed_at.is_some());
         assert!(saved.chain_success_at.is_none());
         assert_eq!(saved.status, ApiWithdrawStatus::Failure);
+    }
+
+    #[tokio::test]
+    async fn withdraw_confirm_pre_broadcast_failure_finishes_without_receipt() {
+        let db = TestWithdrawDb::new().await;
+        let trade_no = "W_CONFIRM_PRE_BROADCAST_CANCEL";
+        db.insert_withdraw(trade_no, ApiWithdrawStatus::SendingTx).await;
+
+        sqlx::query(
+            r#"
+            UPDATE api_withdraws
+            SET
+                tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                raw_tx = '{"tx":true}',
+                tx_hash = '0xpre_broadcast_cancel',
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+            "#,
+        )
+        .bind(trade_no)
+        .execute(db.pool.as_ref())
+        .await
+        .expect("seed built withdraw");
+
+        let outcome = ApiWithdrawDomain::confirm_tx_in_pool(&db.pool, trade_no, false)
+            .await
+            .expect("confirm withdraw cancel");
+
+        assert!(outcome.should_notify, "new cancel facts should notify once");
+
+        let saved = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &db.pool,
+            trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .expect("reload withdraw");
+        assert!(saved.transaction_time.is_some(), "cancel result fact must be written");
+        assert!(saved.chain_failed_at.is_some(), "cancel should be recorded as failure fact");
+        assert!(saved.last_broadcast_at.is_none(), "precondition: SDK never broadcasted");
+        assert!(saved.finished_at.is_some(), "pre-broadcast cancel should finish locally");
+        assert_eq!(saved.status, ApiWithdrawStatus::Failure);
+
+        let broadcast_rows =
+            ApiWithdrawRepo::scan_can_broadcast(&db.pool, 10).await.expect("scan broadcast rows");
+        assert!(
+            !broadcast_rows.iter().any(|row| row.trade_no == trade_no),
+            "cancelled withdraw must not be broadcast"
+        );
+
+        let receipt_rows = ApiWithdrawRepo::scan_need_tx_exec_receipt_upload(&db.pool, 10)
+            .await
+            .expect("scan receipt rows");
+        assert!(
+            !receipt_rows.iter().any(|row| row.trade_no == trade_no),
+            "pre-broadcast cancel must not upload tx execution receipt"
+        );
     }
 
     #[tokio::test]
