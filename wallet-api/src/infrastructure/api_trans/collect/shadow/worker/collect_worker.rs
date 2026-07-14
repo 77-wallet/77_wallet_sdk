@@ -69,7 +69,6 @@ use crate::{
         service::ServiceError,
     },
     infrastructure::api_trans::{
-        build_retry_mechanism,
         collect::legacy::AddressLockManager,
         nonce_recovery_mechanism,
         resource_amount::energy_shortfall_to_apply_amounts,
@@ -176,7 +175,6 @@ impl ShadowCollectWorker {
     const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
     const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
     const BUILD_SLOT_STALE_SECS: i64 = 30;
-    const BUILD_503_RETRY_WINDOW_SECS: i64 = 3 * 60;
 
     fn should_spend_all_native_collect(chain_code: &str, token_key: &AssetTokenKey) -> bool {
         shared_mechanism::is_sol_chain(chain_code) && token_key.is_native()
@@ -243,25 +241,14 @@ impl ShadowCollectWorker {
         shared_mechanism::is_stale_slot(building_at, Self::BUILD_SLOT_STALE_SECS, now)
     }
 
-    fn is_collect_build_503_error(err: &ServiceError) -> bool {
-        build_retry_mechanism::is_build_service_unavailable(err)
-    }
-
-    fn build_503_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
-        build_retry_mechanism::build_retry_elapsed_secs(req.updated_at, now)
-    }
-
-    fn should_terminal_fail_collect_build_503(
+    fn should_retry_collect_build_service_unavailable(
         req: &ApiCollectEntity,
         err: &ServiceError,
-        now: DateTime<Utc>,
     ) -> bool {
-        build_retry_mechanism::should_terminal_fail_build_service_unavailable(
-            req.updated_at,
-            err,
-            Self::BUILD_503_RETRY_WINDOW_SECS,
-            now,
-        )
+        req.raw_tx.is_none()
+            && req.tx_hash.is_none()
+            && crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(err)
+                .is_service_unavailable()
     }
 
     fn tron_resource_ready(
@@ -3189,76 +3176,18 @@ impl ShadowCollectWorker {
 
         let build_rpc_error =
             crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
-        if req.raw_tx.is_none() && req.tx_hash.is_none() && build_rpc_error.is_service_unavailable()
-        {
+        if Self::should_retry_collect_build_service_unavailable(&req, &err) {
             info!(
                 trade_no = %trade_no,
-                elapsed_secs = ?Self::build_503_elapsed_secs(&req, Utc::now()),
-                retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
                 error_code = ?build_rpc_error.error_code(),
                 guarded_host = ?build_rpc_error.guarded_host(),
                 transient_reason = ?build_rpc_error.transient_reason(),
                 error = %build_rpc_error.message(),
                 source = "shadow_worker_v2",
-                "Detected BuildTx 503 failure"
+                "BuildTx service unavailable; releasing build slot for circuit-breaker retry"
             );
 
             self.clear_build_slot_after_claim(trade_no).await?;
-
-            let now = Utc::now();
-            if Self::should_terminal_fail_collect_build_503(&req, &err, now) {
-                let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.ctx.api_transaction_pool()?,
-                    trade_no,
-                    ApiCollectStatus::SendingTxFailed,
-                    ErrCode::NetworkException,
-                    build_rpc_error.message(),
-                )
-                .await
-                .map_err(|db_err| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark collect as terminal failure after repeated BuildTx 503");
-                    ServiceError::Database(db_err.into())
-                })?;
-
-                info!(
-                    trade_no = %trade_no,
-                    rows_affected = %rows_affected,
-                    elapsed_secs = ?Self::build_503_elapsed_secs(&req, now),
-                    retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
-                    error_code = ?build_rpc_error.error_code(),
-                    guarded_host = ?build_rpc_error.guarded_host(),
-                    transient_reason = ?build_rpc_error.transient_reason(),
-                    source = "shadow_worker_v2",
-                    "BuildTx 503 retry window expired; marked collect as terminal failure"
-                );
-
-                if rows_affected > 0 {
-                    self.advancer.try_advance(&trade_no).await;
-                }
-            } else {
-                let rows_affected = ApiCollectRepo::update_api_collect_post_tx_count(
-                    &self.ctx.api_transaction_pool()?,
-                    trade_no,
-                )
-                .await
-                .map_err(|db_err| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to bump BuildTx 503 retry count");
-                    ServiceError::Database(db_err.into())
-                })?;
-
-                info!(
-                    trade_no = %trade_no,
-                    rows_affected = %rows_affected,
-                    elapsed_secs = ?Self::build_503_elapsed_secs(&req, now),
-                    retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
-                    error_code = ?build_rpc_error.error_code(),
-                    guarded_host = ?build_rpc_error.guarded_host(),
-                    transient_reason = ?build_rpc_error.transient_reason(),
-                    source = "shadow_worker_v2",
-                    "BuildTx 503 retry window active; will retry later"
-                );
-            }
-
             return Ok(());
         }
 
@@ -3742,6 +3671,21 @@ oss:
             created_at: Utc::now(),
             updated_at: Some(Utc::now()),
         }
+    }
+
+    #[test]
+    fn collect_build_service_unavailable_remains_retryable_regardless_of_updated_at() {
+        let mut req = base_collect();
+        req.updated_at = Some(Utc::now() - chrono::Duration::days(30));
+        let err = ServiceError::System(SystemError::Internal(
+            "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
+                .to_string(),
+        ));
+
+        assert!(ShadowCollectWorker::should_retry_collect_build_service_unavailable(&req, &err));
+
+        req.raw_tx = Some("{}".to_string());
+        assert!(!ShadowCollectWorker::should_retry_collect_build_service_unavailable(&req, &err));
     }
 
     #[tokio::test]

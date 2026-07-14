@@ -643,6 +643,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: testnet and mainnet failures do not share breaker state, and a
   cooled-down endpoint admits only one half-open probe.
 
+### Collect Build Service Unavailable Retry
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  collect_build_service_unavailable_remains_retryable_regardless_of_updated_at
+  ```
+
+- Chain/RPC facts: BuildTx has no `raw_tx` or `tx_hash`, and the node response
+  is classified as service unavailable.
+- DB facts: the build slot is released by the worker; no terminal transaction
+  error or local retry-window timestamp is written.
+- Invariant: mutable order `updated_at` never controls BuildTx 503 finality;
+  retry pacing belongs to the shared endpoint circuit breaker.
+
 ## Template Contract
 
 `collect_notification/mod.rs` uses the role-trait Given-When-Then shape:
