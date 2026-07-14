@@ -69,9 +69,8 @@ impl ApiWalletConsoleApp {
     pub fn new() -> Self {
         let (event_tx, event_rx) = mpsc::channel();
         let clients = vec![
-            ClientState::new(0, "default", "config.toml"),
-            ClientState::new(1, "client1", "client1.toml"),
-            ClientState::new(2, "client4", "client4.toml"),
+            ClientState::new(0, "client1", "client1.toml"),
+            ClientState::new(1, "client4", "client4.toml"),
         ];
         let transfer_forms =
             clients.iter().map(|client| TransferForm::for_client(&client.name)).collect::<Vec<_>>();

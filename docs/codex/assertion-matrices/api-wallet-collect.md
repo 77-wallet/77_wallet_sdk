@@ -803,6 +803,16 @@ resource gate flows:
    worker construction, and `seed`/`load`/`count`/`assert` internals below the
    scenario layer in `collect_recovery/support.rs`.
 
+Collect rebroadcast invalidation DB guard:
+
+1. A collect row with `transaction_time IS NULL` and prior broadcast evidence
+   may clear stale `raw_tx`, `tx_hash`, `building_at`, and broadcast-uncertain
+   facts for rebuild.
+2. Prior broadcast evidence includes either `last_broadcast_at` or
+   `broadcast_uncertain_since_at`; TRON broadcast timeouts can persist only the
+   uncertain marker.
+3. Confirmed rows (`transaction_time IS NOT NULL`) must not be invalidated.
+
 `tests/harness` remains reserved for cross-flow environment and fake
 capabilities. `src/testkit` remains reserved for crate-private worker or
 scanner entrypoints.

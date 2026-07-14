@@ -1532,7 +1532,10 @@ impl ApiCollectDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
-              AND last_broadcast_at IS NOT NULL
+              AND (
+                  last_broadcast_at IS NOT NULL
+                  OR broadcast_uncertain_since_at IS NOT NULL
+              )
         "#;
 
         let mut query = sqlx::query(sql).bind(trade_no);
@@ -3729,6 +3732,71 @@ mod tests {
         assert!(rec.broadcast_uncertain_last_checked_at.is_none());
         assert!(rec.broadcast_uncertain_reconciled_at.is_none());
         assert_eq!(rec.broadcast_uncertain_rebroadcast_count, 0);
+    }
+
+    #[tokio::test]
+    async fn invalidate_raw_tx_for_rebroadcast_accepts_uncertain_without_last_broadcast() {
+        let dir = make_temp_dir("wallet_db_api_collect_invalidate_uncertain_rebroadcast");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "C_INV_UNCERTAIN_REBROADCAST",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET raw_tx = 'raw',
+                 tx_hash = 'hash',
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 last_broadcast_at = NULL,
+                 broadcast_uncertain_since_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 broadcast_uncertain_retry_count = 7,
+                 broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_INV_UNCERTAIN_REBROADCAST")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectDao::invalidate_raw_tx_for_rebroadcast(
+            pool.as_ref(),
+            "C_INV_UNCERTAIN_REBROADCAST",
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let rec = ApiCollectDao::get_api_collect_by_trade_no(
+            pool.as_ref(),
+            "C_INV_UNCERTAIN_REBROADCAST",
+        )
+        .await
+        .unwrap();
+        assert!(rec.raw_tx.is_none());
+        assert!(rec.tx_hash.is_none());
+        assert!(rec.building_at.is_none());
+        assert!(rec.last_broadcast_at.is_none());
+        assert!(rec.broadcast_uncertain_since_at.is_none());
+        assert_eq!(rec.broadcast_uncertain_retry_count, 0);
+        assert!(rec.broadcast_uncertain_last_checked_at.is_none());
     }
 
     #[tokio::test]
