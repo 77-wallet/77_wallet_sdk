@@ -23,6 +23,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Current Standard Tests
 
+### Collect Resource Gate RPC Queue Recovery
+
+- Layer: dispatcher unit test; no DB, backend, or chain RPC.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/dispatcher.rs
+  resource_gate_queue_wait_times_out
+  ```
+
+- DB facts: RPC unavailability, timeout, and an open circuit breaker do not
+  write `resource_gate_released_at` or `FallbackAllowed`.
+- Retry: a resource-gate intent has bounded semaphore queue time; timing out
+  releases its in-flight marker so a later scanner pass can retry it.
+- Invariant: technical RPC failure must never be converted into a business
+  decision to bypass platform/local resource delegation.
+
 ### Collect Order Notification Retry
 
 - Layer: integration.

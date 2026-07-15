@@ -5,7 +5,7 @@ use std::{
 };
 
 use dashmap::{DashMap, DashSet};
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::{debug, error, info, warn};
 use wallet_database::ApiTransactionDbPool;
 
@@ -42,6 +42,29 @@ enum DispatcherLane {
     Chain,
     ResourceGate,
     SideEffect,
+}
+
+const RESOURCE_GATE_QUEUE_WAIT_TIMEOUT: Duration = Duration::from_secs(1);
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum PermitAcquireError {
+    Closed,
+    TimedOut,
+}
+
+async fn acquire_dispatch_permit(
+    lane: DispatcherLane,
+    semaphore: Arc<Semaphore>,
+    resource_gate_wait_timeout: Duration,
+) -> Result<OwnedSemaphorePermit, PermitAcquireError> {
+    if lane == DispatcherLane::ResourceGate {
+        return tokio::time::timeout(resource_gate_wait_timeout, semaphore.acquire_owned())
+            .await
+            .map_err(|_| PermitAcquireError::TimedOut)?
+            .map_err(|_| PermitAcquireError::Closed);
+    }
+
+    semaphore.acquire_owned().await.map_err(|_| PermitAcquireError::Closed)
 }
 
 impl DispatcherLane {
@@ -111,7 +134,11 @@ impl RunningKey {
 
 #[cfg(test)]
 mod tests {
-    use super::{DispatcherLane, RunningKey};
+    use std::{sync::Arc, time::Duration};
+
+    use tokio::sync::Semaphore;
+
+    use super::{DispatcherLane, PermitAcquireError, RunningKey, acquire_dispatch_permit};
     use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     #[test]
@@ -156,6 +183,22 @@ mod tests {
         assert_eq!(DispatcherLane::for_intent(&resource_gate), DispatcherLane::ResourceGate);
         assert_eq!(DispatcherLane::for_intent(&broadcast), DispatcherLane::Chain);
         assert_eq!(DispatcherLane::for_intent(&recover), DispatcherLane::Chain);
+    }
+
+    #[tokio::test]
+    async fn resource_gate_queue_wait_times_out() {
+        let semaphore = Arc::new(Semaphore::new(1));
+        let held_permit = semaphore.clone().acquire_owned().await.expect("initial permit");
+
+        let result = acquire_dispatch_permit(
+            DispatcherLane::ResourceGate,
+            semaphore,
+            Duration::from_millis(10),
+        )
+        .await;
+
+        assert!(matches!(result, Err(PermitAcquireError::TimedOut)));
+        drop(held_permit);
     }
 }
 
@@ -508,29 +551,36 @@ impl ShadowDispatcher {
 
         // 4. Spawn 任务执行，实现并发
         tokio::spawn(async move {
+            // Install the guard before waiting so queue timeout/cancellation
+            // always makes the intent eligible for a later scanner retry.
+            let _guard = RunningGuard::new(running_key.clone(), running, running_times);
+
             // 获取信号量许可
             let start = std::time::Instant::now();
-            let _permit = match semaphore.acquire_owned().await {
-                Ok(p) => {
-                    let acquire_duration = start.elapsed();
-                    debug!(
-                        key = ?running_key,
-                        duration = ?acquire_duration,
-                        dispatcher_lane = lane.as_str(),
-                        "Acquired dispatcher semaphore permit"
-                    );
-                    p
-                }
-                Err(_) => {
-                    // 信号量已关闭，释放 running 标记并返回
-                    running.remove(&running_key);
-                    running_times.remove(&running_key);
-                    return;
-                }
-            };
-
-            // 创建 RunningGuard，确保无论如何都会释放 running 标记
-            let _guard = RunningGuard::new(running_key.clone(), running, running_times);
+            let _permit =
+                match acquire_dispatch_permit(lane, semaphore, RESOURCE_GATE_QUEUE_WAIT_TIMEOUT)
+                    .await
+                {
+                    Ok(p) => {
+                        let acquire_duration = start.elapsed();
+                        debug!(
+                            key = ?running_key,
+                            duration = ?acquire_duration,
+                            dispatcher_lane = lane.as_str(),
+                            "Acquired dispatcher semaphore permit"
+                        );
+                        p
+                    }
+                    Err(reason) => {
+                        warn!(
+                            key = ?running_key,
+                            dispatcher_lane = lane.as_str(),
+                            reason = ?reason,
+                            "Dispatcher semaphore acquire did not complete; intent will be retried"
+                        );
+                        return;
+                    }
+                };
 
             // 路由 Intent 到正确的 Worker
             if let Err(e) = Self::execute_intent(intent, shadow_worker, side_effect_worker).await {
