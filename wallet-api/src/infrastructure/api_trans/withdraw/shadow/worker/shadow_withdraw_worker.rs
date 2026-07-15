@@ -250,6 +250,10 @@ impl ShadowWithdrawWorker {
         ApiWalletResourceConsume::new(bandwidth, energy).to_json_string()
     }
 
+    fn tron_actual_resource_json(consumer: BillResourceConsume) -> Result<String, ServiceError> {
+        ApiWalletResourceConsume::from_bill_resource_consume(consumer).to_json_string()
+    }
+
     fn tron_resource_ready(
         available_energy: i64,
         available_bandwidth: i64,
@@ -1037,7 +1041,7 @@ impl ShadowWithdrawWorker {
                     )?;
 
                     let resource_consume = if let Some(consumer) = tx_resp.consumer {
-                        consumer.energy_used.to_string()
+                        Self::tron_actual_resource_json(consumer)?
                     } else {
                         "0".to_string()
                     };
@@ -1651,7 +1655,7 @@ impl ShadowWithdrawWorker {
                 {
                     // 广播成功 = 一次不可分割的事实提交
                     let resource_consume = if let Some(consumer) = tx.consumer {
-                        consumer.energy_used.to_string()
+                        Self::tron_actual_resource_json(consumer)?
                     } else {
                         "0".to_string()
                     };

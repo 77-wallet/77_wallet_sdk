@@ -21,6 +21,32 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Current Standard Tests
 
+### Withdraw Actual Resource Display
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  src/api/api_wallet/withdraw.rs
+  api_withdraw_order_vo_fee_display_reads_legacy_energy_only_actual_resource
+  ```
+
+- DB facts: legacy `resource_consume` may be an energy-only scalar; current
+  shadow rows persist JSON with bandwidth and energy.
+- API facts: list/detail serialize `transactionFee`, `bandwidthConsume`, and
+  `energyConsume` for successful orders.
+- DB regression:
+
+  ```text
+  wallet-database/src/dao/api_withdraw.rs
+  withdraw_resource_recovery_scans_scalar_success_and_updates_conditionally
+  ```
+
+- Invariant: completed orders never present estimated bandwidth as actual.
+  Startup recovery keyset-pages through every scalar row once in batches of 20,
+  serially backfills complete chain resource usage, and only updates an
+  unchanged scalar value.
+
 ### Withdraw Order Notification Retry
 
 - Layer: integration.

@@ -427,6 +427,62 @@ impl ApiWithdrawDao {
         Ok(result)
     }
 
+    pub async fn scan_withdraw_resource_recovery<'a, E>(
+        exec: E,
+        after_id: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+              AND lower(chain_code) = 'tron'
+              AND status IN (?, ?)
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND transaction_time IS NOT NULL
+              AND trim(resource_consume) <> ''
+              AND trim(resource_consume) <> '0'
+              AND trim(resource_consume) NOT GLOB '*[^0-9]*'
+              AND (? IS NULL OR id > ?)
+            ORDER BY id ASC
+            LIMIT ?
+        "#;
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(ApiWithdrawStatus::Success)
+            .bind(ApiWithdrawStatus::ConfirmSuccessReport)
+            .bind(after_id)
+            .bind(after_id)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn update_resource_consume_if_unchanged<'a, E>(
+        exec: E,
+        trade_no: &str,
+        observed: &str,
+        replacement: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let result = sqlx::query(
+            "UPDATE api_withdraws SET resource_consume = ? WHERE trade_no = ? AND resource_consume = ?",
+        )
+        .bind(replacement)
+        .bind(trade_no)
+        .bind(observed)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result.rows_affected())
+    }
+
     pub async fn pending_resource_budget_by_owner<'a, E>(
         exec: E,
         chain_code: &str,
@@ -2907,6 +2963,81 @@ mod tests {
         let trade_nos = rows.into_iter().map(|row| row.trade_no).collect::<Vec<_>>();
 
         assert_eq!(trade_nos, vec!["W_FEE_ESTIMATE_PENDING"]);
+    }
+
+    #[tokio::test]
+    async fn withdraw_resource_recovery_scans_scalar_success_and_updates_conditionally() {
+        let dir = make_temp_dir("wallet_db_withdraw_resource_recovery");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for trade_no in ["W_RECOVER_SCALAR", "W_RECOVER_JSON", "W_RECOVER_PENDING"] {
+            seed_withdraw_for_fee_estimate(&pool, trade_no, "tron", ApiTradeType::Withdraw).await;
+        }
+
+        for (trade_no, status, resource_consume, transaction_time) in [
+            ("W_RECOVER_SCALAR", ApiWithdrawStatus::Success, "70070", Some(chrono::Utc::now())),
+            (
+                "W_RECOVER_JSON",
+                ApiWithdrawStatus::Success,
+                r#"{"net_used":4891,"energy_used":70070}"#,
+                Some(chrono::Utc::now()),
+            ),
+            ("W_RECOVER_PENDING", ApiWithdrawStatus::SendingTx, "70070", None),
+        ] {
+            sqlx::query(
+                "UPDATE api_withdraws SET status = ?, tx_hash = ?, transaction_time = ?, resource_consume = ? WHERE trade_no = ?",
+            )
+            .bind(status)
+            .bind(format!("HASH_{trade_no}"))
+            .bind(transaction_time)
+            .bind(resource_consume)
+            .bind(trade_no)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        }
+
+        let candidates =
+            ApiWithdrawRepo::scan_withdraw_resource_recovery(&pool, None, 20).await.unwrap();
+        assert_eq!(
+            candidates.iter().map(|row| row.trade_no.as_str()).collect::<Vec<_>>(),
+            vec!["W_RECOVER_SCALAR"]
+        );
+        let next_page =
+            ApiWithdrawRepo::scan_withdraw_resource_recovery(&pool, Some(candidates[0].id), 20)
+                .await
+                .unwrap();
+        assert!(next_page.is_empty());
+
+        let replacement = r#"{"net_used":4891,"energy_used":70070}"#;
+        let affected = ApiWithdrawRepo::update_resource_consume_if_unchanged(
+            &pool,
+            "W_RECOVER_SCALAR",
+            "70070",
+            replacement,
+        )
+        .await
+        .unwrap();
+        let stale_retry = ApiWithdrawRepo::update_resource_consume_if_unchanged(
+            &pool,
+            "W_RECOVER_SCALAR",
+            "70070",
+            r#"{"net_used":1,"energy_used":1}"#,
+        )
+        .await
+        .unwrap();
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_RECOVER_SCALAR",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(affected, 1);
+        assert_eq!(stale_retry, 0);
+        assert_eq!(after.resource_consume, replacement);
     }
 
     #[tokio::test]

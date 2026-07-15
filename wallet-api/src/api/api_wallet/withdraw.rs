@@ -336,6 +336,30 @@ mod unit_tests {
     }
 
     #[test]
+    fn api_withdraw_order_vo_fee_display_reads_legacy_energy_only_actual_resource() {
+        let now = Utc::now();
+        let mut entity = make_entity(now, None, None);
+        entity.transaction_fee = "0.344".to_string();
+        entity.resource_consume = "70070".to_string();
+        entity.estimated_transaction_fee = Some("1.10".to_string());
+        entity.estimated_resource_consume =
+            Some(r#"{"bandwidth":4891,"energy":70070}"#.to_string());
+        entity.tx_hash = Some("legacy-resource-tx-hash".to_string());
+
+        let list_json = serde_json::to_value(ApiWithdrawOrderVo::from(entity.clone())).unwrap();
+        assert_eq!(list_json.get("transactionFee").and_then(|v| v.as_str()), Some("0.344"));
+        assert!(list_json.get("bandwidthConsume").is_some_and(|v| v.is_null()));
+        assert_eq!(list_json.get("energyConsume").and_then(|v| v.as_u64()), Some(70070));
+        assert_internal_display_fields_absent(&list_json);
+
+        let detail_json = serde_json::to_value(ApiWithdrawOrderDetailVo::from(entity)).unwrap();
+        assert_eq!(detail_json.get("transactionFee").and_then(|v| v.as_str()), Some("0.344"));
+        assert!(detail_json.get("bandwidthConsume").is_some_and(|v| v.is_null()));
+        assert_eq!(detail_json.get("energyConsume").and_then(|v| v.as_u64()), Some(70070));
+        assert_internal_display_fields_absent(&detail_json);
+    }
+
+    #[test]
     fn api_withdraw_order_vo_fee_display_falls_back_to_estimated_values() {
         let now = Utc::now();
         let mut entity = make_entity(now, None, None);

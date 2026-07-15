@@ -11,6 +11,7 @@ use crate::{
         recovery::{
             address_query_recovery::start_address_recover_worker,
             asset_query_recovery::start_asset_query_worker,
+            withdraw_resource_recovery::start_withdraw_resource_recover_worker,
         },
         unlock_session,
     },
@@ -80,6 +81,9 @@ impl WalletManager {
         tracing::info!("启动资产查询恢复Worker");
         let background_task_pool = context.get_global_background_task_pool();
         start_asset_query_worker(context, background_task_pool).await?;
+
+        // 启动一次性 TRON 出款资源补全 Worker，不阻塞本体启动。
+        start_withdraw_resource_recover_worker(context).await?;
 
         // infrastructure::asset_calc::start_batch_recalculator(1000)?;
         tracing::info!("start_batch_recalculator start");

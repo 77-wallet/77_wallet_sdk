@@ -63,8 +63,16 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
             entity.estimated_transaction_fee.as_deref(),
             has_actual_fee_result,
         );
-        let bandwidth_consume_display = actual_resource.bandwidth.or(estimated_resource.bandwidth);
-        let energy_consume_display = actual_resource.energy.or(estimated_resource.energy);
+        let bandwidth_consume_display = if has_actual_fee_result {
+            actual_resource.bandwidth
+        } else {
+            actual_resource.bandwidth.or(estimated_resource.bandwidth)
+        };
+        let energy_consume_display = if has_actual_fee_result {
+            actual_resource.energy
+        } else {
+            actual_resource.energy.or(estimated_resource.energy)
+        };
         Self {
             trade_no: entity.trade_no,
             name: entity.name,
@@ -158,8 +166,16 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
             entity.estimated_transaction_fee.as_deref(),
             has_actual_fee_result,
         );
-        let bandwidth_consume_display = actual_resource.bandwidth.or(estimated_resource.bandwidth);
-        let energy_consume_display = actual_resource.energy.or(estimated_resource.energy);
+        let bandwidth_consume_display = if has_actual_fee_result {
+            actual_resource.bandwidth
+        } else {
+            actual_resource.bandwidth.or(estimated_resource.bandwidth)
+        };
+        let energy_consume_display = if has_actual_fee_result {
+            actual_resource.energy
+        } else {
+            actual_resource.energy.or(estimated_resource.energy)
+        };
         Self {
             trade_no: entity.trade_no,
             name: entity.name,
@@ -202,6 +218,10 @@ fn resource_consume_display(raw: Option<&str>) -> ResourceConsumeDisplay {
     let Some(raw) = raw.map(str::trim).filter(|item| !item.is_empty() && *item != "0") else {
         return ResourceConsumeDisplay::default();
     };
+
+    if let Ok(energy) = raw.parse::<u64>() {
+        return ResourceConsumeDisplay { bandwidth: None, energy: Some(energy) };
+    }
 
     let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
         return ResourceConsumeDisplay::default();
