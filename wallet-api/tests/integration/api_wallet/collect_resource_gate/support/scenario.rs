@@ -20,7 +20,10 @@ use crate::harness::{
 };
 
 use super::{
-    db::{seed_blocked_collect, seed_failed_resource_receipt_row, seed_resource_result},
+    db::{
+        mark_collect_chain_success, seed_blocked_collect, seed_failed_resource_receipt_row,
+        seed_resource_result,
+    },
     fixtures::CollectResourceGateFixture,
 };
 
@@ -67,6 +70,8 @@ pub(crate) trait CollectResourceGateGiven {
         fixture: &CollectResourceGateFixture,
     );
 
+    async fn collect_chain_success(&self, fixture: &CollectResourceGateFixture);
+
     async fn failed_collect_resource_receipt(&self, fixture: &CollectResourceGateFixture);
 
     async fn failed_resource_receipt_without_origin_trade(
@@ -96,6 +101,10 @@ impl CollectResourceGateGiven for GivenRole<'_, CollectResourceGateScenario> {
         self.scenario().seed().withdraw_origin_resource_result(fixture).await;
     }
 
+    async fn collect_chain_success(&self, fixture: &CollectResourceGateFixture) {
+        self.scenario().seed().collect_chain_success(fixture).await;
+    }
+
     async fn failed_collect_resource_receipt(&self, fixture: &CollectResourceGateFixture) {
         self.scenario().seed().failed_collect_resource_receipt(fixture).await;
     }
@@ -115,6 +124,8 @@ trait CollectResourceGateSeed {
     async fn collect_resource_result(&self, fixture: &CollectResourceGateFixture, success: bool);
 
     async fn withdraw_origin_resource_result(&self, fixture: &CollectResourceGateFixture);
+
+    async fn collect_chain_success(&self, fixture: &CollectResourceGateFixture);
 
     async fn failed_collect_resource_receipt(&self, fixture: &CollectResourceGateFixture);
 
@@ -152,6 +163,10 @@ impl CollectResourceGateSeed for SeedRole<'_, CollectResourceGateScenario> {
             true,
         )
         .await;
+    }
+
+    async fn collect_chain_success(&self, fixture: &CollectResourceGateFixture) {
+        mark_collect_chain_success(&self.scenario().collect_pool, &fixture.trade_no).await;
     }
 
     async fn failed_collect_resource_receipt(&self, fixture: &CollectResourceGateFixture) {
@@ -226,7 +241,7 @@ impl CollectResourceGateThen for ThenRole<'_, CollectResourceGateScenario> {
         let collect = self.scenario().load().collect(&fixture.trade_no).await;
         self.scenario().assert().origin_collect_gate_is_released(
             &collect,
-            ApiResourceGateResult::ResourceDelegationSuccess,
+            ApiResourceGateResult::PlatformDelegateSuccess,
         );
     }
 

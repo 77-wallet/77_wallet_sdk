@@ -624,6 +624,11 @@ impl PlatformResourceDelegateWorker {
         let origin = task.origin_trade_no.clone()?;
         let result = if is_original_order_resource_result_fact(task) {
             match task.result_status {
+                Some(ApiResourceDelegationResultStatus::Success)
+                    if task.origin_trade_type == Some(ApiTradeType::Collect as i64) =>
+                {
+                    ApiResourceGateResult::PlatformDelegateSuccess
+                }
                 Some(ApiResourceDelegationResultStatus::Success) => {
                     ApiResourceGateResult::ResourceDelegationSuccess
                 }
@@ -632,6 +637,11 @@ impl PlatformResourceDelegateWorker {
                 }
                 None => return None,
             }
+        } else if task.origin_trade_type == Some(ApiTradeType::Collect as i64)
+            && task.err_code.is_none()
+            && matches!(task.tx_status.as_deref(), Some("success"))
+        {
+            ApiResourceGateResult::PlatformDelegateSuccess
         } else if task.err_code.is_none() && matches!(task.tx_status.as_deref(), Some("success")) {
             ApiResourceGateResult::ResourceDelegationSuccess
         } else if Self::is_failure(task) {

@@ -105,6 +105,26 @@ pub(crate) async fn seed_resource_result(
     }
 }
 
+pub(crate) async fn mark_collect_chain_success(
+    collect_pool: &ApiTransactionDbPool,
+    trade_no: &str,
+) {
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            tx_hash = 'collect_chain_success_hash',
+            block_height = '12345',
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("mark collect chain success");
+}
+
 pub(crate) async fn seed_failed_resource_receipt_row(
     resource_pool: &ApiResourceDbPool,
     trade_no: Option<&str>,

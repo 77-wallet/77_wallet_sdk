@@ -40,6 +40,24 @@ async fn collect_resource_result_ack_releases_origin_collect_gate() {
 
 #[tokio::test]
 #[serial]
+async fn collect_platform_resource_result_ack_releases_gate_after_chain_success() {
+    let scenario = CollectResourceGateScenario::new().await;
+    let fixture = CollectResourceGateFixture::origin_case("C_RSC_CHAIN_DONE");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+
+    given.blocked_collect(&fixture).await;
+    given.collect_chain_success(&fixture).await;
+    given.successful_collect_resource_result(&fixture).await;
+
+    when.resource_result_ack_is_sent(&fixture).await;
+
+    then.origin_collect_gate_is_released_by_successful_delegation(&fixture).await;
+}
+
+#[tokio::test]
+#[serial]
 async fn collect_failed_resource_result_ack_keeps_local_fallback_gate() {
     let scenario = CollectResourceGateScenario::new().await;
     let fixture = CollectResourceGateFixture::original_order_result_case("C_RSC_FAIL");

@@ -744,7 +744,7 @@ impl SideEffectWorker {
         let release_result = if is_original_order_resource_result_fact(resource_task) {
             match resource_task.result_status {
                 Some(ApiResourceDelegationResultStatus::Success) => {
-                    ApiResourceGateResult::ResourceDelegationSuccess
+                    ApiResourceGateResult::PlatformDelegateSuccess
                 }
                 None => return None,
                 Some(ApiResourceDelegationResultStatus::Fail) => return None,
@@ -752,7 +752,7 @@ impl SideEffectWorker {
         } else if resource_task.err_code.is_none()
             && matches!(resource_task.tx_status.as_deref(), Some("success"))
         {
-            ApiResourceGateResult::ResourceDelegationSuccess
+            ApiResourceGateResult::PlatformDelegateSuccess
         } else {
             return None;
         };
@@ -1904,10 +1904,9 @@ oss:
         .await?;
         assert_eq!(
             SideEffectWorker::collect_gate_release_from_resource_result(&resource_task),
-            Some((
-                "C_rsc_ack_release".to_string(),
-                ApiResourceGateResult::ResourceDelegationSuccess,
-            ))
+            Some(
+                ("C_rsc_ack_release".to_string(), ApiResourceGateResult::PlatformDelegateSuccess,)
+            )
         );
 
         Ok(())

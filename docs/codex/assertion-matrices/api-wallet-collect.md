@@ -69,9 +69,26 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 - Backend: resource result ACK is sent for the delegation trade.
 - DB facts: origin collect writes `resource_gate_released_at` and
-  `resource_gate_result = ResourceDelegationSuccess`.
+  `resource_gate_result = PlatformDelegateSuccess`.
 - Scanner: released collect becomes eligible for `BuildTx`.
 - Invariant: only a successful collect-origin delegation releases the gate.
+
+### Collect Platform Resource Result ACK After Chain Success
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_resource_gate/mod.rs
+  collect_platform_resource_result_ack_releases_gate_after_chain_success
+  ```
+
+- Backend: resource result ACK is sent after the origin collect already has
+  `transaction_time`.
+- DB facts: origin collect backfills `resource_gate_released_at` and
+  `resource_gate_result = PlatformDelegateSuccess`.
+- Invariant: chain success must not keep a successful platform delegation gate
+  unreleased.
 
 ### Collect Resource Result ACK Failure
 
