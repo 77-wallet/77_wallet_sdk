@@ -96,4 +96,5 @@ mod tests {
         assert_eq!(task.page, page);
         assert_eq!(task.index_list_json, "[3,4]");
     }
+
 }

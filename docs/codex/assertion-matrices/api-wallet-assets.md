@@ -108,6 +108,24 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: API wallet asset sync must skip subaccount wallets and leave their
   balances untouched.
 
+### Backend Asset Query Dispatches Updated Token Events
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_wallet_assets_sync.rs
+  api_asset_query_dispatches_updated_token_events
+  ```
+
+- Backend: none; the test covers the local dispatch-plan builder only.
+- DB facts: none.
+- Payload: a TRON address has a JST token update, with a duplicate JST row and a
+  separate USDT row.
+- Invariant: backend asset-list balance updates must schedule refresh work for
+  the actual updated token key and address, and must not collapse contract-token
+  updates into a native-token-only refresh.
+
 ## Template Contract
 
 `acct_change/mod.rs` uses the role-trait Given-When-Then shape:
