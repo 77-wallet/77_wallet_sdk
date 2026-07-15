@@ -63,6 +63,8 @@ use crate::{
     request::api_wallet::trans::ApiBaseTransferReq,
 };
 
+const RESOURCE_ACK_CLAIM_TTL_SECS: i64 = 60;
+
 /// SideEffect Worker Command 结构
 /// 只表达："对某个 trade_no 执行某个确定的副作用动作"
 #[derive(Debug)]
@@ -151,6 +153,12 @@ pub struct SideEffectWorker {
 }
 
 impl SideEffectWorker {
+    fn resource_ack_claim_until() -> String {
+        (chrono::Utc::now() + chrono::Duration::seconds(RESOURCE_ACK_CLAIM_TTL_SECS))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
+    }
+
     fn resource_result_ack_retry_wait_secs(retry_count: i64) -> i64 {
         match retry_count {
             i if i <= 0 => 60,
@@ -666,6 +674,22 @@ impl SideEffectWorker {
         } else {
             (platform_resource_task_trans_type(&resource_task), platform_resource_result_ack_type())
         };
+        let claim_until = Self::resource_ack_claim_until();
+        let claimed = ApiResourceDelegationRepo::claim_result_ack(
+            &self.ctx.api_resource_pool()?,
+            &resource_trade_no,
+            &claim_until,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if claimed == 0 {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "side_effect_worker",
+                "Resource result ACK skipped because another worker claimed it"
+            );
+            return Ok(());
+        }
         let backend_api = self.ctx.get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(&resource_trade_no, trans_type, ack_type))
@@ -933,6 +957,22 @@ impl SideEffectWorker {
         }
 
         let trans_type = platform_resource_task_trans_type(&resource_task);
+        let claim_until = Self::resource_ack_claim_until();
+        let claimed = ApiResourceDelegationRepo::claim_task_ack(
+            &self.ctx.api_resource_pool()?,
+            &resource_trade_no,
+            &claim_until,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if claimed == 0 {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "side_effect_worker",
+                "Resource task ACK skipped because another worker claimed it"
+            );
+            return Ok(());
+        }
 
         let backend_api = self.ctx.get_global_backend_api();
         match backend_api

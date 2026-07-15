@@ -47,6 +47,8 @@ use crate::{
     },
 };
 
+const RESOURCE_ACK_CLAIM_TTL_SECS: i64 = 60;
+
 #[derive(Debug, Clone)]
 pub enum PlatformResourceDelegateIntent {
     SendPlatformDelegationTaskAck(String),
@@ -281,6 +283,12 @@ impl PlatformResourceDelegateWorker {
         Self { pool, transaction_pool }
     }
 
+    fn ack_claim_until() -> String {
+        (Utc::now() + chrono::Duration::seconds(RESOURCE_ACK_CLAIM_TTL_SECS))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
+    }
+
     pub async fn handle(&self, intent: PlatformResourceDelegateIntent) -> Result<(), ServiceError> {
         match intent {
             PlatformResourceDelegateIntent::SendPlatformDelegationTaskAck(trade_no) => {
@@ -305,6 +313,19 @@ impl PlatformResourceDelegateWorker {
     async fn process_task_ack(&self, resource_trade_no: String) -> Result<(), ServiceError> {
         let task = self.load_platform_delegate(&resource_trade_no).await?;
         if task.task_ack_sent_at.is_some() {
+            return Ok(());
+        }
+        let claim_until = Self::ack_claim_until();
+        let claimed =
+            ApiResourceDelegationRepo::claim_task_ack(&self.pool, &resource_trade_no, &claim_until)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if claimed == 0 {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_delegate",
+                "Platform resource task ACK skipped because another worker claimed it"
+            );
             return Ok(());
         }
         CONTEXT
@@ -426,6 +447,22 @@ impl PlatformResourceDelegateWorker {
         } else {
             (platform_resource_task_trans_type(&task), platform_resource_result_ack_type())
         };
+        let claim_until = Self::ack_claim_until();
+        let claimed = ApiResourceDelegationRepo::claim_result_ack(
+            &self.pool,
+            &resource_trade_no,
+            &claim_until,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if claimed == 0 {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = "platform_resource_delegate",
+                "Platform resource result ACK skipped because another worker claimed it"
+            );
+            return Ok(());
+        }
         CONTEXT
             .get()
             .unwrap()

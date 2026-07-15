@@ -12,6 +12,25 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Invariant: transient RPC failures must not push resource delegation fallback
   into long waits approaching one hour.
 
+## Resource Delegation ACK Claim
+
+- Test:
+  `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
+  `resource_delegation_ack_claim_blocks_duplicate_task_ack_requests`
+- Test:
+  `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
+  `resource_delegation_ack_claim_blocks_duplicate_result_ack_requests`
+- Entry point: resource delegation task/result ACK claim helpers used before
+  backend `trans_event_ack` calls.
+- DB facts: claiming an ACK sets `next_retry_at` into a short future window
+  without marking `task_ack_sent_at` or `result_ack_sent_at`.
+- Retry: a competing scanner/worker for the same resource trade no observes
+  zero claimed rows and does not send the backend request; a failed owner can
+  still be retried after the claim/retry wait expires.
+- Invariant: collect/withdraw shadow scanners and platform resource scanners
+  must not concurrently send duplicate backend ACK requests for the same
+  resource delegation row.
+
 ## Platform Resource Reclaim TX_RES Gate
 
 - Test:
