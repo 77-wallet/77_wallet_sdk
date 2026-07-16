@@ -24,8 +24,9 @@ use wallet_database::{
         assets::AssetsId,
     },
     repositories::api_wallet::{
-        account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo, collect::ApiCollectRepo,
-        fee::ApiFeeRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
+        account::ApiAccountRepo, api_asset_sync_state::ApiAssetSyncStateRepo,
+        assets::ApiAssetsRepo, coin::ApiCoinRepo, collect::ApiCollectRepo, fee::ApiFeeRepo,
+        wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
 
@@ -1212,6 +1213,24 @@ impl ApiWalletAcctChange {
             return Ok(());
         }
 
+        let sync_token_key = AssetTokenKey::from_raw(acct_change.0.token.as_deref());
+        for addr in &sync_addrs {
+            ApiAssetSyncStateRepo::upsert_pending(
+                &pool,
+                addr,
+                &acct_change.0.chain_code,
+                sync_token_key.clone(),
+            )
+            .await?;
+        }
+        tracing::info!(
+            "API 钱包账变资产同步任务已持久化: tx_hash={}, addrs={:?}, chain_code={}, token={:?}",
+            acct_change.0.tx_hash,
+            sync_addrs,
+            acct_change.0.chain_code,
+            acct_change.0.token
+        );
+
         let handles = ctx.get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
@@ -1219,7 +1238,7 @@ impl ApiWalletAcctChange {
             let data = SyncAssetsData::new_with_token_key(
                 sync_addrs.clone(),
                 acct_change.0.chain_code.clone(),
-                AssetTokenKey::from_raw(acct_change.0.token.as_deref()),
+                sync_token_key,
             )
             .with_priority(SyncPriority::High);
             tracing::info!(

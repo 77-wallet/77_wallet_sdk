@@ -126,6 +126,28 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   the actual updated token key and address, and must not collapse contract-token
   updates into a native-token-only refresh.
 
+### Account Change Persists API Asset Sync State
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  wallet-database/src/repositories/api_wallet/api_asset_sync_state.rs
+  api_asset_sync_state_upsert_and_claim_success
+  api_asset_sync_state_claim_is_exclusive
+  api_asset_sync_state_done_is_not_overwritten_by_failed_worker
+  ```
+
+- Backend: none; the tests use local SQLite state only.
+- DB facts: API wallet asset-sync states are keyed by address, chain, and token
+  address.
+- Payload: a TRON JST address sync state is inserted and claimed by the recovery
+  path.
+- Invariant: account-change-triggered API wallet asset sync must be durable and
+  claimable after restart, while concurrent workers cannot claim the same state
+  twice. A successful inner-event balance write may mark the state done, and a
+  later recovery-worker failure must not overwrite that clean state.
+
 ## Template Contract
 
 `acct_change/mod.rs` uses the role-trait Given-When-Then shape:

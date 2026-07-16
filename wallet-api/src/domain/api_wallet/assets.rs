@@ -15,8 +15,8 @@ use wallet_database::{
     },
     repositories::{
         api_wallet::{
-            account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo,
-            wallet::ApiWalletRepo,
+            account::ApiAccountRepo, api_asset_sync_state::ApiAssetSyncStateRepo,
+            assets::ApiAssetsRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
         },
         exchange_rate::ExchangeRateRepo,
     },
@@ -284,7 +284,7 @@ impl ApiAssetsDomain {
             symbol
         );
 
-        Self::do_async_balance(pool, ctx, addr, None, SyncFilter::Symbol(symbol), 0).await
+        Self::do_async_balance(pool, ctx, addr, None, SyncFilter::Symbol(symbol), 0, false).await
     }
 
     // async fn do_async_balance(
@@ -328,8 +328,16 @@ impl ApiAssetsDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.api_wallet_pool()?;
 
-        Self::do_async_balance(pool, ctx, addr, chain_code, SyncFilter::Token(token_address), 0)
-            .await
+        Self::do_async_balance(
+            pool,
+            ctx,
+            addr,
+            chain_code,
+            SyncFilter::Token(token_address),
+            0,
+            false,
+        )
+        .await
     }
 
     pub async fn sync_assets_by_addr_chain_with_retry_with_ctx(
@@ -348,6 +356,28 @@ impl ApiAssetsDomain {
             chain_code,
             SyncFilter::Token(token_address),
             retry_count,
+            false,
+        )
+        .await
+    }
+
+    pub(crate) async fn sync_assets_by_addr_chain_durable_with_ctx(
+        ctx: &'static Context,
+        addr: Vec<String>,
+        chain_code: Option<String>,
+        token_address: AssetTokenKey,
+        retry_count: u32,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
+
+        Self::do_async_balance(
+            pool,
+            ctx,
+            addr,
+            chain_code,
+            SyncFilter::Token(token_address),
+            retry_count,
+            true,
         )
         .await
     }
@@ -359,6 +389,7 @@ impl ApiAssetsDomain {
         chain_code: Option<String>,
         filter: SyncFilter,
         retry_count: u32,
+        fail_on_retry: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
         tracing::debug!(
             "开始异步余额同步: addr_count={}, chain_code={:?}, retry_count={}",
@@ -491,6 +522,8 @@ impl ApiAssetsDomain {
 
         // Initialize account balance notification object
         // 优化：批量更新余额，减少数据库往返次数
+        let mut persisted_successes: Vec<AssetsId> = Vec::new();
+
         if !sync_result.success.is_empty() {
             let updates: Vec<(String, String, AssetTokenKey, String)> = sync_result
                 .success
@@ -508,6 +541,11 @@ impl ApiAssetsDomain {
             match ApiAssetsRepo::batch_update_balance(&pool, updates).await {
                 Ok(_) => {
                     success_count = sync_result.success.len();
+                    persisted_successes = sync_result
+                        .success
+                        .iter()
+                        .map(|(assets_id, _)| assets_id.clone())
+                        .collect();
 
                     tracing::debug!(
                         "批量更新余额成功: 成功数量={}, 涉及地址数={}",
@@ -535,31 +573,35 @@ impl ApiAssetsDomain {
 
                         futures.push(async move {
                             let _permit = sem.acquire().await.unwrap();
-                            ApiAssetsRepo::update_balance(
+                            let result = ApiAssetsRepo::update_balance(
                                 &pool,
                                 &assets_id.address,
                                 &assets_id.chain_code,
                                 assets_id.token_address.clone(),
                                 &balance,
                             )
-                            .await
+                            .await;
+                            (assets_id, result)
                         });
                     }
 
                     // 并发执行所有更新任务
                     while let Some(result) = futures.next().await {
                         match result {
-                            Ok(_) => {
+                            (assets_id, Ok(_)) => {
+                                persisted_successes.push(assets_id);
                                 success_count += 1;
                                 fail_count -= 1;
                             }
-                            Err(e) => {
+                            (_, Err(e)) => {
                                 tracing::error!("单个更新余额失败: error={:?}", e);
                             }
                         }
                     }
                 }
             }
+
+            Self::mark_persisted_asset_sync_done(&pool, &persisted_successes).await?;
 
             // 数据库更新完成后，计算每个账户的总余额
             let account_balances =
@@ -596,11 +638,35 @@ impl ApiAssetsDomain {
 
         // 将可重试的任务进行延迟重试
         if !retry_tasks.is_empty() {
+            if fail_on_retry {
+                return Err(crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::Internal(format!(
+                        "api asset sync has {} retryable balance task(s)",
+                        retry_tasks.len()
+                    )),
+                ));
+            }
             let next_retry_count = retry_count + 1;
             Self::retry_failed_balance_tasks(&ctx, retry_tasks, chain_code, next_retry_count)
                 .await?;
         }
 
+        Ok(())
+    }
+
+    async fn mark_persisted_asset_sync_done(
+        pool: &ApiWalletDbPool,
+        persisted_successes: &[AssetsId],
+    ) -> Result<(), crate::error::service::ServiceError> {
+        for assets_id in persisted_successes {
+            ApiAssetSyncStateRepo::mark_done(
+                pool,
+                &assets_id.address,
+                &assets_id.chain_code,
+                assets_id.token_address.clone(),
+            )
+            .await?;
+        }
         Ok(())
     }
 
