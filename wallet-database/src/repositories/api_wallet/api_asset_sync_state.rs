@@ -49,6 +49,20 @@ impl ApiAssetSyncStateRepo {
         )
         .await
     }
+
+    pub async fn delete_done_older_than(
+        pool: &ApiWalletDbPool,
+        retention_secs: u64,
+    ) -> Result<u64, crate::Error> {
+        ApiAssetSyncStateDao::delete_done_older_than(pool.write_ref(), retention_secs).await
+    }
+
+    pub async fn trim_done_to_limit(
+        pool: &ApiWalletDbPool,
+        max_rows: u32,
+    ) -> Result<u64, crate::Error> {
+        ApiAssetSyncStateDao::trim_done_to_limit(pool.write_ref(), max_rows).await
+    }
 }
 
 #[cfg(test)]
@@ -145,5 +159,27 @@ mod tests {
 
         let next = ApiAssetSyncStateRepo::claim_next(&pool, false).await.unwrap();
         assert!(next.is_none());
+    }
+
+    #[tokio::test]
+    async fn api_asset_sync_state_trims_done_rows_to_limit() {
+        let pool = setup_api_wallet_pool("wallet_db_api_asset_sync_state_trim_done").await;
+        let chain = wallet_types::constant::chain_code::TRON;
+
+        for index in 0..3 {
+            let address = format!("TTrimDoneAddress{index}");
+            let token_raw = format!("TToken{index}");
+            let token = AssetTokenKey::from_raw(Some(token_raw.as_str()));
+            ApiAssetSyncStateRepo::upsert_pending(&pool, &address, chain, token.clone())
+                .await
+                .unwrap();
+            ApiAssetSyncStateRepo::mark_done(&pool, &address, chain, token).await.unwrap();
+        }
+
+        let removed = ApiAssetSyncStateRepo::trim_done_to_limit(&pool, 1).await.unwrap();
+        assert_eq!(removed, 2);
+
+        let first = ApiAssetSyncStateRepo::claim_next(&pool, false).await.unwrap();
+        assert!(first.is_none());
     }
 }

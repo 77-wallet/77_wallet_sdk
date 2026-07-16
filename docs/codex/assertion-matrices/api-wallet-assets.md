@@ -136,6 +136,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   api_asset_sync_state_upsert_and_claim_success
   api_asset_sync_state_claim_is_exclusive
   api_asset_sync_state_done_is_not_overwritten_by_failed_worker
+  api_asset_sync_state_trims_done_rows_to_limit
   ```
 
 - Backend: none; the tests use local SQLite state only.
@@ -146,7 +147,9 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: account-change-triggered API wallet asset sync must be durable and
   claimable after restart, while concurrent workers cannot claim the same state
   twice. A successful inner-event balance write may mark the state done, and a
-  later recovery-worker failure must not overwrite that clean state.
+  later recovery-worker failure must not overwrite that clean state. Done states
+  are bounded by retention and row-limit cleanup so the table cannot grow
+  indefinitely.
 
 ## Template Contract
 

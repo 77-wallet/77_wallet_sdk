@@ -157,4 +157,56 @@ impl ApiAssetSyncStateDao {
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    pub async fn delete_done_older_than<'a, E>(
+        exec: E,
+        retention_secs: u64,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = r#"
+            DELETE FROM api_asset_sync_state
+            WHERE status = ?
+              AND updated_at IS NOT NULL
+              AND unixepoch(updated_at) < unixepoch('now') - ?
+        "#;
+
+        sqlx::query(sql)
+            .bind(ApiAssetSyncStatus::Done)
+            .bind(retention_secs as i64)
+            .execute(exec)
+            .await
+            .map(|result| result.rows_affected())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn trim_done_to_limit<'a, E>(exec: E, max_rows: u32) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = r#"
+            DELETE FROM api_asset_sync_state
+            WHERE rowid IN (
+                SELECT rowid
+                FROM api_asset_sync_state
+                WHERE status = ?
+                ORDER BY updated_at ASC, created_at ASC
+                LIMIT (
+                    SELECT max(count(*) - ?, 0)
+                    FROM api_asset_sync_state
+                    WHERE status = ?
+                )
+            )
+        "#;
+
+        sqlx::query(sql)
+            .bind(ApiAssetSyncStatus::Done)
+            .bind(max_rows as i64)
+            .bind(ApiAssetSyncStatus::Done)
+            .execute(exec)
+            .await
+            .map(|result| result.rows_affected())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
 }

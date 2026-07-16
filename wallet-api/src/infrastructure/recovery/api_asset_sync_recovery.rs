@@ -1,7 +1,9 @@
 use std::{sync::Arc, time::Duration};
 
 use tokio::time::sleep;
-use wallet_database::repositories::api_wallet::api_asset_sync_state::ApiAssetSyncStateRepo;
+use wallet_database::repositories::api_wallet::{
+    api_asset_sync_state::ApiAssetSyncStateRepo, assets::ApiAssetsRepo,
+};
 
 use crate::{
     config::runtime_defaults, domain::api_wallet::assets::ApiAssetsDomain,
@@ -41,6 +43,13 @@ async fn scan_and_dispatch(
     let defaults = runtime_defaults::recovery();
     let api_pool = ctx.api_wallet_pool()?;
 
+    cleanup_done_states(
+        &api_pool,
+        defaults.api_asset_sync_done_retention_secs,
+        defaults.api_asset_sync_done_max_rows,
+    )
+    .await?;
+
     let mut claimed = 0usize;
     loop {
         if claimed >= defaults.api_asset_sync_max_claims_per_round {
@@ -68,6 +77,28 @@ async fn scan_and_dispatch(
     Ok(())
 }
 
+async fn cleanup_done_states(
+    api_pool: &wallet_database::ApiWalletDbPool,
+    retention_secs: u64,
+    max_rows: u32,
+) -> Result<(), ServiceError> {
+    let removed_expired =
+        ApiAssetSyncStateRepo::delete_done_older_than(api_pool, retention_secs).await?;
+    let removed_over_limit = ApiAssetSyncStateRepo::trim_done_to_limit(api_pool, max_rows).await?;
+
+    if removed_expired > 0 || removed_over_limit > 0 {
+        tracing::info!(
+            removed_expired = removed_expired,
+            removed_over_limit = removed_over_limit,
+            retention_secs = retention_secs,
+            max_rows = max_rows,
+            "已清理 API 钱包资产同步完成状态"
+        );
+    }
+
+    Ok(())
+}
+
 async fn process_one(
     ctx: &'static crate::context::Context,
     task: wallet_database::entities::api_asset_sync_state::ApiAssetSyncStateEntity,
@@ -82,6 +113,17 @@ async fn process_one(
         attempt_count = task.attempt_count,
         "开始处理 API 钱包持久化资产同步任务"
     );
+
+    if !sync_asset_still_exists(&api_pool, &task.address, &task.chain_code, &token_key).await? {
+        ApiAssetSyncStateRepo::mark_done(&api_pool, &task.address, &task.chain_code, token_key)
+            .await?;
+        tracing::info!(
+            address = %task.address,
+            chain_code = %task.chain_code,
+            "API 钱包资产同步状态已清理：资产已不存在"
+        );
+        return Ok(());
+    }
 
     let result = ApiAssetsDomain::sync_assets_by_addr_chain_durable_with_ctx(
         ctx,
@@ -122,4 +164,16 @@ async fn process_one(
     }
 
     Ok(())
+}
+
+async fn sync_asset_still_exists(
+    api_pool: &wallet_database::ApiWalletDbPool,
+    address: &str,
+    chain_code: &str,
+    token_key: &wallet_database::entities::asset_token_key::AssetTokenKey,
+) -> Result<bool, ServiceError> {
+    let assets =
+        ApiAssetsRepo::list(api_pool, vec![address.to_string()], Some(chain_code.to_string()))
+            .await?;
+    Ok(assets.iter().any(|asset| asset.token_key() == *token_key))
 }
