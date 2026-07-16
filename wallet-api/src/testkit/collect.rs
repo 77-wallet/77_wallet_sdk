@@ -217,6 +217,9 @@ pub async fn scan_collect_intent_labels_once(
             CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(_)) => {
                 "ExecuteLocalResourceDelegation".to_string()
             }
+            CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(_)) => {
+                "ExecuteAccountActivation".to_string()
+            }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(_)) => {
                 "SendOrderAck".to_string()
             }

@@ -24,7 +24,10 @@ use wallet_database::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
         },
         api_resource_type::ApiResourceType,
-        api_tron_account_activation::NewApiTronAccountActivation,
+        api_tron_account_activation::{
+            ApiTronAccountActivationEntity, ApiTronAccountActivationRecoverStatus,
+            NewApiTronAccountActivation,
+        },
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
@@ -98,6 +101,8 @@ pub enum ShadowCollectCommand {
     Recover(String),
     /// 执行平台代理资源代理任务，trade_no 是资源任务号
     ExecuteLocalResourceDelegation(String),
+    /// 执行 TRON 账户激活任务，trade_no 是激活任务号
+    ExecuteAccountActivation(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -388,6 +393,7 @@ impl ShadowCollectWorker {
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
             ShadowCollectCommand::Recover(trade_no) => trade_no,
             ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no) => trade_no,
+            ShadowCollectCommand::ExecuteAccountActivation(trade_no) => trade_no,
         };
 
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
@@ -402,6 +408,338 @@ impl ShadowCollectWorker {
             ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no) => {
                 let result = self.process_local_resource_delegation_execute(trade_no.clone()).await;
                 self.handle_local_resource_delegation_failure_if_needed(&trade_no, result).await
+            }
+            ShadowCollectCommand::ExecuteAccountActivation(trade_no) => {
+                self.process_account_activation(trade_no).await
+            }
+        }
+    }
+
+    async fn process_account_activation(
+        &self,
+        activation_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        let Some(task) = ApiTronAccountActivationRepo::find_by_activation_trade_no(
+            &self.ctx.api_resource_pool()?,
+            &activation_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?
+        else {
+            warn!(
+                activation_trade_no = %activation_trade_no,
+                source = "shadow_worker_v2",
+                "Account activation task not found"
+            );
+            return Ok(());
+        };
+
+        if task.account_verified_at.is_some() {
+            return Ok(());
+        }
+        if task.tx_hash.is_some() {
+            return self.recover_or_verify_account_activation(task).await;
+        }
+
+        if let Err(err) = self.execute_account_activation(task.clone()).await {
+            let next_retry_at = (Utc::now()
+                + chrono::Duration::seconds(resource_delegation_retry_wait_secs(task.retry_count)))
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            ApiTronAccountActivationRepo::mark_retry_wait(
+                &self.ctx.api_resource_pool()?,
+                &task.activation_trade_no,
+                Some("activation_execute_failed"),
+                Some(&err.to_string()),
+                ApiTronAccountActivationRecoverStatus::RetryBuild,
+                &next_retry_at,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+            warn!(
+                activation_trade_no = %task.activation_trade_no,
+                error = %err,
+                next_retry_at = %next_retry_at,
+                source = "shadow_worker_v2",
+                "Account activation execution failed; scheduled retry"
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn schedule_account_activation_retry(
+        &self,
+        task: &ApiTronAccountActivationEntity,
+        err_code: &'static str,
+        err_msg: &str,
+        recover_status: ApiTronAccountActivationRecoverStatus,
+    ) -> Result<(), ServiceError> {
+        let next_retry_at = (Utc::now()
+            + chrono::Duration::seconds(resource_delegation_retry_wait_secs(task.retry_count)))
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        ApiTronAccountActivationRepo::mark_retry_wait(
+            &self.ctx.api_resource_pool()?,
+            &task.activation_trade_no,
+            Some(err_code),
+            Some(err_msg),
+            recover_status,
+            &next_retry_at,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        Ok(())
+    }
+
+    async fn execute_account_activation(
+        &self,
+        task: ApiTronAccountActivationEntity,
+    ) -> Result<(), ServiceError> {
+        let claimed = ApiTronAccountActivationRepo::claim_build_slot(
+            &self.ctx.api_resource_pool()?,
+            &task.activation_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if claimed == 0 {
+            info!(
+                activation_trade_no = %task.activation_trade_no,
+                source = "shadow_worker_v2",
+                "Account activation task already claimed or no longer executable"
+            );
+            return Ok(());
+        }
+
+        let handles = self.ctx.get_handles_arc().await?;
+        let private_key_manager = handles.get_global_private_key_manager();
+        let private_key =
+            private_key_manager.get_private_key(&task.payer_address, &task.chain_code).await?;
+        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
+
+        let params = ApiBaseTransferReq::new(
+            &task.payer_address,
+            &task.target_address,
+            &task.amount,
+            &task.chain_code,
+        );
+        let transfer_req = ApiTransferReq { base: params, password: unlock_token, nonce: 0 };
+        let Some((tx_hash, raw_tx, _fee)) =
+            crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+                self.ctx,
+                &task.chain_code,
+                &task.activation_trade_no,
+                "account_activation_build",
+                "shadow_worker_v2",
+                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(&task.activation_trade_no)
+                    .chain_code(&task.chain_code)
+                    .source("shadow_worker_v2")
+                    .op("account_activation_build"),
+                crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
+                    &self.ctx,
+                    transfer_req,
+                    Some(private_key),
+                ),
+            )
+            .await?
+        else {
+            self.schedule_account_activation_retry(
+                &task,
+                "activation_build_skipped",
+                "account activation build skipped by RPC guard",
+                ApiTronAccountActivationRecoverStatus::RetryBuild,
+            )
+            .await?;
+            return Ok(());
+        };
+
+        let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
+        let tx_resp = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+            self.ctx,
+            &task.chain_code,
+            &task.activation_trade_no,
+            "account_activation_broadcast",
+            "shadow_worker_v2",
+            crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                .trade_no(&task.activation_trade_no)
+                .tx_hash(&tx_hash)
+                .chain_code(&task.chain_code)
+                .source("shadow_worker_v2")
+                .op("account_activation_broadcast"),
+            crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
+                &self.ctx,
+                &task.chain_code,
+                raw_tx,
+                Some(&tx_hash),
+            ),
+        )
+        .await?
+        .flatten();
+
+        let Some(resp) = tx_resp else {
+            self.schedule_account_activation_retry(
+                &task,
+                "activation_broadcast_uncertain",
+                "account activation broadcast returned no committed response",
+                ApiTronAccountActivationRecoverStatus::RetryBuild,
+            )
+            .await?;
+            return Ok(());
+        };
+
+        ApiTronAccountActivationRepo::mark_broadcast_success(
+            &self.ctx.api_resource_pool()?,
+            &task.activation_trade_no,
+            &resp.tx_hash,
+            &raw_tx_str,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            activation_trade_no = %task.activation_trade_no,
+            tx_hash = %resp.tx_hash,
+            target_address = %task.target_address,
+            source = "shadow_worker_v2",
+            "Account activation broadcast committed"
+        );
+        self.advancer.try_advance(&task.origin_trade_no).await;
+
+        Ok(())
+    }
+
+    async fn verify_account_activation(
+        &self,
+        task: ApiTronAccountActivationEntity,
+    ) -> Result<(), ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(self.ctx).await?;
+        let account = chain.account_info(&task.target_address).await?;
+        if account.address.is_empty() {
+            info!(
+                activation_trade_no = %task.activation_trade_no,
+                target_address = %task.target_address,
+                source = "shadow_worker_v2",
+                "Account activation not visible on chain yet"
+            );
+            return Ok(());
+        }
+
+        let rows = ApiTronAccountActivationRepo::mark_account_verified(
+            &self.ctx.api_resource_pool()?,
+            &task.activation_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if rows == 0 {
+            return Ok(());
+        }
+
+        if let Some(collect) = ApiCollectRepo::find_by_resource_dependency_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            &task.activation_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?
+        {
+            ApiCollectRepo::mark_resource_released(
+                &self.ctx.api_transaction_pool()?,
+                &collect.trade_no,
+                ApiResourceGateResult::ResourceReady,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+            self.advancer.try_advance(&collect.trade_no).await;
+        }
+
+        info!(
+            activation_trade_no = %task.activation_trade_no,
+            target_address = %task.target_address,
+            source = "shadow_worker_v2",
+            "Account activation verified and collect resource gate released"
+        );
+
+        Ok(())
+    }
+
+    async fn recover_or_verify_account_activation(
+        &self,
+        task: ApiTronAccountActivationEntity,
+    ) -> Result<(), ServiceError> {
+        if task.chain_success_at.is_some() {
+            return self.verify_account_activation(task).await;
+        }
+
+        let Some(tx_hash) = task.tx_hash.as_deref().filter(|s| !s.trim().is_empty()) else {
+            return Ok(());
+        };
+
+        match crate::domain::api_wallet::trans::ApiTransDomain::process_recovered_tx(
+            &self.ctx,
+            &task.chain_code,
+            &task.payer_address,
+            tx_hash,
+            0,
+            "0",
+        )
+        .await
+        {
+            Ok(Some(_resp)) => {
+                ApiTronAccountActivationRepo::mark_chain_success(
+                    &self.ctx.api_resource_pool()?,
+                    &task.activation_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                let refreshed = ApiTronAccountActivationRepo::find_by_activation_trade_no(
+                    &self.ctx.api_resource_pool()?,
+                    &task.activation_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?
+                .unwrap_or(task);
+                self.verify_account_activation(refreshed).await
+            }
+            Ok(None) => {
+                self.schedule_account_activation_retry(
+                    &task,
+                    "activation_recover_uncertain",
+                    "account activation recover returned no final result",
+                    ApiTronAccountActivationRecoverStatus::RetryRecover,
+                )
+                .await
+            }
+            Err(err) if Self::is_recovered_tx_terminal_chain_failure(&err) => {
+                let next_retry_at = (Utc::now()
+                    + chrono::Duration::seconds(resource_delegation_retry_wait_secs(
+                        task.retry_count,
+                    )))
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                ApiTronAccountActivationRepo::mark_chain_failed_retry(
+                    &self.ctx.api_resource_pool()?,
+                    &task.activation_trade_no,
+                    Some("activation_chain_failed"),
+                    Some(&err.to_string()),
+                    ApiTronAccountActivationRecoverStatus::RetryBuild,
+                    &next_retry_at,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                warn!(
+                    activation_trade_no = %task.activation_trade_no,
+                    tx_hash = %tx_hash,
+                    error = %err,
+                    next_retry_at = %next_retry_at,
+                    source = "shadow_worker_v2",
+                    "Account activation tx failed on chain; scheduled rebuild retry"
+                );
+                Ok(())
+            }
+            Err(err) => {
+                self.schedule_account_activation_retry(
+                    &task,
+                    "activation_recover_error",
+                    &err.to_string(),
+                    ApiTronAccountActivationRecoverStatus::RetryRecover,
+                )
+                .await
             }
         }
     }
@@ -958,9 +1296,32 @@ impl ShadowCollectWorker {
         available_energy: i64,
         energy_price: f64,
     ) -> Result<(), ServiceError> {
+        Self::commit_account_activation_block_in_pools(
+            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
+            origin_trade_no,
+            req,
+            payer_address,
+            required_energy,
+            available_energy,
+            energy_price,
+        )
+        .await
+    }
+
+    async fn commit_account_activation_block_in_pools(
+        transaction_pool: &ApiTransactionDbPool,
+        resource_pool: &ApiResourceDbPool,
+        origin_trade_no: &str,
+        req: &ApiCollectEntity,
+        payer_address: &str,
+        required_energy: u64,
+        available_energy: i64,
+        energy_price: f64,
+    ) -> Result<(), ServiceError> {
         let activation_trade_no = Self::collect_account_activation_trade_no(origin_trade_no);
         ApiTronAccountActivationRepo::upsert(
-            &self.ctx.api_resource_pool()?,
+            resource_pool,
             NewApiTronAccountActivation::collect(
                 req.uid.clone(),
                 origin_trade_no.to_string(),
@@ -972,7 +1333,7 @@ impl ShadowCollectWorker {
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
         let rows = ApiCollectRepo::mark_resource_blocked(
-            &self.ctx.api_transaction_pool()?,
+            transaction_pool,
             origin_trade_no,
             ApiResourceBlockReason::NeedAccountActivation,
             Some(&activation_trade_no),
@@ -3564,6 +3925,7 @@ mod tests {
         },
         repositories::api_wallet::{
             collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+            tron_account_activation::ApiTronAccountActivationRepo,
         },
     };
     use wallet_transport_backend::{
@@ -4041,6 +4403,107 @@ oss:
             ShadowCollectWorker::collect_account_activation_trade_no("C_INACTIVE"),
             "act_C_INACTIVE"
         );
+    }
+
+    #[tokio::test]
+    async fn account_activation_block_commit_is_idempotent_and_blocks_collect_build() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
+
+        let trade_no = "C_account_activation_block";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "inactive_from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "USDT",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+
+        ShadowCollectWorker::commit_account_activation_block_in_pools(
+            &collect_pool,
+            &resource_pool,
+            trade_no,
+            &req,
+            "withdraw_payer",
+            100,
+            0,
+            0.0,
+        )
+        .await
+        .expect("first account activation block commit");
+        ShadowCollectWorker::commit_account_activation_block_in_pools(
+            &collect_pool,
+            &resource_pool,
+            trade_no,
+            &req,
+            "withdraw_payer",
+            100,
+            0,
+            0.0,
+        )
+        .await
+        .expect("second account activation block commit");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_none());
+        assert!(persisted.raw_tx.is_none());
+        assert_eq!(
+            persisted.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedAccountActivation)
+        );
+        assert_eq!(
+            persisted.resource_dependency_type,
+            Some(ApiResourceDependencyType::AccountActivation)
+        );
+        assert_eq!(
+            persisted.resource_dependency_trade_no.as_deref(),
+            Some("act_C_account_activation_block")
+        );
+        assert!(
+            ApiCollectRepo::scan_can_build(&collect_pool, 10)
+                .await
+                .expect("scan can build")
+                .is_empty()
+        );
+
+        let activation = ApiTronAccountActivationRepo::find_by_activation_trade_no(
+            &resource_pool,
+            "act_C_account_activation_block",
+        )
+        .await
+        .expect("load activation")
+        .expect("activation task");
+        assert_eq!(activation.origin_trade_no, trade_no);
+        assert_eq!(activation.payer_address, "withdraw_payer");
+        assert_eq!(activation.target_address, "inactive_from");
+        assert_eq!(activation.amount, "0.000001");
+        assert!(activation.tx_hash.is_none());
+        assert!(activation.account_verified_at.is_none());
     }
 
     #[tokio::test]

@@ -17,6 +17,8 @@ CREATE TABLE api_tron_account_activation
     building_at         TIMESTAMP NULL, -- 链上交易构建占位
     raw_tx              TEXT NULL, -- 原始交易
     tx_hash             TEXT NULL, -- 激活交易哈希
+    tx_status           TEXT NULL, -- 链上执行状态视图，如 success / fail / uncertain
+    recover_status      INTEGER NULL, -- 恢复/重试视图，1=waiting, 2=retry_build, 3=retry_recover
     last_broadcast_at   TIMESTAMP NULL, -- 最近一次广播时间
 
     chain_success_at    TIMESTAMP NULL, -- 链上交易成功事实

@@ -24,6 +24,29 @@ impl ApiTronAccountActivationStatus {
     }
 }
 
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
+pub enum ApiTronAccountActivationRecoverStatus {
+    RecoverWaiting = 1,
+    RetryBuild = 2,
+    RetryRecover = 3,
+}
+
+impl ApiTronAccountActivationRecoverStatus {
+    pub fn as_i64(self) -> i64 {
+        self as i64
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiTronAccountActivationEntity {
@@ -40,6 +63,8 @@ pub struct ApiTronAccountActivationEntity {
     pub building_at: Option<DateTime<Utc>>,
     pub raw_tx: Option<String>,
     pub tx_hash: Option<String>,
+    pub tx_status: Option<String>,
+    pub recover_status: Option<ApiTronAccountActivationRecoverStatus>,
     pub last_broadcast_at: Option<DateTime<Utc>>,
     pub chain_success_at: Option<DateTime<Utc>>,
     pub chain_failed_at: Option<DateTime<Utc>>,

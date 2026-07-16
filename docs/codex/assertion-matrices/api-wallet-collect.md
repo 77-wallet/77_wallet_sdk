@@ -162,6 +162,63 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: an empty TRON account resource response must not fall through to
   energy delegation amount calculation with `energy_price = 0`.
 
+### Collect TRON Account Activation Block Commit
+
+- Layer: component / worker orchestration.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  account_activation_block_commit_is_idempotent_and_blocks_collect_build
+  ```
+
+- Backend: none; the test uses temporary SQLite databases.
+- DB facts: origin collect writes `resource_block_reason = NeedAccountActivation`,
+  `resource_dependency_type = AccountActivation`, and deterministic
+  `resource_dependency_trade_no = act_{origin_trade_no}`; activation task stores
+  payer, target, and `amount = 0.000001`.
+- Scanner: blocked collect is not eligible for `BuildTx`.
+- Invariant: account activation must be represented as a resource dependency
+  fact, not by releasing the collect resource gate or building a raw collect tx.
+
+### Collect TRON Account Activation Scanner
+
+- Layer: component / scanner.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/scanner.rs
+  scan_account_activation_emits_execute_and_verify_intents
+  scan_account_activation_skips_verified_tasks
+  ```
+
+- Backend: none; the tests use temporary resource DB facts.
+- DB facts: pending activation rows emit execution intents; broadcasted rows
+  with `tx_hash` emit verification/recover intents; verified rows emit none.
+- Scanner: emits `ExecuteAccountActivation` only from activation facts.
+- Invariant: scanner must not execute activation itself and must not redispatch
+  already verified activation tasks.
+
+### Collect TRON Account Activation Repository Guards
+
+- Layer: component / repository.
+- Entrypoint:
+
+  ```text
+  wallet-database/src/repositories/api_wallet/tron_account_activation.rs
+  tron_account_activation_build_claim_matches_resource_delegation_guard
+  tron_account_activation_retry_wait_blocks_execute_and_verify_scans
+  ```
+
+- Backend: none; the tests use temporary SQLite databases.
+- DB facts: broadcast success requires a prior build claim; stale build claims
+  become executable again after the same five-minute guard used by resource
+  delegation; future `next_retry_at` blocks both execution and verification
+  scans; `recover_status` records whether the next retry resumes build or
+  recover.
+- Invariant: activation task orchestration must follow resource delegation
+  claim/retry semantics and must not invent a looser execution path.
+
 ### Collect Gate Ignores Withdraw-Origin ACK
 
 - Layer: integration.

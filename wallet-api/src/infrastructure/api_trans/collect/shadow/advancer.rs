@@ -47,6 +47,7 @@ fn intent_trade_no(intent: &CollectIntent) -> Option<String> {
             ChainIntent::BroadcastTx(trade_no) => Some(trade_no.clone()),
             ChainIntent::RecoverTx(trade_no) => Some(trade_no.clone()),
             ChainIntent::ExecuteLocalResourceDelegation(trade_no) => Some(trade_no.clone()),
+            ChainIntent::ExecuteAccountActivation(trade_no) => Some(trade_no.clone()),
         },
         CollectIntent::SideEffect(side_effect_intent) => match side_effect_intent {
             SideEffectIntent::SendOrderAck(trade_no) => Some(trade_no.clone()),

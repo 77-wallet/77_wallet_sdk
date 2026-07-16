@@ -27,6 +27,7 @@ pub enum RunningKey {
     TxMutation(String),
     RecoverTx(String),
     ExecuteLocalResourceDelegation(String),
+    ExecuteAccountActivation(String),
     SendOrderAck(String),
     SendResultAck(String),
     UploadServiceFee(String),
@@ -103,6 +104,9 @@ impl RunningKey {
             }
             CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) => {
                 RunningKey::ExecuteLocalResourceDelegation(trade_no.clone())
+            }
+            CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(trade_no)) => {
+                RunningKey::ExecuteAccountActivation(trade_no.clone())
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                 RunningKey::SendOrderAck(trade_no.clone())
@@ -251,6 +255,14 @@ impl DispatchTrace {
                 worker: "ShadowCollectWorker",
                 command: "ExecuteLocalResourceDelegation",
                 phase: "resource_delegation",
+                trade_no: trade_no.clone(),
+                key,
+                side_effect: false,
+            },
+            CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(trade_no)) => Self {
+                worker: "ShadowCollectWorker",
+                command: "ExecuteAccountActivation",
+                phase: "account_activation",
                 trade_no: trade_no.clone(),
                 key,
                 side_effect: false,
@@ -432,6 +444,12 @@ impl ShadowDispatcher {
                 debug!(trade_no = %trade_no, "Sending ExecuteLocalResourceDelegation command to Shadow Worker");
                 shadow_worker
                     .handle(ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no.clone()))
+                    .await
+            }
+            CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(trade_no)) => {
+                debug!(trade_no = %trade_no, "Sending ExecuteAccountActivation command to Shadow Worker");
+                shadow_worker
+                    .handle(ShadowCollectCommand::ExecuteAccountActivation(trade_no.clone()))
                     .await
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {

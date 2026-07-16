@@ -73,6 +73,8 @@ pub enum ChainIntent {
     ///
     /// 平台结果成功/失败后释放 collect gate 的事实投影，也由资源代理副链负责。
     ExecuteLocalResourceDelegation(String),
+    /// 执行 TRON 账户激活任务，trade_no 是激活任务号。
+    ExecuteAccountActivation(String),
 }
 
 /// 副作用轴意图

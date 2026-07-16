@@ -512,7 +512,7 @@ use std::{
 use tokio::sync::Semaphore;
 use tracing::{error, trace, warn};
 use wallet_database::{
-    ApiTransactionDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool,
     entities::{
         api_collect::ApiCollectEntity,
         api_resource_delegation::{
@@ -537,6 +537,52 @@ use crate::{
 };
 
 use super::CollectIntent;
+
+async fn dispatch_account_activation_execute_records(
+    pool: &ApiResourceDbPool,
+    limit: usize,
+    intent_tx: &tokio::sync::mpsc::Sender<CollectIntent>,
+) -> Result<(), ServiceError> {
+    let records = wallet_database::repositories::api_wallet::tron_account_activation::ApiTronAccountActivationRepo::scan_can_execute(
+        pool,
+        limit,
+    )
+    .await?;
+
+    for record in records {
+        intent_tx
+            .send(CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(
+                record.activation_trade_no,
+            )))
+            .await
+            .map_err(|_| ServiceError::Parameter("collect intent channel closed".to_string()))?;
+    }
+
+    Ok(())
+}
+
+async fn dispatch_account_activation_verify_records(
+    pool: &ApiResourceDbPool,
+    limit: usize,
+    intent_tx: &tokio::sync::mpsc::Sender<CollectIntent>,
+) -> Result<(), ServiceError> {
+    let records = wallet_database::repositories::api_wallet::tron_account_activation::ApiTronAccountActivationRepo::scan_can_verify(
+        pool,
+        limit,
+    )
+    .await?;
+
+    for record in records {
+        intent_tx
+            .send(CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(
+                record.activation_trade_no,
+            )))
+            .await
+            .map_err(|_| ServiceError::Parameter("collect intent channel closed".to_string()))?;
+    }
+
+    Ok(())
+}
 
 /// ============================================================================
 ///                            推进点枚举与共用 Predicate 函数
@@ -696,8 +742,10 @@ impl Default for ScannerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
     use tokio::sync::mpsc;
     use wallet_database::{
+        SqliteContext,
         entities::{
             api_collect::ApiCollectStatus,
             api_resource_delegation::{
@@ -705,11 +753,23 @@ mod tests {
             },
             api_resource_gate::ApiResourceGateResult,
             api_trade_type::ApiTradeType,
+            api_tron_account_activation::NewApiTronAccountActivation,
         },
         repositories::api_wallet::{
             collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+            tron_account_activation::ApiTronAccountActivationRepo,
         },
     };
+
+    async fn scanner_test_resource_pool(name: &str) -> wallet_database::ApiResourceDbPool {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.keep().join(name);
+        std::fs::create_dir_all(&dir_path).expect("create scanner test dir");
+        let resource_ctx = SqliteContext::new(&dir_path.to_string_lossy(), Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        resource_ctx.into_api_resource_db_pool().expect("resource pool")
+    }
 
     #[tokio::test]
     async fn try_advance_prioritizes_collect_resource_result_ack_before_build() -> anyhow::Result<()>
@@ -780,6 +840,110 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn scan_account_activation_emits_execute_and_verify_intents() -> anyhow::Result<()> {
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let resource_pool = scanner_test_resource_pool("collect_scan_account_activation").await;
+
+        ApiTronAccountActivationRepo::upsert(
+            &resource_pool,
+            NewApiTronAccountActivation::collect(
+                "uid_1",
+                "C_activation_execute",
+                "act_C_activation_execute",
+                "T_payer",
+                "T_inactive_execute",
+            ),
+        )
+        .await?;
+        ApiTronAccountActivationRepo::upsert(
+            &resource_pool,
+            NewApiTronAccountActivation::collect(
+                "uid_1",
+                "C_activation_verify",
+                "act_C_activation_verify",
+                "T_payer",
+                "T_inactive_verify",
+            ),
+        )
+        .await?;
+        assert_eq!(
+            ApiTronAccountActivationRepo::claim_build_slot(
+                &resource_pool,
+                "act_C_activation_verify",
+            )
+            .await?,
+            1
+        );
+        assert_eq!(
+            ApiTronAccountActivationRepo::mark_broadcast_success(
+                &resource_pool,
+                "act_C_activation_verify",
+                "tx_hash_activation_verify",
+                r#"{"raw":"tx"}"#,
+            )
+            .await?,
+            1
+        );
+
+        dispatch_account_activation_execute_records(&resource_pool, 100, &intent_tx).await?;
+        dispatch_account_activation_verify_records(&resource_pool, 100, &intent_tx).await?;
+
+        let mut trade_nos = Vec::new();
+        while let Ok(intent) = intent_rx.try_recv() {
+            if let CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(trade_no)) = intent {
+                trade_nos.push(trade_no);
+            }
+        }
+        trade_nos.sort();
+
+        assert_eq!(
+            trade_nos,
+            vec!["act_C_activation_execute".to_string(), "act_C_activation_verify".to_string(),]
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scan_account_activation_skips_verified_tasks() -> anyhow::Result<()> {
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let resource_pool =
+            scanner_test_resource_pool("collect_scan_account_activation_verified").await;
+
+        ApiTronAccountActivationRepo::upsert(
+            &resource_pool,
+            NewApiTronAccountActivation::collect(
+                "uid_1",
+                "C_activation_verified",
+                "act_C_activation_verified",
+                "T_payer",
+                "T_inactive_verified",
+            ),
+        )
+        .await?;
+        assert_eq!(
+            ApiTronAccountActivationRepo::mark_account_verified(
+                &resource_pool,
+                "act_C_activation_verified",
+            )
+            .await?,
+            1
+        );
+
+        dispatch_account_activation_execute_records(&resource_pool, 100, &intent_tx).await?;
+        dispatch_account_activation_verify_records(&resource_pool, 100, &intent_tx).await?;
+
+        while let Ok(intent) = intent_rx.try_recv() {
+            assert!(
+                !matches!(intent, CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(_))),
+                "verified activation task must not dispatch: {intent:?}"
+            );
+        }
+
+        Ok(())
+    }
 }
 
 /// Shadow Scanner
@@ -847,6 +1011,8 @@ impl ShadowScanner {
         for (stage, result) in [
             ("need_resource_task_ack", self.scan_need_resource_task_ack().await),
             ("can_resource_delegation_execute", self.scan_can_resource_delegation_execute().await),
+            ("can_account_activation_execute", self.scan_can_account_activation_execute().await),
+            ("can_account_activation_verify", self.scan_can_account_activation_verify().await),
             (
                 "need_resource_tx_exec_receipt_upload",
                 self.scan_need_resource_tx_exec_receipt_upload().await,
@@ -975,6 +1141,32 @@ impl ShadowScanner {
         }
 
         Ok(())
+    }
+
+    async fn scan_can_account_activation_execute(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable account activation records");
+
+        dispatch_account_activation_execute_records(
+            &pool,
+            self.config.max_items_per_scan,
+            &self.intent_tx,
+        )
+        .await
+    }
+
+    async fn scan_can_account_activation_verify(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning verifiable account activation records");
+
+        dispatch_account_activation_verify_records(
+            &pool,
+            self.config.max_items_per_scan,
+            &self.intent_tx,
+        )
+        .await
     }
 
     async fn scan_need_resource_tx_exec_receipt_upload(&self) -> Result<(), ServiceError> {
