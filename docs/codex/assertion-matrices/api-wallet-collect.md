@@ -142,6 +142,26 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   be amplified across many pending collect orders, and must not be treated as a
   collect business failure.
 
+### Collect TRON Inactive Account Resource Gate
+
+- Layer: component / resource-gate decision.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  tron_collect_inactive_resource_snapshot_requires_account_activation
+  ```
+
+- Backend: none; the test uses an in-memory resource snapshot.
+- DB facts: collect resource gate should remain unreleased and record
+  `resource_block_reason = NeedAccountActivation`,
+  `resource_dependency_type = AccountActivation`, and a deterministic
+  activation dependency trade number when persisted by the worker path.
+- Scanner: collect remains ineligible for `BuildTx` while waiting on account
+  activation.
+- Invariant: an empty TRON account resource response must not fall through to
+  energy delegation amount calculation with `energy_price = 0`.
+
 ### Collect Gate Ignores Withdraw-Origin ACK
 
 - Layer: integration.

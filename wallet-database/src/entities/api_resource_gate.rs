@@ -45,6 +45,7 @@ impl std::fmt::Display for ApiResourceGateResult {
 pub enum ApiResourceBlockReason {
     NeedPlatformDelegate = 1,
     NeedLocalDelegate = 2,
+    NeedAccountActivation = 3,
 }
 
 impl ApiResourceBlockReason {
@@ -67,6 +68,7 @@ impl ApiResourceBlockReason {
 pub enum ApiResourceDependencyType {
     PlatformDelegate = 1,
     LocalDelegate = 2,
+    AccountActivation = 3,
 }
 
 impl ApiResourceDependencyType {

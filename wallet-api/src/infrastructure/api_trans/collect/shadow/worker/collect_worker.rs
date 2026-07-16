@@ -121,6 +121,7 @@ enum ResourceDelegationBlockPath {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResourceGateNextStep {
     Release,
+    BlockOnAccountActivation,
     BlockOnPlatform,
     BlockOnLocal,
 }
@@ -357,6 +358,15 @@ impl ShadowCollectWorker {
         }
         req.to_addr = exec_to_addr.to_string();
         true
+    }
+
+    fn collect_account_activation_trade_no(origin_trade_no: &str) -> String {
+        format!("act_{origin_trade_no}")
+    }
+
+    fn resource_snapshot_needs_account_activation(snapshot: &ResourceGateSnapshot) -> bool {
+        snapshot.required_energy > snapshot.available_energy.max(0) as u64
+            && snapshot.energy_price <= 0.0
     }
 
     /// 创建新的 Shadow Collect Worker
@@ -865,6 +875,10 @@ impl ShadowCollectWorker {
             return Ok(ResourceGateNextStep::Release);
         }
 
+        if Self::resource_snapshot_needs_account_activation(&snapshot) {
+            return Ok(ResourceGateNextStep::BlockOnAccountActivation);
+        }
+
         let delegations = ApiResourceDelegationRepo::list_by_origin_trade_no(
             &self.ctx.api_resource_pool()?,
             origin_trade_no,
@@ -895,6 +909,16 @@ impl ShadowCollectWorker {
             ResourceGateNextStep::Release => {
                 self.process_release_resource_gate(origin_trade_no.to_string()).await
             }
+            ResourceGateNextStep::BlockOnAccountActivation => {
+                self.commit_account_activation_block(
+                    origin_trade_no,
+                    req,
+                    snapshot.required_energy,
+                    snapshot.available_energy,
+                    snapshot.energy_price,
+                )
+                .await
+            }
             ResourceGateNextStep::BlockOnPlatform => {
                 self.commit_platform_delegation_block(
                     origin_trade_no,
@@ -920,6 +944,38 @@ impl ShadowCollectWorker {
                 .await
             }
         }
+    }
+
+    async fn commit_account_activation_block(
+        &self,
+        origin_trade_no: &str,
+        req: &ApiCollectEntity,
+        required_energy: u64,
+        available_energy: i64,
+        energy_price: f64,
+    ) -> Result<(), ServiceError> {
+        let activation_trade_no = Self::collect_account_activation_trade_no(origin_trade_no);
+        let rows = ApiCollectRepo::mark_resource_blocked(
+            &self.ctx.api_transaction_pool()?,
+            origin_trade_no,
+            ApiResourceBlockReason::NeedAccountActivation,
+            Some(&activation_trade_no),
+            Some(ApiResourceDependencyType::AccountActivation),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        warn!(
+            origin_trade_no = %origin_trade_no,
+            rows = %rows,
+            activation_trade_no = %activation_trade_no,
+            inactive_address = %req.from_addr,
+            required_energy = %required_energy,
+            available_energy = %available_energy,
+            energy_price = %energy_price,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate blocked by inactive account"
+        );
+        Ok(())
     }
 
     fn decide_collect_resource_block_path(
@@ -3456,7 +3512,7 @@ impl ShadowCollectWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::ShadowCollectWorker;
+    use super::{ResourceGateSnapshot, ShadowCollectWorker};
     use crate::{
         context::api_wallet_backend::ApiWalletBackend,
         error::{service::ServiceError, system::SystemError},
@@ -3941,6 +3997,33 @@ oss:
     fn tron_collect_resource_gate_ignores_bandwidth_shortage() {
         assert!(ShadowCollectWorker::tron_resource_ready(0, 0, 0, 268));
         assert!(!ShadowCollectWorker::tron_resource_ready(0, 1024, 1, 0));
+    }
+
+    #[test]
+    fn tron_collect_inactive_resource_snapshot_requires_account_activation() {
+        let inactive_snapshot = ResourceGateSnapshot {
+            required_energy: 500,
+            required_bandwidth: 268,
+            available_energy: 0,
+            available_bandwidth: 0,
+            energy_price: 0.0,
+        };
+        assert!(ShadowCollectWorker::resource_snapshot_needs_account_activation(
+            &inactive_snapshot
+        ));
+
+        let active_resource_shortfall =
+            ResourceGateSnapshot { energy_price: 400.0, ..inactive_snapshot };
+        assert!(!ShadowCollectWorker::resource_snapshot_needs_account_activation(
+            &active_resource_shortfall
+        ));
+
+        let resource_ready = ResourceGateSnapshot { required_energy: 0, ..inactive_snapshot };
+        assert!(!ShadowCollectWorker::resource_snapshot_needs_account_activation(&resource_ready));
+        assert_eq!(
+            ShadowCollectWorker::collect_account_activation_trade_no("C_INACTIVE"),
+            "act_C_INACTIVE"
+        );
     }
 
     #[tokio::test]
