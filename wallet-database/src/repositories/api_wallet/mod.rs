@@ -16,6 +16,7 @@ pub mod fee;
 pub mod nonce;
 pub mod resource_delegation;
 pub mod resource_operation;
+pub mod tron_account_activation;
 pub mod wallet;
 pub mod withdraw;
 pub mod withdraw_strategy;

@@ -14,6 +14,7 @@ pub(crate) mod api_fee;
 pub(crate) mod api_nonce;
 pub(crate) mod api_resource_delegation;
 pub(crate) mod api_resource_operation;
+pub(crate) mod api_tron_account_activation;
 pub(crate) mod api_wallet;
 pub(crate) mod api_withdraw;
 pub(crate) mod api_withdraw_strategy;

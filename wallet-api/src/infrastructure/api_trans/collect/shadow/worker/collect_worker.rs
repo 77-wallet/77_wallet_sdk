@@ -24,11 +24,13 @@ use wallet_database::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
         },
         api_resource_type::ApiResourceType,
+        api_tron_account_activation::NewApiTronAccountActivation,
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
         account::ApiAccountRepo, collect::ApiCollectRepo,
-        resource_delegation::ApiResourceDelegationRepo, wallet::ApiWalletRepo,
+        resource_delegation::ApiResourceDelegationRepo,
+        tron_account_activation::ApiTronAccountActivationRepo, wallet::ApiWalletRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::{
@@ -913,6 +915,7 @@ impl ShadowCollectWorker {
                 self.commit_account_activation_block(
                     origin_trade_no,
                     req,
+                    exec_to_addr,
                     snapshot.required_energy,
                     snapshot.available_energy,
                     snapshot.energy_price,
@@ -950,11 +953,24 @@ impl ShadowCollectWorker {
         &self,
         origin_trade_no: &str,
         req: &ApiCollectEntity,
+        payer_address: &str,
         required_energy: u64,
         available_energy: i64,
         energy_price: f64,
     ) -> Result<(), ServiceError> {
         let activation_trade_no = Self::collect_account_activation_trade_no(origin_trade_no);
+        ApiTronAccountActivationRepo::upsert(
+            &self.ctx.api_resource_pool()?,
+            NewApiTronAccountActivation::collect(
+                req.uid.clone(),
+                origin_trade_no.to_string(),
+                activation_trade_no.clone(),
+                payer_address.to_string(),
+                req.from_addr.clone(),
+            ),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         let rows = ApiCollectRepo::mark_resource_blocked(
             &self.ctx.api_transaction_pool()?,
             origin_trade_no,
@@ -968,6 +984,7 @@ impl ShadowCollectWorker {
             origin_trade_no = %origin_trade_no,
             rows = %rows,
             activation_trade_no = %activation_trade_no,
+            payer_address = %payer_address,
             inactive_address = %req.from_addr,
             required_energy = %required_energy,
             available_energy = %available_energy,

@@ -18,6 +18,7 @@ pub mod api_resource_gate;
 pub mod api_resource_operation;
 pub mod api_resource_type;
 pub mod api_trade_type;
+pub mod api_tron_account_activation;
 pub mod api_wallet;
 pub mod api_withdraw;
 pub mod api_withdraw_strategy;
