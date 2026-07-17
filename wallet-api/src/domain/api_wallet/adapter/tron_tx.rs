@@ -56,6 +56,8 @@ pub(crate) struct TronTx {
 }
 
 impl TronTx {
+    const API_WITHDRAW_RAW_EXPIRATION_SECS: u64 = 3 * 60;
+
     fn has_enough_main_balance_for_token_fee(balance: i64, transaction_fee: i64) -> bool {
         transaction_fee <= 0 || balance >= transaction_fee
     }
@@ -531,7 +533,10 @@ impl Tx for TronTx {
             // still need a high enough fee_limit or the chain can fail with a
             // tiny curInvokeEnergyLimit.
             transfer_params.set_fee_limit(consumer);
-            let mut raw = transfer_params.build_raw_transaction(&self.chain.get_provider()).await?;
+            let mut raw = transfer_params
+                .build_raw_transaction(&self.chain.get_provider())
+                .await?
+                .set_expiration_from_timestamp(Self::API_WITHDRAW_RAW_EXPIRATION_SECS)?;
             tracing::info!("transfer ---------------- 14");
 
             let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
@@ -569,7 +574,10 @@ impl Tx for TronTx {
                 ))?;
             }
 
-            let mut raw = param.build_raw_transaction(provider).await?;
+            let mut raw = param
+                .build_raw_transaction(provider)
+                .await?
+                .set_expiration_from_timestamp(Self::API_WITHDRAW_RAW_EXPIRATION_SECS)?;
             let consumer =
                 provider.transfer_fee(&param.from, Some(&param.to), &raw.raw_data_hex, 1).await?;
 
