@@ -328,6 +328,9 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
   wallet-api/src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
   withdraw_build_failure_classifies_balance_errors_as_terminal
+
+  wallet-api/src/infrastructure/api_trans/withdraw/shadow/worker/side_effect_worker.rs
+  withdraw_tx_exec_receipt_payload_includes_failure_error_code
   ```
 
 - DB facts: `tx_ack_sent_at`, `audit_passed_at`, and
@@ -336,6 +339,8 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Failure fact: deterministic BuildTx balance failures write `err_code=6001`,
   `failure_stage=Build`, clear `building_at`, and recompute status to
   `SendingTxFailed`.
+- Backend receipt: failed withdraw execution receipts include the local
+  `ERR_600x` code in `errorCode`.
 - Invariant: after the failure fact is written, `scan_can_build` must not pick
   the withdraw order again; pre-Build resource-gate balance failures must also
   be excluded from `scan_need_resource_gate`; transient Build/RPC failures

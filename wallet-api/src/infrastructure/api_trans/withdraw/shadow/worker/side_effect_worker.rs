@@ -774,7 +774,7 @@ impl SideEffectWorker {
         };
 
         // 构建请求
-        let payload = TxExecReceiptUploadReq::new(
+        let mut payload = TxExecReceiptUploadReq::new(
             Some(&withdraw.from_addr),
             Some(&withdraw.to_addr),
             trade_no,
@@ -783,6 +783,9 @@ impl SideEffectWorker {
             upload_status,
             remark,
         );
+        if let Some(err_code) = withdraw.err_code {
+            payload = payload.with_error_code(&err_code.to_string());
+        }
 
         Ok(payload)
     }
@@ -813,7 +816,7 @@ mod tests {
         entities::{
             api_resource_delegation::NewApiResourceDelegation,
             api_trade_type::ApiTradeType,
-            api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, WithdrawFailureStage},
+            api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawFailureStage},
             asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::{
@@ -1067,6 +1070,33 @@ oss:
             tx_exec_receipt_upload_status(&withdraw),
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         );
+    }
+
+    #[tokio::test]
+    async fn withdraw_tx_exec_receipt_payload_includes_failure_error_code() {
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner = Arc::new(ShadowScanner::new(
+            test_ctx().await,
+            crate::infrastructure::api_trans::withdraw::shadow::scanner::ScannerConfig::default(),
+            intent_tx,
+            None,
+        ));
+        let worker = SideEffectWorker::new(test_ctx().await, scanner);
+        let mut withdraw = base_withdraw("W_ERR_CODE");
+        withdraw.tx_hash = None;
+        withdraw.raw_tx = None;
+        withdraw.err_code = Some(ErrCode::BalanceInsufficient);
+        withdraw.err_msg = Some("withdraw amount is insufficient".to_string());
+        withdraw.failure_stage = Some(WithdrawFailureStage::Build);
+
+        let payload =
+            worker.build_tx_exec_receipt_payload(&withdraw, &withdraw.trade_no).await.unwrap();
+        let payload = serde_json::to_value(payload).expect("serialize payload");
+
+        assert_eq!(payload["tradeNo"], "W_ERR_CODE");
+        assert_eq!(payload["status"], "FAIL");
+        assert_eq!(payload["errorCode"], "ERR_6001");
+        assert_eq!(payload["remark"], "withdraw amount is insufficient");
     }
 
     #[tokio::test]
