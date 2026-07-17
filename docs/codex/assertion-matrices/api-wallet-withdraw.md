@@ -263,22 +263,25 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: recover must not clear `raw_tx` / `tx_hash` for rebuild when the
   withdraw row already has a transaction hash.
 
-### Withdraw Missing TRON Transaction Uses Short Grace Window
+### Withdraw Missing TRON Transaction Uses Raw Expiration
 
 - Layer: unit.
 - Entrypoint:
 
   ```text
   src/domain/api_wallet/trans/shared_mechanism.rs
-  tron_missing_confirmed_and_pending_retry_waits_for_grace_window
+  expired_tron_missing_confirmed_fails_after_settle_buffer
+  src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
+  withdraw_tron_missing_confirmed_fails_after_raw_expiration_buffer
   ```
 
 - Backend: none.
-- DB facts: a historical uncertain row may have no `last_broadcast_at` while
-  retaining `broadcast_uncertain_since_at`.
-- Invariant: Recover uses `last_broadcast_at` when present, otherwise falls back
-  to `broadcast_uncertain_since_at`; with neither timestamp it must keep waiting.
-- Worker behavior: after the short grace window, withdraw keeps its existing
+- DB facts: the persisted TRON `raw_tx` carries the protocol
+  `raw_data.expiration` timestamp.
+- Invariant: missing confirmed/pending is not final until the raw transaction is
+  past `expiration` plus a small settle buffer; non-TRON or missing raw data must
+  keep observing.
+- Worker behavior: after raw expiration, withdraw keeps its existing
   manual-review transition and does not adopt collect's rebroadcast policy.
 
 ### Withdraw Broadcast RPC Timeout Preserves Chain Facts

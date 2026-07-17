@@ -121,7 +121,7 @@ pub struct ShadowWithdrawWorker {
 }
 
 impl ShadowWithdrawWorker {
-    const TRON_MISSING_CONFIRMED_AND_PENDING_GRACE_SECS: i64 = 60;
+    const TRON_EXPIRED_RAW_MISSING_CONFIRMED_SETTLE_BUFFER_MS: i64 = 30_000;
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     // const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 20;
     const EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS: i64 = 24 * 60 * 60;
@@ -213,13 +213,12 @@ impl ShadowWithdrawWorker {
         )
     }
 
-    fn should_fail_tron_missing_confirmed_and_pending(req: &ApiWithdrawEntity) -> bool {
-        shared_mechanism::should_retry_after_tron_missing_confirmed_and_pending(
+    fn should_fail_expired_tron_missing_confirmed(req: &ApiWithdrawEntity) -> bool {
+        shared_mechanism::should_fail_expired_tron_missing_confirmed(
             &req.chain_code,
-            req.last_broadcast_at,
-            req.broadcast_uncertain_since_at,
-            Self::TRON_MISSING_CONFIRMED_AND_PENDING_GRACE_SECS,
-            Utc::now(),
+            req.raw_tx.as_deref(),
+            Utc::now().timestamp_millis(),
+            Self::TRON_EXPIRED_RAW_MISSING_CONFIRMED_SETTLE_BUFFER_MS,
         )
     }
 
@@ -1303,13 +1302,13 @@ impl ShadowWithdrawWorker {
                 return Ok(());
             }
             Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
-                if !Self::should_fail_tron_missing_confirmed_and_pending(&req) {
+                if !Self::should_fail_expired_tron_missing_confirmed(&req) {
                     info!(
                         trade_no = %trade_no,
                         tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
-                        grace_secs = Self::TRON_MISSING_CONFIRMED_AND_PENDING_GRACE_SECS,
+                        settle_buffer_ms = Self::TRON_EXPIRED_RAW_MISSING_CONFIRMED_SETTLE_BUFFER_MS,
                         source = "shadow_withdraw_worker",
-                        "Tron tx missing from confirmed and pending pools; keep observing during grace window"
+                        "Tron tx missing from confirmed and pending pools; keep observing until raw tx expiration"
                     );
                     return Ok(());
                 }
@@ -1317,9 +1316,9 @@ impl ShadowWithdrawWorker {
                 warn!(
                     trade_no = %trade_no,
                     tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
-                    grace_secs = Self::TRON_MISSING_CONFIRMED_AND_PENDING_GRACE_SECS,
+                    settle_buffer_ms = Self::TRON_EXPIRED_RAW_MISSING_CONFIRMED_SETTLE_BUFFER_MS,
                     source = "shadow_withdraw_worker",
-                    "Tron tx missing from confirmed and pending pools beyond grace window; marking manual handling"
+                    "Tron tx missing from confirmed and pending pools after raw tx expiration; marking manual handling"
                 );
                 let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
                     &self.ctx.api_transaction_pool()?,
@@ -2807,40 +2806,48 @@ oss:
         ));
     }
 
-    #[test]
-    fn withdraw_tron_missing_confirmed_and_pending_waits_during_grace_window() {
-        let mut withdraw = base_withdraw();
-        withdraw.chain_code = "tron".to_string();
-        withdraw.last_broadcast_at = None;
-        withdraw.broadcast_uncertain_since_at = Some(Utc::now() - chrono::Duration::seconds(59));
-
-        assert!(!ShadowWithdrawWorker::should_fail_tron_missing_confirmed_and_pending(&withdraw));
+    fn tron_raw_tx_json(expiration_ms: i64) -> String {
+        let raw = RawTransactionParams {
+            raw_data: serde_json::json!({ "expiration": expiration_ms }).to_string(),
+            raw_data_hex: "00".to_string(),
+            tx_id: "txid".to_string(),
+            signature: vec![],
+        };
+        let raw_tx =
+            RawTx::Tron(raw, BillResourceConsume { net_used: 0, energy_used: 0 }, String::new());
+        wallet_utils::serde_func::serde_to_string(&raw_tx).expect("serialize tron raw tx")
     }
 
     #[test]
-    fn withdraw_tron_missing_confirmed_and_pending_fails_after_grace_window() {
+    fn withdraw_tron_missing_confirmed_waits_until_raw_expiration() {
         let mut withdraw = base_withdraw();
         withdraw.chain_code = "tron".to_string();
-        withdraw.last_broadcast_at = None;
-        withdraw.broadcast_uncertain_since_at = Some(Utc::now() - chrono::Duration::seconds(60));
+        withdraw.raw_tx = Some(tron_raw_tx_json(Utc::now().timestamp_millis() + 60_000));
 
-        assert!(ShadowWithdrawWorker::should_fail_tron_missing_confirmed_and_pending(&withdraw));
+        assert!(!ShadowWithdrawWorker::should_fail_expired_tron_missing_confirmed(&withdraw));
     }
 
     #[test]
-    fn withdraw_tron_missing_confirmed_and_pending_requires_tron_broadcast_evidence() {
+    fn withdraw_tron_missing_confirmed_fails_after_raw_expiration_buffer() {
+        let mut withdraw = base_withdraw();
+        withdraw.chain_code = "tron".to_string();
+        withdraw.raw_tx = Some(tron_raw_tx_json(Utc::now().timestamp_millis() - 31_000));
+
+        assert!(ShadowWithdrawWorker::should_fail_expired_tron_missing_confirmed(&withdraw));
+    }
+
+    #[test]
+    fn withdraw_tron_missing_confirmed_requires_tron_raw_tx() {
         let mut withdraw = base_withdraw();
         withdraw.chain_code = "sol".to_string();
-        withdraw.last_broadcast_at = Some(Utc::now() - chrono::Duration::seconds(60));
-        withdraw.broadcast_uncertain_since_at = Some(Utc::now() - chrono::Duration::seconds(60));
+        withdraw.raw_tx = Some(tron_raw_tx_json(Utc::now().timestamp_millis() - 31_000));
 
-        assert!(!ShadowWithdrawWorker::should_fail_tron_missing_confirmed_and_pending(&withdraw));
+        assert!(!ShadowWithdrawWorker::should_fail_expired_tron_missing_confirmed(&withdraw));
 
         withdraw.chain_code = "tron".to_string();
-        withdraw.last_broadcast_at = None;
-        withdraw.broadcast_uncertain_since_at = None;
+        withdraw.raw_tx = None;
 
-        assert!(!ShadowWithdrawWorker::should_fail_tron_missing_confirmed_and_pending(&withdraw));
+        assert!(!ShadowWithdrawWorker::should_fail_expired_tron_missing_confirmed(&withdraw));
     }
 
     #[test]

@@ -155,6 +155,28 @@ pub(crate) fn should_invalidate_expired_tron_raw(
     exp_ms <= now_ms.saturating_add(TRON_RAW_EXPIRY_GUARD_MS)
 }
 
+pub(crate) fn should_fail_expired_tron_missing_confirmed(
+    chain_code: &str,
+    raw_tx_json: Option<&str>,
+    now_ms: i64,
+    settle_buffer_ms: i64,
+) -> bool {
+    if !is_tron_chain(chain_code) {
+        return false;
+    }
+    let Some(raw_tx_json) = raw_tx_json else {
+        return false;
+    };
+    let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
+        Ok(raw_tx) => raw_tx,
+        Err(_) => return false,
+    };
+    let Some(exp_ms) = tron_raw_expiration_ms(&raw_tx) else {
+        return false;
+    };
+    now_ms >= exp_ms.saturating_add(settle_buffer_ms.max(0))
+}
+
 pub(crate) fn should_invalidate_expired_tron_raw_for_recover(
     chain_code: &str,
     raw_tx_json: &str,
@@ -268,8 +290,8 @@ mod tests {
     use super::{
         broadcast_uncertain_backoff_secs, broadcast_uncertain_elapsed_secs,
         is_broadcast_uncertain_timed_out, is_evm_chain, is_sol_chain, is_stale_slot, is_tron_chain,
-        normalize_chain_time_to_ms, normalized_tx_hash, should_force_align_nonce_gap,
-        should_invalidate_expired_tron_raw_for_recover,
+        normalize_chain_time_to_ms, normalized_tx_hash, should_fail_expired_tron_missing_confirmed,
+        should_force_align_nonce_gap, should_invalidate_expired_tron_raw_for_recover,
         should_retry_after_tron_missing_confirmed_and_pending,
         should_throttle_broadcast_uncertain_after_last_check,
         should_throttle_broadcast_uncertain_recover, tracks_broadcast_uncertain_state,
@@ -441,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn tron_missing_confirmed_and_pending_retry_waits_for_grace_window() {
+    fn tron_missing_confirmed_and_pending_retry_waits_for_timeout() {
         let now = Utc::now();
 
         assert!(!should_retry_after_tron_missing_confirmed_and_pending(
@@ -475,6 +497,32 @@ mod tests {
         assert!(!should_retry_after_tron_missing_confirmed_and_pending(
             "tron", None, None, 60, now
         ));
+    }
+
+    #[test]
+    fn expired_tron_missing_confirmed_fails_after_settle_buffer() {
+        let now_ms = Utc::now().timestamp_millis();
+        let raw_tx_json = tron_raw_tx_json(now_ms - 30_000);
+
+        assert!(!should_fail_expired_tron_missing_confirmed(
+            "tron",
+            Some(&raw_tx_json),
+            now_ms,
+            60_000
+        ));
+        assert!(should_fail_expired_tron_missing_confirmed(
+            "tron",
+            Some(&raw_tx_json),
+            now_ms,
+            10_000
+        ));
+        assert!(!should_fail_expired_tron_missing_confirmed(
+            "eth",
+            Some(&raw_tx_json),
+            now_ms,
+            10_000
+        ));
+        assert!(!should_fail_expired_tron_missing_confirmed("tron", None, now_ms, 10_000));
     }
 
     #[test]
