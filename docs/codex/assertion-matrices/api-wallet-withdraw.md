@@ -316,6 +316,31 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   evaluations, overlap Collect resource evaluation, or consume the dispatcher
   capacity reserved for transaction execution and recovery.
 
+### Withdraw Build Balance Failure
+
+- Layer: component + worker unit.
+- Entrypoint:
+
+  ```text
+  wallet-database/src/dao/api_withdraw.rs
+  withdraw_build_failure_marks_error_and_blocks_can_build_scan
+  withdraw_build_failure_blocks_resource_gate_scan
+
+  wallet-api/src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
+  withdraw_build_failure_classifies_balance_errors_as_terminal
+  ```
+
+- DB facts: `tx_ack_sent_at`, `audit_passed_at`, and
+  `resource_gate_released_at` are present; `raw_tx`, `transaction_time`,
+  `finished_at`, and `err_code` are absent before the failure.
+- Failure fact: deterministic BuildTx balance failures write `err_code=6001`,
+  `failure_stage=Build`, clear `building_at`, and recompute status to
+  `SendingTxFailed`.
+- Invariant: after the failure fact is written, `scan_can_build` must not pick
+  the withdraw order again; pre-Build resource-gate balance failures must also
+  be excluded from `scan_need_resource_gate`; transient Build/RPC failures
+  remain retryable.
+
 ### Withdraw Fee Estimate Fast Path
 
 - Layer: scanner unit/component.

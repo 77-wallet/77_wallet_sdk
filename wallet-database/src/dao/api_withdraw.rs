@@ -1022,6 +1022,47 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn mark_build_failed_if_unfinished<'a, E>(
+        exec: E,
+        trade_no: &str,
+        err_code: ErrCode,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                err_code = $2,
+                err_msg = $3,
+                failure_stage = $4,
+                building_at = NULL,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(err_code)
+            .bind(err_msg)
+            .bind(WithdrawFailureStage::Build)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
     pub async fn update_next_status<'a, E>(
         exec: E,
         trade_no: &str,
@@ -2705,8 +2746,10 @@ mod tests {
     use crate::{
         SqliteContext,
         entities::{
-            api_resource_gate::ApiResourceGateResult, api_trade_type::ApiTradeType,
-            api_withdraw::ApiWithdrawStatus, asset_token_key::AssetTokenKey,
+            api_resource_gate::ApiResourceGateResult,
+            api_trade_type::ApiTradeType,
+            api_withdraw::{ApiWithdrawStatus, ErrCode, WithdrawFailureStage},
+            asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::withdraw::ApiWithdrawRepo,
     };
@@ -4538,5 +4581,151 @@ mod tests {
         assert!(trade_nos.contains(&"W_CAN_BUILD_READY".to_string()));
         assert!(!trade_nos.contains(&"W_CAN_BUILD_RECOVERED".to_string()));
         assert!(!trade_nos.contains(&"W_CAN_BUILD_FINISHED".to_string()));
+    }
+
+    #[tokio::test]
+    async fn withdraw_build_failure_marks_error_and_blocks_can_build_scan() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_build_failure");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_build_failure",
+            "withdraw",
+            "FROM_BUILD_FAILURE",
+            "TO_BUILD_FAILURE",
+            "5",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_BUILD_FAILURE",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_BUILD_FAILURE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let before = ApiWithdrawDao::scan_can_build(pool.as_ref(), 10).await.unwrap();
+        assert!(before.iter().any(|row| row.trade_no == "W_BUILD_FAILURE"));
+
+        let rows = ApiWithdrawRepo::mark_build_failed_if_unfinished(
+            &pool,
+            "W_BUILD_FAILURE",
+            ErrCode::BalanceInsufficient,
+            "withdraw amount is insufficient",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_BUILD_FAILURE",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        assert_eq!(after.err_code, Some(ErrCode::BalanceInsufficient));
+        assert_eq!(after.failure_stage, Some(WithdrawFailureStage::Build));
+        assert_eq!(after.status, ApiWithdrawStatus::SendingTxFailed);
+        assert!(after.building_at.is_none());
+
+        let scan_after = ApiWithdrawDao::scan_can_build(pool.as_ref(), 10).await.unwrap();
+        assert!(!scan_after.iter().any(|row| row.trade_no == "W_BUILD_FAILURE"));
+
+        let second = ApiWithdrawRepo::mark_build_failed_if_unfinished(
+            &pool,
+            "W_BUILD_FAILURE",
+            ErrCode::BalanceInsufficient,
+            "withdraw amount is insufficient",
+        )
+        .await
+        .unwrap();
+        assert_eq!(second, 0);
+    }
+
+    #[tokio::test]
+    async fn withdraw_build_failure_blocks_resource_gate_scan() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_resource_gate_build_failure");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_resource_gate_failure",
+            "withdraw",
+            "FROM_RESOURCE_GATE_FAILURE",
+            "TO_RESOURCE_GATE_FAILURE",
+            "5",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_RESOURCE_GATE_FAILURE",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_RESOURCE_GATE_FAILURE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let before = ApiWithdrawDao::scan_need_resource_gate(pool.as_ref(), 10).await.unwrap();
+        assert!(before.iter().any(|row| row.trade_no == "W_RESOURCE_GATE_FAILURE"));
+
+        let rows = ApiWithdrawRepo::mark_build_failed_if_unfinished(
+            &pool,
+            "W_RESOURCE_GATE_FAILURE",
+            ErrCode::BalanceInsufficient,
+            "token balance is insufficient for tron estimate fee",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let scan_after = ApiWithdrawDao::scan_need_resource_gate(pool.as_ref(), 10).await.unwrap();
+        assert!(!scan_after.iter().any(|row| row.trade_no == "W_RESOURCE_GATE_FAILURE"));
     }
 }

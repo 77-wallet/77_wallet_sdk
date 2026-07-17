@@ -1161,6 +1161,27 @@ impl ApiWithdrawRepo {
             .await
     }
 
+    pub async fn mark_build_failed_if_unfinished(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        err_code: ErrCode,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiWithdrawDao::mark_build_failed_if_unfinished(
+            pool.write_ref(),
+            trade_no,
+            err_code,
+            err_msg,
+        )
+        .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
     /// 重新计算并更新交易状态
     ///
     /// ⚠️ Repo 写事实铁律

@@ -49,7 +49,11 @@ use crate::{
         chain::adapter::ChainAdapterFactory,
     },
     error::{
-        business::api_wallet::{ApiWalletError, trans::TransError},
+        business::{
+            BusinessError,
+            api_wallet::{ApiWalletError, trans::TransError},
+            chain::ChainError,
+        },
         service::ServiceError,
         system::SystemError,
     },
@@ -219,6 +223,18 @@ impl ShadowWithdrawWorker {
         )
     }
 
+    fn build_failure_err_code(err: &ServiceError) -> Option<ErrCode> {
+        match err {
+            ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(_))) => {
+                Some(ErrCode::BalanceInsufficient)
+            }
+            ServiceError::Business(BusinessError::Chain(ChainError::InsufficientFeeBalance)) => {
+                Some(ErrCode::FeeInsufficient)
+            }
+            _ => None,
+        }
+    }
+
     fn is_withdraw_amount_shortage(balance: &str, value: &str) -> Result<bool, ServiceError> {
         let balance = conversion::decimal_from_str(balance)?;
         let value = conversion::decimal_from_str(value)?;
@@ -322,7 +338,7 @@ impl ShadowWithdrawWorker {
 
     async fn process_eval_resource_gate(&self, trade_no: String) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Processing EvalResourceGate command");
-        crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
+        if let Err(err) = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
             self.ctx,
             "tron",
             &trade_no,
@@ -335,7 +351,48 @@ impl ShadowWithdrawWorker {
                 || self.process_resource_gate_inner(&trade_no),
             ),
         )
-        .await?;
+        .await
+        {
+            if let Some(err_code) = Self::build_failure_err_code(&err) {
+                self.mark_prebuild_terminal_failure(&trade_no, err_code, &err).await?;
+                return Ok(());
+            }
+            return Err(err);
+        }
+        Ok(())
+    }
+
+    async fn mark_prebuild_terminal_failure(
+        &self,
+        trade_no: &str,
+        err_code: ErrCode,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let error_msg = err.to_string();
+        let rows_affected = ApiWithdrawRepo::mark_build_failed_if_unfinished(
+            &self.ctx.api_transaction_pool()?,
+            trade_no,
+            err_code,
+            &error_msg,
+        )
+        .await
+        .map_err(|db_err: wallet_database::Error| {
+            error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to mark pre-BuildTx terminal failure");
+            ServiceError::Database(db_err.into())
+        })?;
+
+        info!(
+            trade_no = %trade_no,
+            rows_affected = %rows_affected,
+            err_code = %err_code,
+            source = "shadow_withdraw_worker",
+            "Marked pre-BuildTx terminal failure"
+        );
+
+        if rows_affected > 0 {
+            self.scanner.try_advance(trade_no).await;
+        }
+
         Ok(())
     }
 
@@ -2154,6 +2211,38 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
+        let error_msg = err.to_string();
+
+        if matches!(stage, WithdrawFailureStage::Build) && withdraw.raw_tx.is_none() {
+            if let Some(err_code) = Self::build_failure_err_code(&err) {
+                let rows_affected = ApiWithdrawRepo::mark_build_failed_if_unfinished(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                    err_code,
+                    &error_msg,
+                )
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to mark BuildTx terminal failure");
+                    ServiceError::Database(db_err.into())
+                })?;
+
+                info!(
+                    trade_no = %trade_no,
+                    rows_affected = %rows_affected,
+                    err_code = %err_code,
+                    source = "shadow_withdraw_worker",
+                    "Marked BuildTx terminal failure"
+                );
+
+                if rows_affected > 0 {
+                    self.scanner.try_advance(trade_no).await;
+                }
+
+                return Ok(());
+            }
+        }
+
         // BuildTx 失败只需要释放 build slot，让 scanner 后续重试。
         // 这里不写失败事实，避免把可重试的构建失败误记成终态失败。
         if matches!(stage, WithdrawFailureStage::Build) && withdraw.raw_tx.is_none() {
@@ -2214,7 +2303,6 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
-        let error_msg = format!("{}", err);
         if let Some(accepted_reason) = broadcast_failure_decision.accepted_reason() {
             if let Some(message) = accepted_reason.pre_self_heal_log_message() {
                 info!(
@@ -2408,7 +2496,9 @@ mod tests {
             api_resource_type::ApiResourceType,
             api_trade_type::ApiTradeType,
             api_wallet::ApiWalletType,
-            api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, PendingWithdrawResourceBudget},
+            api_withdraw::{
+                ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
+            },
             asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::{
@@ -2787,6 +2877,32 @@ oss:
             !ShadowWithdrawWorker::is_withdraw_amount_shortage("1.109999", "1.109999")
                 .expect("compare")
         );
+    }
+
+    #[test]
+    fn withdraw_build_failure_classifies_balance_errors_as_terminal() {
+        let insufficient_balance = crate::error::service::ServiceError::Business(
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::insufficient_balance(),
+            ),
+        );
+        let insufficient_fee = crate::error::service::ServiceError::Business(
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+            ),
+        );
+        let retryable_build_error =
+            crate::error::service::ServiceError::Parameter("network will retry".to_string());
+
+        assert_eq!(
+            ShadowWithdrawWorker::build_failure_err_code(&insufficient_balance),
+            Some(ErrCode::BalanceInsufficient)
+        );
+        assert_eq!(
+            ShadowWithdrawWorker::build_failure_err_code(&insufficient_fee),
+            Some(ErrCode::FeeInsufficient)
+        );
+        assert_eq!(ShadowWithdrawWorker::build_failure_err_code(&retryable_build_error), None);
     }
 
     #[tokio::test]
