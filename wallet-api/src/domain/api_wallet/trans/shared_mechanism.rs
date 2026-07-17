@@ -441,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn tron_missing_confirmed_and_pending_retry_waits_for_timeout() {
+    fn tron_missing_confirmed_and_pending_retry_waits_for_grace_window() {
         let now = Utc::now();
 
         assert!(!should_retry_after_tron_missing_confirmed_and_pending(

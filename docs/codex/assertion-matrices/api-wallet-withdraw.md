@@ -263,14 +263,14 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: recover must not clear `raw_tx` / `tx_hash` for rebuild when the
   withdraw row already has a transaction hash.
 
-### Withdraw Missing TRON Transaction Uses Uncertain Timestamp
+### Withdraw Missing TRON Transaction Uses Short Grace Window
 
 - Layer: unit.
 - Entrypoint:
 
   ```text
   src/domain/api_wallet/trans/shared_mechanism.rs
-  tron_missing_confirmed_and_pending_retry_waits_for_timeout
+  tron_missing_confirmed_and_pending_retry_waits_for_grace_window
   ```
 
 - Backend: none.
@@ -278,8 +278,8 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   retaining `broadcast_uncertain_since_at`.
 - Invariant: Recover uses `last_broadcast_at` when present, otherwise falls back
   to `broadcast_uncertain_since_at`; with neither timestamp it must keep waiting.
-- Worker behavior: after timeout, withdraw keeps its existing manual-review
-  transition and does not adopt collect's rebroadcast policy.
+- Worker behavior: after the short grace window, withdraw keeps its existing
+  manual-review transition and does not adopt collect's rebroadcast policy.
 
 ### Withdraw Broadcast RPC Timeout Preserves Chain Facts
 

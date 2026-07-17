@@ -121,7 +121,7 @@ pub struct ShadowWithdrawWorker {
 }
 
 impl ShadowWithdrawWorker {
-    const TRON_MISSING_CONFIRMED_AND_PENDING_MANUAL_REVIEW_TIMEOUT_SECS: i64 = 5 * 60;
+    const TRON_MISSING_CONFIRMED_AND_PENDING_GRACE_SECS: i64 = 60;
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     // const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 20;
     const EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS: i64 = 24 * 60 * 60;
@@ -213,12 +213,12 @@ impl ShadowWithdrawWorker {
         )
     }
 
-    fn should_rebroadcast_tron_missing_confirmed_and_pending(req: &ApiWithdrawEntity) -> bool {
+    fn should_fail_tron_missing_confirmed_and_pending(req: &ApiWithdrawEntity) -> bool {
         shared_mechanism::should_retry_after_tron_missing_confirmed_and_pending(
             &req.chain_code,
             req.last_broadcast_at,
             req.broadcast_uncertain_since_at,
-            Self::TRON_MISSING_CONFIRMED_AND_PENDING_MANUAL_REVIEW_TIMEOUT_SECS,
+            Self::TRON_MISSING_CONFIRMED_AND_PENDING_GRACE_SECS,
             Utc::now(),
         )
     }
@@ -1303,12 +1303,13 @@ impl ShadowWithdrawWorker {
                 return Ok(());
             }
             Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
-                if !Self::should_rebroadcast_tron_missing_confirmed_and_pending(&req) {
+                if !Self::should_fail_tron_missing_confirmed_and_pending(&req) {
                     info!(
                         trade_no = %trade_no,
                         tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                        grace_secs = Self::TRON_MISSING_CONFIRMED_AND_PENDING_GRACE_SECS,
                         source = "shadow_withdraw_worker",
-                        "Tron tx missing from confirmed and pending pools; keep observing before manual review"
+                        "Tron tx missing from confirmed and pending pools; keep observing during grace window"
                     );
                     return Ok(());
                 }
@@ -1316,8 +1317,9 @@ impl ShadowWithdrawWorker {
                 warn!(
                     trade_no = %trade_no,
                     tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                    grace_secs = Self::TRON_MISSING_CONFIRMED_AND_PENDING_GRACE_SECS,
                     source = "shadow_withdraw_worker",
-                    "Tron tx missing from confirmed and pending pools beyond timeout; marking manual handling"
+                    "Tron tx missing from confirmed and pending pools beyond grace window; marking manual handling"
                 );
                 let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
                     &self.ctx.api_transaction_pool()?,
@@ -2803,6 +2805,42 @@ oss:
             &withdraw,
             Utc::now()
         ));
+    }
+
+    #[test]
+    fn withdraw_tron_missing_confirmed_and_pending_waits_during_grace_window() {
+        let mut withdraw = base_withdraw();
+        withdraw.chain_code = "tron".to_string();
+        withdraw.last_broadcast_at = None;
+        withdraw.broadcast_uncertain_since_at = Some(Utc::now() - chrono::Duration::seconds(59));
+
+        assert!(!ShadowWithdrawWorker::should_fail_tron_missing_confirmed_and_pending(&withdraw));
+    }
+
+    #[test]
+    fn withdraw_tron_missing_confirmed_and_pending_fails_after_grace_window() {
+        let mut withdraw = base_withdraw();
+        withdraw.chain_code = "tron".to_string();
+        withdraw.last_broadcast_at = None;
+        withdraw.broadcast_uncertain_since_at = Some(Utc::now() - chrono::Duration::seconds(60));
+
+        assert!(ShadowWithdrawWorker::should_fail_tron_missing_confirmed_and_pending(&withdraw));
+    }
+
+    #[test]
+    fn withdraw_tron_missing_confirmed_and_pending_requires_tron_broadcast_evidence() {
+        let mut withdraw = base_withdraw();
+        withdraw.chain_code = "sol".to_string();
+        withdraw.last_broadcast_at = Some(Utc::now() - chrono::Duration::seconds(60));
+        withdraw.broadcast_uncertain_since_at = Some(Utc::now() - chrono::Duration::seconds(60));
+
+        assert!(!ShadowWithdrawWorker::should_fail_tron_missing_confirmed_and_pending(&withdraw));
+
+        withdraw.chain_code = "tron".to_string();
+        withdraw.last_broadcast_at = None;
+        withdraw.broadcast_uncertain_since_at = None;
+
+        assert!(!ShadowWithdrawWorker::should_fail_tron_missing_confirmed_and_pending(&withdraw));
     }
 
     #[test]
