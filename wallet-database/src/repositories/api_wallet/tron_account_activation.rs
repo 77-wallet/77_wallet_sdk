@@ -188,7 +188,7 @@ mod tests {
 
         assert_eq!(got.activation_trade_no, "act_collect_1");
         assert_eq!(got.payer_address, "T_payer_2");
-        assert_eq!(got.amount, "0.000001");
+        assert_eq!(got.amount, "0.00001");
         assert_eq!(got.status, ApiTronAccountActivationStatus::Pending);
         assert!(got.account_verified_at.is_none());
     }

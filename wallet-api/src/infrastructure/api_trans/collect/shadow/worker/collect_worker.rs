@@ -515,12 +515,13 @@ impl ShadowCollectWorker {
             private_key_manager.get_private_key(&task.payer_address, &task.chain_code).await?;
         let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
 
-        let params = ApiBaseTransferReq::new(
+        let mut params = ApiBaseTransferReq::new(
             &task.payer_address,
             &task.target_address,
             &task.amount,
             &task.chain_code,
         );
+        params.with_token(AssetTokenKey::Native, 6, "TRX");
         let transfer_req = ApiTransferReq { base: params, password: unlock_token, nonce: 0 };
         let Some((tx_hash, raw_tx, _fee)) =
             crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
@@ -4501,7 +4502,7 @@ oss:
         assert_eq!(activation.origin_trade_no, trade_no);
         assert_eq!(activation.payer_address, "withdraw_payer");
         assert_eq!(activation.target_address, "inactive_from");
-        assert_eq!(activation.amount, "0.000001");
+        assert_eq!(activation.amount, "0.00001");
         assert!(activation.tx_hash.is_none());
         assert!(activation.account_verified_at.is_none());
     }

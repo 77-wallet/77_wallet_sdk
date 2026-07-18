@@ -105,7 +105,7 @@ impl NewApiTronAccountActivation {
             chain_code: "tron".to_string(),
             payer_address: payer_address.into(),
             target_address: target_address.into(),
-            amount: "0.000001".to_string(),
+            amount: "0.00001".to_string(),
         }
     }
 }
