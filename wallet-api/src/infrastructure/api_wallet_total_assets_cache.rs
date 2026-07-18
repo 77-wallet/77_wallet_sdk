@@ -1,19 +1,15 @@
-use dashmap::DashMap;
 use once_cell::sync::Lazy;
-use std::time::Instant;
 use tokio::time::Duration;
 
-use crate::response_vo::standard_wallet::account::BalanceInfo;
+use crate::{
+    error::service::ServiceError, infrastructure::protected_query::ProtectedQuery,
+    response_vo::standard_wallet::account::BalanceInfo,
+};
 
-#[derive(Clone)]
-struct CachedWalletTotalAssets {
-    value: BalanceInfo,
-    updated_at: Instant,
-}
-
-static WALLET_TOTAL_ASSETS_CACHE: Lazy<DashMap<String, CachedWalletTotalAssets>> =
-    Lazy::new(DashMap::new);
-static WALLET_TOTAL_ASSETS_REFRESHING: Lazy<DashMap<String, ()>> = Lazy::new(DashMap::new);
+static WALLET_TOTAL_ASSETS_QUERY: Lazy<ProtectedQuery<BalanceInfo>> =
+    Lazy::new(ProtectedQuery::default);
+static WALLET_TOTAL_ASSETS_REFRESHING: Lazy<dashmap::DashMap<String, ()>> =
+    Lazy::new(dashmap::DashMap::new);
 
 pub(crate) fn wallet_total_assets_key(
     wallet_address: &str,
@@ -26,43 +22,35 @@ pub(crate) fn wallet_total_assets_key(
 }
 
 pub(crate) fn get_fresh(key: &str, max_age: Duration) -> Option<BalanceInfo> {
-    WALLET_TOTAL_ASSETS_CACHE.get(key).and_then(|entry| {
-        if entry.updated_at.elapsed() <= max_age { Some(entry.value.clone()) } else { None }
-    })
+    WALLET_TOTAL_ASSETS_QUERY.get_fresh(key, max_age)
 }
 
 pub(crate) fn get_stale(key: &str) -> Option<BalanceInfo> {
-    WALLET_TOTAL_ASSETS_CACHE.get(key).map(|entry| entry.value.clone())
+    WALLET_TOTAL_ASSETS_QUERY.get_stale(key)
 }
 
 pub(crate) fn set(key: &str, value: &BalanceInfo) {
-    WALLET_TOTAL_ASSETS_CACHE.insert(
-        key.to_string(),
-        CachedWalletTotalAssets { value: value.clone(), updated_at: Instant::now() },
-    );
+    WALLET_TOTAL_ASSETS_QUERY.set(key, value);
+}
+
+pub(crate) async fn load<F, Fut>(
+    key: &str,
+    fresh_ttl: Duration,
+    query_fn: F,
+) -> Result<BalanceInfo, ServiceError>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<BalanceInfo, ServiceError>>,
+{
+    WALLET_TOTAL_ASSETS_QUERY.load(key, fresh_ttl, query_fn).await
 }
 
 pub(crate) fn mark_wallet_stale(wallet_address: &str, fresh_ttl: Duration) -> Vec<String> {
-    let keys: Vec<String> = WALLET_TOTAL_ASSETS_CACHE
-        .iter()
-        .filter(|entry| entry.key().starts_with(&format!("wallet={wallet_address};")))
-        .map(|entry| entry.key().clone())
-        .collect();
-
-    for key in &keys {
-        mark_key_stale(key, fresh_ttl);
-    }
-
-    keys
+    WALLET_TOTAL_ASSETS_QUERY.mark_matching_stale(&format!("wallet={wallet_address};"), fresh_ttl)
 }
 
 pub(crate) fn mark_key_stale(key: &str, fresh_ttl: Duration) {
-    if let Some(mut entry) = WALLET_TOTAL_ASSETS_CACHE.get_mut(key) {
-        let stale_at = Instant::now()
-            .checked_sub(fresh_ttl + Duration::from_millis(1))
-            .unwrap_or_else(Instant::now);
-        entry.updated_at = stale_at;
-    }
+    WALLET_TOTAL_ASSETS_QUERY.mark_key_stale(key, fresh_ttl);
 }
 
 pub(crate) fn schedule_refresh(

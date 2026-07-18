@@ -6,6 +6,32 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Current Standard Tests
 
+### Protected API Wallet Asset Queries
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/protected_query.rs
+  protected_query_deduplicates_concurrent_loads
+  protected_query_returns_stale_on_timeout
+
+  src/infrastructure/api_wallet_asset_query_guard.rs
+  account_assets_key_keeps_query_dimensions
+  asset_detail_key_keeps_query_dimensions
+
+  src/domain/api_wallet/assets/total_query_policy.rs
+  total_assets_dedup_allows_single_real_query
+  total_assets_query_returns_stale_cache_on_timeout
+  ```
+
+- Backend: none; tests cover local query protection behavior only.
+- DB facts: none.
+- Invariant: API wallet asset read endpoints may share protection mechanics
+  while retaining distinct cache keys and business query semantics. Transient
+  timeout/pool-timeout failures may return stale cached values only when a prior
+  successful value exists.
+
 ### Account Change Syncs API Wallet Token By Address
 
 - Layer: integration.

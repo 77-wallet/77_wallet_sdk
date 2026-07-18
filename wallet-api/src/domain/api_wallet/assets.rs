@@ -32,7 +32,7 @@ use crate::{
         app::config::ConfigDomain,
         assets::{BalanceTask, BalanceTasks},
     },
-    infrastructure::chain_rpc_guard,
+    infrastructure::{api_wallet_asset_query_guard, chain_rpc_guard},
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     response_vo::standard_wallet::account::BalanceInfo,
 };
@@ -602,6 +602,7 @@ impl ApiAssetsDomain {
             }
 
             Self::mark_persisted_asset_sync_done(&pool, &persisted_successes).await?;
+            Self::invalidate_persisted_asset_query_cache(&persisted_successes, &accounts_map);
 
             // 数据库更新完成后，计算每个账户的总余额
             let account_balances =
@@ -691,6 +692,53 @@ impl ApiAssetsDomain {
             scheduled_count = scheduled,
             wallet_count = changed_accounts.len(),
             "invalidated api wallet total-assets cache after sync"
+        );
+    }
+
+    fn invalidate_persisted_asset_query_cache(
+        persisted_successes: &[AssetsId],
+        accounts_map: &std::collections::HashMap<
+            String,
+            wallet_database::entities::api_account::ApiAccountEntity,
+        >,
+    ) {
+        let defaults = runtime_defaults::api_assets();
+        let mut account_removed = 0usize;
+        let mut detail_removed = 0usize;
+
+        for assets_id in persisted_successes {
+            if let Some(account) = accounts_map.get(&assets_id.address) {
+                account_removed += api_wallet_asset_query_guard::mark_account_assets_stale(
+                    &account.wallet_address,
+                    defaults.total_cache_ttl,
+                );
+                if api_wallet_asset_query_guard::mark_asset_detail_stale(
+                    &account.wallet_address,
+                    Some(account.account_id),
+                    &assets_id.chain_code,
+                    assets_id.token_address.to_option_string_for_api().as_deref(),
+                    defaults.total_cache_ttl,
+                ) {
+                    detail_removed += 1;
+                }
+            }
+
+            if api_wallet_asset_query_guard::mark_asset_detail_stale(
+                &assets_id.address,
+                None,
+                &assets_id.chain_code,
+                assets_id.token_address.to_option_string_for_api().as_deref(),
+                defaults.total_cache_ttl,
+            ) {
+                detail_removed += 1;
+            }
+        }
+
+        tracing::debug!(
+            account_removed,
+            detail_removed,
+            asset_count = persisted_successes.len(),
+            "invalidated api wallet protected asset query cache after sync"
         );
     }
 

@@ -1,4 +1,5 @@
 use crate::{
+    config::runtime_defaults,
     context::Context,
     domain::{
         api_wallet::{
@@ -7,6 +8,7 @@ use crate::{
         },
         app::config::ConfigDomain,
     },
+    infrastructure::api_wallet_asset_query_guard,
     response_vo::{
         api_wallet::assets::{ApiAccountChainAsset, ApiAccountChainAssetList},
         standard_wallet::{
@@ -410,6 +412,25 @@ impl ApiAssetsService {
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
+        let cache_key = api_wallet_asset_query_guard::account_assets_key(
+            wallet_address,
+            account_id,
+            chain_code.as_deref(),
+        );
+        let fresh_ttl = runtime_defaults::api_assets().total_cache_ttl;
+
+        api_wallet_asset_query_guard::load_account_assets(&cache_key, fresh_ttl, || async move {
+            self.query_account_assets_uncached(account_id, wallet_address, chain_code).await
+        })
+        .await
+    }
+
+    async fn query_account_assets_uncached(
+        &self,
+        account_id: u32,
+        wallet_address: &str,
+        chain_code: Option<String>,
+    ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
 
         let account = ApiAccountRepo::list_by_wallet_address(
@@ -610,6 +631,28 @@ impl ApiAssetsService {
     }
 
     pub async fn detail(
+        &mut self,
+        address: &str,
+        account_id: Option<u32>,
+        chain_code: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<CoinAssets, crate::error::service::ServiceError> {
+        let token_address = token_key.to_option_string_for_api();
+        let cache_key = api_wallet_asset_query_guard::asset_detail_key(
+            address,
+            account_id,
+            chain_code,
+            token_address.as_deref(),
+        );
+        let fresh_ttl = runtime_defaults::api_assets().total_cache_ttl;
+
+        api_wallet_asset_query_guard::load_asset_detail(&cache_key, fresh_ttl, || async move {
+            self.query_detail_uncached(address, account_id, chain_code, token_key).await
+        })
+        .await
+    }
+
+    async fn query_detail_uncached(
         &mut self,
         address: &str,
         account_id: Option<u32>,

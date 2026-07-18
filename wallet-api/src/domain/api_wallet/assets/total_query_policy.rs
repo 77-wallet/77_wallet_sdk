@@ -1,4 +1,4 @@
-use std::{future::Future, time::Instant};
+use std::future::Future;
 use tokio::time::Duration;
 
 use crate::{
@@ -6,7 +6,7 @@ use crate::{
     response_vo::standard_wallet::account::BalanceInfo,
 };
 
-use super::{ApiAccountRepo, ApiAssetsDomain, singleflight};
+use super::{ApiAccountRepo, ApiAssetsDomain};
 
 pub(super) fn wallet_total_assets_v3_lock_key(
     wallet_address: &str,
@@ -32,10 +32,6 @@ pub(super) fn invalidate_wallet_total_assets_cache(wallet_address: &str) -> usiz
         api_wallet_total_assets_cache::mark_wallet_stale(wallet_address, defaults.total_cache_ttl);
 
     let removed_count = keys.len();
-    for key in keys {
-        super::singleflight::invalidate_balance_info(&key);
-    }
-
     if removed_count > 0 {
         tracing::info!(
             wallet_address = %wallet_address,
@@ -70,7 +66,7 @@ fn log_db_pool_timeout_metric(err: &str) {
 }
 
 // 同 key 聚合请求的统一入口：
-// 先命中新鲜缓存，再通过 singleflight 合并并发查询；查询失败时直接向上返回。
+// 先命中新鲜缓存，再通过 protected query 合并并发查询；瞬时超时返回陈旧缓存。
 async fn load_total_assets_with_cache<F, Fut>(
     cache_key: &str,
     fresh_ttl: Duration,
@@ -80,61 +76,16 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<BalanceInfo, crate::error::service::ServiceError>>,
 {
-    if let Some(cached) = api_wallet_total_assets_cache::get_fresh(cache_key, fresh_ttl) {
-        tracing::debug!(
-            metric = "api_assets_cache_hit",
-            cache_key = %cache_key,
-            cache_type = "fresh",
-            "wallet assets cache hit"
-        );
-        return Ok(cached);
-    }
-
-    let wait_start = Instant::now();
-    let result = singleflight::call_balance_info(cache_key, || async move {
-        if let Some(cached) = api_wallet_total_assets_cache::get_fresh(cache_key, fresh_ttl) {
-            tracing::debug!(
-                metric = "api_assets_dedup_hit",
-                cache_key = %cache_key,
-                "wallet assets dedup hit"
-            );
-            return Ok(cached);
-        }
-
+    api_wallet_total_assets_cache::load(cache_key, fresh_ttl, || async move {
         match query_fn().await {
-            Ok(balance) => {
-                api_wallet_total_assets_cache::set(cache_key, &balance);
-                Ok(balance)
-            }
+            Ok(balance) => Ok(balance),
             Err(err) => {
                 log_db_pool_timeout_metric(&err.to_string());
-                if is_v3_timeout_or_pool_timeout(&err) {
-                    if let Some(cached) = api_wallet_total_assets_cache::get_stale(cache_key) {
-                        tracing::warn!(
-                            metric = "api_assets_stale_cache_hit",
-                            cache_key = %cache_key,
-                            err = %err,
-                            "wallet assets query failed, returning stale cached result"
-                        );
-                        return Ok(cached);
-                    }
-                }
                 Err(err)
             }
         }
     })
-    .await;
-    let wait_elapsed_ms = wait_start.elapsed().as_millis();
-    if wait_elapsed_ms > 0 {
-        tracing::debug!(
-            metric = "api_assets_singleflight_wait_ms",
-            cache_key = %cache_key,
-            wait_elapsed_ms,
-            "wallet assets single-flight wait finished"
-        );
-    }
-
-    result
+    .await
 }
 
 impl ApiAssetsDomain {
@@ -357,7 +308,6 @@ mod tests {
         .expect("initial query ok");
         assert_eq!(first.amount, 7.0);
 
-        super::singleflight::invalidate_balance_info(&key);
         api_wallet_total_assets_cache::mark_key_stale(&key, Duration::from_secs(3600));
 
         let stale = load_total_assets_with_cache(&key, Duration::from_millis(0), || async {

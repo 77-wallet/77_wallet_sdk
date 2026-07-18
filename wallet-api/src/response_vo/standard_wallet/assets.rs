@@ -7,7 +7,7 @@ use std::{
 };
 use wallet_database::entities::{api_assets::ApiAssetsEntity, assets::AssetsEntity};
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetAccountAssetsRes {
     pub account_total_assets: BalanceInfo,
@@ -25,7 +25,7 @@ pub struct GetCoinListRes {
     pub coin_list: Vec<CoinAssets>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoinAssets {
     pub name: String,
