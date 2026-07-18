@@ -259,50 +259,47 @@ impl ShadowWithdrawWorker {
 
     fn estimated_fee_amount_from_response(response: &str) -> Result<String, ServiceError> {
         let value: serde_json::Value = wallet_utils::serde_func::serde_from_str(response)?;
-        let estimate_fee = if let Some(estimate_fee) = value.get("estimateFee") {
-            estimate_fee
-        } else {
-            let default_type = value.get("default").and_then(serde_json::Value::as_str);
-            let entries =
-                value.get("data").and_then(serde_json::Value::as_array).ok_or_else(|| {
-                    ServiceError::System(SystemError::Internal(
-                        "fee estimate response missing data".to_string(),
-                    ))
-                })?;
-            let selected = default_type
-                .and_then(|default_type| {
-                    entries.iter().find(|entry| {
-                        entry.get("type").and_then(serde_json::Value::as_str) == Some(default_type)
-                    })
+        let estimate_fee = Self::select_estimate_fee(&value)?;
+        Self::parse_estimate_fee_amount(estimate_fee)
+    }
+
+    fn select_estimate_fee(value: &serde_json::Value) -> Result<&serde_json::Value, ServiceError> {
+        if let Some(estimate_fee) = value.get("estimateFee") {
+            return Ok(estimate_fee);
+        }
+
+        let options = value
+            .get("data")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| Self::invalid_fee_response("missing data"))?;
+        let default_type = value.get("default").and_then(serde_json::Value::as_str);
+        let selected = default_type
+            .and_then(|kind| {
+                options.iter().find(|option| {
+                    option.get("type").and_then(serde_json::Value::as_str) == Some(kind)
                 })
-                .or_else(|| entries.first())
-                .ok_or_else(|| {
-                    ServiceError::System(SystemError::Internal(
-                        "fee estimate response contains no fee options".to_string(),
-                    ))
-                })?;
-            selected.get("estimateFee").ok_or_else(|| {
-                ServiceError::System(SystemError::Internal(
-                    "fee estimate response missing estimateFee".to_string(),
-                ))
-            })?
-        };
-        let amount = estimate_fee.get("amount").ok_or_else(|| {
-            ServiceError::System(SystemError::Internal(
-                "fee estimate response missing amount".to_string(),
-            ))
-        })?;
-        let amount = amount
+            })
+            .or_else(|| options.first())
+            .ok_or_else(|| Self::invalid_fee_response("contains no fee options"))?;
+
+        selected.get("estimateFee").ok_or_else(|| Self::invalid_fee_response("missing estimateFee"))
+    }
+
+    fn parse_estimate_fee_amount(estimate_fee: &serde_json::Value) -> Result<String, ServiceError> {
+        let amount = estimate_fee
+            .get("amount")
+            .ok_or_else(|| Self::invalid_fee_response("missing amount"))?;
+        let display_amount = amount
             .as_str()
             .map(str::to_string)
             .or_else(|| amount.as_f64().map(Self::format_estimated_fee_amount))
-            .ok_or_else(|| {
-                ServiceError::System(SystemError::Internal(
-                    "fee estimate response amount is not numeric".to_string(),
-                ))
-            })?;
-        let amount = conversion::decimal_from_str(&amount)?;
+            .ok_or_else(|| Self::invalid_fee_response("amount is not numeric"))?;
+        let amount = conversion::decimal_from_str(&display_amount)?;
         Ok(amount.normalize().to_string())
+    }
+
+    fn invalid_fee_response(reason: &str) -> ServiceError {
+        ServiceError::System(SystemError::Internal(format!("fee estimate response {reason}")))
     }
 
     fn tron_fee_estimate_resource_json(
