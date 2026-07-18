@@ -409,7 +409,6 @@ impl ApiWithdrawDao {
         let sql = r#"
             SELECT * FROM api_withdraws
             WHERE trade_type = ?
-              AND lower(chain_code) = 'tron'
               AND fee_estimated_at IS NULL
               AND raw_tx IS NULL
               AND transaction_time IS NULL
@@ -2951,7 +2950,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn withdraw_fee_estimate_snapshot_scan_finds_pending_tron_only() {
+    async fn withdraw_fee_estimate_snapshot_scan_finds_supported_pending_chains() {
         let dir = make_temp_dir("wallet_db_api_withdraw_fee_estimate_scan");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
         let pool = ctx.into_transaction_db_pool().unwrap();
@@ -2964,6 +2963,21 @@ mod tests {
         )
         .await;
         seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_ETH", "eth", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_BNB", "bnb", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_SOL", "sol", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_SOLANA",
+            "solana",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_BTC", "btc", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_SUI", "sui", ApiTradeType::Withdraw)
             .await;
         seed_withdraw_for_fee_estimate(
             &pool,
@@ -3003,9 +3017,21 @@ mod tests {
             .unwrap();
 
         let rows = ApiWithdrawRepo::scan_need_fee_estimate(&pool, 100).await.unwrap();
-        let trade_nos = rows.into_iter().map(|row| row.trade_no).collect::<Vec<_>>();
+        let mut trade_nos = rows.into_iter().map(|row| row.trade_no).collect::<Vec<_>>();
+        trade_nos.sort();
 
-        assert_eq!(trade_nos, vec!["W_FEE_ESTIMATE_PENDING"]);
+        assert_eq!(
+            trade_nos,
+            vec![
+                "W_FEE_ESTIMATE_BNB",
+                "W_FEE_ESTIMATE_BTC",
+                "W_FEE_ESTIMATE_ETH",
+                "W_FEE_ESTIMATE_PENDING",
+                "W_FEE_ESTIMATE_SOL",
+                "W_FEE_ESTIMATE_SOLANA",
+                "W_FEE_ESTIMATE_SUI",
+            ]
+        );
     }
 
     #[tokio::test]

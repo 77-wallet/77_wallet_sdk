@@ -242,7 +242,6 @@ impl ShadowWithdrawWorker {
 
     fn can_write_fee_estimate_snapshot(req: &ApiWithdrawEntity) -> bool {
         req.trade_type == ApiTradeType::Withdraw
-            && shared_mechanism::is_tron_chain(&req.chain_code)
             && req.fee_estimated_at.is_none()
             && req.raw_tx.is_none()
             && req.transaction_time.is_none()
@@ -256,6 +255,54 @@ impl ShadowWithdrawWorker {
             text = text.trim_end_matches('0').trim_end_matches('.').to_string();
         }
         if text == "-0" { "0".to_string() } else { text }
+    }
+
+    fn estimated_fee_amount_from_response(response: &str) -> Result<String, ServiceError> {
+        let value: serde_json::Value = wallet_utils::serde_func::serde_from_str(response)?;
+        let estimate_fee = if let Some(estimate_fee) = value.get("estimateFee") {
+            estimate_fee
+        } else {
+            let default_type = value.get("default").and_then(serde_json::Value::as_str);
+            let entries =
+                value.get("data").and_then(serde_json::Value::as_array).ok_or_else(|| {
+                    ServiceError::System(SystemError::Internal(
+                        "fee estimate response missing data".to_string(),
+                    ))
+                })?;
+            let selected = default_type
+                .and_then(|default_type| {
+                    entries.iter().find(|entry| {
+                        entry.get("type").and_then(serde_json::Value::as_str) == Some(default_type)
+                    })
+                })
+                .or_else(|| entries.first())
+                .ok_or_else(|| {
+                    ServiceError::System(SystemError::Internal(
+                        "fee estimate response contains no fee options".to_string(),
+                    ))
+                })?;
+            selected.get("estimateFee").ok_or_else(|| {
+                ServiceError::System(SystemError::Internal(
+                    "fee estimate response missing estimateFee".to_string(),
+                ))
+            })?
+        };
+        let amount = estimate_fee.get("amount").ok_or_else(|| {
+            ServiceError::System(SystemError::Internal(
+                "fee estimate response missing amount".to_string(),
+            ))
+        })?;
+        let amount = amount
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| amount.as_f64().map(Self::format_estimated_fee_amount))
+            .ok_or_else(|| {
+                ServiceError::System(SystemError::Internal(
+                    "fee estimate response amount is not numeric".to_string(),
+                ))
+            })?;
+        let amount = conversion::decimal_from_str(&amount)?;
+        Ok(amount.normalize().to_string())
     }
 
     fn tron_fee_estimate_resource_json(
@@ -402,27 +449,24 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
-        let Some(fee_details) = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
-            self.ctx,
-            &req.chain_code,
-            &trade_no,
-            "withdraw_estimate_fee",
-            "shadow_withdraw_worker",
-            resource_rpc_auth::run_with_rpc_auth_retry(
+        let Some((estimated_transaction_fee, estimated_resource_consume)) =
+            crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
+                self.ctx,
                 &req.chain_code,
-                "withdraw_estimate_fee",
                 &trade_no,
-                || self.estimate_tron_fee_details_for_withdraw(&req),
-            ),
-        )
-        .await?
+                "withdraw_estimate_fee",
+                "shadow_withdraw_worker",
+                resource_rpc_auth::run_with_rpc_auth_retry(
+                    &req.chain_code,
+                    "withdraw_estimate_fee",
+                    &trade_no,
+                    || self.estimate_fee_snapshot_for_withdraw(&req),
+                ),
+            )
+            .await?
         else {
             return Ok(());
         };
-        let estimated_transaction_fee =
-            Self::format_estimated_fee_amount(fee_details.estimate_fee.amount);
-        let estimated_resource_consume =
-            Self::tron_fee_estimate_resource_json(fee_details.energy, fee_details.bandwidth)?;
 
         let rows = ApiWithdrawRepo::update_fee_estimate(
             &self.ctx.api_transaction_pool()?,
@@ -1949,6 +1993,48 @@ impl ShadowWithdrawWorker {
         .await
     }
 
+    async fn estimate_fee_snapshot_for_withdraw(
+        &self,
+        req: &ApiWithdrawEntity,
+    ) -> Result<(String, String), ServiceError> {
+        let main_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            self.ctx,
+            &req.chain_code,
+            AssetTokenKey::Native,
+        )
+        .await?;
+        let transfer_coin = if req.token_addr.is_contract() {
+            ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?
+        } else {
+            main_coin.clone()
+        };
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
+                .await?;
+        let mut params =
+            ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
+        params.with_token(
+            transfer_coin.token_address.to_chain_token_option(),
+            transfer_coin.decimals,
+            &transfer_coin.symbol,
+        );
+        let response =
+            adapter.estimate_fee_without_balance_check(params, &main_coin.symbol).await?;
+        let estimated_transaction_fee = Self::estimated_fee_amount_from_response(&response)?;
+        let estimated_resource_consume = if shared_mechanism::is_tron_chain(&req.chain_code) {
+            let details: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&response)?;
+            Self::tron_fee_estimate_resource_json(details.energy, details.bandwidth)?
+        } else {
+            "{}".to_string()
+        };
+        Ok((estimated_transaction_fee, estimated_resource_consume))
+    }
+
     async fn execute_tron_resource_delegation(
         &self,
         delegation: &ApiResourceDelegationEntity,
@@ -2731,6 +2817,34 @@ oss:
         assert_eq!(ShadowWithdrawWorker::format_estimated_fee_amount(1.0), "1");
         assert_eq!(ShadowWithdrawWorker::format_estimated_fee_amount(0.12340000), "0.1234");
         assert_eq!(ShadowWithdrawWorker::format_estimated_fee_amount(0.000005), "0.000005");
+    }
+
+    #[test]
+    fn withdraw_fee_estimate_snapshot_parses_evm_default_option() {
+        let response = r#"{
+            "default":"propose",
+            "data":[
+                {"type":"safe","estimateFee":{"amount":"0.00001"}},
+                {"type":"propose","estimateFee":{"amount":"0.00003313"}}
+            ]
+        }"#;
+
+        assert_eq!(
+            ShadowWithdrawWorker::estimated_fee_amount_from_response(response)
+                .expect("parse EVM estimate"),
+            "0.00003313"
+        );
+    }
+
+    #[test]
+    fn withdraw_fee_estimate_snapshot_parses_solana_top_level_amount() {
+        let response = r#"{"estimateFee":{"amount":"0.000005"}}"#;
+
+        assert_eq!(
+            ShadowWithdrawWorker::estimated_fee_amount_from_response(response)
+                .expect("parse Solana estimate"),
+            "0.000005"
+        );
     }
 
     #[test]

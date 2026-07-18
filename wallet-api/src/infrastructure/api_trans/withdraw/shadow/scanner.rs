@@ -343,7 +343,6 @@ fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
 
 fn need_fee_estimate_snapshot(withdraw: &ApiWithdrawEntity) -> bool {
     withdraw.trade_type == ApiTradeType::Withdraw
-        && shared_mechanism::is_tron_chain(&withdraw.chain_code)
         && withdraw.fee_estimated_at.is_none()
         && withdraw.raw_tx.is_none()
         && withdraw.transaction_time.is_none()
@@ -1579,7 +1578,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn withdraw_try_advance_dispatches_fee_estimate_before_audit() -> anyhow::Result<()> {
+    async fn withdraw_bnb_try_advance_dispatches_fee_estimate_before_audit() -> anyhow::Result<()> {
         let ctx = test_ctx().await;
         let pool = ctx.api_transaction_pool()?;
         let (intent_tx, mut intent_rx) = mpsc::channel(100);
@@ -1593,10 +1592,10 @@ mod tests {
             "to_addr",
             "1",
             "digest",
-            "tron",
+            "bnb",
             AssetTokenKey::Native,
-            "TRX",
-            "W_fee_estimate_try_advance",
+            "BNB",
+            "W_bnb_fee_estimate_try_advance",
             None,
             None,
             None,
@@ -1612,13 +1611,13 @@ mod tests {
         )
         .await?;
 
-        scanner.try_advance("W_fee_estimate_try_advance").await;
+        scanner.try_advance("W_bnb_fee_estimate_try_advance").await;
 
         let intent = intent_rx.try_recv().expect("fee estimate intent should be dispatched");
         assert!(matches!(
             intent,
             WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(ref trade_no))
-                if trade_no == "W_fee_estimate_try_advance"
+                if trade_no == "W_bnb_fee_estimate_try_advance"
         ));
         assert!(intent_rx.try_recv().is_err());
 
