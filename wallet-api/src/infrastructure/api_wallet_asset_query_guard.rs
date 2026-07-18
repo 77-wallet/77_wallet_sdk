@@ -81,7 +81,55 @@ pub(crate) fn mark_asset_detail_stale(
 
 #[cfg(test)]
 mod tests {
-    use super::{account_assets_key, asset_detail_key};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use tokio::time::Duration;
+
+    use crate::{
+        error::service::ServiceError,
+        response_vo::standard_wallet::{
+            account::BalanceInfo,
+            assets::{CoinAssets, GetAccountAssetsRes},
+        },
+    };
+
+    use super::{
+        account_assets_key, asset_detail_key, load_account_assets, load_asset_detail,
+        mark_account_assets_stale, mark_asset_detail_stale,
+    };
+
+    fn unique_suffix() -> String {
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos().to_string()
+    }
+
+    fn balance(amount: f64, fiat_value: f64) -> BalanceInfo {
+        BalanceInfo {
+            amount,
+            currency: "USD".to_string(),
+            unit_price: None,
+            fiat_value: Some(fiat_value),
+        }
+    }
+
+    fn account_assets(amount: f64) -> GetAccountAssetsRes {
+        GetAccountAssetsRes { account_total_assets: balance(amount, amount) }
+    }
+
+    fn coin_assets(address: &str, chain_code: &str, token_address: &str) -> CoinAssets {
+        CoinAssets {
+            name: "Tether USD".to_string(),
+            symbol: "USDT".to_string(),
+            decimals: 6,
+            address: address.to_string(),
+            chain_code: chain_code.to_string(),
+            token_address: token_address.to_string(),
+            status: 1,
+            balance: balance(12.0, 12.0),
+            is_multisig: 0,
+            created_at: sqlx::types::chrono::Utc::now(),
+            updated_at: None,
+        }
+    }
 
     #[test]
     fn account_assets_key_keeps_query_dimensions() {
@@ -96,5 +144,53 @@ mod tests {
             key,
             "api_wallet_asset_detail:address=TAddr;account_id=1;chain_code=tron;token=TToken"
         );
+    }
+
+    #[tokio::test]
+    async fn account_assets_returns_stale_cache_on_timeout() {
+        let wallet_address = format!("0xwallet{}", unique_suffix());
+        let key = account_assets_key(&wallet_address, 3, Some("tron"));
+        let fresh_ttl = Duration::from_secs(60);
+
+        let first = load_account_assets(&key, fresh_ttl, || async { Ok(account_assets(88.0)) })
+            .await
+            .expect("initial account assets query ok");
+        assert_eq!(first.account_total_assets.amount, 88.0);
+
+        assert_eq!(mark_account_assets_stale(&wallet_address, fresh_ttl), 1);
+
+        let stale = load_account_assets(&key, Duration::from_millis(0), || async {
+            Err(ServiceError::Timeout)
+        })
+        .await
+        .expect("timeout should return stale account assets");
+
+        assert_eq!(stale.account_total_assets.amount, 88.0);
+    }
+
+    #[tokio::test]
+    async fn asset_detail_returns_stale_cache_on_timeout() {
+        let address = format!("TAddr{}", unique_suffix());
+        let token_address = "TToken";
+        let key = asset_detail_key(&address, None, "tron", Some(token_address));
+        let fresh_ttl = Duration::from_secs(60);
+
+        let first = load_asset_detail(&key, fresh_ttl, || async {
+            Ok(coin_assets(&address, "tron", token_address))
+        })
+        .await
+        .expect("initial asset detail query ok");
+        assert_eq!(first.balance.amount, 12.0);
+
+        assert!(mark_asset_detail_stale(&address, None, "tron", Some(token_address), fresh_ttl));
+
+        let stale = load_asset_detail(&key, Duration::from_millis(0), || async {
+            Err(ServiceError::Timeout)
+        })
+        .await
+        .expect("timeout should return stale asset detail");
+
+        assert_eq!(stale.address, address);
+        assert_eq!(stale.balance.amount, 12.0);
     }
 }
