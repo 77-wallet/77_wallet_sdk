@@ -3,7 +3,7 @@ use crate::{
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
-            tx::{RawTx, Tx},
+            tx::{FeeEstimateSnapshot, RawTx, Tx},
         },
         chain::{
             TransferResp,
@@ -683,6 +683,17 @@ impl Tx for TronTx {
 
         let fee = wallet_utils::serde_func::serde_to_string(&res)?;
         Ok(fee)
+    }
+
+    async fn estimate_fee_snapshot(
+        &self,
+        req: ApiBaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<FeeEstimateSnapshot, ServiceError> {
+        let response = self.estimate_fee_without_balance_check(req, main_symbol).await?;
+        let details: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&response)?;
+        Ok(FeeEstimateSnapshot::from_response(&response)?
+            .with_tron_resources(details.energy, details.bandwidth))
     }
 
     // async fn approve(

@@ -1,11 +1,13 @@
-use crate::context::Context;
-use crate::error::{service::ServiceError /*, system::SystemError*/}; // SystemError未使用
+use crate::{
+    context::Context,
+    error::{service::ServiceError, system::SystemError},
+};
 use alloy::primitives::U256;
 use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_utils::unit;
+use wallet_utils::{conversion, unit};
 
 use crate::{
     domain::chain::TransferResp,
@@ -47,6 +49,72 @@ pub struct TxVisibilityProbe {
     pub slot: Option<u64>,
     pub visibility_reason: Option<String>,
     pub seen_on_node: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeeEstimateSnapshot {
+    pub amount: String,
+    pub energy: Option<u64>,
+    pub bandwidth: Option<u64>,
+}
+
+impl FeeEstimateSnapshot {
+    pub fn from_response(response: &str) -> Result<Self, ServiceError> {
+        let value: serde_json::Value = wallet_utils::serde_func::serde_from_str(response)?;
+        let estimate_fee = Self::select_estimate_fee(&value)?;
+        let amount = Self::parse_amount(estimate_fee)?;
+        Ok(Self { amount, energy: None, bandwidth: None })
+    }
+
+    pub fn with_tron_resources(mut self, energy: u64, bandwidth: u64) -> Self {
+        self.energy = Some(energy);
+        self.bandwidth = Some(bandwidth);
+        self
+    }
+
+    fn select_estimate_fee(value: &serde_json::Value) -> Result<&serde_json::Value, ServiceError> {
+        if let Some(estimate_fee) = value.get("estimateFee") {
+            return Ok(estimate_fee);
+        }
+
+        let options = value
+            .get("data")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| Self::invalid_response("missing data"))?;
+        let default_type = value.get("default").and_then(serde_json::Value::as_str);
+        let selected = default_type
+            .and_then(|kind| {
+                options.iter().find(|option| {
+                    option.get("type").and_then(serde_json::Value::as_str) == Some(kind)
+                })
+            })
+            .or_else(|| options.first())
+            .ok_or_else(|| Self::invalid_response("contains no fee options"))?;
+
+        selected.get("estimateFee").ok_or_else(|| Self::invalid_response("missing estimateFee"))
+    }
+
+    fn parse_amount(estimate_fee: &serde_json::Value) -> Result<String, ServiceError> {
+        let amount =
+            estimate_fee.get("amount").ok_or_else(|| Self::invalid_response("missing amount"))?;
+        let display_amount = amount
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| amount.as_f64().map(Self::format_f64))
+            .ok_or_else(|| Self::invalid_response("amount is not numeric"))?;
+        let amount = conversion::decimal_from_str(&display_amount)?;
+        Ok(amount.normalize().to_string())
+    }
+
+    fn format_f64(amount: f64) -> String {
+        let text = format!("{amount:.8}");
+        let text = text.trim_end_matches('0').trim_end_matches('.');
+        if text == "-0" { "0".to_string() } else { text.to_string() }
+    }
+
+    fn invalid_response(reason: &str) -> ServiceError {
+        ServiceError::System(SystemError::Internal(format!("fee estimate response {reason}")))
+    }
 }
 
 #[async_trait::async_trait]
@@ -190,6 +258,15 @@ pub trait Tx {
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError> {
         self.estimate_fee(req, main_symbol).await
+    }
+
+    async fn estimate_fee_snapshot(
+        &self,
+        req: ApiBaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<FeeEstimateSnapshot, ServiceError> {
+        let response = self.estimate_fee_without_balance_check(req, main_symbol).await?;
+        FeeEstimateSnapshot::from_response(&response)
     }
 
     /// Return the lamports that must be reserved for the recipient token ATA,
@@ -364,3 +441,40 @@ pub trait Multisig {
 //     Ton(TonTx),
 //     Tron(TronTx),
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::FeeEstimateSnapshot;
+
+    #[test]
+    fn fee_estimate_snapshot_parses_default_option() {
+        let response = r#"{
+            "default":"propose",
+            "data":[
+                {"type":"safe","estimateFee":{"amount":"0.00001"}},
+                {"type":"propose","estimateFee":{"amount":"0.00003313"}}
+            ]
+        }"#;
+
+        let snapshot = FeeEstimateSnapshot::from_response(response).expect("parse fee estimate");
+        assert_eq!(snapshot.amount, "0.00003313");
+        assert_eq!(snapshot.energy, None);
+        assert_eq!(snapshot.bandwidth, None);
+    }
+
+    #[test]
+    fn fee_estimate_snapshot_parses_top_level_amount() {
+        let response = r#"{"estimateFee":{"amount":"0.000005"}}"#;
+
+        let snapshot = FeeEstimateSnapshot::from_response(response).expect("parse fee estimate");
+        assert_eq!(snapshot.amount, "0.000005");
+    }
+
+    #[test]
+    fn fee_estimate_snapshot_formats_numeric_amount() {
+        let response = r#"{"estimateFee":{"amount":0.12340000}}"#;
+
+        let snapshot = FeeEstimateSnapshot::from_response(response).expect("parse fee estimate");
+        assert_eq!(snapshot.amount, "0.1234");
+    }
+}

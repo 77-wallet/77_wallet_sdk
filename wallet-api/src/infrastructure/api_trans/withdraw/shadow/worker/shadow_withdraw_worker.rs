@@ -249,59 +249,6 @@ impl ShadowWithdrawWorker {
             && req.err_code.is_none()
     }
 
-    fn format_estimated_fee_amount(amount: f64) -> String {
-        let mut text = format!("{amount:.8}");
-        if text.contains('.') {
-            text = text.trim_end_matches('0').trim_end_matches('.').to_string();
-        }
-        if text == "-0" { "0".to_string() } else { text }
-    }
-
-    fn estimated_fee_amount_from_response(response: &str) -> Result<String, ServiceError> {
-        let value: serde_json::Value = wallet_utils::serde_func::serde_from_str(response)?;
-        let estimate_fee = Self::select_estimate_fee(&value)?;
-        Self::parse_estimate_fee_amount(estimate_fee)
-    }
-
-    fn select_estimate_fee(value: &serde_json::Value) -> Result<&serde_json::Value, ServiceError> {
-        if let Some(estimate_fee) = value.get("estimateFee") {
-            return Ok(estimate_fee);
-        }
-
-        let options = value
-            .get("data")
-            .and_then(serde_json::Value::as_array)
-            .ok_or_else(|| Self::invalid_fee_response("missing data"))?;
-        let default_type = value.get("default").and_then(serde_json::Value::as_str);
-        let selected = default_type
-            .and_then(|kind| {
-                options.iter().find(|option| {
-                    option.get("type").and_then(serde_json::Value::as_str) == Some(kind)
-                })
-            })
-            .or_else(|| options.first())
-            .ok_or_else(|| Self::invalid_fee_response("contains no fee options"))?;
-
-        selected.get("estimateFee").ok_or_else(|| Self::invalid_fee_response("missing estimateFee"))
-    }
-
-    fn parse_estimate_fee_amount(estimate_fee: &serde_json::Value) -> Result<String, ServiceError> {
-        let amount = estimate_fee
-            .get("amount")
-            .ok_or_else(|| Self::invalid_fee_response("missing amount"))?;
-        let display_amount = amount
-            .as_str()
-            .map(str::to_string)
-            .or_else(|| amount.as_f64().map(Self::format_estimated_fee_amount))
-            .ok_or_else(|| Self::invalid_fee_response("amount is not numeric"))?;
-        let amount = conversion::decimal_from_str(&display_amount)?;
-        Ok(amount.normalize().to_string())
-    }
-
-    fn invalid_fee_response(reason: &str) -> ServiceError {
-        ServiceError::System(SystemError::Internal(format!("fee estimate response {reason}")))
-    }
-
     fn tron_fee_estimate_resource_json(
         energy: u64,
         bandwidth: u64,
@@ -2020,16 +1967,14 @@ impl ShadowWithdrawWorker {
             transfer_coin.decimals,
             &transfer_coin.symbol,
         );
-        let response =
-            adapter.estimate_fee_without_balance_check(params, &main_coin.symbol).await?;
-        let estimated_transaction_fee = Self::estimated_fee_amount_from_response(&response)?;
-        let estimated_resource_consume = if shared_mechanism::is_tron_chain(&req.chain_code) {
-            let details: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&response)?;
-            Self::tron_fee_estimate_resource_json(details.energy, details.bandwidth)?
-        } else {
-            "{}".to_string()
+        let snapshot = adapter.estimate_fee_snapshot(params, &main_coin.symbol).await?;
+        let estimated_resource_consume = match (snapshot.energy, snapshot.bandwidth) {
+            (Some(energy), Some(bandwidth)) => {
+                Self::tron_fee_estimate_resource_json(energy, bandwidth)?
+            }
+            _ => "{}".to_string(),
         };
-        Ok((estimated_transaction_fee, estimated_resource_consume))
+        Ok((snapshot.amount, estimated_resource_consume))
     }
 
     async fn execute_tron_resource_delegation(
@@ -2807,41 +2752,6 @@ oss:
             client_id: None,
             create_time: None,
         }
-    }
-
-    #[test]
-    fn withdraw_fee_estimate_snapshot_fee_amount_trims_display_value() {
-        assert_eq!(ShadowWithdrawWorker::format_estimated_fee_amount(1.0), "1");
-        assert_eq!(ShadowWithdrawWorker::format_estimated_fee_amount(0.12340000), "0.1234");
-        assert_eq!(ShadowWithdrawWorker::format_estimated_fee_amount(0.000005), "0.000005");
-    }
-
-    #[test]
-    fn withdraw_fee_estimate_snapshot_parses_evm_default_option() {
-        let response = r#"{
-            "default":"propose",
-            "data":[
-                {"type":"safe","estimateFee":{"amount":"0.00001"}},
-                {"type":"propose","estimateFee":{"amount":"0.00003313"}}
-            ]
-        }"#;
-
-        assert_eq!(
-            ShadowWithdrawWorker::estimated_fee_amount_from_response(response)
-                .expect("parse EVM estimate"),
-            "0.00003313"
-        );
-    }
-
-    #[test]
-    fn withdraw_fee_estimate_snapshot_parses_solana_top_level_amount() {
-        let response = r#"{"estimateFee":{"amount":"0.000005"}}"#;
-
-        assert_eq!(
-            ShadowWithdrawWorker::estimated_fee_amount_from_response(response)
-                .expect("parse Solana estimate"),
-            "0.000005"
-        );
     }
 
     #[test]

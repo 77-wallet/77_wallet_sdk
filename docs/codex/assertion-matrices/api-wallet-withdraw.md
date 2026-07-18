@@ -358,16 +358,17 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   src/infrastructure/api_trans/withdraw/shadow/scanner.rs
   withdraw_bnb_try_advance_dispatches_fee_estimate_before_audit
 
-  src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
-  withdraw_fee_estimate_snapshot_parses_evm_default_option
-  withdraw_fee_estimate_snapshot_parses_solana_top_level_amount
+  src/domain/api_wallet/adapter/tx.rs
+  fee_estimate_snapshot_parses_default_option
+  fee_estimate_snapshot_parses_top_level_amount
+  fee_estimate_snapshot_formats_numeric_amount
   ```
 
 - DB facts: any regular withdraw, `fee_estimated_at IS NULL`, `raw_tx IS NULL`,
   `transaction_time IS NULL`, `finished_at IS NULL`, `err_code IS NULL`.
 - Intent: point-to-point `try_advance` dispatches `EstimateFee` before TX ACK,
   resource gate, build, broadcast, or recover intents.
-- Worker facts: multi-option responses select the adapter's default fee option;
+- Adapter facts: multi-option responses select the adapter's default fee option;
   single-option responses read the top-level estimate. Only TRON persists
   Energy/Bandwidth.
 - Invariant: a newly submitted audit-pending withdraw order should get its
