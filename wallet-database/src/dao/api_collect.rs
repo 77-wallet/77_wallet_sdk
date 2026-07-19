@@ -402,6 +402,42 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn clear_account_activation_block_for_reeval<'a, E>(
+        exec: E,
+        trade_no: &str,
+        activation_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET resource_block_reason = NULL,
+                resource_dependency_trade_no = NULL,
+                resource_dependency_type = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+              AND resource_block_reason = ?
+              AND resource_dependency_trade_no = ?
+              AND resource_dependency_type = ?
+              AND resource_gate_released_at IS NULL
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(ApiResourceBlockReason::NeedAccountActivation.as_i64())
+            .bind(activation_trade_no)
+            .bind(ApiResourceDependencyType::AccountActivation.as_i64())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     /// 更新交易状态和nonce
     ///
     /// ⚠️ Legacy: 半事实聚合写入

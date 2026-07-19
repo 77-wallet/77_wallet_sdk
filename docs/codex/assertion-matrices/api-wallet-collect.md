@@ -181,6 +181,26 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: account activation must be represented as a resource dependency
   fact, not by releasing the collect resource gate or building a raw collect tx.
 
+### Collect TRON Account Activation Verified Recheck
+
+- Layer: component / worker orchestration.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  account_activation_verified_requeues_resource_gate_without_release
+  ```
+
+- Backend: none; the test uses temporary SQLite databases.
+- DB facts: verified activation clears only the
+  `NeedAccountActivation` dependency facts; it must not write
+  `resource_gate_released_at` or `ResourceReady`.
+- Scanner: origin collect becomes eligible for `NeedResourceGate` again and
+  remains ineligible for `BuildTx`.
+- Invariant: account activation completion is not proof that the TRON collect
+  has enough energy; the resource gate must re-evaluate energy and delegation
+  after activation is visible.
+
 ### Collect TRON Account Activation Scanner
 
 - Layer: component / scanner.

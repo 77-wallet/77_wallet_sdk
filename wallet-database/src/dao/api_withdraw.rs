@@ -442,9 +442,28 @@ impl ApiWithdrawDao {
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
               AND transaction_time IS NOT NULL
-              AND trim(resource_consume) <> ''
-              AND trim(resource_consume) <> '0'
-              AND trim(resource_consume) NOT GLOB '*[^0-9]*'
+              AND (
+                    (
+                        trim(resource_consume) <> ''
+                        AND trim(resource_consume) <> '0'
+                        AND trim(resource_consume) NOT GLOB '*[^0-9]*'
+                    )
+                    OR (
+                        token_addr IS NOT NULL
+                        AND trim(token_addr) <> ''
+                        AND json_valid(resource_consume)
+                        AND COALESCE(
+                            json_extract(resource_consume, '$.bandwidth'),
+                            json_extract(resource_consume, '$.net_used'),
+                            0
+                        ) = 0
+                        AND COALESCE(
+                            json_extract(resource_consume, '$.energy'),
+                            json_extract(resource_consume, '$.energy_used'),
+                            0
+                        ) = 0
+                    )
+              )
               AND (? IS NULL OR id > ?)
             ORDER BY id ASC
             LIMIT ?
@@ -3040,7 +3059,13 @@ mod tests {
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
         let pool = ctx.into_transaction_db_pool().unwrap();
 
-        for trade_no in ["W_RECOVER_SCALAR", "W_RECOVER_JSON", "W_RECOVER_PENDING"] {
+        for trade_no in [
+            "W_RECOVER_SCALAR",
+            "W_RECOVER_JSON",
+            "W_RECOVER_ZERO_TOKEN",
+            "W_RECOVER_ZERO_NATIVE",
+            "W_RECOVER_PENDING",
+        ] {
             seed_withdraw_for_fee_estimate(&pool, trade_no, "tron", ApiTradeType::Withdraw).await;
         }
 
@@ -3050,6 +3075,18 @@ mod tests {
                 "W_RECOVER_JSON",
                 ApiWithdrawStatus::Success,
                 r#"{"net_used":4891,"energy_used":70070}"#,
+                Some(chrono::Utc::now()),
+            ),
+            (
+                "W_RECOVER_ZERO_TOKEN",
+                ApiWithdrawStatus::Success,
+                r#"{"bandwidth":0,"energy":0}"#,
+                Some(chrono::Utc::now()),
+            ),
+            (
+                "W_RECOVER_ZERO_NATIVE",
+                ApiWithdrawStatus::Success,
+                r#"{"bandwidth":0,"energy":0}"#,
                 Some(chrono::Utc::now()),
             ),
             ("W_RECOVER_PENDING", ApiWithdrawStatus::SendingTx, "70070", None),
@@ -3067,14 +3104,21 @@ mod tests {
             .unwrap();
         }
 
+        sqlx::query("UPDATE api_withdraws SET token_addr = ? WHERE trade_no = ?")
+            .bind("TTestTokenContract")
+            .bind("W_RECOVER_ZERO_TOKEN")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
         let candidates =
             ApiWithdrawRepo::scan_withdraw_resource_recovery(&pool, None, 20).await.unwrap();
         assert_eq!(
             candidates.iter().map(|row| row.trade_no.as_str()).collect::<Vec<_>>(),
-            vec!["W_RECOVER_SCALAR"]
+            vec!["W_RECOVER_SCALAR", "W_RECOVER_ZERO_TOKEN"]
         );
         let next_page =
-            ApiWithdrawRepo::scan_withdraw_resource_recovery(&pool, Some(candidates[0].id), 20)
+            ApiWithdrawRepo::scan_withdraw_resource_recovery(&pool, Some(candidates[1].id), 20)
                 .await
                 .unwrap();
         assert!(next_page.is_empty());

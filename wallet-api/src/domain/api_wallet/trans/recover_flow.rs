@@ -11,7 +11,7 @@ use crate::{
     context::Context,
     domain::{
         api_wallet::{adapter::tx::Tx, adapter_factory::ApiChainAdapterFactory},
-        chain::TransferResp,
+        chain::{TransferResp, adapter::ChainAdapterFactory},
     },
     error::service::ServiceError,
     infrastructure::{
@@ -27,6 +27,7 @@ use crate::{
     },
 };
 use std::sync::Arc;
+use wallet_chain_interact::BillResourceConsume;
 use wallet_utils::RetryableError as _;
 
 enum RecoverAdapterAcquire {
@@ -256,9 +257,35 @@ impl ApiTransDomain {
         let time_ms = shared_mechanism::normalize_chain_time_to_ms(tx_result.transaction_time)?;
 
         if is_success {
+            let consumer = if shared_mechanism::is_tron_chain(chain_code) {
+                let chain = match ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await {
+                    Ok(chain) => chain,
+                    Err(error) => {
+                        tracing::warn!(%error, %tx_hash, "TRON receipt adapter unavailable during recover");
+                        return Ok(None);
+                    }
+                };
+                let tx_info = match chain.get_provider().query_tx_info(tx_hash).await {
+                    Ok(tx_info) => tx_info,
+                    Err(error) => {
+                        tracing::warn!(%error, %tx_hash, "TRON receipt unavailable during recover");
+                        return Ok(None);
+                    }
+                };
+                Some(BillResourceConsume {
+                    net_used: tx_info.receipt.net_usage.unwrap_or_default(),
+                    energy_used: tx_info
+                        .receipt
+                        .energy_usage_total
+                        .or(tx_info.receipt.energy_usage)
+                        .unwrap_or_default(),
+                })
+            } else {
+                None
+            };
             tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
             record_recover_rpc_success(ctx, chain_code).await;
-            Ok(Some(Self::recovered_transfer_resp(tx_hash, transaction_fee, time_ms)))
+            Ok(Some(Self::recovered_transfer_resp(tx_hash, transaction_fee, time_ms, consumer)))
         } else {
             tracing::warn!(trade_no=?tx_hash, "链上失败，直接标记失败");
             Err(ServiceError::System(crate::error::system::SystemError::Internal(
@@ -271,11 +298,12 @@ impl ApiTransDomain {
         tx_hash: &str,
         transaction_fee: &str,
         transaction_time_ms: u128,
+        consumer: Option<BillResourceConsume>,
     ) -> TransferResp {
         let mut resp = TransferResp {
             tx_hash: tx_hash.to_string(),
             fee: transaction_fee.to_string(),
-            consumer: None,
+            consumer,
             transaction_time_ms: None,
         };
         resp.with_transaction_time(transaction_time_ms);
@@ -427,6 +455,7 @@ impl ApiTransDomain {
 #[cfg(test)]
 mod recover_tx_status_tests {
     use super::ApiTransDomain;
+    use wallet_chain_interact::BillResourceConsume;
 
     #[test]
     fn recovered_tx_status_two_is_success() {
@@ -444,12 +473,19 @@ mod recover_tx_status_tests {
     }
 
     #[test]
-    fn recovered_transfer_resp_uses_local_fee_and_chain_time() {
-        let resp = ApiTransDomain::recovered_transfer_resp("0xtx", "1.23", 1_746_040_371_123);
+    fn recovered_transfer_resp_keeps_fee_chain_time_and_resource_consume() {
+        let resp = ApiTransDomain::recovered_transfer_resp(
+            "0xtx",
+            "1.23",
+            1_746_040_371_123,
+            Some(BillResourceConsume { net_used: 321, energy_used: 13_532 }),
+        );
 
         assert_eq!(resp.tx_hash, "0xtx");
         assert_eq!(resp.fee, "1.23");
         assert_eq!(resp.transaction_time_ms, Some(1_746_040_371_123));
-        assert!(resp.consumer.is_none());
+        let consumer = resp.consumer.expect("TRON resource consume should be retained");
+        assert_eq!(consumer.net_used, 321);
+        assert_eq!(consumer.energy_used, 13_532);
     }
 }

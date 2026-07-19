@@ -172,6 +172,19 @@ impl ApiCollectRepo {
         ApiCollectDao::mark_resource_released(pool.write_ref(), trade_no, gate_result).await
     }
 
+    pub async fn clear_account_activation_block_for_reeval(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        activation_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::clear_account_activation_block_for_reeval(
+            pool.write_ref(),
+            trade_no,
+            activation_trade_no,
+        )
+        .await
+    }
+
     pub async fn update_api_collect_tx_status_nonce(
         pool: &ApiTransactionDbPool,
         from_addr: &str,
@@ -1374,6 +1387,71 @@ mod tests {
         assert!(released.resource_gate_released_at.is_some());
         assert_eq!(released.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
         assert!(released.resource_block_reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn collect_account_activation_clear_requeues_resource_gate() {
+        let pool = setup_api_transaction_pool("wallet_db_collect_activation_recheck").await;
+        let trade_no = "collect_activation_recheck_1";
+        let activation_trade_no = "act_collect_activation_recheck_1";
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "u1",
+            "collect_name",
+            "from",
+            "to",
+            "100",
+            "v",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::mark_resource_blocked(
+            &pool,
+            trade_no,
+            ApiResourceBlockReason::NeedAccountActivation,
+            Some(activation_trade_no),
+            Some(ApiResourceDependencyType::AccountActivation),
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiCollectRepo::clear_account_activation_block_for_reeval(
+            &pool,
+            trade_no,
+            activation_trade_no,
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
+        assert!(collect.resource_gate_released_at.is_none());
+        assert!(collect.resource_gate_result.is_none());
+        assert!(collect.resource_block_reason.is_none());
+        assert!(collect.resource_dependency_trade_no.is_none());
+        assert!(collect.resource_dependency_type.is_none());
+
+        let need_resource_gate = ApiCollectRepo::scan_need_resource_gate(&pool, 10).await.unwrap();
+        assert_eq!(need_resource_gate.len(), 1);
+        assert_eq!(need_resource_gate[0].trade_no, trade_no);
     }
 
     #[tokio::test]

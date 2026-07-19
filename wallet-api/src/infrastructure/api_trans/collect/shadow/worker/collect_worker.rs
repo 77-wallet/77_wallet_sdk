@@ -640,21 +640,23 @@ impl ShadowCollectWorker {
         .await
         .map_err(|e| ServiceError::Database(e.into()))?
         {
-            ApiCollectRepo::mark_resource_released(
+            let rows = ApiCollectRepo::clear_account_activation_block_for_reeval(
                 &self.ctx.api_transaction_pool()?,
                 &collect.trade_no,
-                ApiResourceGateResult::ResourceReady,
+                &task.activation_trade_no,
             )
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
-            self.advancer.try_advance(&collect.trade_no).await;
+            if rows > 0 {
+                self.advancer.try_advance(&collect.trade_no).await;
+            }
         }
 
         info!(
             activation_trade_no = %task.activation_trade_no,
             target_address = %task.target_address,
             source = "shadow_worker_v2",
-            "Account activation verified and collect resource gate released"
+            "Account activation verified and collect resource gate requeued"
         );
 
         Ok(())
@@ -4505,6 +4507,98 @@ oss:
         assert_eq!(activation.amount, "0.00001");
         assert!(activation.tx_hash.is_none());
         assert!(activation.account_verified_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn account_activation_verified_requeues_resource_gate_without_release() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
+
+        let trade_no = "C_account_activation_recheck";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "inactive_from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "USDT",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(collect_pool.as_ref())
+        .await
+        .expect("mark order ack sent");
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+
+        ShadowCollectWorker::commit_account_activation_block_in_pools(
+            &collect_pool,
+            &resource_pool,
+            trade_no,
+            &req,
+            "withdraw_payer",
+            100,
+            0,
+            0.0,
+        )
+        .await
+        .expect("account activation block commit");
+
+        let activation_trade_no =
+            ShadowCollectWorker::collect_account_activation_trade_no(trade_no);
+        let rows = ApiCollectRepo::clear_account_activation_block_for_reeval(
+            &collect_pool,
+            trade_no,
+            &activation_trade_no,
+        )
+        .await
+        .expect("clear account activation block");
+        assert_eq!(rows, 1);
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect after activation verified");
+        assert!(persisted.resource_gate_released_at.is_none());
+        assert!(persisted.resource_gate_result.is_none());
+        assert!(persisted.resource_block_reason.is_none());
+        assert!(persisted.resource_dependency_trade_no.is_none());
+        assert!(persisted.resource_dependency_type.is_none());
+        assert!(
+            ApiCollectRepo::scan_can_build(&collect_pool, 10)
+                .await
+                .expect("scan can build")
+                .is_empty()
+        );
+
+        let need_resource_gate = ApiCollectRepo::scan_need_resource_gate(&collect_pool, 10)
+            .await
+            .expect("scan need resource gate");
+        assert_eq!(need_resource_gate.len(), 1);
+        assert_eq!(need_resource_gate[0].trade_no, trade_no);
     }
 
     #[tokio::test]
