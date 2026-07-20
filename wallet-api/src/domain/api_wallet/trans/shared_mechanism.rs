@@ -20,6 +20,37 @@ pub(crate) fn is_tron_chain(chain_code: &str) -> bool {
     chain_code.eq_ignore_ascii_case(&ChainCode::Tron.to_string())
 }
 
+pub(crate) fn tron_withdraw_resource_needs_recovery(
+    chain_code: &str,
+    token_addr: Option<&str>,
+    resource_consume: &str,
+) -> bool {
+    if !is_tron_chain(chain_code) || token_addr.is_none_or(|value| value.trim().is_empty()) {
+        return false;
+    }
+
+    let raw = resource_consume.trim();
+    if raw.is_empty() || raw.chars().all(|value| value.is_ascii_digit()) {
+        return true;
+    }
+
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return true;
+    };
+    let bandwidth = value
+        .get("bandwidth")
+        .or_else(|| value.get("net_used"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default();
+    let energy = value
+        .get("energy")
+        .or_else(|| value.get("energy_used"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default();
+
+    bandwidth == 0 && energy == 0
+}
+
 pub(crate) fn need_broadcast_visibility_check(chain_code: &str) -> bool {
     is_evm_chain(chain_code) || is_sol_chain(chain_code)
 }

@@ -13,7 +13,10 @@ use crate::{
     ApiTransactionDbPool,
     dao::api_collect::ApiCollectDao,
     entities::{
-        api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
+        api_collect::{
+            ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode,
+            PendingCollectResourceBudget,
+        },
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
         },
@@ -170,6 +173,43 @@ impl ApiCollectRepo {
         gate_result: ApiResourceGateResult,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_resource_released(pool.write_ref(), trade_no, gate_result).await
+    }
+
+    pub async fn mark_resource_released_with_estimate(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_resource_released_with_estimate(
+            pool.write_ref(),
+            trade_no,
+            gate_result,
+            estimated_resource_consume,
+        )
+        .await
+    }
+
+    pub async fn pending_resource_budget_by_owner(
+        pool: &ApiTransactionDbPool,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+    ) -> Result<PendingCollectResourceBudget, crate::Error> {
+        ApiCollectDao::pending_resource_budget_by_owner(
+            pool.read_ref(),
+            chain_code,
+            from_addr,
+            exclude_trade_no,
+        )
+        .await
+    }
+
+    pub async fn invalidate_resource_ready_for_reeval(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::invalidate_resource_ready_for_reeval(pool.write_ref(), trade_no).await
     }
 
     pub async fn clear_account_activation_block_for_reeval(

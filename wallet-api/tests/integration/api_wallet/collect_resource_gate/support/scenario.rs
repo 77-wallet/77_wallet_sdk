@@ -1,9 +1,12 @@
 use wallet_api::testkit::{
-    collect::{send_resource_result_ack_via_worker, upload_resource_tx_exec_receipt_via_worker},
+    collect::{
+        eval_collect_resource_gate_via_worker, send_resource_result_ack_via_worker,
+        upload_resource_tx_exec_receipt_via_worker,
+    },
     mqtt::{api_resource_pool, api_transaction_pool},
 };
 use wallet_database::{
-    ApiResourceDbPool, ApiTransactionDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_collect::ApiCollectEntity,
         api_resource_gate::{
@@ -15,14 +18,16 @@ use wallet_database::{
 };
 
 use crate::harness::{
-    AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, ensure_worker_env,
-    worker::WorkerTestEnv,
+    AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole,
+    decrypt_captured_api_backend_body, ensure_worker_env, open_api_wallet_pool,
+    pop_request_with_retry, worker::WorkerTestEnv,
 };
 
 use super::{
     db::{
         mark_collect_chain_success, seed_blocked_collect, seed_failed_resource_receipt_row,
-        seed_resource_result,
+        seed_resource_result, seed_same_address_collect_resource_window,
+        seed_tron_collect_resource_gate_basics,
     },
     fixtures::CollectResourceGateFixture,
 };
@@ -31,6 +36,7 @@ pub(crate) struct CollectResourceGateScenario {
     env: &'static WorkerTestEnv,
     collect_pool: ApiTransactionDbPool,
     resource_pool: ApiResourceDbPool,
+    wallet_pool: ApiWalletDbPool,
 }
 
 impl CollectResourceGateScenario {
@@ -40,8 +46,9 @@ impl CollectResourceGateScenario {
 
         let collect_pool = api_transaction_pool(env.ctx()).expect("api transaction pool");
         let resource_pool = api_resource_pool(env.ctx()).expect("api resource pool");
+        let wallet_pool = open_api_wallet_pool(&env.db_dir).await;
 
-        Self { env, collect_pool, resource_pool }
+        Self { env, collect_pool, resource_pool, wallet_pool }
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -77,6 +84,12 @@ pub(crate) trait CollectResourceGateGiven {
     async fn failed_resource_receipt_without_origin_trade(
         &self,
         fixture: &CollectResourceGateFixture,
+    );
+
+    async fn same_address_collect_with_unconsumed_platform_resource(
+        &self,
+        first: &CollectResourceGateFixture,
+        second: &CollectResourceGateFixture,
     );
 }
 
@@ -115,6 +128,17 @@ impl CollectResourceGateGiven for GivenRole<'_, CollectResourceGateScenario> {
     ) {
         self.scenario().seed().failed_resource_receipt_without_origin_trade(fixture).await;
     }
+
+    async fn same_address_collect_with_unconsumed_platform_resource(
+        &self,
+        first: &CollectResourceGateFixture,
+        second: &CollectResourceGateFixture,
+    ) {
+        self.scenario()
+            .seed()
+            .same_address_collect_with_unconsumed_platform_resource(first, second)
+            .await;
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -132,6 +156,12 @@ trait CollectResourceGateSeed {
     async fn failed_resource_receipt_without_origin_trade(
         &self,
         fixture: &CollectResourceGateFixture,
+    );
+
+    async fn same_address_collect_with_unconsumed_platform_resource(
+        &self,
+        first: &CollectResourceGateFixture,
+        second: &CollectResourceGateFixture,
     );
 }
 
@@ -189,6 +219,44 @@ impl CollectResourceGateSeed for SeedRole<'_, CollectResourceGateScenario> {
         )
         .await;
     }
+
+    async fn same_address_collect_with_unconsumed_platform_resource(
+        &self,
+        first: &CollectResourceGateFixture,
+        second: &CollectResourceGateFixture,
+    ) {
+        let uid = "uid_collect_resource_gate_overlap";
+        seed_tron_collect_resource_gate_basics(&self.scenario().wallet_pool, uid).await;
+        self.scenario().env.recorder.succeed_next_api_backend_call_with_data(serde_json::json!({
+            "uid": uid,
+            "threshold": 0,
+            "chainConfigs": [{
+                "chainCode": "tron",
+                "chainAddressType": null,
+                "normalAddress": {
+                    "index": 0,
+                    "address": "TW6h166qfNfibxgovAnVyDDMNV1BFXp5A5"
+                },
+                "riskAddress": {
+                    "index": 0,
+                    "address": "TW6h166qfNfibxgovAnVyDDMNV1BFXp5A5"
+                }
+            }]
+        }));
+        self.scenario().env.recorder.succeed_next_api_backend_call_with_data(serde_json::json!({
+            "dlRes": true,
+            "dlTradeNo": second.resource_trade_no,
+        }));
+        seed_same_address_collect_resource_window(
+            &self.scenario().wallet_pool,
+            &self.scenario().collect_pool,
+            &first.trade_no,
+            &second.trade_no,
+            "TOverlap111111111111111111111111111111",
+            uid,
+        )
+        .await;
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -196,6 +264,8 @@ pub(crate) trait CollectResourceGateWhen {
     async fn resource_result_ack_is_sent(&self, fixture: &CollectResourceGateFixture);
 
     async fn resource_receipt_upload_is_sent(&self, fixture: &CollectResourceGateFixture);
+
+    async fn resource_gate_is_evaluated(&self, fixture: &CollectResourceGateFixture);
 }
 
 #[async_trait::async_trait(?Send)]
@@ -214,6 +284,12 @@ impl CollectResourceGateWhen for WhenRole<'_, CollectResourceGateScenario> {
         .await
         .expect("upload resource tx exec receipt");
     }
+
+    async fn resource_gate_is_evaluated(&self, fixture: &CollectResourceGateFixture) {
+        eval_collect_resource_gate_via_worker(self.scenario().env.ctx(), &fixture.trade_no)
+            .await
+            .expect("evaluate resource gate");
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -230,6 +306,11 @@ pub(crate) trait CollectResourceGateThen {
     async fn collect_cannot_build(&self, fixture: &CollectResourceGateFixture);
 
     async fn collect_waits_for_local_delegate(&self, fixture: &CollectResourceGateFixture);
+
+    async fn platform_resource_request_uses_full_order_energy(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    );
 }
 
 #[async_trait::async_trait(?Send)]
@@ -265,6 +346,27 @@ impl CollectResourceGateThen for ThenRole<'_, CollectResourceGateScenario> {
     async fn collect_waits_for_local_delegate(&self, fixture: &CollectResourceGateFixture) {
         let collect = self.scenario().load().collect(&fixture.trade_no).await;
         self.scenario().assert().collect_waits_for_local_delegate(&collect);
+    }
+
+    async fn platform_resource_request_uses_full_order_energy(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    ) {
+        let mut captured = None;
+        for _ in 0..5 {
+            let req = pop_request_with_retry(&self.scenario().env.recorder)
+                .await
+                .expect("capture platform resource apply request");
+            if req.path.contains("/awallet/aw/trans/resourceDl/apply") {
+                captured = Some(req);
+                break;
+            }
+        }
+        let captured = captured.expect("capture platform resource apply request");
+        let payload = decrypt_captured_api_backend_body(&captured.body);
+        assert_eq!(payload["tradeNo"].as_str(), Some(fixture.trade_no.as_str()));
+        assert_eq!(payload["resourceAmount"].as_f64(), Some(14_650.0));
+        assert_eq!(payload["nativeTokenAmount"].as_i64(), Some(200));
     }
 }
 

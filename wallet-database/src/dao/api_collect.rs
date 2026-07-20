@@ -1,7 +1,10 @@
 use crate::{
     DbPool,
     entities::{
-        api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
+        api_collect::{
+            ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode,
+            PendingCollectResourceBudget,
+        },
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
         },
@@ -396,6 +399,131 @@ impl ApiCollectDao {
         let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(gate_result.as_i64())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_resource_released_with_estimate<'a, E>(
+        exec: E,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET resource_check_at = COALESCE(resource_check_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_released_at = COALESCE(resource_gate_released_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_result = ?2,
+                resource_block_reason = NULL,
+                resource_consume = ?3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(gate_result.as_i64())
+            .bind(estimated_resource_consume)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn pending_resource_budget_by_owner<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+    ) -> Result<PendingCollectResourceBudget, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(resource_consume, '$.energy'),
+                            json_extract(resource_consume, '$.energy_used'),
+                            json_extract(resource_consume, '$.energyUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS energy,
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(resource_consume, '$.bandwidth'),
+                            json_extract(resource_consume, '$.net_used'),
+                            json_extract(resource_consume, '$.netUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS bandwidth
+            FROM api_collect
+            WHERE lower(chain_code) = lower(?)
+              AND from_addr = ?
+              AND trade_no <> ?
+              AND resource_gate_released_at IS NOT NULL
+              AND resource_gate_result = ?
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let row = sqlx::query(sql)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(exclude_trade_no)
+            .bind(ApiResourceGateResult::ResourceReady.as_i64())
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        let energy = row.try_get::<i64, _>("energy").unwrap_or_default().max(0) as u64;
+        let bandwidth = row.try_get::<i64, _>("bandwidth").unwrap_or_default().max(0) as u64;
+        Ok(PendingCollectResourceBudget { energy, bandwidth })
+    }
+
+    pub async fn invalidate_resource_ready_for_reeval<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET resource_gate_released_at = NULL,
+                resource_gate_result = NULL,
+                resource_block_reason = NULL,
+                resource_dependency_trade_no = NULL,
+                resource_dependency_type = NULL,
+                resource_consume = '0',
+                building_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+              AND resource_gate_result = ?2
+              AND raw_tx IS NULL
+              AND tx_hash IS NULL
+              AND last_broadcast_at IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(ApiResourceGateResult::ResourceReady.as_i64())
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

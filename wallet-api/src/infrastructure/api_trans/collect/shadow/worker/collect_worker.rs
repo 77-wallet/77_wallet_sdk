@@ -14,7 +14,7 @@ use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
     ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
-        api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
+        api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode, PendingCollectResourceBudget},
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
             ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
@@ -50,7 +50,10 @@ use crate::{
     error::{business::api_wallet::trans::TransError, system::SystemError},
     infrastructure::nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     request::api_wallet::trans::ApiTransferReq,
-    response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
+    response_vo::{
+        CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails,
+        api_wallet::transaction::ApiWalletResourceConsume,
+    },
 };
 
 use crate::{
@@ -81,6 +84,9 @@ use crate::{
         resource_delegation::{
             execute_resource_delegation, resource_delegation_failure_fact,
             resource_delegation_retry_wait_secs,
+        },
+        resource_reservation::{
+            ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
         },
         resource_rpc_auth,
     },
@@ -173,6 +179,7 @@ pub struct ShadowCollectWorker {
     address_locks: Arc<AddressLockManager>,
     /// ShadowAdvancer 引用，用于统一推进执行
     advancer: Arc<ShadowAdvancer>,
+    resource_reservations: WithdrawResourceReservationManager,
 }
 
 impl ShadowCollectWorker {
@@ -219,12 +226,7 @@ impl ShadowCollectWorker {
             && req.resource_gate_released_at.is_some()
             && matches!(
                 req.resource_gate_result,
-                Some(
-                    ApiResourceGateResult::ResourceReady
-                        | ApiResourceGateResult::ResourceDelegationSuccess
-                        | ApiResourceGateResult::LocalDelegationSuccess
-                        | ApiResourceGateResult::PlatformDelegateSuccess
-                )
+                Some(ApiResourceGateResult::ResourceDelegationSuccess)
             )
     }
 
@@ -286,6 +288,25 @@ impl ShadowCollectWorker {
         available_energy >= required_energy as i64
     }
 
+    fn tron_fee_estimate_resource_json(
+        energy: u64,
+        bandwidth: u64,
+    ) -> Result<String, ServiceError> {
+        ApiWalletResourceConsume::new(bandwidth, energy).to_json_string()
+    }
+
+    fn effective_resource_after_pending_collects(
+        available_energy: i64,
+        available_bandwidth: i64,
+        pending_budget: PendingCollectResourceBudget,
+    ) -> ResourceBudget {
+        let effective_energy =
+            available_energy.saturating_sub(pending_budget.energy.min(i64::MAX as u64) as i64);
+        let effective_bandwidth = available_bandwidth
+            .saturating_sub(pending_budget.bandwidth.min(i64::MAX as u64) as i64);
+        ResourceBudget::new(effective_energy.max(0) as u64, effective_bandwidth.max(0) as u64)
+    }
+
     fn collect_local_delegate_trade_no(origin_trade_no: &str) -> String {
         // 本地代理是 SDK 自己执行的 fallback 任务，所以需要确定性任务号；
         // 否则 collect 每次重新评估时都会重复创建本地代理任务。
@@ -296,6 +317,10 @@ impl ShadowCollectWorker {
         required.saturating_sub(available.max(0) as u64)
     }
 
+    fn collect_delegation_energy_amount(required_energy: u64) -> u64 {
+        required_energy.max(1)
+    }
+
     fn is_insufficient_fee_balance_error(err: &ServiceError) -> bool {
         matches!(
             err,
@@ -303,6 +328,32 @@ impl ShadowCollectWorker {
                 crate::error::business::chain::ChainError::InsufficientFeeBalance
             ))
         )
+    }
+
+    fn should_invalidate_tron_resource_ready_for_fee_shortage(
+        req: &ApiCollectEntity,
+        err: &ServiceError,
+    ) -> bool {
+        Self::is_stale_tron_resource_ready_candidate(req)
+            && Self::is_insufficient_fee_balance_error(err)
+    }
+
+    fn should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
+        req: &ApiCollectEntity,
+        err: &ServiceError,
+    ) -> bool {
+        shared_mechanism::is_tron_chain(&req.chain_code)
+            && req.token_addr.is_contract()
+            && req.raw_tx.is_none()
+            && req.resource_gate_released_at.is_some()
+            && req.resource_gate_result == Some(ApiResourceGateResult::PlatformDelegateSuccess)
+            && Self::is_insufficient_fee_balance_error(err)
+    }
+
+    fn is_stale_tron_resource_ready_candidate(req: &ApiCollectEntity) -> bool {
+        shared_mechanism::is_tron_chain(&req.chain_code)
+            && req.token_addr.is_contract()
+            && req.resource_gate_result == Some(ApiResourceGateResult::ResourceReady)
     }
 
     fn should_reopen_fee_cycle_for_solana_token_collect(
@@ -397,7 +448,7 @@ impl ShadowCollectWorker {
         address_locks: Arc<AddressLockManager>,
         advancer: Arc<ShadowAdvancer>,
     ) -> Self {
-        Self { ctx, address_locks, advancer }
+        Self { ctx, address_locks, advancer, resource_reservations: Default::default() }
     }
     /// 处理单个 Command
     pub async fn handle(&self, cmd: ShadowCollectCommand) -> Result<(), ServiceError> {
@@ -1027,7 +1078,7 @@ impl ShadowCollectWorker {
         // 资源顺序只处理到“允许回到旧 collect 主链”为止：
         // 自身资源 -> 平台代理 -> 本地代理 fallback -> release gate。
         // release 之后，主币不足 / 补币 / 原失败收口仍走上一版已经稳定的旧闭环。
-        let next_step = self
+        let (next_step, effective_snapshot) = self
             .decide_collect_resource_gate_next_step(&req, snapshot.clone(), origin_trade_no)
             .await?;
         self.apply_collect_resource_gate_next_step(
@@ -1035,7 +1086,7 @@ impl ShadowCollectWorker {
             origin_trade_no,
             &req,
             &exec_to_addr,
-            snapshot.clone(),
+            effective_snapshot,
         )
         .await?;
 
@@ -1063,6 +1114,7 @@ impl ShadowCollectWorker {
     async fn process_release_resource_gate(
         &self,
         origin_trade_no: String,
+        snapshot: Option<ResourceGateSnapshot>,
     ) -> Result<(), ServiceError> {
         let req = self.get_collect_entity(&origin_trade_no).await?;
         if !shared_mechanism::is_tron_chain(&req.chain_code) {
@@ -1092,12 +1144,26 @@ impl ShadowCollectWorker {
         // The resource gate is a pre-BuildTx fact. Releasing it only records
         // that the collect order may enter the existing BuildTx flow; raw_tx
         // and tx_hash are still produced by the normal build path.
-        let rows = ApiCollectRepo::mark_resource_released(
-            &self.ctx.api_transaction_pool()?,
-            &origin_trade_no,
-            ApiResourceGateResult::ResourceReady,
-        )
-        .await
+        let rows = if let Some(snapshot) = snapshot {
+            let estimated_resource_consume = Self::tron_fee_estimate_resource_json(
+                snapshot.required_energy,
+                snapshot.required_bandwidth,
+            )?;
+            ApiCollectRepo::mark_resource_released_with_estimate(
+                &self.ctx.api_transaction_pool()?,
+                &origin_trade_no,
+                ApiResourceGateResult::ResourceReady,
+                &estimated_resource_consume,
+            )
+            .await
+        } else {
+            ApiCollectRepo::mark_resource_released(
+                &self.ctx.api_transaction_pool()?,
+                &origin_trade_no,
+                ApiResourceGateResult::ResourceReady,
+            )
+            .await
+        }
         .map_err(|e| ServiceError::Database(e.into()))?;
         info!(
             origin_trade_no = %origin_trade_no,
@@ -1221,20 +1287,57 @@ impl ShadowCollectWorker {
     async fn decide_collect_resource_gate_next_step(
         &self,
         req: &ApiCollectEntity,
-        snapshot: ResourceGateSnapshot,
+        mut snapshot: ResourceGateSnapshot,
         origin_trade_no: &str,
-    ) -> Result<ResourceGateNextStep, ServiceError> {
-        if Self::tron_resource_ready(
+    ) -> Result<(ResourceGateNextStep, ResourceGateSnapshot), ServiceError> {
+        let pending_budget = ApiCollectRepo::pending_resource_budget_by_owner(
+            &self.ctx.api_transaction_pool()?,
+            &req.chain_code,
+            &req.from_addr,
+            origin_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let required = ResourceBudget::new(snapshot.required_energy, snapshot.required_bandwidth);
+        let available = Self::effective_resource_after_pending_collects(
             snapshot.available_energy,
             snapshot.available_bandwidth,
-            snapshot.required_energy,
-            snapshot.required_bandwidth,
-        ) {
-            return Ok(ResourceGateNextStep::Release);
+            pending_budget,
+        );
+        let decision = self.resource_reservations.reserve_if_available(
+            &req.from_addr,
+            origin_trade_no.to_string(),
+            required,
+            available,
+        );
+
+        if let ResourceReservationDecision::Reserved { effective_available, reserved } = decision {
+            info!(
+                origin_trade_no,
+                required_energy = %snapshot.required_energy,
+                available_energy = %snapshot.available_energy,
+                pending_energy = %pending_budget.energy,
+                reserved_energy = %reserved.energy,
+                effective_energy = %effective_available.energy,
+                source = "shadow_worker_v2",
+                "TRON collect resource gate reserved address-level ResourceReady budget"
+            );
+            snapshot.available_energy = effective_available.energy.min(i64::MAX as u64) as i64;
+            snapshot.available_bandwidth =
+                effective_available.bandwidth.min(i64::MAX as u64) as i64;
+            return Ok((ResourceGateNextStep::Release, snapshot));
         }
 
+        let ResourceReservationDecision::NeedMore(shortfall) = decision else {
+            unreachable!("reserved decision returned early")
+        };
+        snapshot.available_energy =
+            shortfall.effective_available.energy.min(i64::MAX as u64) as i64;
+        snapshot.available_bandwidth =
+            shortfall.effective_available.bandwidth.min(i64::MAX as u64) as i64;
+
         if Self::resource_snapshot_needs_account_activation(&snapshot) {
-            return Ok(ResourceGateNextStep::BlockOnAccountActivation);
+            return Ok((ResourceGateNextStep::BlockOnAccountActivation, snapshot));
         }
 
         let delegations = ApiResourceDelegationRepo::list_by_origin_trade_no(
@@ -1248,7 +1351,7 @@ impl ShadowCollectWorker {
             ResourceDelegationBlockPath::PlatformFallback => ResourceGateNextStep::BlockOnPlatform,
         };
 
-        Ok(next_step)
+        Ok((next_step, snapshot))
     }
 
     /// Main collect resource-gate skeleton:
@@ -1265,7 +1368,8 @@ impl ShadowCollectWorker {
     ) -> Result<(), ServiceError> {
         match next_step {
             ResourceGateNextStep::Release => {
-                self.process_release_resource_gate(origin_trade_no.to_string()).await
+                self.process_release_resource_gate(origin_trade_no.to_string(), Some(snapshot))
+                    .await
             }
             ResourceGateNextStep::BlockOnAccountActivation => {
                 self.commit_account_activation_block(
@@ -1415,7 +1519,7 @@ impl ShadowCollectWorker {
         available_bandwidth: i64,
         energy_price: f64,
     ) -> Result<(), ServiceError> {
-        let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
+        let amount = Self::collect_delegation_energy_amount(required_energy).to_string();
         let resource_trade_no = match self
             .apply_platform_resource_delegation(
                 &req.uid,
@@ -1545,7 +1649,7 @@ impl ShadowCollectWorker {
         // 一旦 local delegation 到终态，collect 只会被放回旧主链入口，
         // 不会在资源链里继续承接主币/补币逻辑。
         let resource_trade_no = Self::collect_local_delegate_trade_no(origin_trade_no);
-        let amount = Self::resource_shortfall(required_energy, available_energy).max(1).to_string();
+        let amount = Self::collect_delegation_energy_amount(required_energy).to_string();
         let native_amount = energy_shortfall_to_apply_amounts(&amount, energy_price)?
             .native_token_amount
             .to_string();
@@ -3028,6 +3132,32 @@ impl ShadowCollectWorker {
     ) -> Result<u64, ServiceError> {
         let fee_cycle_completed = req.service_fee_uploaded_at.is_some();
 
+        if Self::is_stale_tron_resource_ready_candidate(req) {
+            info!(
+                trade_no = %req.trade_no,
+                from_addr = %req.from_addr,
+                chain_code = %req.chain_code,
+                resource_gate_result = ?req.resource_gate_result,
+                service_fee_uploaded_at = ?req.service_fee_uploaded_at,
+                tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
+                source = "shadow_worker_v2",
+                "TRON token collect fee check contradicted address-level ResourceReady; reopening resource gate"
+            );
+
+            let rows_affected = ApiCollectRepo::invalidate_resource_ready_for_reeval(
+                &self.ctx.api_transaction_pool()?,
+                &req.trade_no,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+            if rows_affected > 0 {
+                self.resource_reservations.release(&req.trade_no);
+            }
+
+            return Ok(rows_affected);
+        }
+
         if Self::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
             req,
         ) {
@@ -3549,6 +3679,39 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
+        if Self::should_invalidate_tron_resource_ready_for_fee_shortage(&req, &err) {
+            info!(
+                trade_no = %trade_no,
+                from_addr = %req.from_addr,
+                chain_code = %req.chain_code,
+                resource_gate_result = ?req.resource_gate_result,
+                source = "shadow_worker_v2",
+                "Detected stale TRON address-level ResourceReady after fee shortage; reopening resource gate"
+            );
+
+            let rows_affected = ApiCollectRepo::invalidate_resource_ready_for_reeval(
+                &self.ctx.api_transaction_pool()?,
+                trade_no,
+            )
+            .await
+            .map_err(|db_err| {
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to invalidate stale TRON ResourceReady for re-evaluation");
+                ServiceError::Database(db_err.into())
+            })?;
+
+            if rows_affected > 0 {
+                self.resource_reservations.release(trade_no);
+                self.advancer.try_advance(&req.trade_no).await;
+                return Ok(());
+            }
+
+            info!(
+                trade_no = %trade_no,
+                source = "shadow_worker_v2",
+                "Stale TRON ResourceReady was not invalidated because newer collect facts exist"
+            );
+        }
+
         if Self::is_solana_rent_exempt_reserve_balance_error(&req, &err) {
             if req.service_fee_uploaded_at.is_some() {
                 info!(
@@ -3637,6 +3800,44 @@ impl ShadowCollectWorker {
                 "Marked collect as terminal failure due to insufficient balance"
             );
             self.advancer.try_advance(&req.trade_no).await;
+
+            return Ok(());
+        }
+
+        if Self::should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
+            &req, &err,
+        ) {
+            info!(
+                trade_no = %trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Detected TRON platform delegated collect resource shortage after BuildTx; marking collect as terminal failure"
+            );
+
+            self.clear_build_slot_after_claim(trade_no).await?;
+
+            let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+                &self.ctx.api_transaction_pool()?,
+                trade_no,
+                ApiCollectStatus::SendingTxFailed,
+                ErrCode::FeeInsufficient,
+                &format!("{}", err),
+            )
+            .await
+            .map_err(|db_err| {
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark collect as terminal failure after platform resource shortage");
+                ServiceError::Database(db_err.into())
+            })?;
+
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                source = "shadow_worker_v2",
+                "Marked TRON platform delegated collect as terminal failure"
+            );
+            if rows_affected > 0 {
+                self.advancer.try_advance(&req.trade_no).await;
+            }
 
             return Ok(());
         }
@@ -3944,7 +4145,7 @@ mod tests {
     use wallet_database::{
         ApiWalletDbPool, SqliteContext,
         entities::{
-            api_collect::{ApiCollectEntity, ApiCollectStatus},
+            api_collect::{ApiCollectEntity, ApiCollectStatus, PendingCollectResourceBudget},
             api_resource_delegation::{
                 ApiResourceDelegationOperationType, ApiResourceDelegationRecoverStatus,
                 ApiResourceDelegationSource, NewApiResourceDelegation,
@@ -4675,14 +4876,103 @@ oss:
         .await
         .expect("insert collect");
 
-        worker.process_release_resource_gate(trade_no.to_string()).await.expect("first release");
-        worker.process_release_resource_gate(trade_no.to_string()).await.expect("second release");
+        worker
+            .process_release_resource_gate(trade_no.to_string(), None)
+            .await
+            .expect("first release");
+        worker
+            .process_release_resource_gate(trade_no.to_string(), None)
+            .await
+            .expect("second release");
 
         let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
             .await
             .expect("load collect");
         assert!(persisted.resource_gate_released_at.is_some());
         assert_eq!(persisted.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
+    }
+
+    #[tokio::test]
+    async fn stale_resource_ready_invalidation_reopens_resource_gate() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let trade_no = "C_stale_resource_ready";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+            "USDT",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(collect_pool.as_ref())
+        .await
+        .expect("mark order ack and build slot");
+
+        ApiCollectRepo::mark_resource_released_with_estimate(
+            &collect_pool,
+            trade_no,
+            ApiResourceGateResult::ResourceReady,
+            r#"{"energy":14650,"bandwidth":0}"#,
+        )
+        .await
+        .expect("mark resource ready");
+
+        assert_eq!(
+            ApiCollectRepo::scan_can_build(&collect_pool, 10).await.expect("scan can build").len(),
+            1
+        );
+
+        let rows = ApiCollectRepo::invalidate_resource_ready_for_reeval(&collect_pool, trade_no)
+            .await
+            .expect("invalidate resource ready");
+        assert_eq!(rows, 1);
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_none());
+        assert!(persisted.resource_gate_result.is_none());
+        assert!(persisted.resource_block_reason.is_none());
+        assert!(persisted.resource_dependency_trade_no.is_none());
+        assert!(persisted.resource_dependency_type.is_none());
+        assert_eq!(persisted.resource_consume, "0");
+        assert!(persisted.building_at.is_none());
+        assert!(
+            ApiCollectRepo::scan_can_build(&collect_pool, 10)
+                .await
+                .expect("scan can build")
+                .is_empty()
+        );
+
+        let need_resource_gate = ApiCollectRepo::scan_need_resource_gate(&collect_pool, 10)
+            .await
+            .expect("scan need resource gate");
+        assert_eq!(need_resource_gate.len(), 1);
+        assert_eq!(need_resource_gate[0].trade_no, trade_no);
     }
 
     #[tokio::test]
@@ -5077,6 +5367,78 @@ oss:
     }
 
     #[test]
+    fn collect_delegation_amount_uses_order_required_energy() {
+        let required_energy = 14_650;
+        let same_address_previous_order_energy = 14_649;
+
+        assert_eq!(
+            ShadowCollectWorker::resource_shortfall(
+                required_energy,
+                same_address_previous_order_energy
+            ),
+            1
+        );
+        assert_eq!(
+            ShadowCollectWorker::collect_delegation_energy_amount(required_energy),
+            required_energy
+        );
+        assert_eq!(ShadowCollectWorker::collect_delegation_energy_amount(0), 1);
+    }
+
+    #[test]
+    fn collect_resource_ready_budget_subtracts_pending_same_address_orders() {
+        let available_energy = 20_000;
+        let pending = PendingCollectResourceBudget { energy: 14_650, bandwidth: 0 };
+
+        let effective = ShadowCollectWorker::effective_resource_after_pending_collects(
+            available_energy,
+            600,
+            pending,
+        );
+
+        assert_eq!(effective.energy, 5_350);
+        assert_eq!(effective.bandwidth, 600);
+        assert!(!ShadowCollectWorker::tron_resource_ready(
+            effective.energy as i64,
+            effective.bandwidth as i64,
+            14_650,
+            345
+        ));
+    }
+
+    #[test]
+    fn platform_delegated_collect_fee_shortage_fails_instead_of_redelegating() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Contract("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string());
+        req.resource_gate_released_at = Some(Utc::now());
+        req.resource_gate_result = Some(ApiResourceGateResult::PlatformDelegateSuccess);
+        req.raw_tx = None;
+
+        let err = ServiceError::Business(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ));
+
+        assert!(
+            ShadowCollectWorker::should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
+                &req,
+                &err
+            )
+        );
+
+        req.resource_gate_result = Some(ApiResourceGateResult::ResourceReady);
+        assert!(ShadowCollectWorker::should_invalidate_tron_resource_ready_for_fee_shortage(
+            &req, &err
+        ));
+        assert!(
+            !ShadowCollectWorker::should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
+                &req,
+                &err
+            )
+        );
+    }
+
+    #[test]
     fn sol_native_collect_keeps_sender_rent_bypass_scope() {
         assert!(ShadowCollectWorker::should_spend_all_native_collect(
             "sol",
@@ -5127,7 +5489,7 @@ oss:
 
         req.resource_gate_released_at = Some(Utc::now());
         req.resource_gate_result = Some(ApiResourceGateResult::PlatformDelegateSuccess);
-        assert!(ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
 
         req.resource_gate_result = Some(ApiResourceGateResult::FallbackAllowed);
         assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
@@ -5139,6 +5501,12 @@ oss:
         assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
 
         req.resource_gate_result = Some(ApiResourceGateResult::ResourceReady);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::LocalDelegationSuccess);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::ResourceDelegationSuccess);
         assert!(ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
 
         req.token_addr = AssetTokenKey::Native;

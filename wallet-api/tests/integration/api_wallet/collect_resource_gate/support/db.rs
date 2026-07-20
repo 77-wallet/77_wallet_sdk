@@ -1,11 +1,18 @@
+use chrono::Utc;
 use wallet_database::{
     ApiResourceDbPool, ApiTransactionDbPool,
     entities::{
+        api_account::CreateApiAccountVo,
+        api_coin::ApiCoinData,
         api_collect::ApiCollectStatus,
         api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
         api_trade_type::ApiTradeType,
+        api_wallet::ApiWalletType,
+        asset_token_key::AssetTokenKey,
     },
-    repositories::api_wallet::collect::ApiCollectRepo,
+    repositories::api_wallet::{
+        account::ApiAccountRepo, coin::ApiCoinRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
+    },
 };
 
 pub(crate) async fn seed_blocked_collect(collect_pool: &ApiTransactionDbPool, trade_no: &str) {
@@ -45,6 +52,143 @@ pub(crate) async fn seed_blocked_collect(collect_pool: &ApiTransactionDbPool, tr
     )
     .await
     .expect("seed blocked collect");
+}
+
+pub(crate) async fn seed_tron_collect_resource_gate_basics(
+    wallet_pool: &wallet_database::ApiWalletDbPool,
+    uid: &str,
+) {
+    let now = Utc::now();
+    ApiCoinRepo::upsert_multi_coin(
+        wallet_pool,
+        vec![
+            ApiCoinData::new(
+                Some("TRON".to_string()),
+                "TRX",
+                "tron",
+                AssetTokenKey::Native,
+                Some("0".to_string()),
+                None,
+                6,
+                1,
+                1,
+                1,
+                now,
+                Some(now),
+            ),
+            ApiCoinData::new(
+                Some("Tether USD".to_string()),
+                "USDT",
+                "tron",
+                AssetTokenKey::Contract("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+                Some("0".to_string()),
+                None,
+                6,
+                0,
+                1,
+                1,
+                now,
+                Some(now),
+            ),
+        ],
+    )
+    .await
+    .expect("seed tron coins");
+
+    ApiWalletRepo::upsert(
+        wallet_pool,
+        uid,
+        "collect resource gate wallet",
+        "TWithdrawal1111111111111111111111111111",
+        &[],
+        &[],
+        ApiWalletType::SubAccount,
+        None,
+        "sn-collect-resource-gate",
+        0,
+    )
+    .await
+    .expect("seed api wallet");
+}
+
+pub(crate) async fn seed_same_address_collect_resource_window(
+    wallet_pool: &wallet_database::ApiWalletDbPool,
+    collect_pool: &ApiTransactionDbPool,
+    first_trade_no: &str,
+    second_trade_no: &str,
+    from_addr: &str,
+    uid: &str,
+) {
+    let account = CreateApiAccountVo::new(
+        1,
+        from_addr,
+        "pubkey",
+        "TWithdrawal1111111111111111111111111111",
+        uid,
+        "m/44'/195'/0'/0/0",
+        0,
+        "tron",
+        "collect resource gate account",
+        ApiWalletType::SubAccount,
+    )
+    .with_is_init(true);
+    ApiAccountRepo::upsert_account_multi(wallet_pool, vec![account])
+        .await
+        .expect("seed api account");
+
+    seed_collect_order(collect_pool, first_trade_no, from_addr, uid, "2026-07-20T00:00:00Z").await;
+    seed_collect_order(collect_pool, second_trade_no, from_addr, uid, "2026-07-20T00:00:01Z").await;
+
+    ApiCollectRepo::mark_resource_released(
+        collect_pool,
+        first_trade_no,
+        wallet_database::entities::api_resource_gate::ApiResourceGateResult::PlatformDelegateSuccess,
+    )
+    .await
+    .expect("release first collect resource gate");
+}
+
+async fn seed_collect_order(
+    collect_pool: &ApiTransactionDbPool,
+    trade_no: &str,
+    from_addr: &str,
+    uid: &str,
+    created_at: &str,
+) {
+    ApiCollectRepo::upsert_api_collect(
+        collect_pool,
+        uid,
+        "collect",
+        from_addr,
+        "TW6h166qfNfibxgovAnVyDDMNV1BFXp5A5",
+        "3.000000",
+        "digest",
+        "tron",
+        Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+        "USDT",
+        trade_no,
+        ApiTradeType::Collect as u8,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert collect order");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            created_at = ?,
+            updated_at = ?
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(created_at)
+    .bind(created_at)
+    .bind(trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed collect order facts");
 }
 
 pub(crate) async fn seed_resource_result(

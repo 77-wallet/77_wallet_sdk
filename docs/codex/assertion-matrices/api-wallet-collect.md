@@ -162,6 +162,43 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: an empty TRON account resource response must not fall through to
   energy delegation amount calculation with `energy_price = 0`.
 
+### Collect TRON Order-Owned Delegation Amount
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  collect_delegation_amount_uses_order_required_energy
+  ```
+
+- Backend: none; the test exercises the local amount rule directly.
+- DB facts: none.
+- Resource delegation: platform and local delegation requests use the current
+  order's full required Energy amount.
+- Invariant: same-address Energy that appears available from a previous collect
+  order must not shrink the new order's delegation request to a shortfall value.
+
+### Collect TRON Platform Delegation Shortage Failure
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  platform_delegated_collect_fee_shortage_fails_instead_of_redelegating
+  ```
+
+- Backend: none; the test exercises BuildTx error classification directly.
+- DB facts: a TRON token collect already released by
+  `PlatformDelegateSuccess` is treated as having consumed its single platform
+  resource attempt.
+- Failure: if BuildTx later reports `InsufficientFeeBalance`, the collect writes
+  a terminal failure fact instead of reopening resource delegation.
+- Invariant: platform resource delegation is single-attempt per collect order;
+  address-level `ResourceReady` shortage may re-evaluate, but platform success
+  shortage must not trigger a second Energy request.
+
 ### Collect TRON Account Activation Block Commit
 
 - Layer: component / worker orchestration.
@@ -230,15 +267,52 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   ```
 
 - Backend: none.
-- DB facts: a TRON token collect with `resource_gate_released_at` present and a
-  successful resource gate result (`ResourceReady`,
-  `ResourceDelegationSuccess`, `LocalDelegationSuccess`, or
-  `PlatformDelegateSuccess`) is allowed to build even if the conservative
-  native burn-fee estimate is higher than the current TRX balance.
+- DB facts: a TRON token collect with `resource_gate_released_at` present and an
+  SDK resource delegation success result (`ResourceDelegationSuccess`) is
+  allowed to build even if the conservative native burn-fee estimate is higher
+  than the current TRX balance.
 - Invariant: the bypass is TRON-token-only and requires the resource gate
-  release fact plus a successful resource result; TRON native collect,
+  release fact plus an SDK resource delegation success result; address-level
+  `ResourceReady`, platform/local delegation success, TRON native collect,
   unreleased TRON token collect, fallback / failed-bypass resource results, and
   non-TRON token collect keep their existing native fee balance gates.
+
+### Collect TRON Address Resource Reservation
+
+- Layer: unit / collect worker resource gate.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  collect_resource_ready_budget_subtracts_pending_same_address_orders
+  ```
+
+- Backend: none.
+- DB facts: pending `ResourceReady` collect rows persist their estimated
+  resource budget in `resource_consume` until BuildTx/broadcast/recover writes
+  the actual resource fact.
+- Resource gate: a later TRON collect for the same `from_addr` subtracts pending
+  address-level `ResourceReady` budgets before deciding whether current address
+  Energy is sufficient.
+- Invariant: temporary Energy observed on an address must not be counted as
+  independently available to multiple unfinished collect orders.
+
+### Collect TRON Stale ResourceReady Re-Evaluation
+
+- Layer: unit / collect repository.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  stale_resource_ready_invalidation_reopens_resource_gate
+  ```
+
+- Backend: none.
+- DB facts: an unfinished TRON token collect whose address-level `ResourceReady`
+  is later contradicted by `InsufficientFeeBalance` can clear the resource gate
+  release fact, pending estimate, and build slot.
+- Invariant: stale address-level resource readiness must move the order back to
+  `scan_need_resource_gate` instead of staying stuck in BuildTx retries.
 
 ### Collect TRON Account Activation Repository Guards
 

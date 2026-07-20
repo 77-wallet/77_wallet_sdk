@@ -23,8 +23,8 @@ use crate::{
         legacy::AddressLockManager,
         shadow::{
             ChainIntent, CollectIntent, DispatcherConfig, ScannerConfig, ShadowAdvancer,
-            ShadowCollectWorker, ShadowDispatcher, ShadowScanner, SideEffectCommand,
-            SideEffectIntent, SideEffectWorker,
+            ShadowCollectCommand, ShadowCollectWorker, ShadowDispatcher, ShadowScanner,
+            SideEffectCommand, SideEffectIntent, SideEffectWorker,
         },
     },
 };
@@ -113,6 +113,17 @@ pub async fn upload_resource_tx_exec_receipt_via_worker(
     worker
         .handle(SideEffectCommand::UploadResourceTxExecReceipt(resource_trade_no.to_string()))
         .await
+}
+
+pub async fn eval_collect_resource_gate_via_worker(
+    ctx: &'static Context,
+    trade_no: &str,
+) -> Result<(), ServiceError> {
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
+    let advancer = Arc::new(ShadowAdvancer::new(ctx, intent_tx, Some(diagnose_tx)));
+    let worker = ShadowCollectWorker::new(ctx, Arc::new(AddressLockManager::new()), advancer);
+    worker.handle(ShadowCollectCommand::EvalResourceGate(trade_no.to_string())).await
 }
 
 pub async fn upload_collect_tx_exec_receipt_via_backend(

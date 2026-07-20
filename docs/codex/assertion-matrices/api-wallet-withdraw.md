@@ -2,6 +2,10 @@
 
 Scope: `wallet-api` API wallet withdraw flow.
 
+- Confirmed TRON token resource recovery: when MQTT writes success and
+  `transaction_time` before receipt resources, NeedRecover remains eligible and
+  conditionally backfills actual energy/bandwidth without changing terminal facts.
+
 ### Withdraw Dispatcher Watchdog Timing
 
 - Layer: unit.

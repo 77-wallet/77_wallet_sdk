@@ -442,9 +442,14 @@ fn need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> bool {
 /// - 只看不可逆事实是否缺失，不做时间推断
 /// - 符合 Scanner 铁律：只基于不可逆事实做判断
 fn need_recover(withdraw: &ApiWithdrawEntity) -> bool {
+    let needs_resource_recovery = shared_mechanism::tron_withdraw_resource_needs_recovery(
+        &withdraw.chain_code,
+        Some(withdraw.token_addr.as_db_str()),
+        &withdraw.resource_consume,
+    );
     withdraw.tx_hash.is_some()
-        && withdraw.transaction_time.is_none()
-        && withdraw.finished_at.is_none()
+        && (withdraw.transaction_time.is_none() || needs_resource_recovery)
+        && (withdraw.finished_at.is_none() || needs_resource_recovery)
         && withdraw.err_code.is_none()
 }
 

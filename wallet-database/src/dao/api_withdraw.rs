@@ -443,11 +443,11 @@ impl ApiWithdrawDao {
               AND trim(tx_hash) <> ''
               AND transaction_time IS NOT NULL
               AND (
-                    (
-                        trim(resource_consume) <> ''
-                        AND trim(resource_consume) <> '0'
-                        AND trim(resource_consume) NOT GLOB '*[^0-9]*'
-                    )
+                    CASE
+                        WHEN json_valid(resource_consume)
+                            THEN json_type(resource_consume) <> 'object'
+                        ELSE 1
+                    END
                     OR (
                         token_addr IS NOT NULL
                         AND trim(token_addr) <> ''
@@ -1707,9 +1707,27 @@ impl ApiWithdrawDao {
         let sql = r#"
             SELECT * FROM api_withdraws 
             WHERE tx_hash IS NOT NULL
-            AND transaction_time IS NULL
-            AND tx_exec_receipt_uploaded_at IS NULL
-            AND finished_at IS NULL
+            AND (
+                (
+                    transaction_time IS NULL
+                    AND tx_exec_receipt_uploaded_at IS NULL
+                    AND finished_at IS NULL
+                )
+                OR (
+                    lower(chain_code) = 'tron'
+                    AND token_addr IS NOT NULL
+                    AND trim(token_addr) <> ''
+                    AND status IN (?, ?)
+                    AND (
+                        trim(resource_consume) = ''
+                        OR NOT json_valid(resource_consume)
+                        OR (
+                            COALESCE(json_extract(resource_consume, '$.bandwidth'), json_extract(resource_consume, '$.net_used'), 0) = 0
+                            AND COALESCE(json_extract(resource_consume, '$.energy'), json_extract(resource_consume, '$.energy_used'), 0) = 0
+                        )
+                    )
+                )
+            )
             AND err_code IS NULL
             AND NOT (
                 chain_code IN ('bnb','eth')
@@ -1722,6 +1740,8 @@ impl ApiWithdrawDao {
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiWithdrawStatus::Success)
+            .bind(ApiWithdrawStatus::ConfirmSuccessReport)
             .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)
@@ -3572,6 +3592,55 @@ mod tests {
 
         let records = ApiWithdrawDao::scan_need_recover(pool.as_ref(), 100).await.unwrap();
         assert!(records.iter().any(|r| r.trade_no == "W_RECOVER_BROADCAST_VISIBLE"));
+    }
+
+    #[tokio::test]
+    async fn scan_need_recover_allows_confirmed_tron_token_with_zero_resources() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_confirmed_tron_resource");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            "TToken",
+            "USDT",
+            "W_RECOVER_CONFIRMED_TRON_RESOURCE",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            Some("tx-hash".to_string()),
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Success,
+            r#"{"bandwidth":0,"energy":0}"#,
+            "0.344",
+            Some(chrono::Utc::now()),
+            Some("69342697".to_string()),
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_RECOVER_CONFIRMED_TRON_RESOURCE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiWithdrawDao::scan_need_recover(pool.as_ref(), 100).await.unwrap();
+
+        assert!(records.iter().any(|r| r.trade_no == "W_RECOVER_CONFIRMED_TRON_RESOURCE"));
     }
 
     #[tokio::test]

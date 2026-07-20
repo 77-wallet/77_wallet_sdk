@@ -87,6 +87,34 @@ impl MockBackendRecorder {
         );
     }
 
+    pub(crate) fn succeed_next_api_backend_call_with_data(&self, data: serde_json::Value) {
+        let encrypted = GLOBAL_KEY.encrypt(data.to_string().as_bytes()).expect("encrypt response");
+        let key = wallet_utils::bytes_to_base64(&encrypted.key);
+        let ciphertext = wallet_utils::bytes_to_base64(&encrypted.ciphertext);
+        let body_data = key.clone() + ciphertext.as_str();
+        let sign = wallet_utils::bytes_to_base64(
+            &GLOBAL_KEY
+                .sign(&uuid::Uuid::new_v4().to_string(), body_data.as_bytes())
+                .expect("sign response"),
+        );
+        let mut state = self.state.lock().expect("mock backend lock poisoned");
+        state.responses.push_back(
+            serde_json::json!({
+                "success": true,
+                "code": "200",
+                "msg": "ok",
+                "data": {
+                    "sign": sign,
+                    "body": {
+                        "key": key,
+                        "data": ciphertext,
+                    },
+                },
+            })
+            .to_string(),
+        );
+    }
+
     fn next_response_body(&self) -> String {
         let mut state = self.state.lock().expect("mock backend lock poisoned");
         state.responses.pop_front().unwrap_or_else(|| {

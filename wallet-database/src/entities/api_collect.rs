@@ -377,3 +377,9 @@ pub struct CollectCreatedFact {
     pub risk_addr: String,
     pub status: ApiCollectStatus,
 }
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PendingCollectResourceBudget {
+    pub energy: u64,
+    pub bandwidth: u64,
+}

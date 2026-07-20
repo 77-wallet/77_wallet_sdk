@@ -952,11 +952,17 @@ impl ShadowWithdrawWorker {
             // ⚠️ 只读"裁决字段"，不做任何业务推断
             let fresh_req = self.get_withdraw_entity(trade_no).await?;
 
-            // 事实校验：Recover 只能处理 tx_hash 不为空且 transaction_time 为空的交易
+            let needs_resource_recovery = shared_mechanism::tron_withdraw_resource_needs_recovery(
+                &fresh_req.chain_code,
+                Some(fresh_req.token_addr.as_db_str()),
+                &fresh_req.resource_consume,
+            );
+
+            // 已确认的 TRON 合约交易仍可进入 Recover，只补链上资源事实。
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
             if fresh_req.tx_hash.is_none()
-                || fresh_req.transaction_time.is_some()
-                || fresh_req.tx_exec_receipt_uploaded_at.is_some()
+                || (fresh_req.transaction_time.is_some() && !needs_resource_recovery)
+                || (fresh_req.tx_exec_receipt_uploaded_at.is_some() && !needs_resource_recovery)
             {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "tx_hash empty or transaction_time exists, skipping Recover");
                 return Ok(());
@@ -1044,6 +1050,33 @@ impl ShadowWithdrawWorker {
 
                     if fresh_req.transaction_time.is_some() {
                         let should_nudge = true;
+
+                        if shared_mechanism::tron_withdraw_resource_needs_recovery(
+                            &fresh_req.chain_code,
+                            Some(fresh_req.token_addr.as_db_str()),
+                            &fresh_req.resource_consume,
+                        ) {
+                            if let Some(consumer) = tx_resp.consumer {
+                                let replacement = Self::tron_actual_resource_json(consumer)?;
+                                let rows_affected =
+                                    ApiWithdrawRepo::update_resource_consume_if_unchanged(
+                                        &self.ctx.api_transaction_pool()?,
+                                        &fresh_req.trade_no,
+                                        &fresh_req.resource_consume,
+                                        &replacement,
+                                    )
+                                    .await
+                                    .map_err(|e| ServiceError::Database(e.into()))?;
+                                info!(
+                                    trade_no = %fresh_req.trade_no,
+                                    tx_hash = %tx_resp.tx_hash,
+                                    rows_affected = %rows_affected,
+                                    resource_consume = %replacement,
+                                    source = "shadow_withdraw_worker",
+                                    "Recovered confirmed TRON withdraw resource consumption"
+                                );
+                            }
+                        }
 
                         if existing_tx_hash.is_none() {
                             let rows_affected = ApiWithdrawRepo::backfill_tx_hash_if_missing(

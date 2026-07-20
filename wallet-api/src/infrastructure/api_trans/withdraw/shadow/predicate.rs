@@ -239,6 +239,11 @@ fn evaluate_can_broadcast(withdraw: &ApiWithdrawEntity) -> StageEval {
 
 fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
     let mut reasons = SmallVec::new();
+    let needs_resource_recovery = shared_mechanism::tron_withdraw_resource_needs_recovery(
+        &withdraw.chain_code,
+        Some(withdraw.token_addr.as_db_str()),
+        &withdraw.resource_consume,
+    );
 
     if withdraw.tx_hash.is_none() {
         reasons.push(StageReason {
@@ -246,13 +251,13 @@ fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
             message: "Tx hash not exists".to_string(),
         });
     }
-    if withdraw.transaction_time.is_some() {
+    if withdraw.transaction_time.is_some() && !needs_resource_recovery {
         reasons.push(StageReason {
             code: "transaction_time_exists",
             message: "Transaction time already exists".to_string(),
         });
     }
-    if withdraw.tx_exec_receipt_uploaded_at.is_some() {
+    if withdraw.tx_exec_receipt_uploaded_at.is_some() && !needs_resource_recovery {
         reasons.push(StageReason {
             code: "tx_exec_receipt_uploaded",
             message: "Tx exec receipt already uploaded; auto recover disabled".to_string(),
@@ -269,7 +274,7 @@ fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
                 .to_string(),
         });
     }
-    if withdraw.finished_at.is_some() {
+    if withdraw.finished_at.is_some() && !needs_resource_recovery {
         reasons
             .push(StageReason { code: "finished", message: "Order already finished".to_string() });
     }
@@ -278,13 +283,14 @@ fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
     }
 
     let can_advance = withdraw.tx_hash.is_some()
-        && withdraw.transaction_time.is_none()
-        && withdraw.tx_exec_receipt_uploaded_at.is_none()
+        && ((withdraw.transaction_time.is_none()
+            && withdraw.tx_exec_receipt_uploaded_at.is_none())
+            || needs_resource_recovery)
         && !(shared_mechanism::tracks_broadcast_uncertain_state(&withdraw.chain_code)
             && withdraw.raw_tx.is_some()
             && withdraw.last_broadcast_at.is_none()
             && withdraw.broadcast_uncertain_since_at.is_none())
-        && withdraw.finished_at.is_none()
+        && (withdraw.finished_at.is_none() || needs_resource_recovery)
         && withdraw.err_code.is_none();
 
     StageEval { can_advance, reasons }
@@ -480,6 +486,26 @@ mod tests {
 
         let eval = evaluate_point(AdvancementPoint::NeedRecover, &w);
         assert!(eval.can_advance);
+    }
+
+    #[test]
+    fn need_recover_allows_confirmed_tron_token_with_zero_resources() {
+        let mut w = base_withdraw();
+        w.chain_code = "tron".to_string();
+        w.token_addr = AssetTokenKey::Contract("TToken".to_string());
+        w.tx_hash = Some("tx-hash".to_string());
+        w.last_broadcast_at = Some(Utc::now());
+        w.transaction_time = Some(Utc::now());
+        w.tx_exec_receipt_uploaded_at = Some(Utc::now());
+        w.resource_consume = r#"{"bandwidth":0,"energy":0}"#.to_string();
+
+        let eval = evaluate_point(AdvancementPoint::NeedRecover, &w);
+
+        assert!(eval.can_advance);
+
+        w.resource_consume = r#"{"bandwidth":0,"energy":13532}"#.to_string();
+        let completed = evaluate_point(AdvancementPoint::NeedRecover, &w);
+        assert!(!completed.can_advance);
     }
 
     #[test]

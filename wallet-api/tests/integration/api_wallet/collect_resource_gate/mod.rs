@@ -5,6 +5,7 @@ use serial_test::serial;
 use support::{
     CollectResourceGateFixture, CollectResourceGateGiven, CollectResourceGateScenario,
     CollectResourceGateThen, CollectResourceGateWhen, LocalCollectResourceDb, ScenarioRoles,
+    install_tron_resource_gate_adapter,
 };
 
 #[tokio::test]
@@ -36,6 +37,25 @@ async fn collect_resource_result_ack_releases_origin_collect_gate() {
 
     then.origin_collect_gate_is_released_by_successful_delegation(&fixture).await;
     then.collect_can_build(&fixture).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn same_address_unconsumed_platform_energy_does_not_shrink_next_delegation() {
+    let _adapter = install_tron_resource_gate_adapter();
+    let scenario = CollectResourceGateScenario::new().await;
+    let first = CollectResourceGateFixture::origin_case("C_RSC_OVERLAP_FIRST");
+    let second = CollectResourceGateFixture::origin_case("C_RSC_OVERLAP_SECOND");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+
+    given.same_address_collect_with_unconsumed_platform_resource(&first, &second).await;
+
+    when.resource_gate_is_evaluated(&second).await;
+
+    then.platform_resource_request_uses_full_order_energy(&second).await;
+    then.collect_cannot_build(&second).await;
 }
 
 #[tokio::test]
