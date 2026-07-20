@@ -286,12 +286,12 @@ impl ShadowWithdrawWorker {
         required.saturating_sub(available.max(0) as u64)
     }
 
-    fn energy_delegation_shortfall_amount(
+    fn energy_delegation_required_amount(
         required_energy: u64,
         available_energy: i64,
     ) -> Option<String> {
         let shortfall = Self::resource_shortfall(required_energy, available_energy);
-        if shortfall == 0 { None } else { Some(shortfall.to_string()) }
+        if shortfall == 0 { None } else { Some(required_energy.to_string()) }
     }
 
     fn platform_apply_outcome(
@@ -757,7 +757,7 @@ impl ShadowWithdrawWorker {
         available_bandwidth: i64,
     ) -> Result<(), ServiceError> {
         let Some(amount) =
-            Self::energy_delegation_shortfall_amount(required_energy, available_energy)
+            Self::energy_delegation_required_amount(required_energy, available_energy)
         else {
             let rows = ApiWithdrawRepo::mark_resource_released(
                 &self.ctx.api_transaction_pool()?,
@@ -785,7 +785,8 @@ impl ShadowWithdrawWorker {
             origin_trade_no = %origin_trade_no,
             required_energy = %required_energy,
             available_energy = %available_energy,
-            energy_shortfall = %amount,
+            delegation_energy = %amount,
+            energy_shortfall = %Self::resource_shortfall(required_energy, available_energy),
             required_bandwidth = %required_bandwidth,
             available_bandwidth = %available_bandwidth,
             source = "shadow_withdraw_worker",
@@ -2917,10 +2918,14 @@ oss:
     }
 
     #[test]
-    fn withdraw_energy_delegation_amount_requires_real_energy_shortfall() {
-        assert_eq!(ShadowWithdrawWorker::energy_delegation_shortfall_amount(14650, 52769), None);
+    fn withdraw_energy_delegation_amount_uses_full_order_requirement() {
+        assert_eq!(ShadowWithdrawWorker::energy_delegation_required_amount(14650, 52769), None);
         assert_eq!(
-            ShadowWithdrawWorker::energy_delegation_shortfall_amount(14650, 0),
+            ShadowWithdrawWorker::energy_delegation_required_amount(14650, 0),
+            Some("14650".to_string())
+        );
+        assert_eq!(
+            ShadowWithdrawWorker::energy_delegation_required_amount(14650, 10000),
             Some("14650".to_string())
         );
     }

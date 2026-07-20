@@ -1,12 +1,15 @@
+use chrono::Utc;
 use wallet_database::{
-    ApiResourceDbPool, ApiTransactionDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
+        api_coin::ApiCoinData,
         api_resource_delegation::ApiResourceDelegationResultStatus,
         api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
         api_trade_type::ApiTradeType,
         api_withdraw::ApiWithdrawStatus,
+        asset_token_key::AssetTokenKey,
     },
-    repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    repositories::api_wallet::{coin::ApiCoinRepo, withdraw::ApiWithdrawRepo},
 };
 
 pub(crate) async fn seed_withdraw(pool: &ApiTransactionDbPool, trade_no: &str) {
@@ -37,6 +40,119 @@ pub(crate) async fn seed_withdraw(pool: &ApiTransactionDbPool, trade_no: &str) {
     )
     .await
     .expect("insert withdraw");
+}
+
+pub(crate) async fn seed_tron_withdraw_resource_gate_basics(wallet_pool: &ApiWalletDbPool) {
+    let now = Utc::now();
+    ApiCoinRepo::upsert_multi_coin(
+        wallet_pool,
+        vec![
+            ApiCoinData::new(
+                Some("TRON".to_string()),
+                "TRX",
+                "tron",
+                AssetTokenKey::Native,
+                Some("0".to_string()),
+                None,
+                6,
+                1,
+                1,
+                1,
+                now,
+                Some(now),
+            ),
+            ApiCoinData::new(
+                Some("Tether USD".to_string()),
+                "USDT",
+                "tron",
+                AssetTokenKey::Contract("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+                Some("0".to_string()),
+                None,
+                6,
+                0,
+                1,
+                1,
+                now,
+                Some(now),
+            ),
+        ],
+    )
+    .await
+    .expect("seed tron withdraw coins");
+}
+
+pub(crate) async fn seed_same_address_withdraw_resource_window(
+    pool: &ApiTransactionDbPool,
+    first_trade_no: &str,
+    second_trade_no: &str,
+    from_addr: &str,
+) {
+    seed_withdraw_order(pool, first_trade_no, from_addr, "2026-07-20T00:00:00Z").await;
+    seed_withdraw_order(pool, second_trade_no, from_addr, "2026-07-20T00:00:01Z").await;
+
+    sqlx::query(
+        r#"
+        UPDATE api_withdraws
+        SET estimated_resource_consume = '{"bandwidth":345,"energy":14650}'
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(first_trade_no)
+    .execute(pool.as_ref())
+    .await
+    .expect("seed pending withdraw resource budget");
+}
+
+async fn seed_withdraw_order(
+    pool: &ApiTransactionDbPool,
+    trade_no: &str,
+    from_addr: &str,
+    created_at: &str,
+) {
+    ApiWithdrawRepo::upsert_api_withdraw(
+        pool,
+        "uid",
+        "withdraw",
+        from_addr,
+        "TReceiver11111111111111111111111111111",
+        "1.12",
+        "digest",
+        "tron",
+        Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+        "USDT",
+        trade_no,
+        None,
+        None,
+        None,
+        ApiTradeType::Withdraw,
+        1,
+        None,
+        ApiWithdrawStatus::AuditPass,
+        ApiWithdrawStatus::InitOrder,
+        "",
+        "",
+        None,
+        None,
+    )
+    .await
+    .expect("insert withdraw resource gate order");
+
+    sqlx::query(
+        r#"
+        UPDATE api_withdraws
+        SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            created_at = ?,
+            updated_at = ?
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(created_at)
+    .bind(created_at)
+    .bind(trade_no)
+    .execute(pool.as_ref())
+    .await
+    .expect("seed withdraw resource gate facts");
 }
 
 pub(crate) async fn mark_withdraw_blocked(

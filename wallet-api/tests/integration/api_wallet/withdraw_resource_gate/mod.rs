@@ -5,6 +5,7 @@ use serial_test::serial;
 use support::{
     ScenarioRoles, WithdrawResourceGateFixture, WithdrawResourceGateGiven,
     WithdrawResourceGateScenario, WithdrawResourceGateThen, WithdrawResourceGateWhen,
+    install_tron_withdraw_resource_gate_adapter,
 };
 
 #[serial]
@@ -39,6 +40,25 @@ async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
 
     then.origin_withdraw_gate_is_released_by_successful_delegation(&fixture).await;
     then.withdraw_can_build(&fixture).await;
+}
+
+#[serial]
+#[tokio::test]
+async fn same_address_unconsumed_platform_energy_does_not_shrink_next_withdraw_delegation() {
+    let _adapter = install_tron_withdraw_resource_gate_adapter();
+    let scenario = WithdrawResourceGateScenario::new().await;
+    let first = WithdrawResourceGateFixture::origin_gate_case("W_RSC_OVERLAP_FIRST");
+    let second = WithdrawResourceGateFixture::origin_gate_case("W_RSC_OVERLAP_SECOND");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+
+    given.same_address_withdraw_with_unconsumed_platform_resource(&first, &second).await;
+
+    when.resource_gate_is_evaluated(&second).await;
+
+    then.platform_resource_request_uses_full_order_energy(&second).await;
+    then.withdraw_cannot_build(&second).await;
 }
 
 #[serial]

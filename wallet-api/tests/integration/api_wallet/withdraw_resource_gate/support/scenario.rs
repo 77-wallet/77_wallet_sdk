@@ -1,13 +1,13 @@
 use wallet_api::testkit::{
     mqtt::{api_resource_pool, api_transaction_pool},
     withdraw::{
-        scan_withdraw_intent_labels_for_trade_once,
+        eval_withdraw_resource_gate_via_worker, scan_withdraw_intent_labels_for_trade_once,
         send_resource_result_ack_via_worker as send_withdraw_resource_result_ack_via_worker,
         upload_resource_tx_exec_receipt_via_worker as upload_withdraw_resource_tx_exec_receipt_via_worker,
     },
 };
 use wallet_database::{
-    ApiResourceDbPool, ApiTransactionDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_resource_gate::ApiResourceGateResult, api_trade_type::ApiTradeType,
         api_withdraw::ApiWithdrawEntity,
@@ -16,8 +16,9 @@ use wallet_database::{
 };
 
 use crate::harness::{
-    AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, ensure_worker_env,
-    worker::WorkerTestEnv,
+    AssertRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole,
+    decrypt_captured_api_backend_body, ensure_worker_env, open_api_wallet_pool,
+    pop_request_with_retry, worker::WorkerTestEnv,
 };
 
 use super::{
@@ -25,7 +26,8 @@ use super::{
     db::{
         mark_withdraw_blocked, seed_failed_original_order_resource_result,
         seed_failed_resource_delegation, seed_resource_delegation_ready_for_ack,
-        seed_successful_resource_delegation, seed_withdraw,
+        seed_same_address_withdraw_resource_window, seed_successful_resource_delegation,
+        seed_tron_withdraw_resource_gate_basics, seed_withdraw,
     },
     fixtures::WithdrawResourceGateFixture,
 };
@@ -34,6 +36,7 @@ pub(crate) struct WithdrawResourceGateScenario {
     env: &'static WorkerTestEnv,
     tx_pool: ApiTransactionDbPool,
     resource_pool: ApiResourceDbPool,
+    wallet_pool: ApiWalletDbPool,
 }
 
 impl WithdrawResourceGateScenario {
@@ -43,8 +46,9 @@ impl WithdrawResourceGateScenario {
 
         let tx_pool = api_transaction_pool(env.ctx()).expect("api transaction pool");
         let resource_pool = api_resource_pool(env.ctx()).expect("api resource pool");
+        let wallet_pool = open_api_wallet_pool(&env.db_dir).await;
 
-        Self { env, tx_pool, resource_pool }
+        Self { env, tx_pool, resource_pool, wallet_pool }
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -75,6 +79,12 @@ pub(crate) trait WithdrawResourceGateGiven {
     async fn resource_delegation_without_origin_trade(&self, fixture: &WithdrawResourceGateFixture);
 
     async fn collect_origin_resource_delegation(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn same_address_withdraw_with_unconsumed_platform_resource(
+        &self,
+        first: &WithdrawResourceGateFixture,
+        second: &WithdrawResourceGateFixture,
+    );
 }
 
 #[async_trait::async_trait(?Send)]
@@ -109,6 +119,17 @@ impl WithdrawResourceGateGiven for GivenRole<'_, WithdrawResourceGateScenario> {
     async fn collect_origin_resource_delegation(&self, fixture: &WithdrawResourceGateFixture) {
         self.scenario().seed().collect_origin_resource_delegation(fixture).await;
     }
+
+    async fn same_address_withdraw_with_unconsumed_platform_resource(
+        &self,
+        first: &WithdrawResourceGateFixture,
+        second: &WithdrawResourceGateFixture,
+    ) {
+        self.scenario()
+            .seed()
+            .same_address_withdraw_with_unconsumed_platform_resource(first, second)
+            .await;
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -126,6 +147,12 @@ trait WithdrawResourceGateSeed {
     async fn resource_delegation_without_origin_trade(&self, fixture: &WithdrawResourceGateFixture);
 
     async fn collect_origin_resource_delegation(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn same_address_withdraw_with_unconsumed_platform_resource(
+        &self,
+        first: &WithdrawResourceGateFixture,
+        second: &WithdrawResourceGateFixture,
+    );
 }
 
 #[async_trait::async_trait(?Send)]
@@ -199,6 +226,25 @@ impl WithdrawResourceGateSeed for SeedRole<'_, WithdrawResourceGateScenario> {
         )
         .await;
     }
+
+    async fn same_address_withdraw_with_unconsumed_platform_resource(
+        &self,
+        first: &WithdrawResourceGateFixture,
+        second: &WithdrawResourceGateFixture,
+    ) {
+        self.scenario().env.recorder.succeed_next_api_backend_call_with_data(serde_json::json!({
+            "dlRes": true,
+            "dlTradeNo": second.resource_trade_no,
+        }));
+        seed_tron_withdraw_resource_gate_basics(&self.scenario().wallet_pool).await;
+        seed_same_address_withdraw_resource_window(
+            &self.scenario().tx_pool,
+            &first.trade_no,
+            &second.trade_no,
+            "TWithdrawOverlap1111111111111111111111",
+        )
+        .await;
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -206,6 +252,8 @@ pub(crate) trait WithdrawResourceGateWhen {
     async fn resource_result_ack_is_sent(&self, fixture: &WithdrawResourceGateFixture);
 
     async fn resource_receipt_upload_is_sent(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn resource_gate_is_evaluated(&self, fixture: &WithdrawResourceGateFixture);
 }
 
 #[async_trait::async_trait(?Send)]
@@ -226,6 +274,12 @@ impl WithdrawResourceGateWhen for WhenRole<'_, WithdrawResourceGateScenario> {
         )
         .await
         .expect("upload withdraw resource tx exec receipt");
+    }
+
+    async fn resource_gate_is_evaluated(&self, fixture: &WithdrawResourceGateFixture) {
+        eval_withdraw_resource_gate_via_worker(self.scenario().env.ctx(), &fixture.trade_no)
+            .await
+            .expect("evaluate withdraw resource gate");
     }
 }
 
@@ -251,6 +305,11 @@ pub(crate) trait WithdrawResourceGateThen {
     async fn withdraw_can_build(&self, fixture: &WithdrawResourceGateFixture);
 
     async fn withdraw_cannot_build(&self, fixture: &WithdrawResourceGateFixture);
+
+    async fn platform_resource_request_uses_full_order_energy(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    );
 }
 
 #[async_trait::async_trait(?Send)]
@@ -303,6 +362,27 @@ impl WithdrawResourceGateThen for ThenRole<'_, WithdrawResourceGateScenario> {
     async fn withdraw_cannot_build(&self, fixture: &WithdrawResourceGateFixture) {
         let labels = self.scenario().load().withdraw_intent_labels(&fixture.trade_no).await;
         self.scenario().assert().withdraw_cannot_build(&labels);
+    }
+
+    async fn platform_resource_request_uses_full_order_energy(
+        &self,
+        fixture: &WithdrawResourceGateFixture,
+    ) {
+        let mut captured = None;
+        for _ in 0..5 {
+            let req = pop_request_with_retry(&self.scenario().env.recorder)
+                .await
+                .expect("capture withdraw platform resource apply request");
+            if req.path.contains("/awallet/aw/trans/resourceDl/apply") {
+                captured = Some(req);
+                break;
+            }
+        }
+        let captured = captured.expect("capture withdraw platform resource apply request");
+        let payload = decrypt_captured_api_backend_body(&captured.body);
+        assert_eq!(payload["tradeNo"].as_str(), Some(fixture.trade_no.as_str()));
+        assert_eq!(payload["resourceAmount"].as_f64(), Some(14_650.0));
+        assert_eq!(payload["nativeTokenAmount"].as_i64(), Some(200));
     }
 }
 

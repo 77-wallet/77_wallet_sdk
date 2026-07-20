@@ -9,8 +9,9 @@ use crate::{
     context::Context,
     error::service::ServiceError,
     infrastructure::api_trans::withdraw::{
-        WithdrawChainIntent, WithdrawIntent, WithdrawShadowScanner, WithdrawShadowScannerConfig,
-        WithdrawShadowSideEffectCommand, WithdrawShadowSideEffectWorker, WithdrawSideEffectIntent,
+        ShadowWithdrawCommand, ShadowWithdrawWorker, WithdrawChainIntent, WithdrawIntent,
+        WithdrawShadowScanner, WithdrawShadowScannerConfig, WithdrawShadowSideEffectCommand,
+        WithdrawShadowSideEffectWorker, WithdrawSideEffectIntent,
     },
 };
 
@@ -80,6 +81,26 @@ pub async fn upload_resource_tx_exec_receipt_via_worker(
             resource_trade_no.to_string(),
         ))
         .await
+}
+
+pub async fn eval_withdraw_resource_gate_via_worker(
+    ctx: &'static Context,
+    trade_no: &str,
+) -> Result<(), ServiceError> {
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let scanner = Arc::new(WithdrawShadowScanner::new(
+        ctx,
+        WithdrawShadowScannerConfig {
+            scan_interval: std::time::Duration::from_secs(60),
+            max_items_per_scan: 8,
+            max_fee_estimate_per_scan: 4,
+            max_resource_gate_per_scan: 4,
+        },
+        intent_tx,
+        None,
+    ));
+    let worker = ShadowWithdrawWorker::new(ctx, scanner);
+    worker.handle(ShadowWithdrawCommand::EvalResourceGate(trade_no.to_string())).await
 }
 
 pub async fn scan_withdraw_intent_labels_once(

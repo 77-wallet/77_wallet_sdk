@@ -120,7 +120,8 @@ pub(crate) use predicate::evaluate_point;
 pub use scanner::{ScannerConfig, ShadowScanner};
 pub(crate) use stage::{ADVANCEMENT_ORDER, AdvancementPoint};
 pub(crate) use worker::{
-    SideEffectCommand as ShadowSideEffectCommand, SideEffectWorker as ShadowSideEffectWorker,
+    ShadowWithdrawCommand, ShadowWithdrawWorker, SideEffectCommand as ShadowSideEffectCommand,
+    SideEffectWorker as ShadowSideEffectWorker,
 };
 
 /// Shadow系统初始化
