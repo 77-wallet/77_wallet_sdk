@@ -97,6 +97,17 @@ impl TronTx {
         crate::infrastructure::chain_rpc_guard::is_empty_chain_rpc_response_message(err_msg)
     }
 
+    fn confirmed_resource_consume(
+        net_usage: Option<u64>,
+        energy_usage: Option<u64>,
+        energy_usage_total: Option<u64>,
+    ) -> BillResourceConsume {
+        BillResourceConsume::new_tron(
+            net_usage.unwrap_or_default(),
+            energy_usage_total.or(energy_usage).unwrap_or_default(),
+        )
+    }
+
     #[cfg(test)]
     pub fn new_for_test(
         ctx: &'static Context,
@@ -287,7 +298,21 @@ impl Tx for TronTx {
         let time = transaction.block_timestamp / 1000;
         let fee = transaction.fee / wallet_chain_interact::tron::consts::TRX_TO_SUN as f64;
         let status = if transaction.result.is_none() { 2 } else { 3 };
-        let resource_consume = transaction.receipt.get_bill_resource_consumer().to_json_str()?;
+        let confirmed_consume = Self::confirmed_resource_consume(
+            transaction.receipt.net_usage,
+            transaction.receipt.energy_usage,
+            transaction.receipt.energy_usage_total,
+        );
+        tracing::info!(
+            tx_hash = %transaction.id,
+            net_usage = ?transaction.receipt.net_usage,
+            energy_usage = ?transaction.receipt.energy_usage,
+            energy_usage_total = ?transaction.receipt.energy_usage_total,
+            mapped_net_used = confirmed_consume.net_used,
+            mapped_energy_used = confirmed_consume.energy_used,
+            "TRON confirmed receipt resource mapped"
+        );
+        let resource_consume = confirmed_consume.to_json_str()?;
 
         Ok(Some(QueryTransactionResult::new(
             transaction.id,
@@ -1257,5 +1282,56 @@ mod tests {
 
         // Assert
         assert!(allowed);
+    }
+
+    #[test]
+    fn confirmed_resource_consume_prefers_total_energy() {
+        let consume = TronTx::confirmed_resource_consume(Some(0), None, Some(13_532));
+
+        assert_eq!(consume.net_used, 0);
+        assert_eq!(consume.energy_used, 13_532);
+    }
+
+    #[test]
+    fn confirmed_resource_consume_falls_back_to_energy_usage() {
+        let consume = TronTx::confirmed_resource_consume(Some(321), Some(14_650), None);
+
+        assert_eq!(consume.net_used, 321);
+        assert_eq!(consume.energy_used, 14_650);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Nile TRON RPC"]
+    async fn confirmed_resource_consume_reads_live_withdraw_receipts() {
+        let client = wallet_transport::client::HttpClient::new(
+            "https://nile.trongrid.io",
+            None,
+            Some(std::time::Duration::from_secs(30)),
+        )
+        .expect("Nile HTTP client should initialize");
+        let provider = wallet_chain_interact::tron::Provider::new(client)
+            .expect("Nile TRON provider should initialize");
+        let cases = [
+            ("c44efcd57ae7401bb2821c7a93ee8f43df73f8826b79bfc8f7438e293f64f8bf", 0, 14_650),
+            ("5b7e5cf72721ece1abee13e84ab29fb9a22f3fc568f05c8c2865be73be624794", 345, 14_650),
+            ("eb5bfe0c35755b9261469aa1caf9888889fe81a87cf7533facc9b450da2f31de", 0, 13_532),
+            ("585b0f40dc42196700f199400edfa03c5f7135795c9cfe70aa64846ffbbcb458", 0, 14_650),
+            ("b34c3378b45ed8be9ad929646d0d932d09776566ed2c799698e839f102da7e5a", 0, 14_650),
+        ];
+
+        for (tx_hash, expected_net, expected_energy) in cases {
+            let tx = provider
+                .query_tx_info(tx_hash)
+                .await
+                .unwrap_or_else(|error| panic!("withdraw {tx_hash} should be queryable: {error}"));
+            let consume = TronTx::confirmed_resource_consume(
+                tx.receipt.net_usage,
+                tx.receipt.energy_usage,
+                tx.receipt.energy_usage_total,
+            );
+
+            assert_eq!(consume.net_used, expected_net, "tx {tx_hash}");
+            assert_eq!(consume.energy_used, expected_energy, "tx {tx_hash}");
+        }
     }
 }

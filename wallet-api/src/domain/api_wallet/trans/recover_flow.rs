@@ -11,7 +11,7 @@ use crate::{
     context::Context,
     domain::{
         api_wallet::{adapter::tx::Tx, adapter_factory::ApiChainAdapterFactory},
-        chain::{TransferResp, adapter::ChainAdapterFactory},
+        chain::TransferResp,
     },
     error::service::ServiceError,
     infrastructure::{
@@ -257,32 +257,16 @@ impl ApiTransDomain {
         let time_ms = shared_mechanism::normalize_chain_time_to_ms(tx_result.transaction_time)?;
 
         if is_success {
-            let consumer = if shared_mechanism::is_tron_chain(chain_code) {
-                let chain = match ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await {
-                    Ok(chain) => chain,
-                    Err(error) => {
-                        tracing::warn!(%error, %tx_hash, "TRON receipt adapter unavailable during recover");
-                        return Ok(None);
-                    }
-                };
-                let tx_info = match chain.get_provider().query_tx_info(tx_hash).await {
-                    Ok(tx_info) => tx_info,
-                    Err(error) => {
-                        tracing::warn!(%error, %tx_hash, "TRON receipt unavailable during recover");
-                        return Ok(None);
-                    }
-                };
-                Some(BillResourceConsume {
-                    net_used: tx_info.receipt.net_usage.unwrap_or_default(),
-                    energy_used: tx_info
-                        .receipt
-                        .energy_usage_total
-                        .or(tx_info.receipt.energy_usage)
-                        .unwrap_or_default(),
-                })
-            } else {
-                None
-            };
+            let consumer =
+                Self::recovered_resource_consumer(chain_code, &tx_result.resource_consume)?;
+            tracing::info!(
+                %tx_hash,
+                chain_code,
+                query_resource_consume = %tx_result.resource_consume,
+                consumer_net_used = consumer.as_ref().map(|value| value.net_used),
+                consumer_energy_used = consumer.as_ref().map(|value| value.energy_used),
+                "Recovered transaction resource prepared"
+            );
             tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
             record_recover_rpc_success(ctx, chain_code).await;
             Ok(Some(Self::recovered_transfer_resp(tx_hash, transaction_fee, time_ms, consumer)))
@@ -308,6 +292,16 @@ impl ApiTransDomain {
         };
         resp.with_transaction_time(transaction_time_ms);
         resp
+    }
+
+    fn recovered_resource_consumer(
+        chain_code: &str,
+        resource_consume: &str,
+    ) -> Result<Option<BillResourceConsume>, ServiceError> {
+        if shared_mechanism::is_tron_chain(chain_code) {
+            return Ok(Some(BillResourceConsume::from_json_str(resource_consume)?));
+        }
+        Ok(None)
     }
 
     fn is_recovered_tx_status_success(tx_hash: &str, status: i8) -> bool {
@@ -486,6 +480,19 @@ mod recover_tx_status_tests {
         assert_eq!(resp.transaction_time_ms, Some(1_746_040_371_123));
         let consumer = resp.consumer.expect("TRON resource consume should be retained");
         assert_eq!(consumer.net_used, 321);
+        assert_eq!(consumer.energy_used, 13_532);
+    }
+
+    #[test]
+    fn recovered_resource_consumer_reuses_tron_query_result() {
+        let consumer = ApiTransDomain::recovered_resource_consumer(
+            "TRON",
+            r#"{"net_used":0,"energy_used":13532}"#,
+        )
+        .expect("TRON resource consume should parse")
+        .expect("TRON resource consume should be present");
+
+        assert_eq!(consumer.net_used, 0);
         assert_eq!(consumer.energy_used, 13_532);
     }
 }
