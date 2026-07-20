@@ -213,6 +213,21 @@ impl ShadowCollectWorker {
         Ok(balance < value)
     }
 
+    fn tron_token_collect_resource_gate_covers_native_fee(req: &ApiCollectEntity) -> bool {
+        shared_mechanism::is_tron_chain(&req.chain_code)
+            && req.token_addr.is_contract()
+            && req.resource_gate_released_at.is_some()
+            && matches!(
+                req.resource_gate_result,
+                Some(
+                    ApiResourceGateResult::ResourceReady
+                        | ApiResourceGateResult::ResourceDelegationSuccess
+                        | ApiResourceGateResult::LocalDelegationSuccess
+                        | ApiResourceGateResult::PlatformDelegateSuccess
+                )
+            )
+    }
+
     fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
         shared_mechanism::broadcast_uncertain_backoff_secs(
             retry_count,
@@ -2917,6 +2932,21 @@ impl ShadowCollectWorker {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费检查结果 - 可用余额: {}, 需要金额: {}, 手续费: {}", balance, need, fee);
 
         if fee > Decimal::from(0) && balance < need {
+            if Self::tron_token_collect_resource_gate_covers_native_fee(req) {
+                tracing::info!(
+                    trade_no = %req.trade_no,
+                    from_addr = %req.from_addr,
+                    to_addr = %req.to_addr,
+                    balance = %balance,
+                    need = %need,
+                    fee = %fee,
+                    resource_gate_released_at = ?req.resource_gate_released_at,
+                    source = "shadow_worker_v2",
+                    "collect_tx:send: TRON token collect resource gate released; bypassing native fee balance gate"
+                );
+                return Ok(true);
+            }
+
             tracing::warn!(
                 trade_no = %req.trade_no,
                 from_addr = %req.from_addr,
@@ -5085,6 +5115,39 @@ oss:
 
         assert_eq!(need, Decimal::from_str("0.00100588").expect("need"));
         assert!(balance < need);
+    }
+
+    #[test]
+    fn tron_token_collect_resource_gate_bypasses_native_fee_balance_only_after_release() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Contract("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string());
+
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_released_at = Some(Utc::now());
+        req.resource_gate_result = Some(ApiResourceGateResult::PlatformDelegateSuccess);
+        assert!(ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::FallbackAllowed);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::ResourceDelegationFailedBypass);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::LocalDelegationFailedBypass);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::ResourceReady);
+        assert!(ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.token_addr = AssetTokenKey::Native;
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.token_addr =
+            AssetTokenKey::Contract("So11111111111111111111111111111111111111112".to_string());
+        req.chain_code = "sol".to_string();
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
     }
 
     #[test]

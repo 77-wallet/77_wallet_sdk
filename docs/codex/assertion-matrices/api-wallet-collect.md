@@ -219,6 +219,27 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: scanner must not execute activation itself and must not redispatch
   already verified activation tasks.
 
+### Collect TRON Token Resource Fee Gate
+
+- Layer: unit / collect worker predicate.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  tron_token_collect_resource_gate_bypasses_native_fee_balance_only_after_release
+  ```
+
+- Backend: none.
+- DB facts: a TRON token collect with `resource_gate_released_at` present and a
+  successful resource gate result (`ResourceReady`,
+  `ResourceDelegationSuccess`, `LocalDelegationSuccess`, or
+  `PlatformDelegateSuccess`) is allowed to build even if the conservative
+  native burn-fee estimate is higher than the current TRX balance.
+- Invariant: the bypass is TRON-token-only and requires the resource gate
+  release fact plus a successful resource result; TRON native collect,
+  unreleased TRON token collect, fallback / failed-bypass resource results, and
+  non-TRON token collect keep their existing native fee balance gates.
+
 ### Collect TRON Account Activation Repository Guards
 
 - Layer: component / repository.
