@@ -8,14 +8,14 @@ doctest = false
 
 [features]
 # default = ["prod", "api-mqtt"]
-# default = ["dev", "token", "integration-tests", "api-mqtt", "api-wallet-console"]
-default = [
-    "test",
-    "token",
-    "integration-tests",
-    "api-mqtt",
-    "api-wallet-console",
-]
+default = ["dev", "token", "integration-tests", "api-mqtt", "api-wallet-console"]
+# default = [
+#     "test",
+#     "token",
+#     "integration-tests",
+#     "api-mqtt",
+#     "api-wallet-console",
+# ]
 
 integration-tests = []
 api-mqtt = []
