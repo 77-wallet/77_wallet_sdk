@@ -453,6 +453,21 @@ fn need_recover(withdraw: &ApiWithdrawEntity) -> bool {
         && withdraw.err_code.is_none()
 }
 
+fn withdraw_recover_dispatch_key(withdraw: &ApiWithdrawEntity) -> String {
+    let is_resource_recovery = withdraw.transaction_time.is_some()
+        && shared_mechanism::tron_withdraw_resource_needs_recovery(
+            &withdraw.chain_code,
+            Some(withdraw.token_addr.as_db_str()),
+            &withdraw.resource_consume,
+        );
+
+    if is_resource_recovery {
+        shadow_rpc_policy::resource_recover_dispatch_key(&withdraw.trade_no)
+    } else {
+        shadow_rpc_policy::recover_dispatch_key(&withdraw.trade_no)
+    }
+}
+
 /// Shadow Scanner 配置
 #[derive(Debug, Clone)]
 pub struct ScannerConfig {
@@ -994,7 +1009,7 @@ impl ShadowScanner {
                 }
                 continue;
             }
-            let recover_key = shadow_rpc_policy::recover_dispatch_key(&record.trade_no);
+            let recover_key = withdraw_recover_dispatch_key(&record);
             if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
                 trace!(
                     trade_no = %record.trade_no,
@@ -1287,7 +1302,7 @@ impl ShadowScanner {
                         }
                         return Ok(());
                     }
-                    let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
+                    let recover_key = withdraw_recover_dispatch_key(&withdraw);
                     if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
                         trace!(
                             trade_no = %trade_no,
@@ -1456,6 +1471,22 @@ mod tests {
         withdraw.err_code = Some(ErrCode::UnknownError);
 
         assert!(need_tx_exec_receipt_upload(&withdraw));
+    }
+
+    #[test]
+    fn confirmed_tron_resource_recovery_uses_independent_cooldown_key() {
+        let mut withdraw = base_withdraw("W_RESOURCE_RECOVERY_KEY");
+        withdraw.token_addr = AssetTokenKey::Contract("TToken".to_string());
+        withdraw.transaction_time = Some(Utc::now());
+        withdraw.resource_consume = r#"{"bandwidth":0,"energy":0}"#.to_string();
+
+        assert_eq!(
+            withdraw_recover_dispatch_key(&withdraw),
+            "recover-resource:W_RESOURCE_RECOVERY_KEY"
+        );
+
+        withdraw.transaction_time = None;
+        assert_eq!(withdraw_recover_dispatch_key(&withdraw), "recover:W_RESOURCE_RECOVERY_KEY");
     }
 
     #[tokio::test]

@@ -83,6 +83,10 @@ pub(crate) fn recover_dispatch_key(trade_no: &str) -> String {
     format!("recover:{trade_no}")
 }
 
+pub(crate) fn resource_recover_dispatch_key(trade_no: &str) -> String {
+    format!("recover-resource:{trade_no}")
+}
+
 pub(crate) fn recover_dispatch_cooldown(key: &str) -> Duration {
     RECOVER_LAST_DISPATCH_TS
         .get(key)
@@ -159,8 +163,8 @@ pub(crate) fn record_chain_intent_dispatch(intent_kind: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        next_recover_cooldown, parse_u64_env, parse_usize_env, recover_dispatch_key,
-        shared_resource_gate_semaphore,
+        allow_recover_dispatch, next_recover_cooldown, parse_u64_env, parse_usize_env,
+        recover_dispatch_key, resource_recover_dispatch_key, shared_resource_gate_semaphore,
     };
     use std::{sync::Arc, time::Duration};
 
@@ -175,6 +179,18 @@ mod tests {
     #[test]
     fn recover_dispatch_key_is_shared_across_recover_entry_points() {
         assert_eq!(recover_dispatch_key("trade-1"), "recover:trade-1");
+    }
+
+    #[test]
+    fn resource_recover_cooldown_is_independent_from_confirmation() {
+        let trade_no = "resource-cooldown-independent";
+        let confirmation_key = recover_dispatch_key(trade_no);
+        let resource_key = resource_recover_dispatch_key(trade_no);
+
+        assert!(allow_recover_dispatch(&confirmation_key));
+        assert!(!allow_recover_dispatch(&confirmation_key));
+        assert!(allow_recover_dispatch(&resource_key));
+        assert_ne!(confirmation_key, resource_key);
     }
 
     #[test]

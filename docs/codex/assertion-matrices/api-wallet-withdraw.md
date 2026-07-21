@@ -25,6 +25,16 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Current Standard Tests
 
+### Recover Cooldown Isolation
+
+- Layer: unit.
+- Entrypoints: `shadow_rpc_policy.rs` and Withdraw `shadow/scanner.rs`.
+- Confirmation recovery uses `recover:{trade_no}`; confirmed TRON resource
+  backfill uses `recover-resource:{trade_no}`.
+- Invariant: both phases retain exponential cooldown and share the same RPC
+  limiter/breaker, but confirmation retries cannot delay the first resource
+  backfill dispatch.
+
 ### Withdraw Actual Resource Display
 
 - Layer: unit.
