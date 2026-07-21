@@ -125,6 +125,7 @@ impl UploadLogConsumer {
         let file = File::open(path).await?;
         let mut reader = BufReader::new(file);
         let mut offset = tracker.get_offset();
+        let start_offset = offset;
 
         if offset == 0 {
             let mut first_line = String::new();
@@ -139,6 +140,12 @@ impl UploadLogConsumer {
 
         // 数据太少了,下次上报
         if buf.len() < 1024 {
+            tracing::debug!(
+                start_offset,
+                end_offset = offset,
+                bytes = buf.len(),
+                "skip log upload because pending bytes are below threshold"
+            );
             return Ok(offset);
         }
 
@@ -148,12 +155,27 @@ impl UploadLogConsumer {
         // 上传文件
         let timestamp = chrono::Utc::now();
         let dst_file_name = format!("sdk:{}.txt", timestamp.format("%Y-%m-%d %H:%M:%S"));
+        let upload_bytes = buf.len();
         if let Err(e) = self.oss_client.upload_buffer(buf, &dst_file_name).await {
-            tracing::error!("upload log file error:{}", e);
+            tracing::error!(
+                start_offset,
+                bytes = upload_bytes,
+                dst_file_name = %dst_file_name,
+                "upload log file error: {}",
+                e
+            );
+            return Err(crate::error::system::SystemError::Service(e.to_string()));
         };
 
         // tracing::info!("upload log file success");
         offset += bytes_reader as u64;
+        tracing::info!(
+            start_offset,
+            end_offset = offset,
+            bytes = upload_bytes,
+            dst_file_name = %dst_file_name,
+            "upload log file success"
+        );
 
         Ok(offset)
     }
