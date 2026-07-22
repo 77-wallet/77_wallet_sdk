@@ -325,6 +325,28 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn mark_broadcast_uncertain_rebroadcast_attempted(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_broadcast_uncertain_rebroadcast_attempted(
+            pool.write_ref(),
+            resource_trade_no,
+        )
+        .await
+    }
+
+    pub async fn mark_broadcast_uncertain_reconciled(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_broadcast_uncertain_reconciled(
+            pool.write_ref(),
+            resource_trade_no,
+        )
+        .await
+    }
+
     pub async fn scan_need_tx_exec_receipt_upload_for_origin_type(
         pool: &ApiResourceDbPool,
         origin_trade_type: i64,
@@ -1106,6 +1128,7 @@ mod tests {
         assert!(got.result_received_at.is_none());
         assert!(got.broadcast_uncertain_since_at.is_none());
         assert_eq!(got.broadcast_uncertain_retry_count, 0);
+        assert_eq!(got.broadcast_uncertain_rebroadcast_count, 0);
 
         let ready = ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
             &pool, 2, 10,
@@ -1127,6 +1150,19 @@ mod tests {
         assert_eq!(got.broadcast_uncertain_retry_count, 1);
         assert!(got.broadcast_uncertain_last_checked_at.is_some());
         assert!(got.broadcast_uncertain_reconciled_at.is_none());
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcast_uncertain_rebroadcast_attempted(
+                &pool,
+                "rsc_broadcast",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_broadcast")
+            .await
+            .unwrap();
+        assert_eq!(got.broadcast_uncertain_rebroadcast_count, 1);
 
         assert_eq!(
             ApiResourceDelegationRepo::mark_chain_success(&pool, "rsc_broadcast", None)
@@ -1144,6 +1180,7 @@ mod tests {
         assert_eq!(got.broadcast_uncertain_retry_count, 0);
         assert!(got.broadcast_uncertain_last_checked_at.is_none());
         assert!(got.broadcast_uncertain_reconciled_at.is_some());
+        assert_eq!(got.broadcast_uncertain_rebroadcast_count, 0);
     }
 
     #[tokio::test]

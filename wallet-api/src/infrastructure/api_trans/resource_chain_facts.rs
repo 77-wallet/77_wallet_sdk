@@ -80,6 +80,7 @@ mod tests {
             broadcast_uncertain_retry_count: 0,
             broadcast_uncertain_last_checked_at: None,
             broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
             tx_exec_receipt_uploaded_at: None,
             result_status: None,
             tx_res_received_at: None,

@@ -33,7 +33,11 @@ use crate::{
     infrastructure::{
         api_trans::{
             resource_amount::parse_resource_delegation_native_trx_units,
-            resource_delegation::resource_delegation_retry_wait_secs, shadow_rpc_policy,
+            resource_delegation::{
+                record_resource_uncertain_and_maybe_rebroadcast,
+                resource_delegation_retry_wait_secs,
+            },
+            shadow_rpc_policy,
         },
         runtime::time::new_production_interval,
     },
@@ -387,12 +391,15 @@ impl LocalResourceReclaimWorker {
                 Ok(())
             }
             Ok(None) => {
-                ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
                     &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
+                    ApiResourceDelegationRecoverStatus::RetryBuild,
                 )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+                .await?;
+                if rebroadcast {
+                    return Ok(());
+                }
                 self.schedule_local_undelegation_recover_retry(&resource_trade_no).await
             }
             Err(err) => {

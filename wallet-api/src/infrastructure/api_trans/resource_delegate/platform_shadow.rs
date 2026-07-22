@@ -42,8 +42,8 @@ use crate::{
                 resource_success_receipt_uploadable,
             },
             resource_delegation::{
-                execute_resource_delegation, resource_delegation_failure_fact,
-                resource_delegation_retry_wait_secs,
+                execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
+                resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
             },
             shadow_rpc_policy,
         },
@@ -415,19 +415,16 @@ impl PlatformResourceDelegateWorker {
                 Ok(())
             }
             Ok(None) => {
-                ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
                     &self.pool,
                     &resource_trade_no,
+                    ApiResourceDelegationRecoverStatus::RetryBuild,
                 )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                self.schedule_retry(
-                    &resource_trade_no,
-                    &ServiceError::Parameter(
-                        "platform resource delegation recover returned no final result".to_string(),
-                    ),
-                )
-                .await
+                .await?;
+                if rebroadcast {
+                    return Ok(());
+                }
+                Ok(())
             }
             Err(err) => self.schedule_retry(&resource_trade_no, &err).await,
         }

@@ -18,11 +18,20 @@ use wallet_chain_interact::{
     BillResourceConsume,
     tron::operations::{RawTransactionParams, TronTxOperation},
 };
-use wallet_database::entities::{
-    api_resource_delegation::{ApiResourceDelegationEntity, ApiResourceDelegationOperationType},
-    api_resource_type::ApiResourceType,
+use wallet_database::{
+    entities::{
+        api_resource_delegation::{
+            ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
+            ApiResourceDelegationRecoverStatus,
+        },
+        api_resource_type::ApiResourceType,
+    },
+    repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
 };
 use wallet_utils::RetryableError as _;
+
+const RESOURCE_BROADCAST_UNCERTAIN_TIMEOUT_SECS: i64 = 300;
+const RESOURCE_BROADCAST_UNCERTAIN_AUTO_REBROADCAST_LIMIT: i64 = 1;
 
 /// 资源代理重试退避：指数退避上限 5 分钟。
 /// - 第 0 次：60s
@@ -30,6 +39,62 @@ use wallet_utils::RetryableError as _;
 pub(crate) fn resource_delegation_retry_wait_secs(retry_count: i64) -> i64 {
     let exponent = retry_count.clamp(0, 3) as u32;
     (60_i64 * (1_i64 << exponent)).min(300)
+}
+
+pub(crate) fn should_rebroadcast_resource_uncertain(
+    delegation: &ApiResourceDelegationEntity,
+    now: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    let Some(since) = delegation.broadcast_uncertain_since_at else {
+        return false;
+    };
+    delegation.broadcast_uncertain_rebroadcast_count
+        < RESOURCE_BROADCAST_UNCERTAIN_AUTO_REBROADCAST_LIMIT
+        && now.signed_duration_since(since).num_seconds()
+            >= RESOURCE_BROADCAST_UNCERTAIN_TIMEOUT_SECS
+}
+
+pub(crate) async fn record_resource_uncertain_and_maybe_rebroadcast(
+    pool: &wallet_database::ApiResourceDbPool,
+    resource_trade_no: &str,
+    recover_status: ApiResourceDelegationRecoverStatus,
+) -> Result<bool, ServiceError> {
+    ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(pool, resource_trade_no)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+    let refreshed = ApiResourceDelegationRepo::get_by_resource_trade_no(pool, resource_trade_no)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+    if !should_rebroadcast_resource_uncertain(&refreshed, chrono::Utc::now()) {
+        return Ok(false);
+    }
+
+    ApiResourceDelegationRepo::mark_broadcast_uncertain_reconciled(pool, resource_trade_no)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+    let rows = ApiResourceDelegationRepo::reset_for_retry(
+        pool,
+        resource_trade_no,
+        recover_status,
+        &chrono::Utc::now().to_rfc3339(),
+    )
+    .await
+    .map_err(|e| ServiceError::Database(e.into()))?;
+
+    if rows > 0 {
+        ApiResourceDelegationRepo::mark_broadcast_uncertain_rebroadcast_attempted(
+            pool,
+            resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 /// 资源代理失败 fact 的统一映射。

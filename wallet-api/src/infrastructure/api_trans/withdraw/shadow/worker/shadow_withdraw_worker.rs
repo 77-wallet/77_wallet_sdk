@@ -69,8 +69,8 @@ use crate::{
                 resolve_resource_delegation_signer,
             },
             resource_delegation::{
-                execute_resource_delegation, resource_delegation_failure_fact,
-                resource_delegation_retry_wait_secs,
+                execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
+                resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
             },
             resource_reservation::{
                 ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
@@ -613,12 +613,18 @@ impl ShadowWithdrawWorker {
                 );
             }
             Ok(None) => {
-                ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
                     &self.ctx.api_resource_pool()?,
                     &delegation.resource_trade_no,
+                    ApiResourceDelegationRecoverStatus::RetryBuild,
                 )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+                .await?;
+                if rebroadcast {
+                    if let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() {
+                        self.scanner.try_advance(origin_trade_no).await;
+                    }
+                    return Ok(());
+                }
                 info!(
                     resource_trade_no = %delegation.resource_trade_no,
                     tx_hash = %tx_hash,

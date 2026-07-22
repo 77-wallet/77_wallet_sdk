@@ -68,7 +68,9 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   broadcast, success, failure, and receipt-upload eligibility.
 - Uncertain fact: resource recover returning no final chain result records
   `broadcast_uncertain_since_at`, increments `broadcast_uncertain_retry_count`,
-  and clears the uncertain lifecycle only after chain success or failure.
+  increments `broadcast_uncertain_rebroadcast_count` when uncertain timeout
+  invalidates the old broadcast lifecycle for rebuild, and clears the uncertain
+  lifecycle after chain success or failure.
 - Invariant: `WD_RSC_DL` / `COL_RSC_DL` SUCCESS receipts must not be uploaded
   from broadcast-only hash facts.
 

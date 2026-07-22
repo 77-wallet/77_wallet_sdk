@@ -82,8 +82,8 @@ use crate::{
         resource_amount::energy_shortfall_to_apply_amounts,
         resource_apply_outcome::PlatformApplyOutcome,
         resource_delegation::{
-            execute_resource_delegation, resource_delegation_failure_fact,
-            resource_delegation_retry_wait_secs,
+            execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
+            resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
         },
         resource_reservation::{
             ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
@@ -1047,12 +1047,18 @@ impl ShadowCollectWorker {
                 self.release_collect_gate_after_local_delegation_success(&refreshed).await?;
             }
             Ok(None) => {
-                ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
                     &self.ctx.api_resource_pool()?,
                     &delegation.resource_trade_no,
+                    ApiResourceDelegationRecoverStatus::RetryBuild,
                 )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+                .await?;
+                if rebroadcast {
+                    if let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() {
+                        self.advancer.try_advance(origin_trade_no).await;
+                    }
+                    return Ok(());
+                }
                 info!(
                     resource_trade_no = %delegation.resource_trade_no,
                     tx_hash = %tx_hash,

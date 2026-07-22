@@ -43,7 +43,10 @@ use crate::{
             resource_chain_facts::{
                 resource_failure_receipt_uploadable, resource_success_receipt_uploadable,
             },
-            resource_delegation::resource_delegation_retry_wait_secs,
+            resource_delegation::{
+                record_resource_uncertain_and_maybe_rebroadcast,
+                resource_delegation_retry_wait_secs,
+            },
             resource_rpc_auth, shadow_rpc_policy,
         },
         runtime::time::new_production_interval,
@@ -879,12 +882,15 @@ impl PlatformResourceReclaimWorker {
                 Ok(())
             }
             Ok(None) => {
-                ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
                     &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
+                    ApiResourceDelegationRecoverStatus::RetryBuild,
                 )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+                .await?;
+                if rebroadcast {
+                    return Ok(());
+                }
                 self.schedule_platform_undelegation_recover_retry(&resource_trade_no).await
             }
             Err(err) => {
@@ -2116,6 +2122,7 @@ mod tests {
             broadcast_uncertain_retry_count: 0,
             broadcast_uncertain_last_checked_at: None,
             broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
             tx_res_received_at: None,
@@ -2175,6 +2182,7 @@ mod tests {
             broadcast_uncertain_retry_count: 0,
             broadcast_uncertain_last_checked_at: None,
             broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
             tx_exec_receipt_uploaded_at: None,
             result_status: None,
             tx_res_received_at: None,
@@ -2232,6 +2240,7 @@ mod tests {
             broadcast_uncertain_retry_count: 0,
             broadcast_uncertain_last_checked_at: None,
             broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
             tx_res_received_at: Some(chrono::Utc::now()),

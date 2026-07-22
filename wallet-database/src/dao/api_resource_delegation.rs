@@ -580,6 +580,7 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
                 broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 next_retry_at = NULL,
                 recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -622,6 +623,7 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 next_retry_at = NULL,
                 recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -835,6 +837,58 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn mark_broadcast_uncertain_rebroadcast_attempted<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET broadcast_uncertain_rebroadcast_count = broadcast_uncertain_rebroadcast_count + 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_broadcast_uncertain_reconciled<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET broadcast_uncertain_reconciled_at = COALESCE(broadcast_uncertain_reconciled_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_failed_if_unfinished<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -859,6 +913,7 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 status = 3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
@@ -1186,7 +1241,7 @@ impl ApiResourceDelegationDao {
                 retry_count = retry_count + 1,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND operation_type = 2
+              AND operation_type IN (1, 2)
               AND result_received_at IS NULL
               AND err_code IS NULL
             "#,
@@ -1216,6 +1271,12 @@ impl ApiResourceDelegationDao {
                 building_at = NULL,
                 tx_hash = NULL,
                 tx_status = NULL,
+                last_broadcast_at = NULL,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 recover_status = ?2,
                 next_retry_at = ?3,
                 retry_count = retry_count + 1,
