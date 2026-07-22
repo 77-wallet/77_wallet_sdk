@@ -1613,12 +1613,15 @@ impl ShadowCollectWorker {
             "Platform resource delegation apply request"
         );
         let backend_api = self.ctx.get_global_backend_api();
+        let apply_started_at = std::time::Instant::now();
         let resp = backend_api.apply_resource_delegation(&req).await?;
+        let apply_elapsed_ms = apply_started_at.elapsed().as_millis();
 
         if resp.is_success() {
             info!(
                 origin_trade_no = %origin_trade_no,
                 resource_trade_no = ?resp.dl_trade_no,
+                apply_elapsed_ms,
                 source = "shadow_worker_v2",
                 "Platform resource delegation apply succeeded"
             );
@@ -1626,6 +1629,7 @@ impl ShadowCollectWorker {
         } else {
             warn!(
                 origin_trade_no = %origin_trade_no,
+                apply_elapsed_ms,
                 source = "shadow_worker_v2",
                 "Platform resource delegation apply rejected, will try alternative paths"
             );

@@ -575,24 +575,52 @@ impl ShadowDispatcher {
 
             // 获取信号量许可
             let start = std::time::Instant::now();
+            if lane == DispatcherLane::ResourceGate {
+                info!(
+                    phase = trace.phase,
+                    worker = trace.worker,
+                    command = trace.command,
+                    trade_no = %trace.trade_no,
+                    key = ?trace.key,
+                    dispatcher_lane = lane.as_str(),
+                    available_permits = semaphore.available_permits(),
+                    "Collect resource gate dispatcher wait started"
+                );
+            }
             let _permit =
                 match acquire_dispatch_permit(lane, semaphore, RESOURCE_GATE_QUEUE_WAIT_TIMEOUT)
                     .await
                 {
                     Ok(p) => {
                         let acquire_duration = start.elapsed();
-                        debug!(
-                            key = ?running_key,
-                            duration = ?acquire_duration,
-                            dispatcher_lane = lane.as_str(),
-                            "Acquired dispatcher semaphore permit"
-                        );
+                        if lane == DispatcherLane::ResourceGate {
+                            info!(
+                                phase = trace.phase,
+                                worker = trace.worker,
+                                command = trace.command,
+                                trade_no = %trace.trade_no,
+                                key = ?trace.key,
+                                dispatcher_lane = lane.as_str(),
+                                queue_wait_ms = acquire_duration.as_millis(),
+                                "Collect resource gate dispatcher permit acquired"
+                            );
+                        } else {
+                            debug!(
+                                key = ?running_key,
+                                duration = ?acquire_duration,
+                                dispatcher_lane = lane.as_str(),
+                                "Acquired dispatcher semaphore permit"
+                            );
+                        }
                         p
                     }
                     Err(reason) => {
                         warn!(
                             key = ?running_key,
+                            trade_no = %trace.trade_no,
+                            command = trace.command,
                             dispatcher_lane = lane.as_str(),
+                            queue_wait_ms = start.elapsed().as_millis(),
                             reason = ?reason,
                             "Dispatcher semaphore acquire did not complete; intent will be retried"
                         );
@@ -601,7 +629,21 @@ impl ShadowDispatcher {
                 };
 
             // 路由 Intent 到正确的 Worker
-            if let Err(e) = Self::execute_intent(intent, shadow_worker, side_effect_worker).await {
+            let execute_start = std::time::Instant::now();
+            let result = Self::execute_intent(intent, shadow_worker, side_effect_worker).await;
+            if lane == DispatcherLane::ResourceGate {
+                info!(
+                    phase = trace.phase,
+                    worker = trace.worker,
+                    command = trace.command,
+                    trade_no = %trace.trade_no,
+                    key = ?trace.key,
+                    dispatcher_lane = lane.as_str(),
+                    execution_ms = execute_start.elapsed().as_millis(),
+                    "Collect resource gate dispatcher execution finished"
+                );
+            }
+            if let Err(e) = result {
                 error!(
                     phase = trace.phase,
                     worker = trace.worker,

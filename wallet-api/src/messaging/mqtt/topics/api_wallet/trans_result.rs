@@ -350,18 +350,26 @@ impl AwmOrderTransResMsg {
         // order, or a dependency that points back to it. Persist a projection
         // fact so the side-effect worker can ACK it as COL + TX_RSC_RES.
         if self.status {
-            ApiCollectRepo::mark_resource_released(
+            let rows = ApiCollectRepo::mark_resource_released(
                 api_transaction_pool,
                 &collect.trade_no,
                 ApiResourceGateResult::PlatformDelegateSuccess,
             )
             .await?;
+            tracing::info!(
+                trade_no = %collect.trade_no,
+                resource_trade_no = %self.trade_no,
+                rows,
+                status = self.status,
+                fail_type = ?self.fail_type,
+                "Collect platform resource result released resource gate"
+            );
         } else {
             // 平台代理失败不是归集资源链的最终出口。
             // 文档顺序是：自身资源 -> 平台代理 -> 本地代理 -> 主链/手续费。
             // 所以商户侧收到原单失败结果时，只把 collect 切回本地代理入口；
             // 只有本地代理也失败后，才由 local delegation 收口释放 gate。
-            ApiCollectRepo::mark_resource_blocked(
+            let rows = ApiCollectRepo::mark_resource_blocked(
                 api_transaction_pool,
                 &collect.trade_no,
                 ApiResourceBlockReason::NeedLocalDelegate,
@@ -369,6 +377,14 @@ impl AwmOrderTransResMsg {
                 Some(ApiResourceDependencyType::LocalDelegate),
             )
             .await?;
+            tracing::warn!(
+                trade_no = %collect.trade_no,
+                resource_trade_no = %self.trade_no,
+                rows,
+                status = self.status,
+                fail_type = ?self.fail_type,
+                "Collect platform resource result fell back to local delegation"
+            );
         }
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
