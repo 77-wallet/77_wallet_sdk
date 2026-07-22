@@ -522,10 +522,12 @@ impl SideEffectWorker {
                 None => return None,
             }
         } else if resource_task.err_code.is_none()
-            && matches!(resource_task.tx_status.as_deref(), Some("success"))
+            && (resource_task.chain_success_at.is_some()
+                || resource_task.transaction_time.is_some())
         {
             ApiResourceGateResult::ResourceDelegationSuccess
         } else if resource_task.err_code.is_some()
+            || resource_task.chain_failed_at.is_some()
             || matches!(resource_task.tx_status.as_deref(), Some("fail"))
         {
             ApiResourceGateResult::ResourceDelegationFailedBypass
@@ -547,7 +549,8 @@ impl SideEffectWorker {
                     resource_task.result_status == Some(ApiResourceDelegationResultStatus::Success)
                 } else {
                     resource_task.err_code.is_none()
-                        && matches!(resource_task.tx_status.as_deref(), Some("success"))
+                        && (resource_task.chain_success_at.is_some()
+                            || resource_task.transaction_time.is_some())
                 };
                 if !success {
                     return Ok(());
@@ -559,6 +562,7 @@ impl SideEffectWorker {
                     resource_task.result_status == Some(ApiResourceDelegationResultStatus::Fail)
                 } else {
                     resource_task.err_code.is_some()
+                        || resource_task.chain_failed_at.is_some()
                         || matches!(resource_task.tx_status.as_deref(), Some("fail"))
                 };
                 if !is_failure {
@@ -603,9 +607,11 @@ impl SideEffectWorker {
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
     ) -> Result<TxExecReceiptUploadReq, ServiceError> {
         let trans_type = platform_resource_task_trans_type(resource_task);
-        let status = if matches!(resource_task.tx_status.as_deref(), Some("success")) {
+        let status = if resource_task.chain_success_at.is_some()
+            || resource_task.transaction_time.is_some()
+        {
             TransStatus::Success
-        } else if resource_task.err_code.is_some() {
+        } else if resource_task.err_code.is_some() || resource_task.chain_failed_at.is_some() {
             TransStatus::Fail
         } else {
             return Err(ServiceError::Parameter(

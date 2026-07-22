@@ -384,6 +384,19 @@ impl PlatformResourceDelegateWorker {
         {
             Ok(Some(resp)) => {
                 let payload = format!("platform_delegation_recovered:{}", resp.tx_hash);
+                let transaction_time = resp
+                    .transaction_time_ms
+                    .and_then(|millis| {
+                        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(millis as i64)
+                    })
+                    .map(|time| time.to_rfc3339());
+                ApiResourceDelegationRepo::mark_chain_success(
+                    &self.pool,
+                    &resource_trade_no,
+                    transaction_time.as_deref(),
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 ApiResourceDelegationRepo::mark_result_received(
                     &self.pool,
                     &resource_trade_no,

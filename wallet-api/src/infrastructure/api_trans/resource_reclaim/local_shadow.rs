@@ -352,6 +352,19 @@ impl LocalResourceReclaimWorker {
         {
             Ok(Some(resp)) => {
                 let payload = format!("local_undelegation_recovered:{}", resp.tx_hash);
+                let transaction_time = resp
+                    .transaction_time_ms
+                    .and_then(|millis| {
+                        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(millis as i64)
+                    })
+                    .map(|time| time.to_rfc3339());
+                ApiResourceDelegationRepo::mark_chain_success(
+                    &self.ctx.api_resource_pool()?,
+                    &resource_trade_no,
+                    transaction_time.as_deref(),
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 ApiResourceDelegationRepo::mark_result_received(
                     &self.ctx.api_resource_pool()?,
                     &resource_trade_no,

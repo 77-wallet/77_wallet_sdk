@@ -450,6 +450,13 @@ impl ShadowCollectWorker {
     ) -> Self {
         Self { ctx, address_locks, advancer, resource_reservations: Default::default() }
     }
+
+    fn resource_transaction_time(value: Option<u128>) -> Option<String> {
+        value
+            .and_then(|millis| chrono::DateTime::<Utc>::from_timestamp_millis(millis as i64))
+            .map(|time| time.to_rfc3339())
+    }
+
     /// 处理单个 Command
     pub async fn handle(&self, cmd: ShadowCollectCommand) -> Result<(), ServiceError> {
         // 提取 trade_no 用于日志
@@ -923,6 +930,17 @@ impl ShadowCollectWorker {
             "Processing resource delegation execution"
         );
 
+        let existing = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_resource_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if existing.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_some() {
+            self.process_local_resource_delegation_recover(existing).await?;
+            return Ok(());
+        }
+
         let affected = ApiResourceDelegationRepo::claim_build_slot(
             &self.ctx.api_resource_pool()?,
             &resource_trade_no,
@@ -982,7 +1000,69 @@ impl ShadowCollectWorker {
             );
         }
 
-        self.release_collect_gate_after_local_delegation_success(&delegation).await?;
+        Ok(())
+    }
+
+    async fn process_local_resource_delegation_recover(
+        &self,
+        delegation: ApiResourceDelegationEntity,
+    ) -> Result<(), ServiceError> {
+        let Some(tx_hash) = delegation.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
+        else {
+            return Ok(());
+        };
+
+        match ApiTransDomain::process_recovered_tx(
+            &self.ctx,
+            &delegation.chain_code,
+            &delegation.owner_address,
+            tx_hash,
+            0,
+            "0",
+        )
+        .await
+        {
+            Ok(Some(resp)) => {
+                let transaction_time = Self::resource_transaction_time(resp.transaction_time_ms);
+                let affected = ApiResourceDelegationRepo::mark_chain_success(
+                    &self.ctx.api_resource_pool()?,
+                    &delegation.resource_trade_no,
+                    transaction_time.as_deref(),
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                info!(
+                    resource_trade_no = %delegation.resource_trade_no,
+                    tx_hash = %tx_hash,
+                    affected = %affected,
+                    source = "shadow_worker_v2",
+                    "Collect local resource delegation chain success confirmed"
+                );
+                let refreshed = ApiResourceDelegationRepo::get_by_resource_trade_no(
+                    &self.ctx.api_resource_pool()?,
+                    &delegation.resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                self.release_collect_gate_after_local_delegation_success(&refreshed).await?;
+            }
+            Ok(None) => {
+                info!(
+                    resource_trade_no = %delegation.resource_trade_no,
+                    tx_hash = %tx_hash,
+                    source = "shadow_worker_v2",
+                    "Collect local resource delegation recover is uncertain; waiting"
+                );
+            }
+            Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
+                self.schedule_local_resource_delegation_rebuild_retry(
+                    &delegation.resource_trade_no,
+                    &err,
+                )
+                .await?;
+            }
+            Err(err) => return Err(err),
+        }
 
         Ok(())
     }

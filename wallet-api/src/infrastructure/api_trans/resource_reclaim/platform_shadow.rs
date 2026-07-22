@@ -841,6 +841,19 @@ impl PlatformResourceReclaimWorker {
         {
             Ok(Some(resp)) => {
                 let payload = format!("platform_undelegation_recovered:{}", resp.tx_hash);
+                let transaction_time = resp
+                    .transaction_time_ms
+                    .and_then(|millis| {
+                        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(millis as i64)
+                    })
+                    .map(|time| time.to_rfc3339());
+                ApiResourceDelegationRepo::mark_chain_success(
+                    &self.ctx.api_resource_pool()?,
+                    &resource_trade_no,
+                    transaction_time.as_deref(),
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 ApiResourceDelegationRepo::mark_result_received(
                     &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
@@ -2083,8 +2096,12 @@ mod tests {
             status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
             task_ack_sent_at: None,
             building_at: None,
+            last_broadcast_at: Some(chrono::Utc::now()),
             tx_hash: Some("tx_hash".to_string()),
             tx_status: Some("success".to_string()),
+            chain_success_at: Some(chrono::Utc::now()),
+            chain_failed_at: None,
+            transaction_time: Some(chrono::Utc::now()),
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
             tx_res_received_at: None,

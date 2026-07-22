@@ -561,7 +561,7 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
-    pub async fn mark_broadcast_success<'a, E>(
+    pub async fn mark_broadcast_pending<'a, E>(
         exec: E,
         resource_trade_no: &str,
         tx_hash: &str,
@@ -573,7 +573,9 @@ impl ApiResourceDelegationDao {
             r#"
             UPDATE api_resource_delegation
             SET tx_hash = ?2,
-                tx_status = 'success',
+                tx_status = NULL,
+                building_at = NULL,
+                last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 next_retry_at = NULL,
                 recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -587,6 +589,40 @@ impl ApiResourceDelegationDao {
         )
         .bind(resource_trade_no)
         .bind(tx_hash)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_chain_success<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        transaction_time: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET tx_status = 'success',
+                chain_success_at = COALESCE(chain_success_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                transaction_time = COALESCE(transaction_time, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                building_at = NULL,
+                next_retry_at = NULL,
+                recover_status = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND status = 1
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(transaction_time)
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
@@ -611,6 +647,7 @@ impl ApiResourceDelegationDao {
               AND (
                     (
                       tx_status = 'success'
+                      AND chain_success_at IS NOT NULL
                       AND tx_hash IS NOT NULL
                       AND trim(tx_hash) <> ''
                     )
@@ -647,6 +684,7 @@ impl ApiResourceDelegationDao {
               AND (
                     (
                       tx_status = 'success'
+                      AND chain_success_at IS NOT NULL
                       AND tx_hash IS NOT NULL
                       AND trim(tx_hash) <> ''
                     )
@@ -683,6 +721,7 @@ impl ApiResourceDelegationDao {
               AND (
                     (
                       tx_status = 'success'
+                      AND chain_success_at IS NOT NULL
                       AND tx_hash IS NOT NULL
                       AND trim(tx_hash) <> ''
                     )
@@ -769,6 +808,7 @@ impl ApiResourceDelegationDao {
             SET err_code = ?2,
                 err_msg = ?3,
                 tx_status = 'fail',
+                chain_failed_at = COALESCE(chain_failed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 status = 3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1

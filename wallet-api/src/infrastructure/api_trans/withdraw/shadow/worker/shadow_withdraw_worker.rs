@@ -301,6 +301,12 @@ impl ShadowWithdrawWorker {
         PlatformApplyOutcome::from_backend_response(is_success, dl_trade_no)
     }
 
+    fn resource_transaction_time(value: Option<u128>) -> Option<String> {
+        value
+            .and_then(|millis| chrono::DateTime::<Utc>::from_timestamp_millis(millis as i64))
+            .map(|time| time.to_rfc3339())
+    }
+
     pub fn new(ctx: &'static crate::context::Context, scanner: Arc<ShadowScanner>) -> Self {
         Self { ctx, scanner, resource_reservations: WithdrawResourceReservationManager::default() }
     }
@@ -526,6 +532,17 @@ impl ShadowWithdrawWorker {
         &self,
         resource_trade_no: String,
     ) -> Result<(), ServiceError> {
+        let existing = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_resource_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if existing.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_some() {
+            self.process_resource_delegation_recover(existing).await?;
+            return Ok(());
+        }
+
         let affected = ApiResourceDelegationRepo::claim_build_slot(
             &self.ctx.api_resource_pool()?,
             &resource_trade_no,
@@ -548,13 +565,73 @@ impl ShadowWithdrawWorker {
         }
 
         let tx_hash = self.execute_tron_resource_delegation(&delegation).await?;
-        ApiResourceDelegationRepo::mark_broadcast_success(
+        ApiResourceDelegationRepo::mark_broadcast_pending(
             &self.ctx.api_resource_pool()?,
             &resource_trade_no,
             &tx_hash,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    async fn process_resource_delegation_recover(
+        &self,
+        delegation: ApiResourceDelegationEntity,
+    ) -> Result<(), ServiceError> {
+        let Some(tx_hash) = delegation.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
+        else {
+            return Ok(());
+        };
+
+        match ApiTransDomain::process_recovered_tx(
+            &self.ctx,
+            &delegation.chain_code,
+            &delegation.owner_address,
+            tx_hash,
+            0,
+            "0",
+        )
+        .await
+        {
+            Ok(Some(resp)) => {
+                let transaction_time = Self::resource_transaction_time(resp.transaction_time_ms);
+                let affected = ApiResourceDelegationRepo::mark_chain_success(
+                    &self.ctx.api_resource_pool()?,
+                    &delegation.resource_trade_no,
+                    transaction_time.as_deref(),
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                info!(
+                    resource_trade_no = %delegation.resource_trade_no,
+                    tx_hash = %tx_hash,
+                    affected = %affected,
+                    source = "shadow_withdraw_worker",
+                    "Withdraw resource delegation chain success confirmed"
+                );
+            }
+            Ok(None) => {
+                info!(
+                    resource_trade_no = %delegation.resource_trade_no,
+                    tx_hash = %tx_hash,
+                    source = "shadow_withdraw_worker",
+                    "Withdraw resource delegation recover is uncertain; waiting"
+                );
+            }
+            Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
+                Self::schedule_resource_delegation_rebuild_retry_in_pool(
+                    &self.ctx.api_resource_pool()?,
+                    &delegation.resource_trade_no,
+                    &err,
+                )
+                .await?;
+            }
+            Err(err) => {
+                self.mark_resource_delegation_failed(&delegation.resource_trade_no, &err).await?;
+            }
+        }
 
         Ok(())
     }

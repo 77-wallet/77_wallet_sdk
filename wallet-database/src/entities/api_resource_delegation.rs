@@ -180,8 +180,12 @@ pub struct ApiResourceDelegationEntity {
     pub status: ApiResourceDelegationStatus,
     pub task_ack_sent_at: Option<DateTime<Utc>>,
     pub building_at: Option<DateTime<Utc>>,
+    pub last_broadcast_at: Option<DateTime<Utc>>,
     pub tx_hash: Option<String>,
     pub tx_status: Option<String>,
+    pub chain_success_at: Option<DateTime<Utc>>,
+    pub chain_failed_at: Option<DateTime<Utc>>,
+    pub transaction_time: Option<DateTime<Utc>>,
     pub tx_exec_receipt_uploaded_at: Option<DateTime<Utc>>,
     pub result_status: Option<ApiResourceDelegationResultStatus>,
     /// Backend MQTT final result received timestamp.

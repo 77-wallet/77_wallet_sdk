@@ -48,6 +48,18 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Invariant: platform resource reclaim must not ACK `TX_RES` from SDK chain
   recovery facts alone.
 
+## Platform Resource Delegation Confirmation Gate
+
+- Test:
+  `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
+  `resource_delegation_broadcast_mark_is_pending_until_chain_success`
+- Entry point: platform resource delegation broadcast and receipt-upload scans.
+- DB facts: broadcasting a resource delegation records `tx_hash` but leaves
+  `tx_status` empty; chain recovery must write `tx_status='success'` before the
+  row becomes eligible for backend execution-receipt upload.
+- Invariant: `WD_RSC_DL` / `COL_RSC_DL` SUCCESS receipts must not be uploaded
+  from broadcast-only hash facts.
+
 ## API Withdraw Wallet Unfreeze Extraction
 
 - Test:

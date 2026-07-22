@@ -280,15 +280,36 @@ impl ApiResourceDelegationRepo {
         ApiResourceDelegationDao::claim_build_slot(pool.write_ref(), resource_trade_no).await
     }
 
+    pub async fn mark_broadcast_pending(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_broadcast_pending(
+            pool.write_ref(),
+            resource_trade_no,
+            tx_hash,
+        )
+        .await
+    }
+
     pub async fn mark_broadcast_success(
         pool: &ApiResourceDbPool,
         resource_trade_no: &str,
         tx_hash: &str,
     ) -> Result<u64, crate::Error> {
-        ApiResourceDelegationDao::mark_broadcast_success(
+        Self::mark_broadcast_pending(pool, resource_trade_no, tx_hash).await
+    }
+
+    pub async fn mark_chain_success(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        transaction_time: Option<&str>,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_chain_success(
             pool.write_ref(),
             resource_trade_no,
-            tx_hash,
+            transaction_time,
         )
         .await
     }
@@ -1020,7 +1041,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resource_delegation_broadcast_success_mark_is_idempotent() {
+    async fn resource_delegation_broadcast_mark_is_pending_until_chain_success() {
         let pool = setup_api_resource_pool("resource_delegation_broadcast_success").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1066,9 +1087,32 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(got.tx_hash.as_deref(), Some("tx_hash_1"));
-        assert_eq!(got.tx_status.as_deref(), Some("success"));
+        assert!(got.last_broadcast_at.is_some());
+        assert!(got.tx_status.is_none());
+        assert!(got.chain_success_at.is_none());
+        assert!(got.transaction_time.is_none());
         assert!(got.result_status.is_none());
         assert!(got.result_received_at.is_none());
+
+        let ready = ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
+            &pool, 2, 10,
+        )
+        .await
+        .unwrap();
+        assert!(ready.is_empty());
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_chain_success(&pool, "rsc_broadcast", None)
+                .await
+                .unwrap(),
+            1
+        );
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_broadcast")
+            .await
+            .unwrap();
+        assert_eq!(got.tx_status.as_deref(), Some("success"));
+        assert!(got.chain_success_at.is_some());
+        assert!(got.transaction_time.is_some());
     }
 
     #[tokio::test]
@@ -1110,6 +1154,9 @@ mod tests {
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 tx_hash = 'tx_hash_ready',
                 tx_status = 'success',
+                last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = 'rsc_receipt_ready'
             "#,
@@ -1188,6 +1235,9 @@ mod tests {
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 tx_hash = resource_trade_no || '_tx_hash',
                 tx_status = 'success',
+                last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no IN (
                 'rsc_reclaim_receipt_ready',
