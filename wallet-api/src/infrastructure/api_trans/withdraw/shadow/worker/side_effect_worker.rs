@@ -24,6 +24,10 @@ use crate::{
             merchant_original_resource_result_trans_type, platform_resource_result_ack_type,
             platform_resource_task_trans_type,
         },
+        resource_chain_facts::{
+            resource_chain_failed, resource_chain_success, resource_failure_receipt_uploadable,
+            resource_success_receipt_uploadable,
+        },
         withdraw::shadow::ShadowScanner,
     },
 };
@@ -521,15 +525,9 @@ impl SideEffectWorker {
                 }
                 None => return None,
             }
-        } else if resource_task.err_code.is_none()
-            && (resource_task.chain_success_at.is_some()
-                || resource_task.transaction_time.is_some())
-        {
+        } else if resource_chain_success(resource_task) && !resource_chain_failed(resource_task) {
             ApiResourceGateResult::ResourceDelegationSuccess
-        } else if resource_task.err_code.is_some()
-            || resource_task.chain_failed_at.is_some()
-            || matches!(resource_task.tx_status.as_deref(), Some("fail"))
-        {
+        } else if resource_chain_failed(resource_task) {
             ApiResourceGateResult::ResourceDelegationFailedBypass
         } else {
             return None;
@@ -548,9 +546,7 @@ impl SideEffectWorker {
                 let success = if is_original_order_resource_result_fact(resource_task) {
                     resource_task.result_status == Some(ApiResourceDelegationResultStatus::Success)
                 } else {
-                    resource_task.err_code.is_none()
-                        && (resource_task.chain_success_at.is_some()
-                            || resource_task.transaction_time.is_some())
+                    resource_chain_success(resource_task) && !resource_chain_failed(resource_task)
                 };
                 if !success {
                     return Ok(());
@@ -561,9 +557,7 @@ impl SideEffectWorker {
                 let is_failure = if is_original_order_resource_result_fact(resource_task) {
                     resource_task.result_status == Some(ApiResourceDelegationResultStatus::Fail)
                 } else {
-                    resource_task.err_code.is_some()
-                        || resource_task.chain_failed_at.is_some()
-                        || matches!(resource_task.tx_status.as_deref(), Some("fail"))
+                    resource_chain_failed(resource_task)
                 };
                 if !is_failure {
                     return Ok(());
@@ -607,15 +601,13 @@ impl SideEffectWorker {
         resource_task: &wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity,
     ) -> Result<TxExecReceiptUploadReq, ServiceError> {
         let trans_type = platform_resource_task_trans_type(resource_task);
-        let status = if resource_task.chain_success_at.is_some()
-            || resource_task.transaction_time.is_some()
-        {
+        let status = if resource_success_receipt_uploadable(resource_task) {
             TransStatus::Success
-        } else if resource_task.err_code.is_some() || resource_task.chain_failed_at.is_some() {
+        } else if resource_failure_receipt_uploadable(resource_task) {
             TransStatus::Fail
         } else {
             return Err(ServiceError::Parameter(
-                "resource delegation receipt upload requires success tx_status or failure err_code"
+                "resource delegation receipt upload requires confirmed success or failure chain facts"
                     .to_string(),
             ));
         };

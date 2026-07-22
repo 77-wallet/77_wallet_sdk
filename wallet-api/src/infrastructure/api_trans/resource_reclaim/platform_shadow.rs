@@ -40,6 +40,9 @@ use crate::{
                 ResourceDelegationSigner, new_tron_undelegate_args,
                 resolve_resource_delegation_signer,
             },
+            resource_chain_facts::{
+                resource_failure_receipt_uploadable, resource_success_receipt_uploadable,
+            },
             resource_delegation::resource_delegation_retry_wait_secs,
             resource_rpc_auth, shadow_rpc_policy,
         },
@@ -967,12 +970,11 @@ impl PlatformResourceReclaimWorker {
             )));
         }
 
-        let has_success_hash =
-            delegation.tx_hash.as_deref().map(str::trim).is_some_and(|s| !s.is_empty());
-        let is_success = delegation.tx_status.as_deref() == Some("success") && has_success_hash;
+        let is_success = resource_success_receipt_uploadable(delegation);
         let upload_status = if is_success { TransStatus::Success } else { TransStatus::Fail };
         let remark = if is_success { "" } else { delegation.err_msg.as_deref().unwrap_or("") };
         if !is_success
+            && !resource_failure_receipt_uploadable(delegation)
             && delegation.err_code.as_deref().is_none_or(|s| s.trim().is_empty())
             && remark.trim().is_empty()
         {
@@ -2151,8 +2153,12 @@ mod tests {
             status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
             task_ack_sent_at: None,
             building_at: None,
+            last_broadcast_at: None,
             tx_hash: None,
             tx_status: None,
+            chain_success_at: None,
+            chain_failed_at: None,
+            transaction_time: None,
             tx_exec_receipt_uploaded_at: None,
             result_status: None,
             tx_res_received_at: None,
@@ -2200,8 +2206,12 @@ mod tests {
             status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
             task_ack_sent_at: None,
             building_at: None,
+            last_broadcast_at: Some(chrono::Utc::now()),
             tx_hash: Some("tx_hash".to_string()),
             tx_status: Some("success".to_string()),
+            chain_success_at: Some(chrono::Utc::now()),
+            chain_failed_at: None,
+            transaction_time: Some(chrono::Utc::now()),
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
             tx_res_received_at: Some(chrono::Utc::now()),

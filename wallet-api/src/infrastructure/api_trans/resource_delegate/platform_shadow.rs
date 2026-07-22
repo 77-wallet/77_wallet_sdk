@@ -37,6 +37,10 @@ use crate::{
                 merchant_original_resource_result_trans_type, platform_resource_result_ack_type,
                 platform_resource_task_trans_type,
             },
+            resource_chain_facts::{
+                resource_chain_failed, resource_chain_success, resource_failure_receipt_uploadable,
+                resource_success_receipt_uploadable,
+            },
             resource_delegation::{
                 execute_resource_delegation, resource_delegation_failure_fact,
                 resource_delegation_retry_wait_secs,
@@ -688,11 +692,11 @@ impl PlatformResourceDelegateWorker {
                 None => return None,
             }
         } else if task.origin_trade_type == Some(ApiTradeType::Collect as i64)
-            && task.err_code.is_none()
-            && matches!(task.tx_status.as_deref(), Some("success"))
+            && resource_chain_success(task)
+            && !resource_chain_failed(task)
         {
             ApiResourceGateResult::PlatformDelegateSuccess
-        } else if task.err_code.is_none() && matches!(task.tx_status.as_deref(), Some("success")) {
+        } else if resource_chain_success(task) && !resource_chain_failed(task) {
             ApiResourceGateResult::ResourceDelegationSuccess
         } else if Self::is_failure(task) {
             ApiResourceGateResult::ResourceDelegationFailedBypass
@@ -703,19 +707,19 @@ impl PlatformResourceDelegateWorker {
     }
 
     fn is_failure(task: &ApiResourceDelegationEntity) -> bool {
-        task.err_code.is_some() || matches!(task.tx_status.as_deref(), Some("fail"))
+        resource_chain_failed(task)
     }
 
     fn build_receipt_payload(
         task: &ApiResourceDelegationEntity,
     ) -> Result<TxExecReceiptUploadReq, ServiceError> {
-        let status = if matches!(task.tx_status.as_deref(), Some("success")) {
+        let status = if resource_success_receipt_uploadable(task) {
             TransStatus::Success
-        } else if task.err_code.is_some() {
+        } else if resource_failure_receipt_uploadable(task) {
             TransStatus::Fail
         } else {
             return Err(ServiceError::Parameter(
-                "resource delegation receipt upload requires success tx_status or failure err_code"
+                "resource delegation receipt upload requires confirmed success or failure chain facts"
                     .to_string(),
             ));
         };

@@ -53,10 +53,19 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Test:
   `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
   `resource_delegation_broadcast_mark_is_pending_until_chain_success`
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_chain_facts.rs`
+  `broadcast_only_resource_is_not_success_uploadable`
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_chain_facts.rs`
+  `legacy_tx_status_success_is_not_a_chain_success_fact`
 - Entry point: platform resource delegation broadcast and receipt-upload scans.
-- DB facts: broadcasting a resource delegation records `tx_hash` but leaves
-  `tx_status` empty; chain recovery must write `tx_status='success'` before the
-  row becomes eligible for backend execution-receipt upload.
+- DB facts: broadcasting a resource delegation records `tx_hash` and
+  `last_broadcast_at` but leaves `tx_status` empty; chain recovery must write
+  `chain_success_at` / `transaction_time` before the row becomes eligible for
+  backend SUCCESS execution-receipt upload.
+- Shared helper: resource side-effect workers use `resource_chain_facts` for
+  broadcast, success, failure, and receipt-upload eligibility.
 - Invariant: `WD_RSC_DL` / `COL_RSC_DL` SUCCESS receipts must not be uploaded
   from broadcast-only hash facts.
 
