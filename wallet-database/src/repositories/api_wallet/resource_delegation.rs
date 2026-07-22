@@ -314,6 +314,17 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn mark_broadcast_uncertain_attempt(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_broadcast_uncertain_attempt(
+            pool.write_ref(),
+            resource_trade_no,
+        )
+        .await
+    }
+
     pub async fn scan_need_tx_exec_receipt_upload_for_origin_type(
         pool: &ApiResourceDbPool,
         origin_trade_type: i64,
@@ -1093,6 +1104,8 @@ mod tests {
         assert!(got.transaction_time.is_none());
         assert!(got.result_status.is_none());
         assert!(got.result_received_at.is_none());
+        assert!(got.broadcast_uncertain_since_at.is_none());
+        assert_eq!(got.broadcast_uncertain_retry_count, 0);
 
         let ready = ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
             &pool, 2, 10,
@@ -1100,6 +1113,20 @@ mod tests {
         .await
         .unwrap();
         assert!(ready.is_empty());
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(&pool, "rsc_broadcast")
+                .await
+                .unwrap(),
+            1
+        );
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_broadcast")
+            .await
+            .unwrap();
+        assert!(got.broadcast_uncertain_since_at.is_some());
+        assert_eq!(got.broadcast_uncertain_retry_count, 1);
+        assert!(got.broadcast_uncertain_last_checked_at.is_some());
+        assert!(got.broadcast_uncertain_reconciled_at.is_none());
 
         assert_eq!(
             ApiResourceDelegationRepo::mark_chain_success(&pool, "rsc_broadcast", None)
@@ -1113,6 +1140,10 @@ mod tests {
         assert_eq!(got.tx_status.as_deref(), Some("success"));
         assert!(got.chain_success_at.is_some());
         assert!(got.transaction_time.is_some());
+        assert!(got.broadcast_uncertain_since_at.is_none());
+        assert_eq!(got.broadcast_uncertain_retry_count, 0);
+        assert!(got.broadcast_uncertain_last_checked_at.is_none());
+        assert!(got.broadcast_uncertain_reconciled_at.is_some());
     }
 
     #[tokio::test]

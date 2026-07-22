@@ -386,7 +386,15 @@ impl LocalResourceReclaimWorker {
                 );
                 Ok(())
             }
-            Ok(None) => self.schedule_local_undelegation_recover_retry(&resource_trade_no).await,
+            Ok(None) => {
+                ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                    &self.ctx.api_resource_pool()?,
+                    &resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                self.schedule_local_undelegation_recover_retry(&resource_trade_no).await
+            }
             Err(err) => {
                 self.schedule_local_undelegation_rebuild_retry(&resource_trade_no, &err).await
             }

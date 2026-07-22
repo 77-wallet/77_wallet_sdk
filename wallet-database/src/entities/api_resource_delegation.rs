@@ -186,6 +186,10 @@ pub struct ApiResourceDelegationEntity {
     pub chain_success_at: Option<DateTime<Utc>>,
     pub chain_failed_at: Option<DateTime<Utc>>,
     pub transaction_time: Option<DateTime<Utc>>,
+    pub broadcast_uncertain_since_at: Option<DateTime<Utc>>,
+    pub broadcast_uncertain_retry_count: i64,
+    pub broadcast_uncertain_last_checked_at: Option<DateTime<Utc>>,
+    pub broadcast_uncertain_reconciled_at: Option<DateTime<Utc>>,
     pub tx_exec_receipt_uploaded_at: Option<DateTime<Utc>>,
     pub result_status: Option<ApiResourceDelegationResultStatus>,
     /// Backend MQTT final result received timestamp.

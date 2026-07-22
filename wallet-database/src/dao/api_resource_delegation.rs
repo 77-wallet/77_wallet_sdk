@@ -576,6 +576,10 @@ impl ApiResourceDelegationDao {
                 tx_status = NULL,
                 building_at = NULL,
                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
                 next_retry_at = NULL,
                 recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -610,6 +614,14 @@ impl ApiResourceDelegationDao {
                 chain_success_at = COALESCE(chain_success_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 transaction_time = COALESCE(transaction_time, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 building_at = NULL,
+                broadcast_uncertain_reconciled_at = CASE
+                    WHEN broadcast_uncertain_since_at IS NOT NULL
+                    THEN COALESCE(broadcast_uncertain_reconciled_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                    ELSE broadcast_uncertain_reconciled_at
+                END,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
                 next_retry_at = NULL,
                 recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -793,6 +805,36 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn mark_broadcast_uncertain_attempt<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET broadcast_uncertain_since_at = COALESCE(broadcast_uncertain_since_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                broadcast_uncertain_retry_count = broadcast_uncertain_retry_count + 1,
+                broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
+              AND result_received_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_failed_if_unfinished<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -809,6 +851,14 @@ impl ApiResourceDelegationDao {
                 err_msg = ?3,
                 tx_status = 'fail',
                 chain_failed_at = COALESCE(chain_failed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                broadcast_uncertain_reconciled_at = CASE
+                    WHEN broadcast_uncertain_since_at IS NOT NULL
+                    THEN COALESCE(broadcast_uncertain_reconciled_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                    ELSE broadcast_uncertain_reconciled_at
+                END,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
                 status = 3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1

@@ -878,7 +878,15 @@ impl PlatformResourceReclaimWorker {
                 );
                 Ok(())
             }
-            Ok(None) => self.schedule_platform_undelegation_recover_retry(&resource_trade_no).await,
+            Ok(None) => {
+                ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                    &self.ctx.api_resource_pool()?,
+                    &resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                self.schedule_platform_undelegation_recover_retry(&resource_trade_no).await
+            }
             Err(err) => {
                 warn!(
                     resource_trade_no = %resource_trade_no,
@@ -2104,6 +2112,10 @@ mod tests {
             chain_success_at: Some(chrono::Utc::now()),
             chain_failed_at: None,
             transaction_time: Some(chrono::Utc::now()),
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
             tx_res_received_at: None,
@@ -2159,6 +2171,10 @@ mod tests {
             chain_success_at: None,
             chain_failed_at: None,
             transaction_time: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
             tx_exec_receipt_uploaded_at: None,
             result_status: None,
             tx_res_received_at: None,
@@ -2212,6 +2228,10 @@ mod tests {
             chain_success_at: Some(chrono::Utc::now()),
             chain_failed_at: None,
             transaction_time: Some(chrono::Utc::now()),
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
             tx_res_received_at: Some(chrono::Utc::now()),

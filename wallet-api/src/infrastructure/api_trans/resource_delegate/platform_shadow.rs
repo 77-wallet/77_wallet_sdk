@@ -415,6 +415,12 @@ impl PlatformResourceDelegateWorker {
                 Ok(())
             }
             Ok(None) => {
+                ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                    &self.pool,
+                    &resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 self.schedule_retry(
                     &resource_trade_no,
                     &ServiceError::Parameter(

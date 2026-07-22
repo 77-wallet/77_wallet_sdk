@@ -613,6 +613,12 @@ impl ShadowWithdrawWorker {
                 );
             }
             Ok(None) => {
+                ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                    &self.ctx.api_resource_pool()?,
+                    &delegation.resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     resource_trade_no = %delegation.resource_trade_no,
                     tx_hash = %tx_hash,

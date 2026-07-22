@@ -66,6 +66,9 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   backend SUCCESS execution-receipt upload.
 - Shared helper: resource side-effect workers use `resource_chain_facts` for
   broadcast, success, failure, and receipt-upload eligibility.
+- Uncertain fact: resource recover returning no final chain result records
+  `broadcast_uncertain_since_at`, increments `broadcast_uncertain_retry_count`,
+  and clears the uncertain lifecycle only after chain success or failure.
 - Invariant: `WD_RSC_DL` / `COL_RSC_DL` SUCCESS receipts must not be uploaded
   from broadcast-only hash facts.
 
