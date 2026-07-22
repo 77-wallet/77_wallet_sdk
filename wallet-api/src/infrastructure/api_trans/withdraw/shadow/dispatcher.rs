@@ -199,6 +199,8 @@ impl Drop for RunningGuard {
 pub struct DispatcherConfig {
     /// 链路任务并发配额（Build/Broadcast/Recover）
     pub chain_semaphore_size: usize,
+    /// 资源门任务并发配额（资源检查/平台代理申请，不直接代表链 RPC 并发）
+    pub resource_gate_semaphore_size: usize,
     /// 副作用任务并发配额（ACK/回执）
     pub side_effect_semaphore_size: usize,
     /// 二次校验超时时间
@@ -209,6 +211,12 @@ impl Default for DispatcherConfig {
     fn default() -> Self {
         let chain_semaphore_size =
             shadow_rpc_policy::read_usize_env("WITHDRAW_SHADOW_DISPATCHER_CONCURRENCY", 24, 4, 100);
+        let resource_gate_semaphore_size = shadow_rpc_policy::read_usize_env(
+            "WITHDRAW_SHADOW_RESOURCE_GATE_CONCURRENCY",
+            8,
+            1,
+            50,
+        );
         let side_effect_semaphore_size = shadow_rpc_policy::read_usize_env(
             "WITHDRAW_SHADOW_SIDE_EFFECT_CONCURRENCY",
             12,
@@ -217,6 +225,7 @@ impl Default for DispatcherConfig {
         );
         Self {
             chain_semaphore_size,
+            resource_gate_semaphore_size,
             side_effect_semaphore_size,
             db_check_timeout: Duration::from_secs(5), // 5秒
         }
@@ -239,6 +248,8 @@ pub(crate) struct ShadowDispatcher {
     running_times: Arc<DashMap<RunningKey, Instant>>,
     /// 链路任务并发控制信号量
     chain_semaphore: Arc<Semaphore>,
+    /// 资源门任务并发控制信号量
+    resource_gate_semaphore: Arc<Semaphore>,
     /// 副作用任务并发控制信号量
     side_effect_semaphore: Arc<Semaphore>,
     /// Shadow Worker，处理链相关操作
@@ -258,6 +269,7 @@ impl ShadowDispatcher {
         intent_tx: tokio::sync::mpsc::Sender<WithdrawIntent>,
     ) -> Self {
         let chain_semaphore_size = config.chain_semaphore_size;
+        let resource_gate_semaphore_size = config.resource_gate_semaphore_size;
         let side_effect_semaphore_size = config.side_effect_semaphore_size;
         Self {
             pool,
@@ -265,6 +277,7 @@ impl ShadowDispatcher {
             running: Arc::new(DashSet::new()),
             running_times: Arc::new(DashMap::new()),
             chain_semaphore: Arc::new(Semaphore::new(chain_semaphore_size)),
+            resource_gate_semaphore: Arc::new(Semaphore::new(resource_gate_semaphore_size)),
             side_effect_semaphore: Arc::new(Semaphore::new(side_effect_semaphore_size)),
             shadow_worker,
             side_effect_worker,
@@ -308,7 +321,7 @@ impl ShadowDispatcher {
         let lane = DispatcherLane::for_intent(&intent);
         let semaphore = match lane {
             DispatcherLane::Chain => self.chain_semaphore.clone(),
-            DispatcherLane::ResourceGate => shadow_rpc_policy::shared_resource_gate_semaphore(),
+            DispatcherLane::ResourceGate => self.resource_gate_semaphore.clone(),
             DispatcherLane::SideEffect => self.side_effect_semaphore.clone(),
         };
         let shadow_worker = self.shadow_worker.clone();

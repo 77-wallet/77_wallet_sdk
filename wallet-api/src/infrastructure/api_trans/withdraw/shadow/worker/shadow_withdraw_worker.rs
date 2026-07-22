@@ -328,18 +328,11 @@ impl ShadowWithdrawWorker {
 
     async fn process_eval_resource_gate(&self, trade_no: String) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Processing EvalResourceGate command");
-        if let Err(err) = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
-            self.ctx,
+        if let Err(err) = resource_rpc_auth::run_with_rpc_auth_retry(
             "tron",
-            &trade_no,
             "withdraw_eval_resource_gate",
-            "shadow_withdraw_worker",
-            resource_rpc_auth::run_with_rpc_auth_retry(
-                "tron",
-                "withdraw_eval_resource_gate",
-                &trade_no,
-                || self.process_resource_gate_inner(&trade_no),
-            ),
+            &trade_no,
+            || self.process_resource_gate_inner(&trade_no),
         )
         .await
         {
@@ -594,7 +587,25 @@ impl ShadowWithdrawWorker {
         let adapter =
             ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
                 .await?;
-        let resource = adapter.account_resource(&req.from_addr).await?;
+        let Some(resource) = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
+            self.ctx,
+            &req.chain_code,
+            trade_no,
+            "withdraw_resource_gate_account_resource",
+            "shadow_withdraw_worker",
+            adapter.account_resource(&req.from_addr),
+        )
+        .await?
+        else {
+            info!(
+                trade_no = %trade_no,
+                chain_code = %req.chain_code,
+                from_addr = %req.from_addr,
+                source = "shadow_withdraw_worker",
+                "TRON withdraw resource gate account_resource skipped by RPC guard"
+            );
+            return Ok(());
+        };
         let available_energy = resource.available_energy();
         let available_bandwidth = resource.available_bandwidth();
         let pending_budget = ApiWithdrawRepo::pending_resource_budget_by_owner(
@@ -858,7 +869,27 @@ impl ShadowWithdrawWorker {
     ) -> Result<PlatformApplyOutcome, ServiceError> {
         let adapter =
             ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, chain_code).await?;
-        let resource = adapter.account_resource(receiver_address).await?;
+        let Some(resource) = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
+            self.ctx,
+            chain_code,
+            origin_trade_no,
+            "withdraw_resource_apply_account_resource",
+            "shadow_withdraw_worker",
+            adapter.account_resource(receiver_address),
+        )
+        .await?
+        else {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                chain_code = %chain_code,
+                receiver_address = %receiver_address,
+                source = "shadow_withdraw_worker",
+                "TRON withdraw platform resource amount calculation skipped by RPC guard"
+            );
+            return Err(ServiceError::Context(
+                "withdraw platform resource amount calculation skipped by RPC guard".to_string(),
+            ));
+        };
         let amounts = energy_shortfall_to_apply_amounts(amount, resource.energy_price())?;
         let (app_id, org_id) = self.resolve_resource_apply_identity(uid).await?;
 
@@ -885,7 +916,9 @@ impl ShadowWithdrawWorker {
         );
 
         let backend_api = self.ctx.get_global_backend_api();
+        let apply_started_at = std::time::Instant::now();
         let resp = backend_api.apply_resource_delegation(&req).await?;
+        let apply_elapsed_ms = apply_started_at.elapsed().as_millis();
         let is_success = resp.is_success();
         let outcome = Self::platform_apply_outcome(is_success, resp.dl_trade_no);
 
@@ -894,6 +927,7 @@ impl ShadowWithdrawWorker {
                 info!(
                     origin_trade_no = %origin_trade_no,
                     resource_trade_no = %resource_trade_no,
+                    apply_elapsed_ms,
                     source = "shadow_withdraw_worker",
                     "Platform resource delegation apply succeeded"
                 );
@@ -901,6 +935,7 @@ impl ShadowWithdrawWorker {
             PlatformApplyOutcome::AcceptedWithOriginalTradeNo => {
                 warn!(
                     origin_trade_no = %origin_trade_no,
+                    apply_elapsed_ms,
                     source = "shadow_withdraw_worker",
                     "Platform resource delegation apply succeeded without delegation trade no; waiting original-order resource result"
                 );
@@ -908,6 +943,7 @@ impl ShadowWithdrawWorker {
             PlatformApplyOutcome::Rejected => {
                 warn!(
                     origin_trade_no = %origin_trade_no,
+                    apply_elapsed_ms,
                     source = "shadow_withdraw_worker",
                     "Platform resource delegation apply rejected, will proceed with main currency check"
                 );

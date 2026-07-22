@@ -495,7 +495,7 @@ impl Default for ScannerConfig {
         );
         let max_resource_gate_per_scan = shadow_rpc_policy::read_usize_env(
             "WITHDRAW_SHADOW_MAX_RESOURCE_GATE_PER_SCAN",
-            6,
+            20,
             1,
             50,
         );
