@@ -64,6 +64,14 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   `last_broadcast_at` but leaves `tx_status` empty; chain recovery must write
   `chain_success_at` / `transaction_time` before the row becomes eligible for
   backend SUCCESS execution-receipt upload.
+- Test:
+  `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
+  `resource_delegation_build_fact_persists_hash_and_raw_before_broadcast`
+- DB facts: signed `raw_tx` and deterministic `tx_hash` are persisted together
+  before `last_broadcast_at`; a competing build cannot replace either value.
+- Invariant: transient failure handling cannot clear a persisted pre-broadcast
+  `raw_tx` / `tx_hash`; restart recovery must rebroadcast the same signed
+  transaction instead of building a second transaction.
 - Shared helper: resource side-effect workers use `resource_chain_facts` for
   broadcast, success, failure, and receipt-upload eligibility.
 - Uncertain fact: resource recover returning no final chain result records

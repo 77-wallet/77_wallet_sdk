@@ -280,6 +280,16 @@ impl ApiResourceDelegationRepo {
         Self::mark_broadcast_pending(pool, resource_trade_no, tx_hash).await
     }
 
+    pub async fn mark_built(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_built(pool.write_ref(), resource_trade_no, tx_hash, raw_tx)
+            .await
+    }
+
     pub async fn reconcile_broadcast_pending(
         pool: &ApiResourceDbPool,
         resource_trade_no: &str,
@@ -291,6 +301,15 @@ impl ApiResourceDelegationRepo {
             tx_hash,
         )
         .await
+    }
+
+    pub async fn mark_broadcasted(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_broadcasted(pool.write_ref(), resource_trade_no, tx_hash)
+            .await
     }
 
     pub async fn mark_chain_success(
@@ -1027,6 +1046,102 @@ mod tests {
         assert!(got.tx_hash.is_none());
         assert!(got.result_status.is_none());
         assert!(got.finished_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_build_fact_persists_hash_and_raw_before_broadcast() {
+        let pool = setup_api_resource_pool("resource_delegation_build_fact").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_build_fact",
+                "origin_build_fact",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_build_fact").await.unwrap();
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_build_fact").await.unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &pool,
+                "rsc_build_fact",
+                "deterministic_hash",
+                "{\"Tron\":[]}",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &pool,
+                "rsc_build_fact",
+                "different_hash",
+                "different_raw",
+            )
+            .await
+            .unwrap(),
+            0
+        );
+
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_build_fact")
+            .await
+            .unwrap();
+        assert_eq!(got.tx_hash.as_deref(), Some("deterministic_hash"));
+        assert_eq!(got.raw_tx.as_deref(), Some("{\"Tron\":[]}"));
+        assert!(got.building_at.is_none());
+        assert!(got.last_broadcast_at.is_none());
+        assert!(got.chain_success_at.is_none());
+        assert!(got.finished_at.is_none());
+
+        assert_eq!(
+            ApiResourceDelegationRepo::reset_for_rebuild(&pool, "rsc_build_fact").await.unwrap(),
+            0
+        );
+        let preserved =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_build_fact")
+                .await
+                .unwrap();
+        assert_eq!(preserved.tx_hash.as_deref(), Some("deterministic_hash"));
+        assert_eq!(preserved.raw_tx.as_deref(), Some("{\"Tron\":[]}"));
+        assert!(preserved.last_broadcast_at.is_none());
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcasted(
+                &pool,
+                "rsc_build_fact",
+                "deterministic_hash",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcasted(
+                &pool,
+                "rsc_build_fact",
+                "deterministic_hash",
+            )
+            .await
+            .unwrap(),
+            0
+        );
+        let broadcasted =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_build_fact")
+                .await
+                .unwrap();
+        assert_eq!(broadcasted.tx_hash.as_deref(), Some("deterministic_hash"));
+        assert_eq!(broadcasted.raw_tx.as_deref(), Some("{\"Tron\":[]}"));
+        assert!(broadcasted.last_broadcast_at.is_some());
     }
 
     #[tokio::test]

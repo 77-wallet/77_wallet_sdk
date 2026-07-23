@@ -158,6 +158,7 @@ pub struct ApiResourceDelegationEntity {
     pub task_ack_sent_at: Option<DateTime<Utc>>,
     pub task_ack_send_count: i64,
     pub building_at: Option<DateTime<Utc>>,
+    pub raw_tx: Option<String>,
     pub last_broadcast_at: Option<DateTime<Utc>>,
     pub tx_hash: Option<String>,
     pub chain_success_at: Option<DateTime<Utc>>,

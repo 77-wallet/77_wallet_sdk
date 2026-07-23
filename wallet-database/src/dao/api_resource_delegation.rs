@@ -581,6 +581,80 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn mark_built<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET tx_hash = ?2,
+                raw_tx = ?3,
+                building_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND building_at IS NOT NULL
+              AND tx_hash IS NULL
+              AND raw_tx IS NULL
+              AND last_broadcast_at IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(tx_hash)
+        .bind(raw_tx)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_broadcasted<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                building_at = NULL,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND tx_hash = ?2
+              AND raw_tx IS NOT NULL
+              AND trim(raw_tx) <> ''
+              AND last_broadcast_at IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(tx_hash)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn reconcile_broadcast_pending<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -1183,6 +1257,7 @@ impl ApiResourceDelegationDao {
             SET status = 1,
                 building_at = NULL,
                 tx_hash = NULL,
+                raw_tx = NULL,
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -1195,6 +1270,13 @@ impl ApiResourceDelegationDao {
               AND err_code IS NULL
               AND chain_success_at IS NULL
               AND chain_failed_at IS NULL
+              AND NOT (
+                    raw_tx IS NOT NULL
+                AND trim(raw_tx) <> ''
+                AND tx_hash IS NOT NULL
+                AND trim(tx_hash) <> ''
+                AND last_broadcast_at IS NULL
+              )
             "#,
         )
         .bind(resource_trade_no)

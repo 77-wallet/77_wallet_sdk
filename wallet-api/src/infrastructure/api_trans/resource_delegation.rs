@@ -19,6 +19,7 @@ use wallet_chain_interact::{
     tron::operations::{RawTransactionParams, TronTxOperation},
 };
 use wallet_database::{
+    ApiResourceDbPool,
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
@@ -105,6 +106,7 @@ pub(crate) fn resource_delegation_failure_fact(err: &ServiceError) -> (String, S
 /// 3) 是否立即触发下一步，由各自 shadow/stage 决定。
 pub(crate) async fn execute_resource_delegation(
     ctx: &'static Context,
+    pool: &ApiResourceDbPool,
     delegation: &ApiResourceDelegationEntity,
     rpc_purpose: &'static str,
 ) -> Result<String, ServiceError> {
@@ -112,7 +114,7 @@ pub(crate) async fn execute_resource_delegation(
         &delegation.chain_code,
         rpc_purpose,
         &delegation.resource_trade_no,
-        || execute_resource_delegation_once(ctx, delegation),
+        || execute_resource_delegation_once(ctx, pool, &delegation.resource_trade_no),
     )
     .await
 }
@@ -120,8 +122,13 @@ pub(crate) async fn execute_resource_delegation(
 // 资源任务执行内部实现：支持 Delegate / Undelegate 的 TRON 交易构建、签名与广播。
 async fn execute_resource_delegation_once(
     ctx: &'static Context,
-    delegation: &ApiResourceDelegationEntity,
+    pool: &ApiResourceDbPool,
+    resource_trade_no: &str,
 ) -> Result<String, ServiceError> {
+    let mut delegation =
+        ApiResourceDelegationRepo::get_by_resource_trade_no(pool, resource_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
     if !shared_mechanism::is_tron_chain(&delegation.chain_code) {
         return Err(ServiceError::Parameter(format!(
             "resource delegation only supports tron, got {}",
@@ -129,19 +136,93 @@ async fn execute_resource_delegation_once(
         )));
     }
 
-    let trx_amount = parse_resource_delegation_native_trx_units(&delegation.native_amount)?;
-    let resource = match delegation.resource_type {
-        ApiResourceType::Bandwidth => "bandwidth",
-        _ => "energy",
-    };
-    let chain = ChainAdapterFactory::get_tron_adapter(ctx).await?;
     let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
         ctx,
         &delegation.chain_code,
     )
     .await;
-    let signer = resolve_resource_delegation_signer(ctx, delegation).await?;
+    if delegation.raw_tx.is_none() && delegation.tx_hash.is_none() {
+        let (tx_hash, raw_tx) = build_signed_resource_delegation(ctx, &delegation).await?;
+        let raw_tx_json = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
+        let rows =
+            ApiResourceDelegationRepo::mark_built(pool, resource_trade_no, &tx_hash, &raw_tx_json)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if rows == 0 {
+            return Err(ServiceError::Database(wallet_database::Error::Database(
+                wallet_database::DatabaseError::UpdateFailed(format!(
+                    "resource delegation build fact conflict: trade_no={resource_trade_no}"
+                )),
+            )));
+        }
+        delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(pool, resource_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+    }
+    let tx_hash = delegation
+        .tx_hash
+        .as_deref()
+        .filter(|hash| !hash.trim().is_empty())
+        .ok_or_else(|| {
+            ServiceError::Parameter(format!(
+                "resource delegation persisted build is missing tx_hash: {resource_trade_no}"
+            ))
+        })?
+        .to_string();
+    let raw_tx_json =
+        delegation.raw_tx.as_deref().filter(|raw| !raw.trim().is_empty()).ok_or_else(|| {
+            ServiceError::Parameter(format!(
+                "resource delegation persisted build is missing raw_tx: {resource_trade_no}"
+            ))
+        })?;
+    let raw_tx = wallet_utils::serde_func::serde_from_str(raw_tx_json)?;
+    let tx_resp =
+        ApiTransDomain::broadcast_transfer(ctx, &delegation.chain_code, raw_tx, Some(&tx_hash))
+            .await?;
 
+    let response_tx_hash = tx_resp.as_ref().map(|tx| tx.tx_hash.as_str());
+    let resolved_tx_hash = resolve_resource_delegation_broadcast_hash(&tx_hash, response_tx_hash)?;
+    let marked =
+        ApiResourceDelegationRepo::mark_broadcasted(pool, resource_trade_no, &resolved_tx_hash)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+    if marked == 0 {
+        let refreshed =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(pool, resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if refreshed.tx_hash.as_deref() != Some(resolved_tx_hash.as_str())
+            || refreshed.last_broadcast_at.is_none()
+        {
+            return Err(ServiceError::Database(wallet_database::Error::Database(
+                wallet_database::DatabaseError::UpdateFailed(format!(
+                    "resource delegation broadcast fact conflict: trade_no={resource_trade_no}"
+                )),
+            )));
+        }
+    }
+    if tx_resp.is_none() {
+        tracing::info!(
+            resource_trade_no = %delegation.resource_trade_no,
+            tx_hash = %resolved_tx_hash,
+            "Resource delegation broadcast result uncertain; preserving signed hash for recovery"
+        );
+    }
+
+    Ok(resolved_tx_hash)
+}
+
+async fn build_signed_resource_delegation(
+    ctx: &'static Context,
+    delegation: &ApiResourceDelegationEntity,
+) -> Result<(String, crate::domain::api_wallet::adapter::tx::RawTx), ServiceError> {
+    let chain = ChainAdapterFactory::get_tron_adapter(ctx).await?;
+    let trx_amount = parse_resource_delegation_native_trx_units(&delegation.native_amount)?;
+    let resource = match delegation.resource_type {
+        ApiResourceType::Bandwidth => "bandwidth",
+        _ => "energy",
+    };
+    let signer = resolve_resource_delegation_signer(ctx, delegation).await?;
     let raw = match delegation.operation_type {
         ApiResourceDelegationOperationType::Delegate => {
             let args = new_tron_delegate_args(
@@ -164,23 +245,7 @@ async fn execute_resource_delegation_once(
             args.build_raw_transaction(chain.get_provider()).await?
         }
     };
-
-    let (tx_hash, raw_tx) = sign_tron_resource_delegation(ctx, delegation, &signer, raw).await?;
-    let tx_resp =
-        ApiTransDomain::broadcast_transfer(ctx, &delegation.chain_code, raw_tx, Some(&tx_hash))
-            .await?;
-
-    let response_tx_hash = tx_resp.as_ref().map(|tx| tx.tx_hash.as_str());
-    let resolved_tx_hash = resolve_resource_delegation_broadcast_hash(&tx_hash, response_tx_hash)?;
-    if tx_resp.is_none() {
-        tracing::info!(
-            resource_trade_no = %delegation.resource_trade_no,
-            tx_hash = %resolved_tx_hash,
-            "Resource delegation broadcast result uncertain; preserving signed hash for recovery"
-        );
-    }
-
-    Ok(resolved_tx_hash)
+    sign_tron_resource_delegation(ctx, delegation, &signer, raw).await
 }
 
 fn resolve_resource_delegation_broadcast_hash(

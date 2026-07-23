@@ -468,9 +468,20 @@ impl PlatformResourceDelegateWorker {
         );
 
         let claim_start = Instant::now();
-        let affected = ApiResourceDelegationRepo::claim_build_slot(&self.pool, &resource_trade_no)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
+        let existing = self.load_platform_delegate(&resource_trade_no).await?;
+        let built_unbroadcast = existing.raw_tx.is_some()
+            && existing.tx_hash.is_some()
+            && existing.last_broadcast_at.is_none();
+        if existing.last_broadcast_at.is_some() {
+            return Ok(());
+        }
+        let affected = if built_unbroadcast {
+            1
+        } else {
+            ApiResourceDelegationRepo::claim_build_slot(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?
+        };
         let claim_elapsed_ms = claim_start.elapsed().as_millis();
         if affected == 0 {
             info!(
@@ -511,42 +522,12 @@ impl PlatformResourceDelegateWorker {
         let execute_start = Instant::now();
         let tx_hash = execute_resource_delegation(
             crate::context::get_context()?,
+            &self.pool,
             &task,
             "platform_resource_delegate",
         )
         .await?;
         let execute_elapsed_ms = execute_start.elapsed().as_millis();
-        let mark_start = Instant::now();
-        let mut marked = ApiResourceDelegationRepo::mark_broadcast_success(
-            &self.pool,
-            &resource_trade_no,
-            &tx_hash,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-        if marked == 0 {
-            marked = ApiResourceDelegationRepo::reconcile_broadcast_pending(
-                &self.pool,
-                &resource_trade_no,
-                &tx_hash,
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
-        }
-        if marked == 0 {
-            let current = self.load_platform_delegate(&resource_trade_no).await?;
-            if current.tx_hash.as_deref() != Some(tx_hash.as_str()) {
-                error!(
-                    observability_event = "platform_resource_delegate_broadcast_fact_conflict",
-                    resource_trade_no = %resource_trade_no,
-                    executed_tx_hash = %tx_hash,
-                    persisted_tx_hash = ?current.tx_hash,
-                    source = "platform_resource_delegate",
-                    "Platform resource delegation broadcast fact was not persisted"
-                );
-            }
-        }
-        let mark_elapsed_ms = mark_start.elapsed().as_millis();
         if let Some(reservation) = capacity_reservation {
             reservation.release().await;
         }
@@ -559,7 +540,6 @@ impl PlatformResourceDelegateWorker {
             load_elapsed_ms = %load_elapsed_ms,
             capacity_elapsed_ms = %capacity_elapsed_ms,
             execute_elapsed_ms = %execute_elapsed_ms,
-            mark_elapsed_ms = %mark_elapsed_ms,
             total_elapsed_ms = %stage_start.elapsed().as_millis(),
             source = "platform_resource_delegate",
             "Platform resource delegation execute stage completed"
@@ -663,6 +643,10 @@ impl PlatformResourceDelegateWorker {
         let task = self.load_platform_delegate(&resource_trade_no).await?;
         if task.finished_at.is_some() || task.err_code.is_some() {
             return Ok(resource_chain_success(&task) || resource_chain_failed(&task));
+        }
+        if task.raw_tx.is_some() && task.tx_hash.is_some() && task.last_broadcast_at.is_none() {
+            self.process_execute(resource_trade_no).await?;
+            return Ok(false);
         }
         let Some(tx_hash) = task.tx_hash.as_deref().filter(|s| !s.trim().is_empty()) else {
             return Ok(false);

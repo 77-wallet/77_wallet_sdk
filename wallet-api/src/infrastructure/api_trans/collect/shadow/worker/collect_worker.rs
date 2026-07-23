@@ -919,17 +919,26 @@ impl ShadowCollectWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        if existing.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_some() {
+        let built_unbroadcast = existing.raw_tx.is_some()
+            && existing.tx_hash.is_some()
+            && existing.last_broadcast_at.is_none();
+        if existing.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_some()
+            && existing.last_broadcast_at.is_some()
+        {
             self.process_local_resource_delegation_recover(existing).await?;
             return Ok(());
         }
 
-        let affected = ApiResourceDelegationRepo::claim_build_slot(
-            &self.ctx.api_resource_pool()?,
-            &resource_trade_no,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
+        let affected = if built_unbroadcast {
+            1
+        } else {
+            ApiResourceDelegationRepo::claim_build_slot(
+                &self.ctx.api_resource_pool()?,
+                &resource_trade_no,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?
+        };
         if affected == 0 {
             info!(
                 resource_trade_no = %resource_trade_no,
@@ -946,7 +955,7 @@ impl ShadowCollectWorker {
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
 
-        if delegation.tx_hash.is_some() {
+        if delegation.tx_hash.is_some() && delegation.last_broadcast_at.is_some() {
             info!(
                 resource_trade_no = %resource_trade_no,
                 source = "shadow_worker_v2",
@@ -956,32 +965,19 @@ impl ShadowCollectWorker {
         }
 
         // 共享执行能力：仅完成资源代理任务广播，本体不关心 collect 阶段语义。
-        let tx_hash =
-            execute_resource_delegation(self.ctx, &delegation, "collect_resource_delegation")
-                .await?;
-        let affected = ApiResourceDelegationRepo::mark_broadcast_success(
+        let tx_hash = execute_resource_delegation(
+            self.ctx,
             &self.ctx.api_resource_pool()?,
-            &resource_trade_no,
-            &tx_hash,
+            &delegation,
+            "collect_resource_delegation",
         )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-
-        if affected == 0 {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                tx_hash = %tx_hash,
-                source = "shadow_worker_v2",
-                "Resource delegation broadcast fact was already committed"
-            );
-        } else {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                tx_hash = %tx_hash,
-                source = "shadow_worker_v2",
-                "Resource delegation broadcast fact committed"
-            );
-        }
+        .await?;
+        info!(
+            resource_trade_no = %resource_trade_no,
+            tx_hash = %tx_hash,
+            source = "shadow_worker_v2",
+            "Resource delegation broadcast fact committed"
+        );
 
         Ok(())
     }
@@ -990,6 +986,19 @@ impl ShadowCollectWorker {
         &self,
         delegation: ApiResourceDelegationEntity,
     ) -> Result<(), ServiceError> {
+        if delegation.raw_tx.is_some()
+            && delegation.tx_hash.is_some()
+            && delegation.last_broadcast_at.is_none()
+        {
+            execute_resource_delegation(
+                self.ctx,
+                &self.ctx.api_resource_pool()?,
+                &delegation,
+                "collect_resource_delegation",
+            )
+            .await?;
+            return Ok(());
+        }
         let Some(tx_hash) = delegation.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
         else {
             return Ok(());

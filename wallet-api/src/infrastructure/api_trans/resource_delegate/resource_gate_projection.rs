@@ -197,6 +197,7 @@ mod tests {
             building_at: None,
             last_broadcast_at: None,
             tx_hash: None,
+            raw_tx: None,
             chain_success_at: None,
             chain_failed_at: None,
             transaction_time: None,
