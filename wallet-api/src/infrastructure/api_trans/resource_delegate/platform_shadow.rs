@@ -1,10 +1,11 @@
 use std::{
-    sync::Arc,
+    collections::HashMap,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 
 use chrono::Utc;
-use tokio::sync::{Semaphore, broadcast, mpsc};
+use tokio::sync::{Mutex, Semaphore, broadcast, mpsc};
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiResourceDbPool, ApiTransactionDbPool,
@@ -17,6 +18,7 @@ use wallet_database::{
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
         },
+        api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
     },
     repositories::api_wallet::{
@@ -31,7 +33,7 @@ use wallet_utils::RetryableError as _;
 
 use crate::{
     context::CONTEXT,
-    domain::api_wallet::trans::ApiTransDomain,
+    domain::{api_wallet::trans::ApiTransDomain, chain::adapter::ChainAdapterFactory},
     error::service::ServiceError,
     infrastructure::{
         api_trans::{
@@ -40,6 +42,7 @@ use crate::{
                 merchant_original_resource_result_trans_type, platform_resource_result_ack_type,
                 platform_resource_task_trans_type,
             },
+            resource_amount::parse_resource_delegation_native_trx_units,
             resource_chain_facts::{
                 resource_chain_failed, resource_chain_success, resource_failure_receipt_uploadable,
                 resource_success_receipt_uploadable,
@@ -53,9 +56,86 @@ use crate::{
         runtime::time::new_production_interval,
     },
 };
+use wallet_chain_interact::tron::operations::stake::ResourceType as TronStakeResourceType;
 
 const RESOURCE_ACK_CLAIM_TTL_SECS: i64 = 60;
 const PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY: usize = 4;
+
+type PlatformCapacityReservations = HashMap<String, i64>;
+
+static PLATFORM_DELEGATION_CAPACITY_RESERVATIONS: OnceLock<Mutex<PlatformCapacityReservations>> =
+    OnceLock::new();
+
+fn platform_capacity_reservations() -> &'static Mutex<PlatformCapacityReservations> {
+    PLATFORM_DELEGATION_CAPACITY_RESERVATIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn platform_capacity_key(owner_address: &str, resource_type: ApiResourceType) -> String {
+    format!("{}:{}", owner_address, resource_type.as_i64())
+}
+
+fn can_reserve_platform_delegation_capacity(
+    available_native_amount: i64,
+    reserved_native_amount: i64,
+    required_native_amount: i64,
+) -> bool {
+    required_native_amount > 0
+        && available_native_amount.saturating_sub(reserved_native_amount) >= required_native_amount
+}
+
+fn reserve_platform_delegation_capacity(
+    reservations: &mut PlatformCapacityReservations,
+    key: &str,
+    available_native_amount: i64,
+    required_native_amount: i64,
+) -> bool {
+    let reserved_native_amount = reservations.get(key).copied().unwrap_or_default();
+    if !can_reserve_platform_delegation_capacity(
+        available_native_amount,
+        reserved_native_amount,
+        required_native_amount,
+    ) {
+        return false;
+    }
+
+    reservations.insert(key.to_string(), reserved_native_amount + required_native_amount);
+    true
+}
+
+fn release_platform_delegation_capacity_reservation(key: &str, reserved_native_amount: i64) {
+    let key = key.to_string();
+    tokio::spawn(async move {
+        let mut reservations = platform_capacity_reservations().lock().await;
+        let Some(current) = reservations.get_mut(&key) else {
+            return;
+        };
+        *current = current.saturating_sub(reserved_native_amount);
+        if *current == 0 {
+            reservations.remove(&key);
+        }
+    });
+}
+
+#[derive(Debug)]
+struct PlatformDelegationCapacityReservation {
+    key: String,
+    native_amount: i64,
+    committed: bool,
+}
+
+impl PlatformDelegationCapacityReservation {
+    fn commit(mut self) {
+        self.committed = true;
+    }
+}
+
+impl Drop for PlatformDelegationCapacityReservation {
+    fn drop(&mut self) {
+        if !self.committed {
+            release_platform_delegation_capacity_reservation(&self.key, self.native_amount);
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlatformResourceDelegateIntent {
@@ -417,6 +497,10 @@ impl PlatformResourceDelegateWorker {
         let task = self.load_platform_delegate(&resource_trade_no).await?;
         let load_elapsed_ms = load_start.elapsed().as_millis();
 
+        let capacity_start = Instant::now();
+        let capacity_reservation = self.reserve_delegate_capacity_if_needed(&task).await?;
+        let capacity_elapsed_ms = capacity_start.elapsed().as_millis();
+
         let execute_start = Instant::now();
         let tx_hash = execute_resource_delegation(
             crate::context::get_context()?,
@@ -425,6 +509,9 @@ impl PlatformResourceDelegateWorker {
         )
         .await?;
         let execute_elapsed_ms = execute_start.elapsed().as_millis();
+        if let Some(reservation) = capacity_reservation {
+            reservation.commit();
+        }
 
         let mark_start = Instant::now();
         ApiResourceDelegationRepo::mark_broadcast_success(&self.pool, &resource_trade_no, &tx_hash)
@@ -438,6 +525,7 @@ impl PlatformResourceDelegateWorker {
             tx_hash = %tx_hash,
             claim_elapsed_ms = %claim_elapsed_ms,
             load_elapsed_ms = %load_elapsed_ms,
+            capacity_elapsed_ms = %capacity_elapsed_ms,
             execute_elapsed_ms = %execute_elapsed_ms,
             mark_elapsed_ms = %mark_elapsed_ms,
             total_elapsed_ms = %stage_start.elapsed().as_millis(),
@@ -445,6 +533,76 @@ impl PlatformResourceDelegateWorker {
             "Platform resource delegation execute stage completed"
         );
         Ok(())
+    }
+
+    async fn reserve_delegate_capacity_if_needed(
+        &self,
+        task: &ApiResourceDelegationEntity,
+    ) -> Result<Option<PlatformDelegationCapacityReservation>, ServiceError> {
+        if task.operation_type != ApiResourceDelegationOperationType::Delegate {
+            return Ok(None);
+        }
+
+        let required_native_amount =
+            parse_resource_delegation_native_trx_units(&task.native_amount)?;
+        let tron_resource_type = match task.resource_type {
+            ApiResourceType::Bandwidth => TronStakeResourceType::BANDWIDTH,
+            ApiResourceType::Energy => TronStakeResourceType::ENERGY,
+        };
+        let key = platform_capacity_key(&task.owner_address, task.resource_type);
+
+        let mut reservations = platform_capacity_reservations().lock().await;
+        let chain = ChainAdapterFactory::get_tron_adapter(crate::context::get_context()?).await?;
+        let available_native_amount = chain
+            .get_provider()
+            .can_delegate_resource(&task.owner_address, tron_resource_type)
+            .await?
+            .to_sun();
+        let reserved_native_amount = reservations.get(&key).copied().unwrap_or_default();
+
+        if !reserve_platform_delegation_capacity(
+            &mut reservations,
+            &key,
+            available_native_amount,
+            required_native_amount,
+        ) {
+            warn!(
+                observability_event = "platform_resource_delegate_capacity_insufficient",
+                resource_trade_no = %task.resource_trade_no,
+                owner_address = %task.owner_address,
+                receiver_address = %task.receiver_address,
+                resource_type = ?task.resource_type,
+                required_native_amount = %required_native_amount,
+                available_native_amount = %available_native_amount,
+                reserved_native_amount = %reserved_native_amount,
+                source = "platform_resource_delegate",
+                "Platform resource delegation capacity is insufficient before broadcast"
+            );
+            return Err(ServiceError::Parameter(format!(
+                "platform resource delegation capacity insufficient: required={}, available={}, reserved={}",
+                required_native_amount, available_native_amount, reserved_native_amount
+            )));
+        }
+
+        info!(
+            observability_event = "platform_resource_delegate_capacity_reserved",
+            resource_trade_no = %task.resource_trade_no,
+            owner_address = %task.owner_address,
+            receiver_address = %task.receiver_address,
+            resource_type = ?task.resource_type,
+            required_native_amount = %required_native_amount,
+            available_native_amount = %available_native_amount,
+            reserved_native_amount_before = %reserved_native_amount,
+            reserved_native_amount_after = %(reserved_native_amount + required_native_amount),
+            source = "platform_resource_delegate",
+            "Platform resource delegation capacity reserved"
+        );
+
+        Ok(Some(PlatformDelegationCapacityReservation {
+            key,
+            native_amount: required_native_amount,
+            committed: false,
+        }))
     }
 
     async fn process_recover(&self, resource_trade_no: String) -> Result<bool, ServiceError> {
@@ -1055,7 +1213,10 @@ pub async fn scan_and_process_once(
 
 #[cfg(test)]
 mod tests {
-    use super::{PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY, PlatformResourceDelegateIntent};
+    use super::{
+        PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY, PlatformCapacityReservations,
+        PlatformResourceDelegateIntent, reserve_platform_delegation_capacity,
+    };
 
     #[test]
     fn platform_resource_delegate_intent_chains_success_stages() {
@@ -1098,5 +1259,16 @@ mod tests {
     fn platform_resource_delegate_default_concurrency_is_parallel_but_bounded() {
         assert!(PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY > 1);
         assert!(PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY <= 32);
+    }
+
+    #[test]
+    fn platform_resource_delegate_capacity_reservation_blocks_oversubscription() {
+        let mut reservations = PlatformCapacityReservations::new();
+        let key = "TY9:1";
+
+        assert!(reserve_platform_delegation_capacity(&mut reservations, key, 500, 199));
+        assert!(reserve_platform_delegation_capacity(&mut reservations, key, 500, 199));
+        assert!(!reserve_platform_delegation_capacity(&mut reservations, key, 500, 199));
+        assert_eq!(reservations.get(key).copied(), Some(398));
     }
 }
