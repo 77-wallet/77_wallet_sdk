@@ -197,6 +197,20 @@ impl Handles {
         Ok(())
     }
 
+    pub(crate) async fn trigger_platform_resource_delegation(
+        &self,
+        resource_trade_no: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let platform_resource_delegate_shadow = self.platform_resource_delegate_shadow.lock().await;
+        if let Some(platform_resource_delegate_shadow) = platform_resource_delegate_shadow.as_ref()
+        {
+            platform_resource_delegate_shadow
+                .trigger_platform_delegation(resource_trade_no)
+                .await?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn get_global_task_manager(&self) -> Arc<TaskManager> {
         self.task_manager.clone()
     }

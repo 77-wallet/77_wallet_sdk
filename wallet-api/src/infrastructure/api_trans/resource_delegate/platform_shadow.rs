@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{Semaphore, broadcast, mpsc};
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiResourceDbPool, ApiTransactionDbPool,
@@ -52,14 +52,35 @@ use crate::{
 };
 
 const RESOURCE_ACK_CLAIM_TTL_SECS: i64 = 60;
+const PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY: usize = 4;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlatformResourceDelegateIntent {
     SendPlatformDelegationTaskAck(String),
     ExecutePlatformDelegation(String),
     RecoverPlatformDelegation(String),
     UploadPlatformDelegationTxExecReceipt(String),
     SendPlatformDelegationResultAck(String),
+}
+
+impl PlatformResourceDelegateIntent {
+    fn next_after_success(&self) -> Option<Self> {
+        match self {
+            Self::SendPlatformDelegationTaskAck(trade_no) => {
+                Some(Self::ExecutePlatformDelegation(trade_no.clone()))
+            }
+            Self::ExecutePlatformDelegation(trade_no) => {
+                Some(Self::RecoverPlatformDelegation(trade_no.clone()))
+            }
+            Self::RecoverPlatformDelegation(trade_no) => {
+                Some(Self::UploadPlatformDelegationTxExecReceipt(trade_no.clone()))
+            }
+            Self::UploadPlatformDelegationTxExecReceipt(trade_no) => {
+                Some(Self::SendPlatformDelegationResultAck(trade_no.clone()))
+            }
+            Self::SendPlatformDelegationResultAck(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -293,23 +314,38 @@ impl PlatformResourceDelegateWorker {
             .to_string()
     }
 
-    pub async fn handle(&self, intent: PlatformResourceDelegateIntent) -> Result<(), ServiceError> {
+    pub async fn handle(
+        &self,
+        intent: PlatformResourceDelegateIntent,
+    ) -> Result<Option<PlatformResourceDelegateIntent>, ServiceError> {
         match intent {
             PlatformResourceDelegateIntent::SendPlatformDelegationTaskAck(trade_no) => {
-                self.process_task_ack(trade_no).await
+                self.process_task_ack(trade_no.clone()).await?;
+                Ok(PlatformResourceDelegateIntent::SendPlatformDelegationTaskAck(trade_no)
+                    .next_after_success())
             }
             PlatformResourceDelegateIntent::ExecutePlatformDelegation(trade_no) => {
                 let result = self.process_execute(trade_no.clone()).await;
-                self.handle_execute_failure_if_needed(&trade_no, result).await
+                self.handle_execute_failure_if_needed(&trade_no, result).await?;
+                Ok(PlatformResourceDelegateIntent::ExecutePlatformDelegation(trade_no)
+                    .next_after_success())
             }
             PlatformResourceDelegateIntent::RecoverPlatformDelegation(trade_no) => {
-                self.process_recover(trade_no).await
+                if self.process_recover(trade_no.clone()).await? {
+                    Ok(PlatformResourceDelegateIntent::RecoverPlatformDelegation(trade_no)
+                        .next_after_success())
+                } else {
+                    Ok(None)
+                }
             }
             PlatformResourceDelegateIntent::UploadPlatformDelegationTxExecReceipt(trade_no) => {
-                self.process_receipt_upload(trade_no).await
+                self.process_receipt_upload(trade_no.clone()).await?;
+                Ok(PlatformResourceDelegateIntent::UploadPlatformDelegationTxExecReceipt(trade_no)
+                    .next_after_success())
             }
             PlatformResourceDelegateIntent::SendPlatformDelegationResultAck(trade_no) => {
-                self.process_result_ack(trade_no).await
+                self.process_result_ack(trade_no).await?;
+                Ok(None)
             }
         }
     }
@@ -368,13 +404,13 @@ impl PlatformResourceDelegateWorker {
         Ok(())
     }
 
-    async fn process_recover(&self, resource_trade_no: String) -> Result<(), ServiceError> {
+    async fn process_recover(&self, resource_trade_no: String) -> Result<bool, ServiceError> {
         let task = self.load_platform_delegate(&resource_trade_no).await?;
         if task.result_received_at.is_some() || task.err_code.is_some() {
-            return Ok(());
+            return Ok(resource_chain_success(&task) || resource_chain_failed(&task));
         }
         let Some(tx_hash) = task.tx_hash.as_deref().filter(|s| !s.trim().is_empty()) else {
-            return Ok(());
+            return Ok(false);
         };
         match ApiTransDomain::process_recovered_tx(
             crate::context::get_context()?,
@@ -412,7 +448,7 @@ impl PlatformResourceDelegateWorker {
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
-                Ok(())
+                Ok(true)
             }
             Ok(None) => {
                 let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
@@ -422,11 +458,14 @@ impl PlatformResourceDelegateWorker {
                 )
                 .await?;
                 if rebroadcast {
-                    return Ok(());
+                    return Ok(false);
                 }
-                Ok(())
+                Ok(false)
             }
-            Err(err) => self.schedule_retry(&resource_trade_no, &err).await,
+            Err(err) => {
+                self.schedule_retry(&resource_trade_no, &err).await?;
+                Ok(false)
+            }
         }
     }
 
@@ -769,29 +808,64 @@ impl PlatformResourceDelegateWorker {
 
 pub struct PlatformResourceDelegateDispatcherActor {
     worker: PlatformResourceDelegateWorker,
+    intent_tx: mpsc::Sender<PlatformResourceDelegateIntent>,
     intent_rx: mpsc::Receiver<PlatformResourceDelegateIntent>,
     shutdown_rx: broadcast::Receiver<()>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl PlatformResourceDelegateDispatcherActor {
     pub fn new(
         worker: PlatformResourceDelegateWorker,
+        intent_tx: mpsc::Sender<PlatformResourceDelegateIntent>,
         intent_rx: mpsc::Receiver<PlatformResourceDelegateIntent>,
         shutdown_rx: broadcast::Receiver<()>,
     ) -> Self {
-        Self { worker, intent_rx, shutdown_rx }
+        let concurrency = shadow_rpc_policy::read_u64_env(
+            "PLATFORM_RESOURCE_DELEGATE_SHADOW_CONCURRENCY",
+            PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY as u64,
+            1,
+            32,
+        ) as usize;
+        Self {
+            worker,
+            intent_tx,
+            intent_rx,
+            shutdown_rx,
+            semaphore: Arc::new(Semaphore::new(concurrency)),
+        }
     }
 
     pub async fn run(mut self) {
         crate::infrastructure::system_ready::wait_system_ready().await;
-        info!("Platform resource delegate shadow dispatcher actor running");
+        info!(
+            concurrency = self.semaphore.available_permits(),
+            "Platform resource delegate shadow dispatcher actor running"
+        );
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => break,
                 Some(intent) = self.intent_rx.recv() => {
-                    if let Err(e) = self.worker.handle(intent).await {
-                        error!(error = %e, "Failed to handle platform resource delegate intent");
-                    }
+                    let Ok(permit) = self.semaphore.clone().acquire_owned().await else {
+                        error!("Platform resource delegate dispatcher semaphore closed");
+                        break;
+                    };
+                    let worker = self.worker.clone();
+                    tokio::spawn(async move {
+                        let _permit = permit;
+                        let mut current = Some(intent);
+                        while let Some(intent) = current {
+                            match worker.handle(intent).await {
+                                Ok(next_intent) => {
+                                    current = next_intent;
+                                }
+                                Err(e) => {
+                                    error!(error = %e, "Failed to handle platform resource delegate intent");
+                                    break;
+                                }
+                            }
+                        };
+                    });
                 }
                 else => break,
             }
@@ -803,6 +877,7 @@ impl PlatformResourceDelegateDispatcherActor {
 #[derive(Debug)]
 pub struct PlatformResourceDelegateShadowActorSystem {
     shutdown_tx: broadcast::Sender<()>,
+    intent_tx: mpsc::Sender<PlatformResourceDelegateIntent>,
     scanner_handle: Option<tokio::task::JoinHandle<()>>,
     dispatcher_handle: Option<tokio::task::JoinHandle<()>>,
 }
@@ -827,16 +902,36 @@ impl PlatformResourceDelegateShadowActorSystem {
         });
 
         let scanner_actor =
-            PlatformResourceDelegateScannerActor::new(scanner, intent_tx, shutdown_rx1);
+            PlatformResourceDelegateScannerActor::new(scanner, intent_tx.clone(), shutdown_rx1);
         let scanner_handle = Some(tokio::spawn(async move {
             scanner_actor.run().await;
         }));
-        let dispatcher_actor =
-            PlatformResourceDelegateDispatcherActor::new(worker, intent_rx, shutdown_rx2);
+        let dispatcher_actor = PlatformResourceDelegateDispatcherActor::new(
+            worker,
+            intent_tx.clone(),
+            intent_rx,
+            shutdown_rx2,
+        );
         let dispatcher_handle = Some(tokio::spawn(async move {
             dispatcher_actor.run().await;
         }));
-        Self { shutdown_tx, scanner_handle, dispatcher_handle }
+        Self { shutdown_tx, intent_tx, scanner_handle, dispatcher_handle }
+    }
+
+    pub async fn trigger_platform_delegation(
+        &self,
+        resource_trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        self.intent_tx
+            .send(PlatformResourceDelegateIntent::SendPlatformDelegationTaskAck(
+                resource_trade_no.to_string(),
+            ))
+            .await
+            .map_err(|e| {
+                ServiceError::System(crate::error::system::SystemError::Internal(format!(
+                    "platform resource delegate intent channel closed: {e}"
+                )))
+            })
     }
 
     pub async fn stop(&mut self) {
@@ -873,4 +968,52 @@ pub async fn scan_and_process_once(
         worker.handle(intent).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY, PlatformResourceDelegateIntent};
+
+    #[test]
+    fn platform_resource_delegate_intent_chains_success_stages() {
+        let trade_no = "WD_RSC_FAST_WAKE";
+
+        assert_eq!(
+            PlatformResourceDelegateIntent::SendPlatformDelegationTaskAck(trade_no.to_string())
+                .next_after_success(),
+            Some(PlatformResourceDelegateIntent::ExecutePlatformDelegation(trade_no.to_string()))
+        );
+        assert_eq!(
+            PlatformResourceDelegateIntent::ExecutePlatformDelegation(trade_no.to_string())
+                .next_after_success(),
+            Some(PlatformResourceDelegateIntent::RecoverPlatformDelegation(trade_no.to_string()))
+        );
+        assert_eq!(
+            PlatformResourceDelegateIntent::RecoverPlatformDelegation(trade_no.to_string())
+                .next_after_success(),
+            Some(PlatformResourceDelegateIntent::UploadPlatformDelegationTxExecReceipt(
+                trade_no.to_string()
+            ))
+        );
+        assert_eq!(
+            PlatformResourceDelegateIntent::UploadPlatformDelegationTxExecReceipt(
+                trade_no.to_string()
+            )
+            .next_after_success(),
+            Some(PlatformResourceDelegateIntent::SendPlatformDelegationResultAck(
+                trade_no.to_string()
+            ))
+        );
+        assert_eq!(
+            PlatformResourceDelegateIntent::SendPlatformDelegationResultAck(trade_no.to_string())
+                .next_after_success(),
+            None
+        );
+    }
+
+    #[test]
+    fn platform_resource_delegate_default_concurrency_is_parallel_but_bounded() {
+        assert!(PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY > 1);
+        assert!(PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY <= 32);
+    }
 }

@@ -319,6 +319,28 @@ impl AwmResourceDelegationMsg {
 
         let pool = ctx.api_resource_pool()?;
         ApiResourceDelegationRepo::upsert(&pool, req).await?;
+        if operation_type == ApiResourceDelegationOperationType::Delegate {
+            match ctx.get_handles_arc().await {
+                Ok(handles) => {
+                    if let Err(error) =
+                        handles.trigger_platform_resource_delegation(&self.trade_no).await
+                    {
+                        tracing::warn!(
+                            trade_no = %self.trade_no,
+                            %error,
+                            "平台资源代理任务快速通道触发失败，将等待扫描兜底"
+                        );
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        trade_no = %self.trade_no,
+                        %error,
+                        "平台资源代理任务无法获取 handles，将等待扫描兜底"
+                    );
+                }
+            }
+        }
         tracing::info!(
             trade_no = %self.trade_no,
             uid = %self.uid,
@@ -327,7 +349,8 @@ impl AwmResourceDelegationMsg {
             mode = %self.mode,
             permission_id = ?self.permission_id,
             operation_type = ?operation_type,
-            "平台资源代理/回收任务已落库，等待任务 ACK 扫描"
+            fast_wakeup = operation_type == ApiResourceDelegationOperationType::Delegate,
+            "平台资源代理/回收任务已落库"
         );
         Ok(())
     }

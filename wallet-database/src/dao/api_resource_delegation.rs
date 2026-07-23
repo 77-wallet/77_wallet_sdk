@@ -103,6 +103,8 @@ impl ApiResourceDelegationDao {
             r#"
             UPDATE api_resource_delegation
             SET task_ack_sent_at = COALESCE(task_ack_sent_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                next_retry_at = NULL,
+                recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
               AND task_ack_sent_at IS NULL
@@ -213,6 +215,7 @@ impl ApiResourceDelegationDao {
             WHERE source = 1
               AND operation_type = 1
               AND origin_trade_type = ?
+              AND origin_trade_no = resource_trade_no
               AND result_received_at IS NOT NULL
               AND result_payload IS NOT NULL
               AND tx_res_received_at IS NOT NULL
@@ -402,7 +405,11 @@ impl ApiResourceDelegationDao {
               AND result_received_at IS NULL
               AND err_code IS NULL
               {ack_clause}
-              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+              AND (
+                    recover_status IS NULL
+                    OR next_retry_at IS NULL
+                    OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                  )
               AND (
                     building_at IS NULL
                     OR datetime(building_at) <= datetime('now', '-5 minutes')
@@ -543,10 +550,14 @@ impl ApiResourceDelegationDao {
               AND (
                     source = 2
                     OR task_ack_sent_at IS NOT NULL
-                  )
+              )
               AND result_received_at IS NULL
               AND err_code IS NULL
-              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+              AND (
+                    recover_status IS NULL
+                    OR next_retry_at IS NULL
+                    OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                  )
               AND (
                     building_at IS NULL
                     OR datetime(building_at) <= datetime('now', '-5 minutes')

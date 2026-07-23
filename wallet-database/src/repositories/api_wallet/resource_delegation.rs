@@ -1049,6 +1049,78 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resource_delegation_task_ack_releases_build_claim_cooldown() {
+        let pool = setup_api_resource_pool("resource_delegation_ack_releases_claim").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_ack_execute",
+                "origin_ack_execute",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+
+        let claim_until = (chrono::Utc::now() + chrono::Duration::seconds(60))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_task_ack(&pool, "rsc_ack_execute", &claim_until)
+                .await
+                .unwrap(),
+            1
+        );
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_ack_execute").await.unwrap();
+
+        let acked = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_ack_execute")
+            .await
+            .unwrap();
+        assert!(acked.next_retry_at.is_none());
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_ack_execute").await.unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_retry_cooldown_still_blocks_build_claim() {
+        let pool = setup_api_resource_pool("resource_delegation_retry_blocks_build").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_retry_execute",
+                "origin_retry_execute",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_retry_execute").await.unwrap();
+        ApiResourceDelegationRepo::reset_for_retry(
+            &pool,
+            "rsc_retry_execute",
+            ApiResourceDelegationRecoverStatus::RetryBuild,
+            "2099-01-01T00:00:00Z",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_retry_execute").await.unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
     async fn resource_delegation_local_build_slot_claim_skips_task_ack_gate() {
         let pool = setup_api_resource_pool("resource_delegation_local_build_claim").await;
         ApiResourceDelegationRepo::upsert(
@@ -1824,6 +1896,69 @@ mod tests {
         let result_ack_rows =
             ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
         assert!(!result_ack_rows.iter().any(|row| row.resource_trade_no == "C_origin"));
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_origin_result_ack_scan_skips_platform_tasks() {
+        let pool =
+            setup_api_resource_pool("resource_delegation_origin_ack_skips_platform_task").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid_1",
+                "WD_platform_task",
+                ApiTradeType::Withdraw,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "owner",
+                "receiver",
+                ApiResourceType::Energy,
+                "1",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_backend_result_received(
+            &pool,
+            "WD_platform_task",
+            ApiResourceDelegationResultStatus::Success,
+            Some(0),
+            None,
+            None,
+            Some(r#"{"tradeNo":"WD_platform_task","status":true}"#),
+        )
+        .await
+        .unwrap();
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "W_origin_result",
+                "W_origin_result",
+                ApiTradeType::Withdraw as i64,
+                "",
+                "",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            Some(r#"{"tradeNo":"W_origin_result","status":true}"#),
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
+            &pool,
+            ApiTradeType::Withdraw as i64,
+            100,
+        )
+        .await
+        .unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+
+        assert_eq!(trade_nos, vec!["W_origin_result".to_string()]);
     }
 
     #[tokio::test]

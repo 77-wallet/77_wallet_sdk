@@ -555,17 +555,16 @@ impl ShadowScanner {
             ("need_recover", self.scan_need_recover().await),
             ("need_tx_exec_receipt_upload", self.scan_need_tx_exec_receipt_upload().await),
             ("confirmed_need_tx_res_ack", self.scan_confirmed_need_tx_res_ack().await),
-            ("need_resource_task_ack", self.scan_need_resource_task_ack().await),
-            ("can_resource_delegation_execute", self.scan_can_resource_delegation_execute().await),
-            (
-                "need_resource_tx_exec_receipt_upload",
-                self.scan_need_resource_tx_exec_receipt_upload().await,
-            ),
         ] {
             if let Err(error) = result {
                 error!(stage, %error, "Withdraw shadow scan stage failed");
             }
         }
+
+        // Withdraw shadow only owns the original-order resource result ACK.
+        // Platform Delegate resource tasks are handled by
+        // resource_delegate::platform_shadow; scanning them here would race the
+        // platform resource state machine and delay fast-path execution.
 
         trace!("Withdraw shadow scan round completed in {:?}", start.elapsed());
     }
