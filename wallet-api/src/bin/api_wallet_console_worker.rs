@@ -302,6 +302,12 @@ async fn handle_command(
                 Err(err) => emit(&WorkerEvent::Failed { error: err.to_string() }),
             }
         }
+        ConsoleCommand::CleanupResidualTronEnergy { template_resource_trade_no } => {
+            let result = cleanup_residual_tron_energy(&template_resource_trade_no)
+                .await
+                .map_err(|err| err.to_string());
+            emit(&WorkerEvent::MaintenanceCleanupFinished { result });
+        }
         ConsoleCommand::LoadTransferTargets { chain_code, sub_wallet_address } => {
             let res = wallet_manager
                 .list_api_wallet_account(
@@ -337,6 +343,15 @@ async fn handle_command(
             }
         }
     }
+}
+
+async fn cleanup_residual_tron_energy(
+    template_resource_trade_no: &str,
+) -> Result<(i64, String), wallet_api::error::service::ServiceError> {
+    wallet_api::infrastructure::api_trans::maintenance_reclaim_residual_tron_energy(
+        template_resource_trade_no,
+    )
+    .await
 }
 
 async fn set_chain_node_by_rpc_url(

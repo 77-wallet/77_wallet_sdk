@@ -273,6 +273,17 @@ impl ApiWalletConsoleApp {
         self.send_command_to_selected(ConsoleCommand::DiagnoseTrade { trade_no });
     }
 
+    pub(crate) fn cleanup_residual_tron_energy_for_selected_client(&mut self) {
+        let template_resource_trade_no = self.diagnostic_trade_no.trim().to_string();
+        if template_resource_trade_no.is_empty() {
+            self.append_log("Enter a failed WR resource trade number first");
+            return;
+        }
+        self.send_command_to_selected(ConsoleCommand::CleanupResidualTronEnergy {
+            template_resource_trade_no,
+        });
+    }
+
     pub(crate) fn fetch_pending_withdraw_orders_for_selected_client(&mut self) {
         let withdrawal_uid = self.bind_form.withdrawal_uid();
         if withdrawal_uid.is_empty() {
@@ -689,6 +700,23 @@ impl ApiWalletConsoleApp {
                 ));
                 self.trade_diagnostics = Some(diagnostics);
                 self.observe_tab = ObserveTab::Diagnostics;
+                self.is_busy = false;
+            }
+            ConsoleEvent::MaintenanceCleanupFinished { client_id, result } => {
+                let client_name = self
+                    .clients
+                    .iter()
+                    .find(|client| client.id == client_id)
+                    .map(|client| client.name.clone())
+                    .unwrap_or_else(|| "client".to_string());
+                match result {
+                    Ok((amount, tx_hash)) => self.append_log(format!(
+                        "{client_name}: residual Energy cleanup broadcast: amount={amount} TRX hash={tx_hash}"
+                    )),
+                    Err(error) => self.append_log(format!(
+                        "{client_name}: residual Energy cleanup failed: {error}"
+                    )),
+                }
                 self.is_busy = false;
             }
             ConsoleEvent::LoadedTargets { client_id, targets } => {

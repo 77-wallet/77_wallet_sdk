@@ -387,6 +387,51 @@ impl PlatformResourceReclaimWorker {
     pub fn new(ctx: &'static crate::context::Context) -> Self {
         Self { ctx }
     }
+
+    pub async fn maintenance_reclaim_residual_energy(
+        &self,
+        template_resource_trade_no: &str,
+    ) -> Result<(i64, String), ServiceError> {
+        let mut template = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_resource_pool()?,
+            template_resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if template.source != ApiResourceDelegationSource::Platform
+            || template.operation_type != ApiResourceDelegationOperationType::Undelegate
+            || template.resource_type != ApiResourceType::Energy
+        {
+            return Err(ServiceError::Parameter(
+                "maintenance cleanup requires a platform TRON Energy reclaim record".to_string(),
+            ));
+        }
+
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(self.ctx).await?;
+        let delegated = chain
+            .get_provider()
+            .delegated_resource(&template.owner_address, &template.receiver_address)
+            .await?;
+        let delegated_sun =
+            delegated.delegated_resource.iter().map(|item| item.frozen_balance_for_energy).sum();
+        let delegated_trx = maintenance_energy_trx_units(delegated_sun)?;
+
+        template.native_amount = delegated_trx.to_string();
+        template.resource_trade_no = format!("maintenance_residual_{template_resource_trade_no}");
+
+        info!(
+            template_resource_trade_no,
+            owner_address = %template.owner_address,
+            receiver_address = %template.receiver_address,
+            delegated_trx,
+            source = "platform_resource_reclaim_maintenance",
+            "Executing residual platform Energy cleanup"
+        );
+        let tx_hash = self.execute_tron_platform_undelegation(&template).await?;
+        Ok((delegated_trx, tx_hash))
+    }
+
     pub async fn handle(&self, intent: PlatformResourceReclaimIntent) -> Result<(), ServiceError> {
         match intent {
             PlatformResourceReclaimIntent::SendPlatformUndelegationTaskAck(resource_trade_no) => {
@@ -1099,6 +1144,22 @@ impl PlatformResourceReclaimWorker {
     }
 }
 
+fn maintenance_energy_trx_units(delegated_sun: i64) -> Result<i64, ServiceError> {
+    const SUN_PER_TRX: i64 = 1_000_000;
+
+    if delegated_sun <= 0 {
+        return Err(ServiceError::Parameter(
+            "no residual delegated Energy exists on chain".to_string(),
+        ));
+    }
+    if delegated_sun % SUN_PER_TRX != 0 {
+        return Err(ServiceError::Parameter(format!(
+            "residual delegated Energy is not a whole TRX amount: {delegated_sun} SUN"
+        )));
+    }
+    Ok(delegated_sun / SUN_PER_TRX)
+}
+
 pub struct PlatformResourceReclaimDispatcherActor {
     worker: PlatformResourceReclaimWorker,
     intent_rx: mpsc::Receiver<PlatformResourceReclaimIntent>,
@@ -1241,6 +1302,13 @@ mod tests {
 
     async fn test_ctx() -> &'static crate::context::Context {
         crate::testkit::context::api_trans_test_ctx().await
+    }
+
+    #[test]
+    fn maintenance_energy_amount_uses_exact_whole_trx_chain_balance() {
+        assert_eq!(maintenance_energy_trx_units(3_145_000_000).expect("amount"), 3_145);
+        assert!(maintenance_energy_trx_units(0).is_err());
+        assert!(maintenance_energy_trx_units(3_145_000_001).is_err());
     }
 
     #[tokio::test]

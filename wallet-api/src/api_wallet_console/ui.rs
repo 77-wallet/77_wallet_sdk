@@ -305,6 +305,14 @@ fn draw_operations_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                     app.diagnose_trade_for_selected_client();
                 }
             });
+            ui.add_space(6.0);
+            if ui
+                .add_enabled(client_ready && !app.is_busy, egui::Button::new("清理链上残留 Energy"))
+                .on_hover_text("使用输入的失败 WR 单作为地址和签名模板，按链上实际余额全部回收")
+                .clicked()
+            {
+                app.cleanup_residual_tron_energy_for_selected_client();
+            }
         });
     });
 

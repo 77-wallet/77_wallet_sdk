@@ -170,18 +170,29 @@ async fn execute_resource_delegation_once(
         ApiTransDomain::broadcast_transfer(ctx, &delegation.chain_code, raw_tx, Some(&tx_hash))
             .await?;
 
-    let Some(tx) = tx_resp else {
-        return Err(ServiceError::Parameter(
-            "resource delegation broadcast result uncertain".to_string(),
-        ));
-    };
-    if tx.tx_hash != tx_hash {
+    let response_tx_hash = tx_resp.as_ref().map(|tx| tx.tx_hash.as_str());
+    let resolved_tx_hash = resolve_resource_delegation_broadcast_hash(&tx_hash, response_tx_hash)?;
+    if tx_resp.is_none() {
+        tracing::info!(
+            resource_trade_no = %delegation.resource_trade_no,
+            tx_hash = %resolved_tx_hash,
+            "Resource delegation broadcast result uncertain; preserving signed hash for recovery"
+        );
+    }
+
+    Ok(resolved_tx_hash)
+}
+
+fn resolve_resource_delegation_broadcast_hash(
+    signed_tx_hash: &str,
+    response_tx_hash: Option<&str>,
+) -> Result<String, ServiceError> {
+    if response_tx_hash.is_some_and(|response| response != signed_tx_hash) {
         return Err(ServiceError::System(SystemError::Internal(
             "resource delegation tx_hash mismatch between build and broadcast".to_string(),
         )));
     }
-
-    Ok(tx_hash)
+    Ok(signed_tx_hash.to_string())
 }
 
 async fn sign_tron_resource_delegation(
@@ -222,7 +233,10 @@ async fn sign_tron_resource_delegation(
 
 #[cfg(test)]
 mod tests {
-    use super::{resource_delegation_failure_fact, resource_delegation_retry_wait_secs};
+    use super::{
+        resolve_resource_delegation_broadcast_hash, resource_delegation_failure_fact,
+        resource_delegation_retry_wait_secs,
+    };
     use crate::error::service::ServiceError;
 
     #[test]
@@ -242,5 +256,22 @@ mod tests {
         let (code, msg) = resource_delegation_failure_fact(&err);
         assert_eq!(code, "ERR_6008");
         assert_eq!(msg, "parameter error: test-business-error");
+    }
+
+    #[test]
+    fn uncertain_broadcast_preserves_signed_hash_for_recovery() {
+        let hash = resolve_resource_delegation_broadcast_hash("signed-hash", None)
+            .expect("uncertain broadcast keeps deterministic hash");
+
+        assert_eq!(hash, "signed-hash");
+    }
+
+    #[test]
+    fn explicit_broadcast_hash_mismatch_fails() {
+        let error =
+            resolve_resource_delegation_broadcast_hash("signed-hash", Some("different-hash"))
+                .expect_err("hash mismatch must fail");
+
+        assert!(error.to_string().contains("tx_hash mismatch"));
     }
 }
