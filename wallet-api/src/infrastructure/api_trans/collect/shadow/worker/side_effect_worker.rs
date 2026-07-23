@@ -67,8 +67,6 @@ use crate::{
     request::api_wallet::trans::ApiBaseTransferReq,
 };
 
-const RESOURCE_ACK_CLAIM_TTL_SECS: i64 = 60;
-
 /// SideEffect Worker Command 结构
 /// 只表达："对某个 trade_no 执行某个确定的副作用动作"
 #[derive(Debug)]
@@ -157,46 +155,6 @@ pub struct SideEffectWorker {
 }
 
 impl SideEffectWorker {
-    fn resource_ack_claim_until() -> String {
-        (chrono::Utc::now() + chrono::Duration::seconds(RESOURCE_ACK_CLAIM_TTL_SECS))
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string()
-    }
-
-    fn resource_result_ack_retry_wait_secs(retry_count: i64) -> i64 {
-        match retry_count {
-            i if i <= 0 => 60,
-            1 => 120,
-            2 => 300,
-            _ => 600,
-        }
-    }
-
-    async fn schedule_resource_result_ack_retry(
-        &self,
-        resource_trade_no: &str,
-        retry_count: i64,
-    ) -> Result<(), ServiceError> {
-        let wait_secs = Self::resource_result_ack_retry_wait_secs(retry_count);
-        let next_retry_at = (chrono::Utc::now() + chrono::Duration::seconds(wait_secs))
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
-        let pool = self.ctx.api_resource_pool()?;
-        let affected = ApiResourceDelegationRepo::mark_result_ack_retry_wait(
-            &pool,
-            resource_trade_no,
-            &next_retry_at,
-        )
-        .await?;
-        info!(
-            resource_trade_no = %resource_trade_no,
-            wait_secs = wait_secs,
-            affected = affected,
-            "Resource result ACK retry scheduled"
-        );
-        Ok(())
-    }
-
     /// 创建新的 SideEffect Worker
     pub fn new(ctx: &'static crate::context::Context, advancer: Arc<ShadowAdvancer>) -> Self {
         Self { ctx, advancer }
@@ -678,20 +636,13 @@ impl SideEffectWorker {
         } else {
             (platform_resource_task_trans_type(&resource_task), platform_resource_result_ack_type())
         };
-        let claim_until = Self::resource_ack_claim_until();
-        let claimed = ApiResourceDelegationRepo::claim_result_ack(
+        let attempted = ApiResourceDelegationRepo::mark_result_ack_attempted(
             &self.ctx.api_resource_pool()?,
             &resource_trade_no,
-            &claim_until,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        if claimed == 0 {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                source = "side_effect_worker",
-                "Resource result ACK skipped because another worker claimed it"
-            );
+        if attempted == 0 {
             return Ok(());
         }
         let backend_api = self.ctx.get_global_backend_api();
@@ -705,19 +656,6 @@ impl SideEffectWorker {
             }
             Err(e) => {
                 error!(resource_trade_no = %resource_trade_no, error = %e, "Failed to send resource result ACK");
-                if let Err(schedule_err) = self
-                    .schedule_resource_result_ack_retry(
-                        &resource_trade_no,
-                        resource_task.retry_count,
-                    )
-                    .await
-                {
-                    error!(
-                        resource_trade_no = %resource_trade_no,
-                        error = %schedule_err,
-                        "Failed to schedule resource result ACK retry"
-                    );
-                }
                 return Err(e.into());
             }
         }
@@ -957,20 +895,13 @@ impl SideEffectWorker {
         }
 
         let trans_type = platform_resource_task_trans_type(&resource_task);
-        let claim_until = Self::resource_ack_claim_until();
-        let claimed = ApiResourceDelegationRepo::claim_task_ack(
+        let attempted = ApiResourceDelegationRepo::mark_task_ack_attempted(
             &self.ctx.api_resource_pool()?,
             &resource_trade_no,
-            &claim_until,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        if claimed == 0 {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                source = "side_effect_worker",
-                "Resource task ACK skipped because another worker claimed it"
-            );
+        if attempted == 0 {
             return Ok(());
         }
 
@@ -1897,15 +1828,6 @@ oss:
         collect::shadow::ShadowAdvancer,
         resource_ack_type::{platform_resource_result_ack_type, platform_resource_task_trans_type},
     };
-
-    #[test]
-    fn resource_result_ack_retry_wait_uses_bounded_backoff() {
-        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(0), 60);
-        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(1), 120);
-        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(2), 300);
-        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(3), 600);
-        assert_eq!(SideEffectWorker::resource_result_ack_retry_wait_secs(99), 600);
-    }
 
     #[tokio::test]
     async fn original_order_resource_success_releases_collect_gate_after_ack_projection()

@@ -47,26 +47,11 @@ impl ApiResourceDelegationRepo {
         ApiResourceDelegationDao::mark_task_ack_sent(pool.write_ref(), resource_trade_no).await
     }
 
-    pub async fn claim_task_ack(
+    pub async fn mark_task_ack_attempted(
         pool: &ApiResourceDbPool,
         resource_trade_no: &str,
-        claim_until: &str,
     ) -> Result<u64, crate::Error> {
-        ApiResourceDelegationDao::claim_task_ack(pool.write_ref(), resource_trade_no, claim_until)
-            .await
-    }
-
-    pub async fn mark_task_ack_retry_wait(
-        pool: &ApiResourceDbPool,
-        resource_trade_no: &str,
-        next_retry_at: &str,
-    ) -> Result<u64, crate::Error> {
-        ApiResourceDelegationDao::mark_task_ack_retry_wait(
-            pool.write_ref(),
-            resource_trade_no,
-            next_retry_at,
-        )
-        .await
+        ApiResourceDelegationDao::mark_task_ack_attempted(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn scan_need_task_ack(
@@ -158,17 +143,12 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
-    pub async fn mark_result_ack_retry_wait(
+    pub async fn mark_result_ack_attempted(
         pool: &ApiResourceDbPool,
         resource_trade_no: &str,
-        next_retry_at: &str,
     ) -> Result<u64, crate::Error> {
-        ApiResourceDelegationDao::mark_result_ack_retry_wait(
-            pool.write_ref(),
-            resource_trade_no,
-            next_retry_at,
-        )
-        .await
+        ApiResourceDelegationDao::mark_result_ack_attempted(pool.write_ref(), resource_trade_no)
+            .await
     }
 
     pub async fn scan_need_result_ack(
@@ -466,15 +446,6 @@ impl ApiResourceDelegationRepo {
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::mark_result_ack_sent(pool.write_ref(), resource_trade_no).await
-    }
-
-    pub async fn claim_result_ack(
-        pool: &ApiResourceDbPool,
-        resource_trade_no: &str,
-        claim_until: &str,
-    ) -> Result<u64, crate::Error> {
-        ApiResourceDelegationDao::claim_result_ack(pool.write_ref(), resource_trade_no, claim_until)
-            .await
     }
 
     pub async fn upsert_original_order_result_fact(
@@ -808,7 +779,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resource_delegation_task_ack_retry_wait_throttles_scan() {
+    async fn resource_delegation_task_ack_attempt_tracks_send_count() {
         let pool = setup_api_resource_pool("resource_delegation_task_ack_retry_wait").await;
 
         ApiResourceDelegationRepo::upsert(
@@ -829,39 +800,10 @@ mod tests {
         .await
         .unwrap();
 
-        let future = (chrono::Utc::now() + chrono::Duration::seconds(300)).to_rfc3339();
         assert_eq!(
-            ApiResourceDelegationRepo::mark_task_ack_retry_wait(
-                &pool,
-                "rsc_task_ack_retry",
-                &future,
-            )
-            .await
-            .unwrap(),
-            1
-        );
-
-        let rows =
-            ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type_source_and_operation(
-                &pool,
-                ApiTradeType::Collect as i64,
-                ApiResourceDelegationSource::Platform,
-                ApiResourceDelegationOperationType::Undelegate,
-                100,
-            )
-            .await
-            .unwrap();
-        assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_task_ack_retry"));
-
-        let past = (chrono::Utc::now() - chrono::Duration::seconds(1)).to_rfc3339();
-        assert_eq!(
-            ApiResourceDelegationRepo::mark_task_ack_retry_wait(
-                &pool,
-                "rsc_task_ack_retry",
-                &past,
-            )
-            .await
-            .unwrap(),
+            ApiResourceDelegationRepo::mark_task_ack_attempted(&pool, "rsc_task_ack_retry")
+                .await
+                .unwrap(),
             1
         );
 
@@ -881,18 +823,20 @@ mod tests {
             ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_task_ack_retry")
                 .await
                 .unwrap();
-        assert_eq!(persisted.retry_count, 2);
+        assert_eq!(persisted.task_ack_send_count, 1);
+        assert_eq!(persisted.retry_count, 0);
+        assert!(persisted.next_retry_at.is_none());
     }
 
     #[tokio::test]
-    async fn resource_delegation_ack_claim_blocks_duplicate_task_ack_requests() {
-        let pool = setup_api_resource_pool("resource_delegation_task_ack_claim").await;
+    async fn resource_delegation_task_ack_attempts_remain_scannable_until_sent() {
+        let pool = setup_api_resource_pool("resource_delegation_task_ack_attempts").await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
             NewApiResourceDelegation::platform_delegate_task(
                 "uid_1",
-                "rsc_task_ack_claim",
+                "rsc_task_ack_attempts",
                 ApiTradeType::Collect,
                 ApiResourceDelegationOperationType::Delegate,
                 "tron",
@@ -906,27 +850,24 @@ mod tests {
         .await
         .unwrap();
 
-        let claim_until = (chrono::Utc::now() + chrono::Duration::seconds(60))
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
         assert_eq!(
-            ApiResourceDelegationRepo::claim_task_ack(&pool, "rsc_task_ack_claim", &claim_until)
+            ApiResourceDelegationRepo::mark_task_ack_attempted(&pool, "rsc_task_ack_attempts")
                 .await
                 .unwrap(),
             1
         );
         assert_eq!(
-            ApiResourceDelegationRepo::claim_task_ack(&pool, "rsc_task_ack_claim", &claim_until)
+            ApiResourceDelegationRepo::mark_task_ack_attempted(&pool, "rsc_task_ack_attempts")
                 .await
                 .unwrap(),
-            0
+            1
         );
 
         let rows = ApiResourceDelegationRepo::scan_need_task_ack(&pool, 100).await.unwrap();
-        assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_task_ack_claim"));
+        assert!(rows.iter().any(|row| row.resource_trade_no == "rsc_task_ack_attempts"));
 
         assert_eq!(
-            ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_task_ack_claim")
+            ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_task_ack_attempts")
                 .await
                 .unwrap(),
             1
@@ -1066,11 +1007,8 @@ mod tests {
         .await
         .unwrap();
 
-        let claim_until = (chrono::Utc::now() + chrono::Duration::seconds(60))
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
         assert_eq!(
-            ApiResourceDelegationRepo::claim_task_ack(&pool, "rsc_ack_execute", &claim_until)
+            ApiResourceDelegationRepo::mark_task_ack_attempted(&pool, "rsc_ack_execute")
                 .await
                 .unwrap(),
             1
@@ -1080,6 +1018,7 @@ mod tests {
         let acked = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_ack_execute")
             .await
             .unwrap();
+        assert_eq!(acked.task_ack_send_count, 1);
         assert!(acked.next_retry_at.is_none());
         assert_eq!(
             ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_ack_execute").await.unwrap(),
@@ -1976,7 +1915,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resource_delegation_result_ack_retry_wait_throttles_scan() {
+    async fn resource_delegation_result_ack_attempt_tracks_send_count() {
         let pool = setup_api_resource_pool("resource_delegation_result_ack_retry").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -2017,11 +1956,8 @@ mod tests {
         .unwrap();
         assert!(rows.iter().any(|row| row.resource_trade_no == "rsc_ack_retry"));
 
-        let future = (chrono::Utc::now() + chrono::Duration::minutes(10))
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
         assert_eq!(
-            ApiResourceDelegationRepo::mark_result_ack_retry_wait(&pool, "rsc_ack_retry", &future,)
+            ApiResourceDelegationRepo::mark_result_ack_attempted(&pool, "rsc_ack_retry")
                 .await
                 .unwrap(),
             1
@@ -2030,28 +1966,9 @@ mod tests {
         let waiting = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_ack_retry")
             .await
             .unwrap();
-        assert_eq!(waiting.retry_count, 1);
-        assert!(waiting.next_retry_at.is_some());
-
-        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
-            &pool,
-            ApiResourceDelegationSource::Platform,
-            ApiResourceDelegationOperationType::Delegate,
-            100,
-        )
-        .await
-        .unwrap();
-        assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_ack_retry"));
-
-        let past = (chrono::Utc::now() - chrono::Duration::minutes(10))
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
-        assert_eq!(
-            ApiResourceDelegationRepo::mark_result_ack_retry_wait(&pool, "rsc_ack_retry", &past)
-                .await
-                .unwrap(),
-            1
-        );
+        assert_eq!(waiting.result_ack_send_count, 1);
+        assert_eq!(waiting.retry_count, 0);
+        assert!(waiting.next_retry_at.is_none());
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
             &pool,
@@ -2065,13 +1982,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resource_delegation_ack_claim_blocks_duplicate_result_ack_requests() {
-        let pool = setup_api_resource_pool("resource_delegation_result_ack_claim").await;
+    async fn resource_delegation_result_ack_attempts_remain_scannable_until_sent() {
+        let pool = setup_api_resource_pool("resource_delegation_result_ack_attempts").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
             NewApiResourceDelegation::platform_delegate_task(
                 "uid_1",
-                "rsc_result_ack_claim",
+                "rsc_result_ack_attempts",
                 ApiTradeType::Collect,
                 ApiResourceDelegationOperationType::Delegate,
                 "tron",
@@ -2086,7 +2003,7 @@ mod tests {
         .unwrap();
         ApiResourceDelegationRepo::mark_backend_result_received(
             &pool,
-            "rsc_result_ack_claim",
+            "rsc_result_ack_attempts",
             ApiResourceDelegationResultStatus::Success,
             None,
             None,
@@ -2096,39 +2013,40 @@ mod tests {
         .await
         .unwrap();
 
-        let claim_until = (chrono::Utc::now() + chrono::Duration::seconds(60))
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
         assert_eq!(
-            ApiResourceDelegationRepo::claim_result_ack(
-                &pool,
-                "rsc_result_ack_claim",
-                &claim_until,
-            )
-            .await
-            .unwrap(),
-            1
-        );
-        assert_eq!(
-            ApiResourceDelegationRepo::claim_result_ack(
-                &pool,
-                "rsc_result_ack_claim",
-                &claim_until,
-            )
-            .await
-            .unwrap(),
-            0
-        );
-
-        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
-        assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_result_ack_claim"));
-
-        assert_eq!(
-            ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "rsc_result_ack_claim")
+            ApiResourceDelegationRepo::mark_result_ack_attempted(&pool, "rsc_result_ack_attempts")
                 .await
                 .unwrap(),
             1
         );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_attempted(&pool, "rsc_result_ack_attempts")
+                .await
+                .unwrap(),
+            1
+        );
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+            &pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Delegate,
+            100,
+        )
+        .await
+        .unwrap();
+        assert!(rows.iter().any(|row| row.resource_trade_no == "rsc_result_ack_attempts"));
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "rsc_result_ack_attempts")
+                .await
+                .unwrap(),
+            1
+        );
+        let acked =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_result_ack_attempts")
+                .await
+                .unwrap();
+        assert_eq!(acked.result_ack_send_count, 2);
     }
 
     #[tokio::test]

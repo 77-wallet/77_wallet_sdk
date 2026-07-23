@@ -453,6 +453,15 @@ impl PlatformResourceReclaimWorker {
             )));
         }
 
+        let attempted = ApiResourceDelegationRepo::mark_task_ack_attempted(
+            &self.ctx.api_resource_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if attempted == 0 {
+            return Ok(());
+        }
         let backend_api = self.ctx.get_global_backend_api();
         if let Err(err) = backend_api
             .trans_event_ack(&TransEventAckReq::new(
@@ -463,12 +472,6 @@ impl PlatformResourceReclaimWorker {
             .await
         {
             let service_err: ServiceError = err.into();
-            self.schedule_platform_undelegation_task_ack_retry(
-                &resource_trade_no,
-                resource_task.retry_count,
-                &service_err,
-            )
-            .await;
             return Err(service_err);
         }
 
@@ -493,46 +496,6 @@ impl PlatformResourceReclaimWorker {
         }
 
         Ok(())
-    }
-
-    async fn schedule_platform_undelegation_task_ack_retry(
-        &self,
-        resource_trade_no: &str,
-        retry_count: i64,
-        err: &ServiceError,
-    ) {
-        let wait_secs = resource_delegation_retry_wait_secs(retry_count);
-        let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
-        let Ok(pool) = self.ctx.api_resource_pool() else {
-            error!(
-                resource_trade_no = %resource_trade_no,
-                error = %err,
-                "Failed to schedule platform undelegation task ACK retry: api transaction pool unavailable"
-            );
-            return;
-        };
-        match ApiResourceDelegationRepo::mark_task_ack_retry_wait(
-            &pool,
-            resource_trade_no,
-            &next_retry_at.to_rfc3339(),
-        )
-        .await
-        {
-            Ok(affected) => info!(
-                resource_trade_no = %resource_trade_no,
-                wait_secs,
-                affected,
-                error = %err,
-                source = "platform_resource_reclaim_shadow",
-                "Platform undelegation task ACK retry scheduled"
-            ),
-            Err(e) => warn!(
-                resource_trade_no = %resource_trade_no,
-                error = %e,
-                source = "platform_resource_reclaim_shadow",
-                "Failed to schedule platform undelegation task ACK retry"
-            ),
-        }
     }
 
     async fn process_platform_undelegation_result_ack(
@@ -588,6 +551,15 @@ impl PlatformResourceReclaimWorker {
             return Ok(());
         }
 
+        let attempted = ApiResourceDelegationRepo::mark_result_ack_attempted(
+            &self.ctx.api_resource_pool()?,
+            &resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if attempted == 0 {
+            return Ok(());
+        }
         let backend_api = self.ctx.get_global_backend_api();
         if let Err(e) = backend_api
             .trans_event_ack(&TransEventAckReq::new(
@@ -597,20 +569,6 @@ impl PlatformResourceReclaimWorker {
             ))
             .await
         {
-            if let Err(schedule_err) = self
-                .schedule_platform_undelegation_result_ack_retry(
-                    &resource_trade_no,
-                    resource_task.retry_count,
-                )
-                .await
-            {
-                warn!(
-                    resource_trade_no = %resource_trade_no,
-                    error = %schedule_err,
-                    source = "platform_resource_reclaim_shadow",
-                    "Failed to schedule platform undelegation result ACK retry"
-                );
-            }
             return Err(e.into());
         }
 
@@ -1153,30 +1111,6 @@ impl PlatformResourceReclaimWorker {
         Ok(())
     }
 
-    async fn schedule_platform_undelegation_result_ack_retry(
-        &self,
-        resource_trade_no: &str,
-        retry_count: i64,
-    ) -> Result<(), ServiceError> {
-        let wait_secs = resource_delegation_retry_wait_secs(retry_count);
-        let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
-        let pool = self.ctx.api_resource_pool()?;
-        let affected = ApiResourceDelegationRepo::mark_result_ack_retry_wait(
-            &pool,
-            resource_trade_no,
-            &next_retry_at.to_rfc3339(),
-        )
-        .await?;
-        info!(
-            resource_trade_no = %resource_trade_no,
-            wait_secs,
-            affected,
-            source = "platform_resource_reclaim_shadow",
-            "Platform undelegation result ACK retry scheduled"
-        );
-        Ok(())
-    }
-
     async fn schedule_platform_undelegation_rebuild_retry(
         &self,
         resource_trade_no: &str,
@@ -1711,52 +1645,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn platform_undelegation_task_ack_retry_sets_retry_wait() {
-        let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_resource_pool().expect("transaction pool");
-
-        ApiResourceDelegationRepo::upsert(
-            &pool,
-            NewApiResourceDelegation::platform_delegate_task(
-                "uid",
-                "rsc_platform_undelegate_task_ack_retry",
-                ApiTradeType::Collect,
-                ApiResourceDelegationOperationType::Undelegate,
-                "tron",
-                "owner",
-                "receiver",
-                ApiResourceType::Energy,
-                "5",
-                "1000",
-            ),
-        )
-        .await
-        .expect("insert platform undelegate");
-
-        let worker = PlatformResourceReclaimWorker::new(ctx);
-        worker
-            .schedule_platform_undelegation_task_ack_retry(
-                "rsc_platform_undelegate_task_ack_retry",
-                0,
-                &ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
-                    500,
-                    Some("system busy".to_string()),
-                )),
-            )
-            .await;
-
-        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &pool,
-            "rsc_platform_undelegate_task_ack_retry",
-        )
-        .await
-        .expect("load task");
-        assert_eq!(persisted.retry_count, 1);
-        assert!(persisted.next_retry_at.is_some());
-        assert!(persisted.task_ack_sent_at.is_none());
-    }
-
-    #[tokio::test]
     async fn platform_undelegation_recover_retry_preserves_broadcast_hash() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
         let pool = ctx.api_resource_pool().expect("transaction pool");
@@ -2111,6 +1999,7 @@ mod tests {
             amount: "100".to_string(),
             status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
             task_ack_sent_at: None,
+            task_ack_send_count: 0,
             building_at: None,
             last_broadcast_at: Some(chrono::Utc::now()),
             tx_hash: Some("tx_hash".to_string()),
@@ -2128,6 +2017,7 @@ mod tests {
             tx_res_received_at: None,
             result_received_at: Some(chrono::Utc::now()),
             result_ack_sent_at: None,
+            result_ack_send_count: 0,
             result_payload: None,
             fail_type: None,
             err_code: None,
@@ -2171,6 +2061,7 @@ mod tests {
             amount: "100".to_string(),
             status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
             task_ack_sent_at: None,
+            task_ack_send_count: 0,
             building_at: None,
             last_broadcast_at: None,
             tx_hash: None,
@@ -2188,6 +2079,7 @@ mod tests {
             tx_res_received_at: None,
             result_received_at: None,
             result_ack_sent_at: None,
+            result_ack_send_count: 0,
             result_payload: None,
             fail_type: None,
             err_code: None,
@@ -2229,6 +2121,7 @@ mod tests {
             amount: "100".to_string(),
             status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
             task_ack_sent_at: None,
+            task_ack_send_count: 0,
             building_at: None,
             last_broadcast_at: Some(chrono::Utc::now()),
             tx_hash: Some("tx_hash".to_string()),
@@ -2246,6 +2139,7 @@ mod tests {
             tx_res_received_at: Some(chrono::Utc::now()),
             result_received_at: Some(chrono::Utc::now()),
             result_ack_sent_at: None,
+            result_ack_send_count: 0,
             result_payload: Some("payload".to_string()),
             fail_type: None,
             err_code: None,

@@ -56,24 +56,7 @@ fn platform_source_requires_ack(task: &ApiResourceDelegationEntity) -> bool {
     task.source == ApiResourceDelegationSource::Platform
 }
 
-fn ack_claim_available(task: &ApiResourceDelegationEntity, now: DateTime<Utc>) -> bool {
-    task.next_retry_at.map(|next| next <= now).unwrap_or(true)
-}
-
-fn push_ack_claim_reason(
-    reasons: &mut SmallVec<[StageReason; 4]>,
-    task: &ApiResourceDelegationEntity,
-    now: DateTime<Utc>,
-) {
-    if let Some(claim_until) = task.next_retry_at.filter(|next| *next > now) {
-        reasons.push(StageReason {
-            code: "ack_claimed",
-            message: format!("ACK delivery is claimed until {}", claim_until),
-        });
-    }
-}
-
-fn evaluate_need_task_ack(task: &ApiResourceDelegationEntity, now: DateTime<Utc>) -> StageEval {
+fn evaluate_need_task_ack(task: &ApiResourceDelegationEntity, _now: DateTime<Utc>) -> StageEval {
     let mut reasons = SmallVec::new();
 
     if task.task_ack_sent_at.is_some() {
@@ -82,9 +65,7 @@ fn evaluate_need_task_ack(task: &ApiResourceDelegationEntity, now: DateTime<Utc>
             message: "Resource task ACK already sent".to_string(),
         });
     }
-    push_ack_claim_reason(&mut reasons, task, now);
-
-    let can_advance = task.task_ack_sent_at.is_none() && ack_claim_available(task, now);
+    let can_advance = task.task_ack_sent_at.is_none();
     StageEval { can_advance, reasons }
 }
 
@@ -193,7 +174,7 @@ fn evaluate_need_receipt_upload(task: &ApiResourceDelegationEntity) -> StageEval
     StageEval { can_advance, reasons }
 }
 
-fn evaluate_need_result_ack(task: &ApiResourceDelegationEntity, now: DateTime<Utc>) -> StageEval {
+fn evaluate_need_result_ack(task: &ApiResourceDelegationEntity, _now: DateTime<Utc>) -> StageEval {
     let mut reasons = SmallVec::new();
 
     if task.result_received_at.is_none() {
@@ -220,13 +201,10 @@ fn evaluate_need_result_ack(task: &ApiResourceDelegationEntity, now: DateTime<Ut
             message: "Resource result ACK already sent".to_string(),
         });
     }
-    push_ack_claim_reason(&mut reasons, task, now);
-
     let can_advance = task.result_received_at.is_some()
         && task.result_payload.is_some()
         && task.tx_res_received_at.is_some()
-        && task.result_ack_sent_at.is_none()
-        && ack_claim_available(task, now);
+        && task.result_ack_sent_at.is_none();
     StageEval { can_advance, reasons }
 }
 
@@ -261,6 +239,7 @@ mod tests {
             amount: "14650".to_string(),
             status: ApiResourceDelegationStatus::Pending,
             task_ack_sent_at: None,
+            task_ack_send_count: 0,
             building_at: None,
             last_broadcast_at: None,
             tx_hash: None,
@@ -278,6 +257,7 @@ mod tests {
             tx_res_received_at: None,
             result_received_at: None,
             result_ack_sent_at: None,
+            result_ack_send_count: 0,
             result_payload: None,
             fail_type: None,
             err_code: None,
@@ -301,12 +281,6 @@ mod tests {
 
         assert!(evaluate_stage(ResourceDelegationStage::NeedTaskAck, &record, now).can_advance);
 
-        record.next_retry_at = Some(now + Duration::seconds(60));
-        let claimed = evaluate_stage(ResourceDelegationStage::NeedTaskAck, &record, now);
-        assert!(!claimed.can_advance);
-        assert!(reason_codes(&claimed).contains(&"ack_claimed"));
-
-        record.next_retry_at = None;
         record.task_ack_sent_at = Some(now);
         let eval = evaluate_stage(ResourceDelegationStage::NeedTaskAck, &record, now);
         assert!(!eval.can_advance);
@@ -389,12 +363,6 @@ mod tests {
         record.result_payload = Some("{}".to_string());
         assert!(evaluate_stage(ResourceDelegationStage::NeedResultAck, &record, now).can_advance);
 
-        record.next_retry_at = Some(now + Duration::seconds(60));
-        let claimed = evaluate_stage(ResourceDelegationStage::NeedResultAck, &record, now);
-        assert!(!claimed.can_advance);
-        assert!(reason_codes(&claimed).contains(&"ack_claimed"));
-
-        record.next_retry_at = None;
         record.result_ack_sent_at = Some(now);
         let acked = evaluate_stage(ResourceDelegationStage::NeedResultAck, &record, now);
         assert!(!acked.can_advance);
