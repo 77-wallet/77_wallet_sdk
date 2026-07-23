@@ -183,7 +183,6 @@ pub struct ApiResourceDelegationEntity {
     pub fail_type: Option<i64>,
     pub err_code: Option<String>,
     pub err_msg: Option<String>,
-    pub retry_count: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }

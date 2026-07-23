@@ -263,7 +263,6 @@ impl LocalResourceReclaimWorker {
             info!(
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %Self::origin_trade_no(&delegation),
-                retry_count = delegation.retry_count,
                 source = "local_resource_reclaim_shadow",
                 "Local undelegation already has tx_hash, skipping execution"
             );
@@ -284,7 +283,6 @@ impl LocalResourceReclaimWorker {
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %Self::origin_trade_no(&delegation),
                 tx_hash = %tx_hash,
-                retry_count = delegation.retry_count,
                 source = "local_resource_reclaim_shadow",
                 "Local undelegation broadcast fact already committed"
             );
@@ -293,7 +291,6 @@ impl LocalResourceReclaimWorker {
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %Self::origin_trade_no(&delegation),
                 tx_hash = %tx_hash,
-                retry_count = delegation.retry_count,
                 source = "local_resource_reclaim_shadow",
                 "Local undelegation broadcast fact committed"
             );
@@ -382,7 +379,6 @@ impl LocalResourceReclaimWorker {
                     resource_trade_no = %resource_trade_no,
                     origin_trade_no = %Self::origin_trade_no(&delegation),
                     tx_hash = %tx_hash,
-                    retry_count = delegation.retry_count,
                     source = "local_resource_reclaim_shadow",
                     "Local undelegation recovered as success"
                 );
@@ -526,7 +522,6 @@ impl LocalResourceReclaimWorker {
         info!(
             resource_trade_no = %resource_trade_no,
             origin_trade_no = %Self::origin_trade_no(&task),
-            retry_count = task.retry_count + 1,
             error = %err,
             source = "local_resource_reclaim_shadow",
             "Local undelegation reset for rebuild"
@@ -795,7 +790,6 @@ mod tests {
         .expect("load task");
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.retry_count, 1);
     }
 
     #[tokio::test]

@@ -704,7 +704,6 @@ impl PlatformResourceReclaimWorker {
             info!(
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %Self::origin_trade_no(&delegation),
-                retry_count = delegation.retry_count,
                 source = "platform_resource_reclaim_shadow",
                 "Platform undelegation already has tx_hash, skipping execution"
             );
@@ -731,7 +730,6 @@ impl PlatformResourceReclaimWorker {
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %Self::origin_trade_no(&delegation),
                 tx_hash = %tx_hash,
-                retry_count = delegation.retry_count,
                 source = "platform_resource_reclaim_shadow",
                 "Platform undelegation broadcast fact already committed"
             );
@@ -740,7 +738,6 @@ impl PlatformResourceReclaimWorker {
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %Self::origin_trade_no(&delegation),
                 tx_hash = %tx_hash,
-                retry_count = delegation.retry_count,
                 source = "platform_resource_reclaim_shadow",
                 "Platform undelegation broadcast fact committed"
             );
@@ -831,7 +828,6 @@ impl PlatformResourceReclaimWorker {
                     resource_trade_no = %resource_trade_no,
                     origin_trade_no = %Self::origin_trade_no(&delegation),
                     tx_hash = %tx_hash,
-                    retry_count = delegation.retry_count,
                     source = "platform_resource_reclaim_shadow",
                     "Platform undelegation recovered as success"
                 );
@@ -1095,7 +1091,6 @@ impl PlatformResourceReclaimWorker {
         info!(
             resource_trade_no = %resource_trade_no,
             origin_trade_no = %Self::origin_trade_no(&task),
-            retry_count = task.retry_count + 1,
             error = %err,
             source = "platform_resource_reclaim_shadow",
             "Platform undelegation reset for rebuild"
@@ -1642,7 +1637,6 @@ mod tests {
         .expect("load task");
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.retry_count, 1);
     }
 
     #[tokio::test]
@@ -1907,7 +1901,6 @@ mod tests {
             fail_type: None,
             err_code: None,
             err_msg: None,
-            retry_count: 0,
             created_at: chrono::Utc::now(),
             updated_at: None,
         };
@@ -1967,7 +1960,6 @@ mod tests {
             fail_type: None,
             err_code: None,
             err_msg: None,
-            retry_count: 0,
             created_at: chrono::Utc::now(),
             updated_at: None,
         };
@@ -2025,7 +2017,6 @@ mod tests {
             fail_type: None,
             err_code: None,
             err_msg: None,
-            retry_count: 0,
             created_at: chrono::Utc::now(),
             updated_at: None,
         };

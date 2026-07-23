@@ -1164,7 +1164,6 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_last_checked_at = NULL,
                 broadcast_uncertain_reconciled_at = NULL,
                 broadcast_uncertain_rebroadcast_count = 0,
-                retry_count = retry_count + 1,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
               AND operation_type IN (1, 2)

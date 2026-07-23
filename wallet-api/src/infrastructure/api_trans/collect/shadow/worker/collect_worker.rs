@@ -895,7 +895,6 @@ impl ShadowCollectWorker {
             resource_trade_no = %resource_trade_no,
             origin_trade_no = ?task.origin_trade_no,
             affected = %affected,
-            retry_count = task.retry_count + 1,
             error = %err,
             source = "shadow_worker_v2",
             "Resource delegation reset for rebuild"
@@ -5355,7 +5354,6 @@ oss:
         .expect("load platform task");
         assert!(task.building_at.is_none());
         assert_eq!(task.tx_hash, None);
-        assert_eq!(task.retry_count, 1);
     }
 
     #[tokio::test]

@@ -800,7 +800,6 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(persisted.task_ack_send_count, 1);
-        assert_eq!(persisted.retry_count, 0);
     }
 
     #[tokio::test]
@@ -1934,7 +1933,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(waiting.result_ack_send_count, 1);
-        assert_eq!(waiting.retry_count, 0);
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
             &pool,
@@ -2130,7 +2128,6 @@ mod tests {
         .unwrap();
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.retry_count, 1);
     }
 
     #[tokio::test]
@@ -2184,7 +2181,6 @@ mod tests {
         assert!(persisted.building_at.is_none());
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.retry_count, 1);
     }
 
     #[tokio::test]
@@ -2231,7 +2227,6 @@ mod tests {
         assert!(persisted.building_at.is_none());
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.retry_count, 1);
     }
 
     #[tokio::test]
