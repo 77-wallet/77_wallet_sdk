@@ -1123,6 +1123,29 @@ mod tests {
         assert_eq!(preserved.raw_tx.as_deref(), Some("{\"Tron\":[]}"));
         assert!(preserved.last_broadcast_at.is_none());
 
+        let executable =
+            ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+                &pool,
+                2,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Delegate,
+                10,
+            )
+            .await
+            .unwrap();
+        assert!(executable.iter().any(|row| row.resource_trade_no == "rsc_build_fact"));
+        let recoverable =
+            ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
+                &pool,
+                2,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Delegate,
+                10,
+            )
+            .await
+            .unwrap();
+        assert!(!recoverable.iter().any(|row| row.resource_trade_no == "rsc_build_fact"));
+
         assert_eq!(
             ApiResourceDelegationRepo::mark_broadcasted(
                 &pool,
@@ -1150,6 +1173,29 @@ mod tests {
         assert_eq!(broadcasted.tx_hash.as_deref(), Some("deterministic_hash"));
         assert_eq!(broadcasted.raw_tx.as_deref(), Some("{\"Tron\":[]}"));
         assert!(broadcasted.last_broadcast_at.is_some());
+
+        let executable =
+            ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+                &pool,
+                2,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Delegate,
+                10,
+            )
+            .await
+            .unwrap();
+        assert!(!executable.iter().any(|row| row.resource_trade_no == "rsc_build_fact"));
+        let recoverable =
+            ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
+                &pool,
+                2,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Delegate,
+                10,
+            )
+            .await
+            .unwrap();
+        assert!(recoverable.iter().any(|row| row.resource_trade_no == "rsc_build_fact"));
     }
 
     #[tokio::test]

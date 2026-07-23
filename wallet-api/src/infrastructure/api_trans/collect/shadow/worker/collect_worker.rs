@@ -83,7 +83,8 @@ use crate::{
         resource_apply_outcome::PlatformApplyOutcome,
         resource_delegation::{
             execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
-            resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
+            resource_delegation_failure_fact, resource_delegation_is_built_unbroadcast,
+            resource_delegation_retry_wait_secs,
         },
         resource_reservation::{
             ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
@@ -919,9 +920,7 @@ impl ShadowCollectWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        let built_unbroadcast = existing.raw_tx.is_some()
-            && existing.tx_hash.is_some()
-            && existing.last_broadcast_at.is_none();
+        let built_unbroadcast = resource_delegation_is_built_unbroadcast(&existing);
         if existing.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_some()
             && existing.last_broadcast_at.is_some()
         {
@@ -986,10 +985,7 @@ impl ShadowCollectWorker {
         &self,
         delegation: ApiResourceDelegationEntity,
     ) -> Result<(), ServiceError> {
-        if delegation.raw_tx.is_some()
-            && delegation.tx_hash.is_some()
-            && delegation.last_broadcast_at.is_none()
-        {
+        if resource_delegation_is_built_unbroadcast(&delegation) {
             execute_resource_delegation(
                 self.ctx,
                 &self.ctx.api_resource_pool()?,

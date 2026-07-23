@@ -43,7 +43,8 @@ use crate::{
             resource_delegate::resource_gate_projection,
             resource_delegation::{
                 execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
-                resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
+                resource_delegation_failure_fact, resource_delegation_is_built_unbroadcast,
+                resource_delegation_retry_wait_secs,
             },
             shadow_rpc_policy,
         },
@@ -469,9 +470,7 @@ impl PlatformResourceDelegateWorker {
 
         let claim_start = Instant::now();
         let existing = self.load_platform_delegate(&resource_trade_no).await?;
-        let built_unbroadcast = existing.raw_tx.is_some()
-            && existing.tx_hash.is_some()
-            && existing.last_broadcast_at.is_none();
+        let built_unbroadcast = resource_delegation_is_built_unbroadcast(&existing);
         if existing.last_broadcast_at.is_some() {
             return Ok(());
         }
@@ -644,7 +643,7 @@ impl PlatformResourceDelegateWorker {
         if task.finished_at.is_some() || task.err_code.is_some() {
             return Ok(resource_chain_success(&task) || resource_chain_failed(&task));
         }
-        if task.raw_tx.is_some() && task.tx_hash.is_some() && task.last_broadcast_at.is_none() {
+        if resource_delegation_is_built_unbroadcast(&task) {
             self.process_execute(resource_trade_no).await?;
             return Ok(false);
         }

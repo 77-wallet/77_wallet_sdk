@@ -33,6 +33,14 @@ use wallet_utils::RetryableError as _;
 const RESOURCE_BROADCAST_UNCERTAIN_TIMEOUT_SECS: i64 = 300;
 const RESOURCE_BROADCAST_UNCERTAIN_AUTO_REBROADCAST_LIMIT: i64 = 1;
 
+pub(crate) fn resource_delegation_is_built_unbroadcast(
+    delegation: &ApiResourceDelegationEntity,
+) -> bool {
+    delegation.raw_tx.as_deref().is_some_and(|raw_tx| !raw_tx.trim().is_empty())
+        && delegation.tx_hash.as_deref().is_some_and(|tx_hash| !tx_hash.trim().is_empty())
+        && delegation.last_broadcast_at.is_none()
+}
+
 /// Shared bounded backoff for non-delegation recovery tables that still own a
 /// dedicated retry schedule, such as TRON account activation.
 pub(crate) fn resource_delegation_retry_wait_secs(retry_count: i64) -> i64 {

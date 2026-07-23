@@ -302,7 +302,9 @@ impl ApiResourceDelegationDao {
               AND finished_at IS NULL
               AND err_code IS NULL
               AND building_at IS NULL
-              AND tx_hash IS NULL
+              AND last_broadcast_at IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
             ORDER BY task_ack_sent_at ASC
             LIMIT ?
             "#,
@@ -339,7 +341,9 @@ impl ApiResourceDelegationDao {
               AND finished_at IS NULL
               AND err_code IS NULL
               AND building_at IS NULL
-              AND tx_hash IS NULL
+              AND last_broadcast_at IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
             ORDER BY {order_expr} ASC
             LIMIT ?
             "#
@@ -398,7 +402,9 @@ impl ApiResourceDelegationDao {
                     building_at IS NULL
                     OR datetime(building_at) <= datetime('now', '-5 minutes')
                   )
-              AND tx_hash IS NULL
+              AND last_broadcast_at IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
             ORDER BY {order_expr} ASC, id ASC
             LIMIT ?
             "#
@@ -461,6 +467,7 @@ impl ApiResourceDelegationDao {
               AND err_code IS NULL
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
+              AND last_broadcast_at IS NOT NULL
             ORDER BY created_at ASC, id ASC
             LIMIT ?
             "#,
@@ -498,6 +505,7 @@ impl ApiResourceDelegationDao {
               AND err_code IS NULL
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
+              AND last_broadcast_at IS NOT NULL
               {ack_clause}
             ORDER BY {order_expr} ASC, id ASC
             LIMIT ?
