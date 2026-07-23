@@ -1545,6 +1545,8 @@ mod tests {
         assert_eq!(got.err_code.as_deref(), Some("ERR_6008"));
         assert_eq!(got.err_msg.as_deref(), Some("sdk internal error"));
         assert_eq!(got.status, ApiResourceDelegationStatus::Fail);
+        assert!(got.chain_failed_at.is_some());
+        assert!(got.finished_at.is_some());
 
         let rows =
             ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();

@@ -878,6 +878,7 @@ impl ApiResourceDelegationDao {
             SET err_code = ?2,
                 err_msg = ?3,
                 chain_failed_at = COALESCE(chain_failed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                finished_at = COALESCE(finished_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 broadcast_uncertain_reconciled_at = CASE
                     WHEN broadcast_uncertain_since_at IS NOT NULL
                     THEN COALESCE(broadcast_uncertain_reconciled_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
