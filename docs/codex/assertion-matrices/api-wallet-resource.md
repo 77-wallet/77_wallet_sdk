@@ -82,6 +82,8 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   pre-broadcast `raw_tx` persistence and atomic recovered-success commit as
   delegation orders; only the explicit residual-energy maintenance command may
   broadcast without an order lifecycle.
+- Invariant: collect and withdraw local delegation recovery atomically persist
+  chain success and terminal result before either origin resource gate advances.
 - Shared helper: resource side-effect workers use `resource_chain_facts` for
   broadcast, success, failure, and receipt-upload eligibility.
 - Uncertain fact: resource recover returning no final chain result records

@@ -1012,17 +1012,19 @@ impl ShadowCollectWorker {
         {
             Ok(Some(resp)) => {
                 let transaction_time = Self::resource_transaction_time(resp.transaction_time_ms);
-                let affected = ApiResourceDelegationRepo::mark_chain_success(
+                let payload = format!("local_delegation_recovered:{}", resp.tx_hash);
+                ApiResourceDelegationRepo::mark_recovered_chain_success(
                     &self.ctx.api_resource_pool()?,
                     &delegation.resource_trade_no,
+                    tx_hash,
                     transaction_time.as_deref(),
+                    &payload,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     resource_trade_no = %delegation.resource_trade_no,
                     tx_hash = %tx_hash,
-                    affected = %affected,
                     source = "shadow_worker_v2",
                     "Collect local resource delegation chain success confirmed"
                 );
@@ -1778,17 +1780,6 @@ impl ShadowCollectWorker {
         {
             return Ok(());
         }
-        ApiResourceDelegationRepo::mark_result_received(
-            &self.ctx.api_resource_pool()?,
-            &delegation.resource_trade_no,
-            ApiResourceDelegationResultStatus::Success,
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
         let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
             return Ok(());
         };
@@ -5362,23 +5353,15 @@ oss:
 
     #[tokio::test]
     async fn local_delegation_success_releases_collect_gate() {
-        let dir = tempdir().expect("tempdir");
-        let dir_path = dir.path().to_string_lossy().to_string();
-
-        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
-            .await
-            .expect("init api_transaction.db");
-        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
-            .await
-            .expect("init api_resource.db");
-        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let resource_pool = ctx.api_resource_pool().expect("resource pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            test_ctx().await,
+            ctx,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                test_ctx().await,
+                ctx,
                 intent_tx.clone(),
                 None,
             )),

@@ -694,17 +694,19 @@ impl ShadowWithdrawWorker {
         {
             Ok(Some(resp)) => {
                 let transaction_time = Self::resource_transaction_time(resp.transaction_time_ms);
-                let affected = ApiResourceDelegationRepo::mark_chain_success(
+                let payload = format!("local_delegation_recovered:{}", resp.tx_hash);
+                ApiResourceDelegationRepo::mark_recovered_chain_success(
                     &self.ctx.api_resource_pool()?,
                     &delegation.resource_trade_no,
+                    tx_hash,
                     transaction_time.as_deref(),
+                    &payload,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     resource_trade_no = %delegation.resource_trade_no,
                     tx_hash = %tx_hash,
-                    affected = %affected,
                     source = "shadow_withdraw_worker",
                     "Withdraw resource delegation chain success confirmed"
                 );
