@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use chrono::Utc;
 use tokio::sync::{Semaphore, broadcast, mpsc};
@@ -385,22 +388,62 @@ impl PlatformResourceDelegateWorker {
     }
 
     async fn process_execute(&self, resource_trade_no: String) -> Result<(), ServiceError> {
+        let stage_start = Instant::now();
+        info!(
+            observability_event = "platform_resource_delegate_execute_start",
+            resource_trade_no = %resource_trade_no,
+            source = "platform_resource_delegate",
+            "Platform resource delegation execute stage started"
+        );
+
+        let claim_start = Instant::now();
         let affected = ApiResourceDelegationRepo::claim_build_slot(&self.pool, &resource_trade_no)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
+        let claim_elapsed_ms = claim_start.elapsed().as_millis();
         if affected == 0 {
+            info!(
+                observability_event = "platform_resource_delegate_execute_claim_skipped",
+                resource_trade_no = %resource_trade_no,
+                claim_elapsed_ms = %claim_elapsed_ms,
+                total_elapsed_ms = %stage_start.elapsed().as_millis(),
+                source = "platform_resource_delegate",
+                "Platform resource delegation execute skipped because build slot was not claimed"
+            );
             return Ok(());
         }
+
+        let load_start = Instant::now();
         let task = self.load_platform_delegate(&resource_trade_no).await?;
+        let load_elapsed_ms = load_start.elapsed().as_millis();
+
+        let execute_start = Instant::now();
         let tx_hash = execute_resource_delegation(
             crate::context::get_context()?,
             &task,
             "platform_resource_delegate",
         )
         .await?;
+        let execute_elapsed_ms = execute_start.elapsed().as_millis();
+
+        let mark_start = Instant::now();
         ApiResourceDelegationRepo::mark_broadcast_success(&self.pool, &resource_trade_no, &tx_hash)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
+        let mark_elapsed_ms = mark_start.elapsed().as_millis();
+
+        info!(
+            observability_event = "platform_resource_delegate_execute_complete",
+            resource_trade_no = %resource_trade_no,
+            tx_hash = %tx_hash,
+            claim_elapsed_ms = %claim_elapsed_ms,
+            load_elapsed_ms = %load_elapsed_ms,
+            execute_elapsed_ms = %execute_elapsed_ms,
+            mark_elapsed_ms = %mark_elapsed_ms,
+            total_elapsed_ms = %stage_start.elapsed().as_millis(),
+            source = "platform_resource_delegate",
+            "Platform resource delegation execute stage completed"
+        );
         Ok(())
     }
 
@@ -846,21 +889,61 @@ impl PlatformResourceDelegateDispatcherActor {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => break,
                 Some(intent) = self.intent_rx.recv() => {
+                    let permit_wait_start = Instant::now();
+                    let intent_debug = format!("{intent:?}");
+                    let intent_trade_no = match &intent {
+                        PlatformResourceDelegateIntent::SendPlatformDelegationTaskAck(trade_no)
+                        | PlatformResourceDelegateIntent::ExecutePlatformDelegation(trade_no)
+                        | PlatformResourceDelegateIntent::RecoverPlatformDelegation(trade_no)
+                        | PlatformResourceDelegateIntent::UploadPlatformDelegationTxExecReceipt(
+                            trade_no,
+                        )
+                        | PlatformResourceDelegateIntent::SendPlatformDelegationResultAck(
+                            trade_no,
+                        ) => trade_no.clone(),
+                    };
                     let Ok(permit) = self.semaphore.clone().acquire_owned().await else {
                         error!("Platform resource delegate dispatcher semaphore closed");
                         break;
                     };
+                    let permit_wait_ms = permit_wait_start.elapsed().as_millis();
+                    info!(
+                        observability_event = "platform_resource_delegate_dispatch_permit_acquired",
+                        resource_trade_no = %intent_trade_no,
+                        intent = %intent_debug,
+                        permit_wait_ms = %permit_wait_ms,
+                        available_permits_after_acquire = self.semaphore.available_permits(),
+                        source = "platform_resource_delegate",
+                        "Platform resource delegate dispatcher acquired permit"
+                    );
                     let worker = self.worker.clone();
                     tokio::spawn(async move {
                         let _permit = permit;
                         let mut current = Some(intent);
                         while let Some(intent) = current {
+                            let intent_start = Instant::now();
+                            let intent_debug = format!("{intent:?}");
                             match worker.handle(intent).await {
                                 Ok(next_intent) => {
+                                    info!(
+                                        observability_event = "platform_resource_delegate_intent_complete",
+                                        intent = %intent_debug,
+                                        elapsed_ms = %intent_start.elapsed().as_millis(),
+                                        has_next_intent = next_intent.is_some(),
+                                        source = "platform_resource_delegate",
+                                        "Platform resource delegate intent completed"
+                                    );
                                     current = next_intent;
                                 }
                                 Err(e) => {
-                                    error!(error = %e, "Failed to handle platform resource delegate intent");
+                                    error!(
+                                        observability_event = "platform_resource_delegate_intent_failed",
+                                        intent = %intent_debug,
+                                        elapsed_ms = %intent_start.elapsed().as_millis(),
+                                        error = %e,
+                                        source = "platform_resource_delegate",
+                                        "Failed to handle platform resource delegate intent"
+                                    );
                                     break;
                                 }
                             }
