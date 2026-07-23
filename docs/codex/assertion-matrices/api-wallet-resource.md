@@ -78,6 +78,10 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Invariant: a persisted signed transaction with no `last_broadcast_at` remains
   in the execute stage; only rows with a durable broadcast fact enter chain
   recovery.
+- Invariant: normal platform and local undelegation orders use the same
+  pre-broadcast `raw_tx` persistence and atomic recovered-success commit as
+  delegation orders; only the explicit residual-energy maintenance command may
+  broadcast without an order lifecycle.
 - Shared helper: resource side-effect workers use `resource_chain_facts` for
   broadcast, success, failure, and receipt-upload eligibility.
 - Uncertain fact: resource recover returning no final chain result records

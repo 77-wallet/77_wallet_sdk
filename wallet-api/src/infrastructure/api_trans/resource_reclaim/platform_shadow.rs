@@ -43,8 +43,8 @@ use crate::{
                 resource_failure_receipt_uploadable, resource_success_receipt_uploadable,
             },
             resource_delegation::{
-                record_resource_uncertain_and_maybe_rebroadcast,
-                resource_delegation_retry_wait_secs,
+                execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
+                resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
             },
             resource_rpc_auth, shadow_rpc_policy,
         },
@@ -428,7 +428,7 @@ impl PlatformResourceReclaimWorker {
             source = "platform_resource_reclaim_maintenance",
             "Executing residual platform Energy cleanup"
         );
-        let tx_hash = self.execute_tron_platform_undelegation(&template).await?;
+        let tx_hash = self.execute_maintenance_platform_undelegation(&template).await?;
         Ok((delegated_trx, tx_hash))
     }
 
@@ -714,12 +714,26 @@ impl PlatformResourceReclaimWorker {
             "Processing platform undelegation execution"
         );
 
-        let affected = ApiResourceDelegationRepo::claim_build_slot(
+        let existing = ApiResourceDelegationRepo::get_by_resource_trade_no(
             &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        let built_unbroadcast = resource_delegation_is_built_unbroadcast(&existing);
+        if existing.last_broadcast_at.is_some() {
+            return Ok(());
+        }
+        let affected = if built_unbroadcast {
+            1
+        } else {
+            ApiResourceDelegationRepo::claim_build_slot(
+                &self.ctx.api_resource_pool()?,
+                &resource_trade_no,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?
+        };
         if affected == 0 {
             info!(
                 resource_trade_no = %resource_trade_no,
@@ -745,48 +759,13 @@ impl PlatformResourceReclaimWorker {
             )));
         }
 
-        if delegation.tx_hash.is_some() {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                origin_trade_no = %Self::origin_trade_no(&delegation),
-                source = "platform_resource_reclaim_shadow",
-                "Platform undelegation already has tx_hash, skipping execution"
-            );
-            return Ok(());
-        }
-
-        let tx_hash = resource_rpc_auth::run_with_rpc_auth_retry(
-            &delegation.chain_code,
+        execute_resource_delegation(
+            self.ctx,
+            &self.ctx.api_resource_pool()?,
+            &delegation,
             "platform_resource_delegation_undelegate",
-            &resource_trade_no,
-            || self.execute_tron_platform_undelegation(&delegation),
         )
         .await?;
-        let affected = ApiResourceDelegationRepo::mark_broadcast_success(
-            &self.ctx.api_resource_pool()?,
-            &resource_trade_no,
-            &tx_hash,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-
-        if affected == 0 {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                origin_trade_no = %Self::origin_trade_no(&delegation),
-                tx_hash = %tx_hash,
-                source = "platform_resource_reclaim_shadow",
-                "Platform undelegation broadcast fact already committed"
-            );
-        } else {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                origin_trade_no = %Self::origin_trade_no(&delegation),
-                tx_hash = %tx_hash,
-                source = "platform_resource_reclaim_shadow",
-                "Platform undelegation broadcast fact committed"
-            );
-        }
 
         Ok(())
     }
@@ -826,6 +805,17 @@ impl PlatformResourceReclaimWorker {
             return Ok(());
         }
 
+        if resource_delegation_is_built_unbroadcast(&delegation) {
+            execute_resource_delegation(
+                self.ctx,
+                &self.ctx.api_resource_pool()?,
+                &delegation,
+                "platform_resource_delegation_undelegate",
+            )
+            .await?;
+            return Ok(());
+        }
+
         let tx_hash =
             delegation.tx_hash.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| {
                 ServiceError::Parameter(
@@ -851,21 +841,12 @@ impl PlatformResourceReclaimWorker {
                         chrono::DateTime::<chrono::Utc>::from_timestamp_millis(millis as i64)
                     })
                     .map(|time| time.to_rfc3339());
-                ApiResourceDelegationRepo::mark_chain_success(
+                ApiResourceDelegationRepo::mark_recovered_chain_success(
                     &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
+                    tx_hash,
                     transaction_time.as_deref(),
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                ApiResourceDelegationRepo::mark_result_received(
-                    &self.ctx.api_resource_pool()?,
-                    &resource_trade_no,
-                    ApiResourceDelegationResultStatus::Success,
-                    None,
-                    None,
-                    None,
-                    Some(&payload),
+                    &payload,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
@@ -1012,7 +993,7 @@ impl PlatformResourceReclaimWorker {
         Ok(payload)
     }
 
-    async fn execute_tron_platform_undelegation(
+    async fn execute_maintenance_platform_undelegation(
         &self,
         delegation: &ApiResourceDelegationEntity,
     ) -> Result<String, ServiceError> {
@@ -1032,7 +1013,6 @@ impl PlatformResourceReclaimWorker {
         )
         .await;
         let signer = resolve_resource_delegation_signer(self.ctx, delegation).await?;
-
         let args = new_tron_undelegate_args(
             &delegation.owner_address,
             &delegation.receiver_address,
@@ -1042,7 +1022,7 @@ impl PlatformResourceReclaimWorker {
         )?;
         let raw = args.build_raw_transaction(chain.get_provider()).await?;
         let (tx_hash, raw_tx) =
-            self.sign_tron_platform_undelegation(delegation, &signer, raw).await?;
+            self.sign_maintenance_platform_undelegation(delegation, &signer, raw).await?;
         let tx_resp = ApiTransDomain::broadcast_transfer(
             self.ctx,
             &delegation.chain_code,
@@ -1052,27 +1032,19 @@ impl PlatformResourceReclaimWorker {
         .await?;
 
         let Some(tx) = tx_resp else {
-            info!(
-                resource_trade_no = %delegation.resource_trade_no,
-                tx_hash = %tx_hash,
-                source = "platform_resource_reclaim_shadow",
-                "Platform undelegation broadcast result uncertain"
-            );
             return Err(ServiceError::Parameter(
-                "platform undelegation broadcast result uncertain".to_string(),
+                "maintenance platform undelegation broadcast result uncertain".to_string(),
             ));
         };
-
         if tx.tx_hash != tx_hash {
             return Err(ServiceError::System(SystemError::Internal(
-                "platform undelegation tx_hash mismatch between build and broadcast".to_string(),
+                "maintenance platform undelegation tx_hash mismatch".to_string(),
             )));
         }
-
         Ok(tx_hash)
     }
 
-    async fn sign_tron_platform_undelegation(
+    async fn sign_maintenance_platform_undelegation(
         &self,
         delegation: &ApiResourceDelegationEntity,
         signer: &ResourceDelegationSigner,
@@ -1085,7 +1057,7 @@ impl PlatformResourceReclaimWorker {
         let balance = chain.balance(&delegation.owner_address, None).await?;
         if balance.to::<i64>() < consumer.transaction_fee_i64() {
             return Err(ServiceError::Parameter(format!(
-                "platform undelegation balance is insufficient for tx fee: balance={}, need={}",
+                "maintenance platform undelegation balance is insufficient: balance={}, need={}",
                 balance,
                 consumer.transaction_fee_i64()
             )));
@@ -1098,14 +1070,12 @@ impl PlatformResourceReclaimWorker {
             .await?;
         let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
         raw.signature.push(sign);
-
         let tx_hash = raw.tx_id.clone();
         let raw_tx = RawTx::Tron(
             raw,
             BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0),
             consumer.transaction_fee(),
         );
-
         Ok((tx_hash, raw_tx))
     }
 
@@ -1497,6 +1467,28 @@ mod tests {
             )
             .await
             .expect("scan result ack");
+        assert!(!result_ack_rows.iter().any(|row| row.resource_trade_no == "rsc_terminal_reclaim"));
+
+        ApiResourceDelegationRepo::mark_backend_result_received(
+            &pool,
+            "rsc_terminal_reclaim",
+            ApiResourceDelegationResultStatus::Fail,
+            Some(2),
+            Some(PlatformResourceReclaimWorker::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE),
+            Some("authorized resource delegation missing permissionId"),
+            Some("backend_terminal_failure"),
+        )
+        .await
+        .expect("record backend terminal result");
+        let result_ack_rows =
+            ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+                &pool,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Undelegate,
+                100,
+            )
+            .await
+            .expect("scan result ack after backend result");
         assert!(result_ack_rows.iter().any(|row| row.resource_trade_no == "rsc_terminal_reclaim"));
     }
 

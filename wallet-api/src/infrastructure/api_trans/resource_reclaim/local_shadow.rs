@@ -33,8 +33,8 @@ use crate::{
         api_trans::{
             resource_amount::parse_resource_delegation_native_trx_units,
             resource_delegation::{
-                record_resource_uncertain_and_maybe_rebroadcast,
-                resource_delegation_retry_wait_secs,
+                execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
+                resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
             },
             shadow_rpc_policy,
         },
@@ -228,12 +228,26 @@ impl LocalResourceReclaimWorker {
             "Processing local undelegation execution"
         );
 
-        let affected = ApiResourceDelegationRepo::claim_build_slot(
+        let existing = ApiResourceDelegationRepo::get_by_resource_trade_no(
             &self.ctx.api_resource_pool()?,
             &resource_trade_no,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        let built_unbroadcast = resource_delegation_is_built_unbroadcast(&existing);
+        if existing.last_broadcast_at.is_some() {
+            return Ok(());
+        }
+        let affected = if built_unbroadcast {
+            1
+        } else {
+            ApiResourceDelegationRepo::claim_build_slot(
+                &self.ctx.api_resource_pool()?,
+                &resource_trade_no,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?
+        };
         if affected == 0 {
             info!(
                 resource_trade_no = %resource_trade_no,
@@ -259,42 +273,13 @@ impl LocalResourceReclaimWorker {
             )));
         }
 
-        if delegation.tx_hash.is_some() {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                origin_trade_no = %Self::origin_trade_no(&delegation),
-                source = "local_resource_reclaim_shadow",
-                "Local undelegation already has tx_hash, skipping execution"
-            );
-            return Ok(());
-        }
-
-        let tx_hash = self.execute_tron_local_undelegation(&delegation).await?;
-        let affected = ApiResourceDelegationRepo::mark_broadcast_success(
+        execute_resource_delegation(
+            self.ctx,
             &self.ctx.api_resource_pool()?,
-            &resource_trade_no,
-            &tx_hash,
+            &delegation,
+            "local_resource_delegation_undelegate",
         )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-
-        if affected == 0 {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                origin_trade_no = %Self::origin_trade_no(&delegation),
-                tx_hash = %tx_hash,
-                source = "local_resource_reclaim_shadow",
-                "Local undelegation broadcast fact already committed"
-            );
-        } else {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                origin_trade_no = %Self::origin_trade_no(&delegation),
-                tx_hash = %tx_hash,
-                source = "local_resource_reclaim_shadow",
-                "Local undelegation broadcast fact committed"
-            );
-        }
+        .await?;
 
         Ok(())
     }
@@ -334,6 +319,17 @@ impl LocalResourceReclaimWorker {
             return Ok(());
         }
 
+        if resource_delegation_is_built_unbroadcast(&delegation) {
+            execute_resource_delegation(
+                self.ctx,
+                &self.ctx.api_resource_pool()?,
+                &delegation,
+                "local_resource_delegation_undelegate",
+            )
+            .await?;
+            return Ok(());
+        }
+
         let tx_hash =
             delegation.tx_hash.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| {
                 ServiceError::Parameter("local undelegation recover requires tx_hash".to_string())
@@ -357,21 +353,12 @@ impl LocalResourceReclaimWorker {
                         chrono::DateTime::<chrono::Utc>::from_timestamp_millis(millis as i64)
                     })
                     .map(|time| time.to_rfc3339());
-                ApiResourceDelegationRepo::mark_chain_success(
+                ApiResourceDelegationRepo::mark_recovered_chain_success(
                     &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
+                    tx_hash,
                     transaction_time.as_deref(),
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                ApiResourceDelegationRepo::mark_result_received(
-                    &self.ctx.api_resource_pool()?,
-                    &resource_trade_no,
-                    ApiResourceDelegationResultStatus::Success,
-                    None,
-                    None,
-                    None,
-                    Some(&payload),
+                    &payload,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
@@ -398,107 +385,6 @@ impl LocalResourceReclaimWorker {
             Err(err) => {
                 self.schedule_local_undelegation_rebuild_retry(&resource_trade_no, &err).await
             }
-        }
-    }
-
-    async fn execute_tron_local_undelegation(
-        &self,
-        delegation: &ApiResourceDelegationEntity,
-    ) -> Result<String, ServiceError> {
-        if !shared_mechanism::is_tron_chain(&delegation.chain_code) {
-            return Err(ServiceError::Parameter(format!(
-                "local resource reclaim only supports tron, got {}",
-                delegation.chain_code
-            )));
-        }
-
-        let trx_amount = parse_resource_delegation_native_trx_units(&delegation.native_amount)?;
-        let resource = Self::tron_resource_name(delegation.resource_type);
-        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(self.ctx).await?;
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &delegation.chain_code,
-        )
-        .await;
-
-        let args = UnDelegateArgs::new(
-            &delegation.owner_address,
-            &delegation.receiver_address,
-            trx_amount,
-            resource,
-            None,
-        )?;
-        let raw = args.build_raw_transaction(chain.get_provider()).await?;
-        let (tx_hash, raw_tx) = self.sign_tron_local_undelegation(delegation, raw).await?;
-        let tx_resp = ApiTransDomain::broadcast_transfer(
-            self.ctx,
-            &delegation.chain_code,
-            raw_tx,
-            Some(&tx_hash),
-        )
-        .await?;
-
-        let Some(tx) = tx_resp else {
-            info!(
-                resource_trade_no = %delegation.resource_trade_no,
-                tx_hash = %tx_hash,
-                source = "local_resource_reclaim_shadow",
-                "Local undelegation broadcast result uncertain"
-            );
-            return Err(ServiceError::Parameter(
-                "local undelegation broadcast result uncertain".to_string(),
-            ));
-        };
-
-        if tx.tx_hash != tx_hash {
-            return Err(ServiceError::System(SystemError::Internal(
-                "local undelegation tx_hash mismatch between build and broadcast".to_string(),
-            )));
-        }
-
-        Ok(tx_hash)
-    }
-
-    async fn sign_tron_local_undelegation(
-        &self,
-        delegation: &ApiResourceDelegationEntity,
-        mut raw: RawTransactionParams,
-    ) -> Result<(String, RawTx), ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(self.ctx).await?;
-        let provider = chain.get_provider();
-        let consumer =
-            provider.transfer_fee(&delegation.owner_address, None, &raw.raw_data_hex, 1).await?;
-        let balance = chain.balance(&delegation.owner_address, None).await?;
-        if balance.to::<i64>() < consumer.transaction_fee_i64() {
-            return Err(ServiceError::Parameter(format!(
-                "local undelegation balance is insufficient for tx fee: balance={}, need={}",
-                balance,
-                consumer.transaction_fee_i64()
-            )));
-        }
-
-        let handles = self.ctx.get_handles_arc().await?;
-        let private_key_manager = handles.get_global_private_key_manager();
-        let private_key = private_key_manager
-            .get_private_key(&delegation.owner_address, &delegation.chain_code)
-            .await?;
-        let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
-        raw.signature.push(sign);
-
-        let tx_hash = raw.tx_id.clone();
-        let raw_tx = RawTx::Tron(
-            raw,
-            BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0),
-            consumer.transaction_fee(),
-        );
-
-        Ok((tx_hash, raw_tx))
-    }
-
-    fn tron_resource_name(resource_type: ApiResourceType) -> &'static str {
-        match resource_type {
-            ApiResourceType::Bandwidth => "bandwidth",
-            ApiResourceType::Energy => "energy",
         }
     }
 
