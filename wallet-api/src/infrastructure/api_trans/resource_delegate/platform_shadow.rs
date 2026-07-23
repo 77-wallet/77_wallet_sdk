@@ -99,32 +99,42 @@ fn release_platform_delegation_capacity_reservation(key: &str, reserved_native_a
     let key = key.to_string();
     tokio::spawn(async move {
         let mut reservations = platform_capacity_reservations().lock().await;
-        let Some(current) = reservations.get_mut(&key) else {
-            return;
-        };
-        *current = current.saturating_sub(reserved_native_amount);
-        if *current == 0 {
-            reservations.remove(&key);
-        }
+        release_platform_delegation_capacity(&mut reservations, &key, reserved_native_amount);
     });
+}
+
+fn release_platform_delegation_capacity(
+    reservations: &mut PlatformCapacityReservations,
+    key: &str,
+    reserved_native_amount: i64,
+) {
+    let Some(current) = reservations.get_mut(key) else {
+        return;
+    };
+    *current = current.saturating_sub(reserved_native_amount);
+    if *current == 0 {
+        reservations.remove(key);
+    }
 }
 
 #[derive(Debug)]
 struct PlatformDelegationCapacityReservation {
     key: String,
     native_amount: i64,
-    committed: bool,
+    released: bool,
 }
 
 impl PlatformDelegationCapacityReservation {
-    fn commit(mut self) {
-        self.committed = true;
+    async fn release(mut self) {
+        let mut reservations = platform_capacity_reservations().lock().await;
+        release_platform_delegation_capacity(&mut reservations, &self.key, self.native_amount);
+        self.released = true;
     }
 }
 
 impl Drop for PlatformDelegationCapacityReservation {
     fn drop(&mut self) {
-        if !self.committed {
+        if !self.released {
             release_platform_delegation_capacity_reservation(&self.key, self.native_amount);
         }
     }
@@ -506,15 +516,14 @@ impl PlatformResourceDelegateWorker {
         )
         .await?;
         let execute_elapsed_ms = execute_start.elapsed().as_millis();
-        if let Some(reservation) = capacity_reservation {
-            reservation.commit();
-        }
-
         let mark_start = Instant::now();
         ApiResourceDelegationRepo::mark_broadcast_success(&self.pool, &resource_trade_no, &tx_hash)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
         let mark_elapsed_ms = mark_start.elapsed().as_millis();
+        if let Some(reservation) = capacity_reservation {
+            reservation.release().await;
+        }
 
         info!(
             observability_event = "platform_resource_delegate_execute_complete",
@@ -620,7 +629,7 @@ impl PlatformResourceDelegateWorker {
         Ok(Some(PlatformDelegationCapacityReservation {
             key,
             native_amount: required_native_amount,
-            committed: false,
+            released: false,
         }))
     }
 
@@ -1093,7 +1102,8 @@ pub async fn scan_and_process_once(
 mod tests {
     use super::{
         PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY, PlatformCapacityReservations,
-        PlatformResourceDelegateIntent, reserve_platform_delegation_capacity,
+        PlatformResourceDelegateIntent, release_platform_delegation_capacity,
+        reserve_platform_delegation_capacity,
     };
 
     #[test]
@@ -1148,5 +1158,20 @@ mod tests {
         assert!(reserve_platform_delegation_capacity(&mut reservations, key, 500, 199));
         assert!(!reserve_platform_delegation_capacity(&mut reservations, key, 500, 199));
         assert_eq!(reservations.get(key).copied(), Some(398));
+    }
+
+    #[test]
+    fn platform_resource_delegate_capacity_release_is_immediately_reusable() {
+        let mut reservations = PlatformCapacityReservations::new();
+        let key = "TY9:1";
+
+        assert!(reserve_platform_delegation_capacity(&mut reservations, key, 398, 199));
+        assert!(reserve_platform_delegation_capacity(&mut reservations, key, 398, 199));
+        assert!(!reserve_platform_delegation_capacity(&mut reservations, key, 398, 199));
+
+        release_platform_delegation_capacity(&mut reservations, key, 199);
+
+        assert_eq!(reservations.get(key).copied(), Some(199));
+        assert!(reserve_platform_delegation_capacity(&mut reservations, key, 398, 199));
     }
 }
