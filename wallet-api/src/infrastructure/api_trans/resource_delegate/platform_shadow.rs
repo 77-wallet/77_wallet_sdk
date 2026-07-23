@@ -179,7 +179,7 @@ impl Default for PlatformResourceDelegateScannerConfig {
     fn default() -> Self {
         let scan_interval_secs = shadow_rpc_policy::read_u64_env(
             "PLATFORM_RESOURCE_DELEGATE_SHADOW_SCAN_INTERVAL_SECS",
-            30,
+            10,
             10,
             120,
         );
