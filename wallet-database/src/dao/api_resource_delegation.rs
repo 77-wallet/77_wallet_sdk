@@ -209,11 +209,11 @@ impl ApiResourceDelegationDao {
               AND operation_type = 1
               AND origin_trade_type = ?
               AND origin_trade_no = resource_trade_no
-              AND result_received_at IS NOT NULL
+              AND finished_at IS NOT NULL
               AND result_payload IS NOT NULL
               AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
-            ORDER BY result_received_at ASC
+            ORDER BY finished_at ASC
             LIMIT ?
             "#,
         )
@@ -239,11 +239,11 @@ impl ApiResourceDelegationDao {
               AND operation_type = 1
               AND origin_trade_type = ?
               AND origin_trade_no = ?
-              AND result_received_at IS NOT NULL
+              AND finished_at IS NOT NULL
               AND result_payload IS NOT NULL
               AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
-            ORDER BY result_received_at ASC, id ASC
+            ORDER BY finished_at ASC, id ASC
             LIMIT 1
             "#,
         )
@@ -268,11 +268,11 @@ impl ApiResourceDelegationDao {
             SELECT * FROM api_resource_delegation
             WHERE source = ?
               AND operation_type = ?
-              AND result_received_at IS NOT NULL
+              AND finished_at IS NOT NULL
               AND result_payload IS NOT NULL
               AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
-            ORDER BY result_received_at ASC
+            ORDER BY finished_at ASC
             LIMIT ?
             "#,
         )
@@ -302,7 +302,6 @@ impl ApiResourceDelegationDao {
               AND task_ack_sent_at IS NOT NULL
               AND building_at IS NULL
               AND tx_hash IS NULL
-              AND tx_status IS NULL
             ORDER BY task_ack_sent_at ASC
             LIMIT ?
             "#,
@@ -339,7 +338,6 @@ impl ApiResourceDelegationDao {
               {ack_clause}
               AND building_at IS NULL
               AND tx_hash IS NULL
-              AND tx_status IS NULL
             ORDER BY {order_expr} ASC
             LIMIT ?
             "#
@@ -392,7 +390,7 @@ impl ApiResourceDelegationDao {
               AND operation_type = ?
               AND origin_trade_type = ?
               AND status = 1
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
               {ack_clause}
               AND (
@@ -458,7 +456,7 @@ impl ApiResourceDelegationDao {
             WHERE source = 2
               AND operation_type = 2
               AND origin_trade_type = ?
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
@@ -495,7 +493,7 @@ impl ApiResourceDelegationDao {
             WHERE source = ?
               AND operation_type = ?
               AND origin_trade_type = ?
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
@@ -532,7 +530,7 @@ impl ApiResourceDelegationDao {
                     source = 2
                     OR task_ack_sent_at IS NOT NULL
               )
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
               AND (
                     building_at IS NULL
@@ -560,7 +558,6 @@ impl ApiResourceDelegationDao {
             r#"
             UPDATE api_resource_delegation
             SET tx_hash = ?2,
-                tx_status = NULL,
                 building_at = NULL,
                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 broadcast_uncertain_since_at = NULL,
@@ -573,7 +570,7 @@ impl ApiResourceDelegationDao {
               AND status = 1
               AND building_at IS NOT NULL
               AND tx_hash IS NULL
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
             "#,
         )
@@ -596,8 +593,7 @@ impl ApiResourceDelegationDao {
         let res = sqlx::query(
             r#"
             UPDATE api_resource_delegation
-            SET tx_status = 'success',
-                chain_success_at = COALESCE(chain_success_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            SET chain_success_at = COALESCE(chain_success_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 transaction_time = COALESCE(transaction_time, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 building_at = NULL,
                 broadcast_uncertain_reconciled_at = CASE
@@ -614,7 +610,7 @@ impl ApiResourceDelegationDao {
               AND status = 1
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
             "#,
         )
@@ -643,8 +639,7 @@ impl ApiResourceDelegationDao {
               AND tx_exec_receipt_uploaded_at IS NULL
               AND (
                     (
-                      tx_status = 'success'
-                      AND chain_success_at IS NOT NULL
+                      chain_success_at IS NOT NULL
                       AND tx_hash IS NOT NULL
                       AND trim(tx_hash) <> ''
                     )
@@ -680,8 +675,7 @@ impl ApiResourceDelegationDao {
               AND tx_exec_receipt_uploaded_at IS NULL
               AND (
                     (
-                      tx_status = 'success'
-                      AND chain_success_at IS NOT NULL
+                      chain_success_at IS NOT NULL
                       AND tx_hash IS NOT NULL
                       AND trim(tx_hash) <> ''
                     )
@@ -717,8 +711,7 @@ impl ApiResourceDelegationDao {
               AND tx_exec_receipt_uploaded_at IS NULL
               AND (
                     (
-                      tx_status = 'success'
-                      AND chain_success_at IS NOT NULL
+                      chain_success_at IS NOT NULL
                       AND tx_hash IS NOT NULL
                       AND trim(tx_hash) <> ''
                     )
@@ -809,7 +802,7 @@ impl ApiResourceDelegationDao {
               AND trim(tx_hash) <> ''
               AND chain_success_at IS NULL
               AND chain_failed_at IS NULL
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
             "#,
         )
@@ -835,7 +828,7 @@ impl ApiResourceDelegationDao {
             WHERE resource_trade_no = ?
               AND chain_success_at IS NULL
               AND chain_failed_at IS NULL
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
             "#,
         )
@@ -861,7 +854,7 @@ impl ApiResourceDelegationDao {
             WHERE resource_trade_no = ?
               AND chain_success_at IS NULL
               AND chain_failed_at IS NULL
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
             "#,
         )
@@ -886,7 +879,6 @@ impl ApiResourceDelegationDao {
             UPDATE api_resource_delegation
             SET err_code = ?2,
                 err_msg = ?3,
-                tx_status = 'fail',
                 chain_failed_at = COALESCE(chain_failed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 broadcast_uncertain_reconciled_at = CASE
                     WHEN broadcast_uncertain_since_at IS NOT NULL
@@ -900,7 +892,7 @@ impl ApiResourceDelegationDao {
                 status = 3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
             "#,
         )
@@ -926,7 +918,7 @@ impl ApiResourceDelegationDao {
             SET result_ack_send_count = result_ack_send_count + 1,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND result_received_at IS NOT NULL
+              AND finished_at IS NOT NULL
               AND result_payload IS NOT NULL
               AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
@@ -952,7 +944,7 @@ impl ApiResourceDelegationDao {
             SET result_ack_sent_at = COALESCE(result_ack_sent_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
-              AND result_received_at IS NOT NULL
+              AND finished_at IS NOT NULL
               AND result_payload IS NOT NULL
               AND tx_res_received_at IS NOT NULL
               AND result_ack_sent_at IS NULL
@@ -986,7 +978,7 @@ impl ApiResourceDelegationDao {
                  resource_trade_no, chain_code, owner_address, receiver_address,
                  delegation_mode, permission_id, resource_type, native_amount, amount,
                  status, task_ack_sent_at,
-                 result_status, result_received_at, tx_res_received_at, result_payload, fail_type,
+                 result_status, finished_at, tx_res_received_at, result_payload, fail_type,
                  created_at, updated_at)
             VALUES
                 (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
@@ -1018,9 +1010,9 @@ impl ApiResourceDelegationDao {
                     excluded.task_ack_sent_at
                 ),
                 result_status = excluded.result_status,
-                result_received_at = COALESCE(
-                    api_resource_delegation.result_received_at,
-                    excluded.result_received_at
+                finished_at = COALESCE(
+                    api_resource_delegation.finished_at,
+                    excluded.finished_at
                 ),
                 tx_res_received_at = COALESCE(
                     api_resource_delegation.tx_res_received_at,
@@ -1071,7 +1063,7 @@ impl ApiResourceDelegationDao {
             r#"
             UPDATE api_resource_delegation
             SET result_status = ?2,
-                result_received_at = COALESCE(result_received_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                finished_at = COALESCE(finished_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 result_payload = COALESCE(?6, result_payload),
                 fail_type = ?3,
                 err_code = ?4,
@@ -1115,7 +1107,7 @@ impl ApiResourceDelegationDao {
             r#"
             UPDATE api_resource_delegation
             SET result_status = ?2,
-                result_received_at = COALESCE(result_received_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                finished_at = COALESCE(finished_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 tx_res_received_at = COALESCE(tx_res_received_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 result_payload = COALESCE(?6, result_payload),
                 fail_type = ?3,
@@ -1157,7 +1149,6 @@ impl ApiResourceDelegationDao {
             SET status = 1,
                 building_at = NULL,
                 tx_hash = NULL,
-                tx_status = NULL,
                 last_broadcast_at = NULL,
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
@@ -1167,7 +1158,7 @@ impl ApiResourceDelegationDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
               AND operation_type IN (1, 2)
-              AND result_received_at IS NULL
+              AND finished_at IS NULL
               AND err_code IS NULL
             "#,
         )

@@ -322,11 +322,11 @@ impl LocalResourceReclaimWorker {
             return Ok(());
         }
 
-        if delegation.result_received_at.is_some() || delegation.err_code.is_some() {
+        if delegation.finished_at.is_some() || delegation.err_code.is_some() {
             info!(
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %Self::origin_trade_no(&delegation),
-                result_received_at = ?delegation.result_received_at,
+                finished_at = ?delegation.finished_at,
                 err_code = ?delegation.err_code,
                 source = "local_resource_reclaim_shadow",
                 "Local undelegation already reached a terminal fact, skipping recover"
@@ -789,7 +789,6 @@ mod tests {
         .await
         .expect("load task");
         assert_eq!(persisted.tx_hash, None);
-        assert_eq!(persisted.tx_status, None);
     }
 
     #[tokio::test]

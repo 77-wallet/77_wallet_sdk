@@ -84,7 +84,7 @@ fn evaluate_can_execute(task: &ApiResourceDelegationEntity, now: DateTime<Utc>) 
             message: "Platform resource task ACK not sent yet".to_string(),
         });
     }
-    if task.result_received_at.is_some() {
+    if task.finished_at.is_some() {
         reasons.push(StageReason {
             code: "result_received",
             message: "Backend resource result already received".to_string(),
@@ -111,7 +111,7 @@ fn evaluate_can_execute(task: &ApiResourceDelegationEntity, now: DateTime<Utc>) 
 
     let can_advance = task.status == ApiResourceDelegationStatus::Pending
         && (!platform_source_requires_ack(task) || task.task_ack_sent_at.is_some())
-        && task.result_received_at.is_none()
+        && task.finished_at.is_none()
         && task.err_code.is_none()
         && build_slot_available(task, now)
         && !has_tx_hash(task);
@@ -127,7 +127,7 @@ fn evaluate_need_recover(task: &ApiResourceDelegationEntity, now: DateTime<Utc>)
             message: "Platform resource task ACK not sent yet".to_string(),
         });
     }
-    if task.result_received_at.is_some() {
+    if task.finished_at.is_some() {
         reasons.push(StageReason {
             code: "result_received",
             message: "Backend resource result already received".to_string(),
@@ -147,7 +147,7 @@ fn evaluate_need_recover(task: &ApiResourceDelegationEntity, now: DateTime<Utc>)
     }
 
     let can_advance = (!platform_source_requires_ack(task) || task.task_ack_sent_at.is_some())
-        && task.result_received_at.is_none()
+        && task.finished_at.is_none()
         && task.err_code.is_none()
         && has_tx_hash(task);
     StageEval { can_advance, reasons }
@@ -177,7 +177,7 @@ fn evaluate_need_receipt_upload(task: &ApiResourceDelegationEntity) -> StageEval
 fn evaluate_need_result_ack(task: &ApiResourceDelegationEntity, _now: DateTime<Utc>) -> StageEval {
     let mut reasons = SmallVec::new();
 
-    if task.result_received_at.is_none() {
+    if task.finished_at.is_none() {
         reasons.push(StageReason {
             code: "result_not_received",
             message: "Backend resource result not received".to_string(),
@@ -201,7 +201,7 @@ fn evaluate_need_result_ack(task: &ApiResourceDelegationEntity, _now: DateTime<U
             message: "Resource result ACK already sent".to_string(),
         });
     }
-    let can_advance = task.result_received_at.is_some()
+    let can_advance = task.finished_at.is_some()
         && task.result_payload.is_some()
         && task.tx_res_received_at.is_some()
         && task.result_ack_sent_at.is_none();
@@ -240,7 +240,6 @@ mod tests {
             building_at: None,
             last_broadcast_at: None,
             tx_hash: None,
-            tx_status: None,
             chain_success_at: None,
             chain_failed_at: None,
             transaction_time: None,
@@ -252,7 +251,7 @@ mod tests {
             tx_exec_receipt_uploaded_at: None,
             result_status: None,
             tx_res_received_at: None,
-            result_received_at: None,
+            finished_at: None,
             result_ack_sent_at: None,
             result_ack_send_count: 0,
             result_payload: None,
@@ -324,7 +323,6 @@ mod tests {
         assert!(!pending.can_advance);
         assert!(reason_codes(&pending).contains(&"execution_result_unconfirmed"));
 
-        record.tx_status = Some("success".to_string());
         record.chain_success_at = Some(now);
         assert!(
             evaluate_stage(ResourceDelegationStage::NeedTxExecReceiptUpload, &record, now)
@@ -349,7 +347,7 @@ mod tests {
         assert!(reason_codes(&missing).contains(&"tx_res_not_received"));
 
         record.result_status = Some(ApiResourceDelegationResultStatus::Success);
-        record.result_received_at = Some(now);
+        record.finished_at = Some(now);
         record.tx_res_received_at = Some(now);
         record.result_payload = Some("{}".to_string());
         assert!(evaluate_stage(ResourceDelegationStage::NeedResultAck, &record, now).can_advance);

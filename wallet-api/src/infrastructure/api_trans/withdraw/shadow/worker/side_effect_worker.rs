@@ -304,7 +304,7 @@ impl SideEffectWorker {
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
 
-        if resource_task.result_received_at.is_none() {
+        if resource_task.finished_at.is_none() {
             return Ok(());
         }
         if resource_task.result_payload.is_none() {

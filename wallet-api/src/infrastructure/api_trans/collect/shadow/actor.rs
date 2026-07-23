@@ -177,7 +177,6 @@ async fn log_startup_failed_local_delegate_diagnostics(
             native_amount = %record.native_amount,
             amount = %record.amount,
             tx_hash = ?record.tx_hash,
-            tx_status = ?record.tx_status,
             updated_at = ?record.updated_at,
             source = "collect_shadow_startup",
             "Historical collect local resource delegation failure"

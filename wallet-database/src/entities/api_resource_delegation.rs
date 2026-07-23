@@ -160,7 +160,6 @@ pub struct ApiResourceDelegationEntity {
     pub building_at: Option<DateTime<Utc>>,
     pub last_broadcast_at: Option<DateTime<Utc>>,
     pub tx_hash: Option<String>,
-    pub tx_status: Option<String>,
     pub chain_success_at: Option<DateTime<Utc>>,
     pub chain_failed_at: Option<DateTime<Utc>>,
     pub transaction_time: Option<DateTime<Utc>>,
@@ -176,7 +175,7 @@ pub struct ApiResourceDelegationEntity {
     /// Hard gate: platform resource TX_RES ACK must not be sent before this
     /// fact exists. SDK chain recovery facts must not populate it.
     pub tx_res_received_at: Option<DateTime<Utc>>,
-    pub result_received_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
     pub result_ack_sent_at: Option<DateTime<Utc>>,
     pub result_ack_send_count: i64,
     pub result_payload: Option<String>,

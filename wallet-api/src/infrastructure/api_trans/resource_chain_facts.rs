@@ -17,7 +17,6 @@ pub(crate) fn resource_chain_success(task: &ApiResourceDelegationEntity) -> bool
 pub(crate) fn resource_chain_failed(task: &ApiResourceDelegationEntity) -> bool {
     task.chain_failed_at.is_some()
         || has_text(task.err_code.as_deref())
-        || matches!(task.tx_status.as_deref(), Some("fail"))
         || task.result_status == Some(ApiResourceDelegationResultStatus::Fail)
 }
 
@@ -72,7 +71,6 @@ mod tests {
             building_at: None,
             last_broadcast_at: None,
             tx_hash: None,
-            tx_status: None,
             chain_success_at: None,
             chain_failed_at: None,
             transaction_time: None,
@@ -84,7 +82,7 @@ mod tests {
             tx_exec_receipt_uploaded_at: None,
             result_status: None,
             tx_res_received_at: None,
-            result_received_at: None,
+            finished_at: None,
             result_ack_sent_at: None,
             result_ack_send_count: 0,
             result_payload: None,
@@ -117,16 +115,6 @@ mod tests {
         assert!(resource_chain_success(&task));
         assert!(resource_success_receipt_uploadable(&task));
         assert!(resource_receipt_uploadable(&task));
-    }
-
-    #[test]
-    fn legacy_tx_status_success_is_not_a_chain_success_fact() {
-        let mut task = task();
-        task.tx_hash = Some("hash".to_string());
-        task.tx_status = Some("success".to_string());
-
-        assert!(!resource_chain_success(&task));
-        assert!(!resource_success_receipt_uploadable(&task));
     }
 
     #[test]

@@ -1568,8 +1568,7 @@ impl ShadowCollectWorker {
         let platform_failed = delegations.iter().any(|delegation| {
             delegation.source == ApiResourceDelegationSource::Platform
                 && delegation.operation_type == ApiResourceDelegationOperationType::Delegate
-                && (delegation.err_code.is_some()
-                    || matches!(delegation.tx_status.as_deref(), Some("fail")))
+                && (delegation.err_code.is_some() || delegation.chain_failed_at.is_some())
         });
 
         if req.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)
@@ -5292,7 +5291,7 @@ oss:
         )
         .await
         .expect("load platform task");
-        assert!(task.result_received_at.is_none());
+        assert!(task.finished_at.is_none());
         assert!(task.result_ack_sent_at.is_none());
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack(&resource_pool, 100)

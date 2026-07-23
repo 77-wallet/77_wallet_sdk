@@ -532,7 +532,7 @@ impl PlatformResourceReclaimWorker {
             )));
         }
 
-        if resource_task.result_received_at.is_none() || resource_task.result_payload.is_none() {
+        if resource_task.finished_at.is_none() || resource_task.result_payload.is_none() {
             warn!(
                 resource_trade_no = %resource_trade_no,
                 source = "platform_resource_reclaim_shadow",
@@ -769,11 +769,11 @@ impl PlatformResourceReclaimWorker {
             return Ok(());
         }
 
-        if delegation.result_received_at.is_some() || delegation.err_code.is_some() {
+        if delegation.finished_at.is_some() || delegation.err_code.is_some() {
             info!(
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %Self::origin_trade_no(&delegation),
-                result_received_at = ?delegation.result_received_at,
+                finished_at = ?delegation.finished_at,
                 err_code = ?delegation.err_code,
                 source = "platform_resource_reclaim_shadow",
                 "Platform undelegation already reached a terminal fact, skipping recover"
@@ -1400,9 +1400,8 @@ mod tests {
             Some(PlatformResourceReclaimWorker::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE)
         );
         assert!(got.err_msg.as_deref().unwrap_or_default().contains("missing permissionId"));
-        assert_eq!(got.tx_status.as_deref(), Some("fail"));
         assert_eq!(got.result_status, Some(ApiResourceDelegationResultStatus::Fail));
-        assert!(got.result_received_at.is_some());
+        assert!(got.finished_at.is_some());
         assert!(
             got.result_payload
                 .as_deref()
@@ -1476,7 +1475,6 @@ mod tests {
         )
         .await
         .expect("load reclaim");
-        assert_eq!(got.tx_status.as_deref(), Some("fail"));
         assert_eq!(
             got.err_code.as_deref(),
             Some(PlatformResourceReclaimWorker::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE)
@@ -1636,7 +1634,6 @@ mod tests {
         .await
         .expect("load task");
         assert_eq!(persisted.tx_hash, None);
-        assert_eq!(persisted.tx_status, None);
     }
 
     #[tokio::test]
@@ -1679,9 +1676,9 @@ mod tests {
             SET task_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 tx_hash = resource_trade_no || '_tx_hash',
-                tx_status = 'success',
+                chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 result_status = 1,
-                result_received_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no IN (
                 'rsc_platform_undelegate_collect_receipt',
@@ -1882,7 +1879,6 @@ mod tests {
             building_at: None,
             last_broadcast_at: Some(chrono::Utc::now()),
             tx_hash: Some("tx_hash".to_string()),
-            tx_status: Some("success".to_string()),
             chain_success_at: Some(chrono::Utc::now()),
             chain_failed_at: None,
             transaction_time: Some(chrono::Utc::now()),
@@ -1894,7 +1890,7 @@ mod tests {
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
             tx_res_received_at: None,
-            result_received_at: Some(chrono::Utc::now()),
+            finished_at: Some(chrono::Utc::now()),
             result_ack_sent_at: None,
             result_ack_send_count: 0,
             result_payload: None,
@@ -1941,7 +1937,6 @@ mod tests {
             building_at: None,
             last_broadcast_at: None,
             tx_hash: None,
-            tx_status: None,
             chain_success_at: None,
             chain_failed_at: None,
             transaction_time: None,
@@ -1953,7 +1948,7 @@ mod tests {
             tx_exec_receipt_uploaded_at: None,
             result_status: None,
             tx_res_received_at: None,
-            result_received_at: None,
+            finished_at: None,
             result_ack_sent_at: None,
             result_ack_send_count: 0,
             result_payload: None,
@@ -1998,7 +1993,6 @@ mod tests {
             building_at: None,
             last_broadcast_at: Some(chrono::Utc::now()),
             tx_hash: Some("tx_hash".to_string()),
-            tx_status: Some("success".to_string()),
             chain_success_at: Some(chrono::Utc::now()),
             chain_failed_at: None,
             transaction_time: Some(chrono::Utc::now()),
@@ -2010,7 +2004,7 @@ mod tests {
             tx_exec_receipt_uploaded_at: None,
             result_status: Some(ApiResourceDelegationResultStatus::Success),
             tx_res_received_at: Some(chrono::Utc::now()),
-            result_received_at: Some(chrono::Utc::now()),
+            finished_at: Some(chrono::Utc::now()),
             result_ack_sent_at: None,
             result_ack_send_count: 0,
             result_payload: Some("payload".to_string()),

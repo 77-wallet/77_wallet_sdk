@@ -958,9 +958,8 @@ mod tests {
             ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_claim").await.unwrap();
         assert!(got.building_at.is_some());
         assert!(got.tx_hash.is_none());
-        assert!(got.tx_status.is_none());
         assert!(got.result_status.is_none());
-        assert!(got.result_received_at.is_none());
+        assert!(got.finished_at.is_none());
     }
 
     #[tokio::test]
@@ -1098,11 +1097,10 @@ mod tests {
             .unwrap();
         assert_eq!(got.tx_hash.as_deref(), Some("tx_hash_1"));
         assert!(got.last_broadcast_at.is_some());
-        assert!(got.tx_status.is_none());
         assert!(got.chain_success_at.is_none());
         assert!(got.transaction_time.is_none());
         assert!(got.result_status.is_none());
-        assert!(got.result_received_at.is_none());
+        assert!(got.finished_at.is_none());
         assert!(got.broadcast_uncertain_since_at.is_none());
         assert_eq!(got.broadcast_uncertain_retry_count, 0);
         assert_eq!(got.broadcast_uncertain_rebroadcast_count, 0);
@@ -1150,7 +1148,6 @@ mod tests {
         let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_broadcast")
             .await
             .unwrap();
-        assert_eq!(got.tx_status.as_deref(), Some("success"));
         assert!(got.chain_success_at.is_some());
         assert!(got.transaction_time.is_some());
         assert!(got.broadcast_uncertain_since_at.is_none());
@@ -1198,7 +1195,6 @@ mod tests {
             SET task_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 tx_hash = 'tx_hash_ready',
-                tx_status = 'success',
                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
@@ -1279,7 +1275,6 @@ mod tests {
             SET task_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 tx_hash = resource_trade_no || '_tx_hash',
-                tx_status = 'success',
                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
@@ -1471,7 +1466,7 @@ mod tests {
             ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_reclaim_recovered")
                 .await
                 .unwrap();
-        assert!(recovered.result_received_at.is_some());
+        assert!(recovered.finished_at.is_some());
         assert!(recovered.tx_res_received_at.is_none());
 
         let backend_result = ApiResourceDelegationRepo::get_by_resource_trade_no(
@@ -1480,7 +1475,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(backend_result.result_received_at.is_some());
+        assert!(backend_result.finished_at.is_some());
         assert!(backend_result.tx_res_received_at.is_some());
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
@@ -1544,7 +1539,6 @@ mod tests {
             .unwrap();
         assert_eq!(got.err_code.as_deref(), Some("ERR_6008"));
         assert_eq!(got.err_msg.as_deref(), Some("sdk internal error"));
-        assert_eq!(got.tx_status.as_deref(), Some("fail"));
         assert_eq!(got.status, ApiResourceDelegationStatus::Fail);
 
         let rows =
@@ -1613,7 +1607,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(success.result_status, Some(ApiResourceDelegationResultStatus::Success));
-        assert!(success.result_received_at.is_some());
+        assert!(success.finished_at.is_some());
         assert_eq!(success.status, ApiResourceDelegationStatus::Success);
 
         let fail =
@@ -1793,7 +1787,7 @@ mod tests {
         assert_eq!(got.fail_type, Some(3));
         assert_eq!(got.result_payload.as_deref(), Some(payload));
         assert!(got.task_ack_sent_at.is_some());
-        assert!(got.result_received_at.is_some());
+        assert!(got.finished_at.is_some());
         assert!(got.result_ack_sent_at.is_none());
 
         let task_ack_rows =
@@ -2127,7 +2121,6 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(persisted.tx_hash, None);
-        assert_eq!(persisted.tx_status, None);
     }
 
     #[tokio::test]
@@ -2180,7 +2173,6 @@ mod tests {
         .unwrap();
         assert!(persisted.building_at.is_none());
         assert_eq!(persisted.tx_hash, None);
-        assert_eq!(persisted.tx_status, None);
     }
 
     #[tokio::test]
@@ -2226,7 +2218,6 @@ mod tests {
         .unwrap();
         assert!(persisted.building_at.is_none());
         assert_eq!(persisted.tx_hash, None);
-        assert_eq!(persisted.tx_status, None);
     }
 
     #[tokio::test]

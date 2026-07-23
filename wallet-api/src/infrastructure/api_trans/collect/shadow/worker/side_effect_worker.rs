@@ -611,7 +611,7 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        if resource_task.result_received_at.is_none() {
+        if resource_task.finished_at.is_none() {
             warn!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Resource result ACK skipped because result has not been received");
             return Ok(());
         }

@@ -626,7 +626,7 @@ impl PlatformResourceDelegateWorker {
 
     async fn process_recover(&self, resource_trade_no: String) -> Result<bool, ServiceError> {
         let task = self.load_platform_delegate(&resource_trade_no).await?;
-        if task.result_received_at.is_some() || task.err_code.is_some() {
+        if task.finished_at.is_some() || task.err_code.is_some() {
             return Ok(resource_chain_success(&task) || resource_chain_failed(&task));
         }
         let Some(tx_hash) = task.tx_hash.as_deref().filter(|s| !s.trim().is_empty()) else {
@@ -708,7 +708,7 @@ impl PlatformResourceDelegateWorker {
             err_code = ?task.err_code,
             chain_success_at = ?task.chain_success_at,
             chain_failed_at = ?task.chain_failed_at,
-            result_received_at = ?task.result_received_at,
+            finished_at = ?task.finished_at,
             source = "platform_resource_delegate",
             "Platform resource delegation receipt upload started"
         );
@@ -754,7 +754,7 @@ impl PlatformResourceDelegateWorker {
         if task.result_ack_sent_at.is_some() {
             return Ok(());
         }
-        if task.result_received_at.is_none() || task.result_payload.is_none() {
+        if task.finished_at.is_none() || task.result_payload.is_none() {
             return Ok(());
         }
         let (trans_type, ack_type) = if is_original_order_resource_result_fact(&task) {
