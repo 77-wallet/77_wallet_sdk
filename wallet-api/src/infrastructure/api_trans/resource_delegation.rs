@@ -73,7 +73,7 @@ pub(crate) async fn record_resource_uncertain_and_maybe_rebroadcast(
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
 
-    let rows = ApiResourceDelegationRepo::reset_for_rebuild(pool, resource_trade_no)
+    let rows = ApiResourceDelegationRepo::invalidate_for_rebroadcast(pool, resource_trade_no)
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
 

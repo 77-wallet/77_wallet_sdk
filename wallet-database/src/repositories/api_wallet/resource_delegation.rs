@@ -601,6 +601,14 @@ impl ApiResourceDelegationRepo {
     ) -> Result<u64, crate::Error> {
         ApiResourceDelegationDao::reset_for_rebuild(pool.write_ref(), resource_trade_no).await
     }
+
+    pub async fn invalidate_for_rebroadcast(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::invalidate_for_rebroadcast(pool.write_ref(), resource_trade_no)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -1142,6 +1150,107 @@ mod tests {
         assert_eq!(broadcasted.tx_hash.as_deref(), Some("deterministic_hash"));
         assert_eq!(broadcasted.raw_tx.as_deref(), Some("{\"Tron\":[]}"));
         assert!(broadcasted.last_broadcast_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn uncertain_rebroadcast_invalidation_allows_a_fresh_build() {
+        let pool = setup_api_resource_pool("resource_delegation_uncertain_rebroadcast").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_uncertain_rebroadcast",
+                "origin_uncertain_rebroadcast",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_uncertain_rebroadcast")
+            .await
+            .unwrap();
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_uncertain_rebroadcast")
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &pool,
+                "rsc_uncertain_rebroadcast",
+                "first_hash",
+                "first_raw",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcasted(
+                &pool,
+                "rsc_uncertain_rebroadcast",
+                "first_hash",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(
+                &pool,
+                "rsc_uncertain_rebroadcast",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::invalidate_for_rebroadcast(
+                &pool,
+                "rsc_uncertain_rebroadcast",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+
+        let invalidated =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_uncertain_rebroadcast")
+                .await
+                .unwrap();
+        assert!(invalidated.raw_tx.is_none());
+        assert!(invalidated.tx_hash.is_none());
+        assert!(invalidated.last_broadcast_at.is_none());
+        assert!(invalidated.broadcast_uncertain_since_at.is_none());
+
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_uncertain_rebroadcast")
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &pool,
+                "rsc_uncertain_rebroadcast",
+                "second_hash",
+                "second_raw",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        let rebuilt =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_uncertain_rebroadcast")
+                .await
+                .unwrap();
+        assert_eq!(rebuilt.tx_hash.as_deref(), Some("second_hash"));
+        assert_eq!(rebuilt.raw_tx.as_deref(), Some("second_raw"));
+        assert!(rebuilt.last_broadcast_at.is_none());
     }
 
     #[tokio::test]

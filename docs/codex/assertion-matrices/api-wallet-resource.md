@@ -72,6 +72,9 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Invariant: transient failure handling cannot clear a persisted pre-broadcast
   `raw_tx` / `tx_hash`; restart recovery must rebroadcast the same signed
   transaction instead of building a second transaction.
+- Invariant: uncertain-timeout rebroadcast uses a dedicated atomic invalidation
+  that clears `raw_tx`, `tx_hash`, and `last_broadcast_at` together before a new
+  build; ordinary rebuild reset cannot invalidate a pre-broadcast signed fact.
 - Shared helper: resource side-effect workers use `resource_chain_facts` for
   broadcast, success, failure, and receipt-upload eligibility.
 - Uncertain fact: resource recover returning no final chain result records

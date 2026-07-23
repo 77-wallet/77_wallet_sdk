@@ -1285,4 +1285,44 @@ impl ApiResourceDelegationDao {
         .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
     }
+
+    pub async fn invalidate_for_rebroadcast<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET status = 1,
+                building_at = NULL,
+                tx_hash = NULL,
+                raw_tx = NULL,
+                last_broadcast_at = NULL,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND operation_type IN (1, 2)
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND last_broadcast_at IS NOT NULL
+              AND broadcast_uncertain_since_at IS NOT NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
 }
