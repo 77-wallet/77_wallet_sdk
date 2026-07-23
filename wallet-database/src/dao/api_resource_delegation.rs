@@ -581,6 +581,37 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn reconcile_broadcast_pending<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET tx_hash = ?2,
+                building_at = NULL,
+                last_broadcast_at = COALESCE(last_broadcast_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND tx_hash IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(tx_hash)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_chain_success<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -893,6 +924,9 @@ impl ApiResourceDelegationDao {
             WHERE resource_trade_no = ?1
               AND finished_at IS NULL
               AND err_code IS NULL
+              AND tx_hash IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
             "#,
         )
         .bind(resource_trade_no)
@@ -1159,6 +1193,8 @@ impl ApiResourceDelegationDao {
               AND operation_type IN (1, 2)
               AND finished_at IS NULL
               AND err_code IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
             "#,
         )
         .bind(resource_trade_no)

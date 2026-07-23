@@ -517,9 +517,35 @@ impl PlatformResourceDelegateWorker {
         .await?;
         let execute_elapsed_ms = execute_start.elapsed().as_millis();
         let mark_start = Instant::now();
-        ApiResourceDelegationRepo::mark_broadcast_success(&self.pool, &resource_trade_no, &tx_hash)
+        let mut marked = ApiResourceDelegationRepo::mark_broadcast_success(
+            &self.pool,
+            &resource_trade_no,
+            &tx_hash,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if marked == 0 {
+            marked = ApiResourceDelegationRepo::reconcile_broadcast_pending(
+                &self.pool,
+                &resource_trade_no,
+                &tx_hash,
+            )
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
+        }
+        if marked == 0 {
+            let current = self.load_platform_delegate(&resource_trade_no).await?;
+            if current.tx_hash.as_deref() != Some(tx_hash.as_str()) {
+                error!(
+                    observability_event = "platform_resource_delegate_broadcast_fact_conflict",
+                    resource_trade_no = %resource_trade_no,
+                    executed_tx_hash = %tx_hash,
+                    persisted_tx_hash = ?current.tx_hash,
+                    source = "platform_resource_delegate",
+                    "Platform resource delegation broadcast fact was not persisted"
+                );
+            }
+        }
         let mark_elapsed_ms = mark_start.elapsed().as_millis();
         if let Some(reservation) = capacity_reservation {
             reservation.release().await;
@@ -659,21 +685,12 @@ impl PlatformResourceDelegateWorker {
                         chrono::DateTime::<chrono::Utc>::from_timestamp_millis(millis as i64)
                     })
                     .map(|time| time.to_rfc3339());
-                ApiResourceDelegationRepo::mark_chain_success(
+                ApiResourceDelegationRepo::mark_recovered_chain_success(
                     &self.pool,
                     &resource_trade_no,
+                    &resp.tx_hash,
                     transaction_time.as_deref(),
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                ApiResourceDelegationRepo::mark_result_received(
-                    &self.pool,
-                    &resource_trade_no,
-                    ApiResourceDelegationResultStatus::Success,
-                    None,
-                    None,
-                    None,
-                    Some(&payload),
+                    &payload,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
@@ -725,14 +742,25 @@ impl PlatformResourceDelegateWorker {
         CONTEXT.get().unwrap().get_global_backend_api().upload_tx_exec_receipt(&payload).await?;
         let upload_elapsed_ms = upload_start.elapsed().as_millis();
         let mark_start = Instant::now();
-        ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded_for_source_and_operation(
-            &self.pool,
-            &resource_trade_no,
-            ApiResourceDelegationSource::Platform,
-            ApiResourceDelegationOperationType::Delegate,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
+        let marked =
+            ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded_for_source_and_operation(
+                &self.pool,
+                &resource_trade_no,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Delegate,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        if marked == 0 {
+            let current = self.load_platform_delegate(&resource_trade_no).await?;
+            if current.tx_exec_receipt_uploaded_at.is_none() {
+                return Err(ServiceError::Database(wallet_database::Error::Database(
+                    wallet_database::DatabaseError::UpdateFailed(format!(
+                        "resource delegation receipt upload fact conflict: trade_no={resource_trade_no}"
+                    )),
+                )));
+            }
+        }
         let mark_elapsed_ms = mark_start.elapsed().as_millis();
 
         info!(

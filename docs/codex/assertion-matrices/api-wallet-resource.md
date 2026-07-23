@@ -73,6 +73,22 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   lifecycle after chain success or failure.
 - Invariant: `WD_RSC_DL` / `COL_RSC_DL` SUCCESS receipts must not be uploaded
   from broadcast-only hash facts.
+- Test:
+  `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
+  `broadcast_fact_cannot_be_overwritten_by_local_failure`
+- Test:
+  `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
+  `deterministic_broadcast_hash_reconciles_after_build_claim_reset`
+- Test:
+  `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
+  `recovered_chain_success_and_result_are_committed_together`
+- Test:
+  `wallet-database/src/repositories/api_wallet/resource_delegation.rs`
+  `recovered_chain_success_rejects_conflicting_hash_without_finishing`
+- Invariant: local execution failure must not overwrite a persisted broadcast
+  hash; confirmed recovery must restore its deterministic hash and atomically
+  persist the chain-success fact and terminal SUCCESS result, even if an
+  uncertain rebuild cleared the prior pending-broadcast snapshot.
 
 ## API Withdraw Wallet Unfreeze Extraction
 

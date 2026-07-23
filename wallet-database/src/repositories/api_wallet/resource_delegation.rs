@@ -280,6 +280,19 @@ impl ApiResourceDelegationRepo {
         Self::mark_broadcast_pending(pool, resource_trade_no, tx_hash).await
     }
 
+    pub async fn reconcile_broadcast_pending(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::reconcile_broadcast_pending(
+            pool.write_ref(),
+            resource_trade_no,
+            tx_hash,
+        )
+        .await
+    }
+
     pub async fn mark_chain_success(
         pool: &ApiResourceDbPool,
         resource_trade_no: &str,
@@ -291,6 +304,60 @@ impl ApiResourceDelegationRepo {
             transaction_time,
         )
         .await
+    }
+
+    pub async fn mark_recovered_chain_success(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        tx_hash: &str,
+        transaction_time: Option<&str>,
+        result_payload: &str,
+    ) -> Result<(), crate::Error> {
+        let mut tx =
+            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        ApiResourceDelegationDao::reconcile_broadcast_pending(&mut *tx, resource_trade_no, tx_hash)
+            .await?;
+        let persisted_hash: Option<String> = sqlx::query_scalar(
+            "SELECT tx_hash FROM api_resource_delegation WHERE resource_trade_no = ?",
+        )
+        .bind(resource_trade_no)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?
+        .flatten();
+        if persisted_hash.as_deref() != Some(tx_hash) {
+            return Err(crate::Error::Other(format!(
+                "resource delegation recovery hash conflict: trade_no={resource_trade_no}, expected={tx_hash}, persisted={persisted_hash:?}"
+            )));
+        }
+        let chain_rows = ApiResourceDelegationDao::mark_chain_success(
+            &mut *tx,
+            resource_trade_no,
+            transaction_time,
+        )
+        .await?;
+        if chain_rows != 1 {
+            return Err(crate::Error::Other(format!(
+                "resource delegation recovery chain fact conflict: trade_no={resource_trade_no}, rows={chain_rows}"
+            )));
+        }
+        let result_rows = ApiResourceDelegationDao::mark_result_received(
+            &mut *tx,
+            resource_trade_no,
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            Some(result_payload),
+        )
+        .await?;
+        if result_rows != 1 {
+            return Err(crate::Error::Other(format!(
+                "resource delegation recovery result conflict: trade_no={resource_trade_no}, rows={result_rows}"
+            )));
+        }
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
     }
 
     pub async fn mark_broadcast_uncertain_attempt(
@@ -1160,6 +1227,212 @@ mod tests {
         assert!(got.broadcast_uncertain_last_checked_at.is_none());
         assert!(got.broadcast_uncertain_reconciled_at.is_some());
         assert_eq!(got.broadcast_uncertain_rebroadcast_count, 0);
+    }
+
+    #[tokio::test]
+    async fn broadcast_fact_cannot_be_overwritten_by_local_failure() {
+        let pool = setup_api_resource_pool("resource_delegation_broadcast_fact_guard").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_broadcast_guard",
+                "origin_broadcast_guard",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_broadcast_guard").await.unwrap();
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_broadcast_guard").await.unwrap();
+        ApiResourceDelegationRepo::mark_broadcast_pending(
+            &pool,
+            "rsc_broadcast_guard",
+            "guarded_hash",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_failed_if_unfinished(
+                &pool,
+                "rsc_broadcast_guard",
+                "ERR_LOCAL",
+                "local execution error",
+            )
+            .await
+            .unwrap(),
+            0
+        );
+
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_broadcast_guard")
+            .await
+            .unwrap();
+        assert_eq!(got.tx_hash.as_deref(), Some("guarded_hash"));
+        assert!(got.err_code.is_none());
+        assert!(got.chain_failed_at.is_none());
+        assert!(got.finished_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn deterministic_broadcast_hash_reconciles_after_build_claim_reset() {
+        let pool = setup_api_resource_pool("resource_delegation_broadcast_reconcile").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_broadcast_reconcile",
+                "origin_broadcast_reconcile",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ApiResourceDelegationRepo::reconcile_broadcast_pending(
+                &pool,
+                "rsc_broadcast_reconcile",
+                "reconciled_hash",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::reconcile_broadcast_pending(
+                &pool,
+                "rsc_broadcast_reconcile",
+                "different_hash",
+            )
+            .await
+            .unwrap(),
+            0
+        );
+
+        let got =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_broadcast_reconcile")
+                .await
+                .unwrap();
+        assert_eq!(got.tx_hash.as_deref(), Some("reconciled_hash"));
+        assert!(got.last_broadcast_at.is_some());
+        assert!(got.finished_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn recovered_chain_success_and_result_are_committed_together() {
+        let pool = setup_api_resource_pool("resource_delegation_atomic_recovery").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_atomic_recovery",
+                "origin_atomic_recovery",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_atomic_recovery").await.unwrap();
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_atomic_recovery")
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcast_pending(
+                &pool,
+                "rsc_atomic_recovery",
+                "atomic_hash",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::reset_for_rebuild(&pool, "rsc_atomic_recovery")
+                .await
+                .unwrap(),
+            1
+        );
+        let reset =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_atomic_recovery")
+                .await
+                .unwrap();
+        assert!(reset.tx_hash.is_none());
+
+        ApiResourceDelegationRepo::mark_recovered_chain_success(
+            &pool,
+            "rsc_atomic_recovery",
+            "atomic_hash",
+            None,
+            "platform_delegation_recovered:atomic_hash",
+        )
+        .await
+        .unwrap();
+
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_atomic_recovery")
+            .await
+            .unwrap();
+        assert_eq!(got.tx_hash.as_deref(), Some("atomic_hash"));
+        assert!(got.chain_success_at.is_some());
+        assert_eq!(got.result_status, Some(ApiResourceDelegationResultStatus::Success));
+        assert!(got.finished_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn recovered_chain_success_rejects_conflicting_hash_without_finishing() {
+        let pool = setup_api_resource_pool("resource_delegation_atomic_recovery_conflict").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_atomic_conflict",
+                "origin_atomic_conflict",
+                2,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::reconcile_broadcast_pending(
+            &pool,
+            "rsc_atomic_conflict",
+            "existing_hash",
+        )
+        .await
+        .unwrap();
+
+        let err = ApiResourceDelegationRepo::mark_recovered_chain_success(
+            &pool,
+            "rsc_atomic_conflict",
+            "recovered_hash",
+            None,
+            "platform_delegation_recovered:recovered_hash",
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("hash conflict"));
+
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_atomic_conflict")
+            .await
+            .unwrap();
+        assert_eq!(got.tx_hash.as_deref(), Some("existing_hash"));
+        assert!(got.chain_success_at.is_none());
+        assert!(got.result_status.is_none());
+        assert!(got.finished_at.is_none());
     }
 
     #[tokio::test]
