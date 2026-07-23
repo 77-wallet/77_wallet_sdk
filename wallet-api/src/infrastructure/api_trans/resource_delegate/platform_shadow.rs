@@ -15,16 +15,10 @@ use wallet_database::{
             ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
             ApiResourceDelegationSource,
         },
-        api_resource_gate::{
-            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
-        },
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
     },
-    repositories::api_wallet::{
-        collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
-        withdraw::ApiWithdrawRepo,
-    },
+    repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TxExecReceiptUploadReq,
@@ -47,6 +41,7 @@ use crate::{
                 resource_chain_failed, resource_chain_success, resource_failure_receipt_uploadable,
                 resource_success_receipt_uploadable,
             },
+            resource_delegate::resource_gate_projection,
             resource_delegation::{
                 execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
                 resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
@@ -763,7 +758,12 @@ impl PlatformResourceDelegateWorker {
 
         // 失败路径可能没有 result message，所以在 receipt upload 后 bypass release。
         // 这是失败例外路径；成功路径仍必须等 result ACK 后才释放原单 gate。
-        self.project_gate_if_failure(&task).await
+        resource_gate_projection::project_gate_if_failure(
+            &self.transaction_pool,
+            &task,
+            "platform_resource_delegate",
+        )
+        .await
     }
 
     async fn process_result_ack(&self, resource_trade_no: String) -> Result<(), ServiceError> {
@@ -807,7 +807,13 @@ impl PlatformResourceDelegateWorker {
 
         // ACK 成功后才能 release 原单 gate。
         // 这样即使 collect/withdraw shadow 独立扫描，也不会在资源结果 ACK 前推进原单。
-        self.mark_result_ack_and_project_gate(&task).await
+        resource_gate_projection::mark_result_ack_and_project_gate(
+            &self.pool,
+            &self.transaction_pool,
+            &task,
+            "platform_resource_delegate",
+        )
+        .await
     }
 
     async fn handle_execute_failure_if_needed(
@@ -833,7 +839,12 @@ impl PlatformResourceDelegateWorker {
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
                 let task = self.load_platform_delegate(resource_trade_no).await?;
-                self.project_gate_if_failure(&task).await
+                resource_gate_projection::project_gate_if_failure(
+                    &self.transaction_pool,
+                    &task,
+                    "platform_resource_delegate",
+                )
+                .await
             }
             wallet_utils::RetryPolicy::Delay => self.schedule_retry(resource_trade_no, &err).await,
         }
@@ -861,171 +872,6 @@ impl PlatformResourceDelegateWorker {
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
         Ok(())
-    }
-
-    async fn mark_result_ack_and_project_gate(
-        &self,
-        task: &ApiResourceDelegationEntity,
-    ) -> Result<(), ServiceError> {
-        let release = Self::gate_release_from_result(task);
-        let origin_trade_type =
-            task.origin_trade_type.map(|x| x.to_string()).unwrap_or_else(|| "None".to_string());
-        let origin_trade_no = task.origin_trade_no.as_deref().unwrap_or("None");
-        let (release_origin, release_result) = release
-            .as_ref()
-            .map(|(o, r)| (o.as_str(), r.to_string()))
-            .unwrap_or(("None", "None".to_string()));
-        info!(
-            resource_trade_no = %task.resource_trade_no,
-            origin_trade_no = %origin_trade_no,
-            origin_trade_type = %origin_trade_type,
-            gate_release_origin = %release_origin,
-            gate_release_result = %release_result,
-            result_status = ?task.result_status,
-            tx_status = %task.tx_status.as_deref().unwrap_or("None"),
-            err_code = %task.err_code.as_deref().unwrap_or("None"),
-            source = "platform_resource_delegate",
-            "Marking resource delegation result ACK and projecting origin gate"
-        );
-        match task.origin_trade_type {
-            Some(x) if x == ApiTradeType::Collect as i64 => {
-                let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(
-                    &self.pool,
-                    &task.resource_trade_no,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                if ack_rows > 0 {
-                    if let Some((origin, result)) = release.as_ref() {
-                        ApiCollectRepo::mark_resource_released(
-                            &self.transaction_pool,
-                            origin,
-                            *result,
-                        )
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
-                    }
-                }
-            }
-            Some(x) if x == ApiTradeType::Withdraw as i64 => {
-                let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(
-                    &self.pool,
-                    &task.resource_trade_no,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                if ack_rows > 0 {
-                    if let Some((origin, result)) = release.as_ref() {
-                        ApiWithdrawRepo::mark_resource_released(
-                            &self.transaction_pool,
-                            origin,
-                            *result,
-                        )
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
-                    }
-                }
-            }
-            _ => {
-                ApiResourceDelegationRepo::mark_result_ack_sent(
-                    &self.pool,
-                    &task.resource_trade_no,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn project_gate_if_failure(
-        &self,
-        task: &ApiResourceDelegationEntity,
-    ) -> Result<(), ServiceError> {
-        if !Self::is_failure(task) {
-            return Ok(());
-        }
-        let Some(origin_trade_no) = task.origin_trade_no.as_deref() else {
-            return Ok(());
-        };
-        match task.origin_trade_type {
-            Some(x) if x == ApiTradeType::Collect as i64 => {
-                let rows = ApiCollectRepo::mark_resource_blocked(
-                    &self.transaction_pool,
-                    origin_trade_no,
-                    ApiResourceBlockReason::NeedLocalDelegate,
-                    None,
-                    Some(ApiResourceDependencyType::LocalDelegate),
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                info!(
-                    origin_trade_no = %origin_trade_no,
-                    resource_trade_no = %task.resource_trade_no,
-                    source = "platform_resource_delegate",
-                    rows_affected = %rows,
-                    "Switch collect resource gate to local delegation after platform failure"
-                );
-            }
-            Some(x) if x == ApiTradeType::Withdraw as i64 => {
-                let result = ApiResourceGateResult::ResourceDelegationFailedBypass;
-                let rows = ApiWithdrawRepo::mark_resource_released(
-                    &self.transaction_pool,
-                    origin_trade_no,
-                    result,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                info!(
-                    origin_trade_no = %origin_trade_no,
-                    resource_trade_no = %task.resource_trade_no,
-                    source = "platform_resource_delegate",
-                    rows_affected = %rows,
-                    release_reason = ?result,
-                    "Release withdraw gate by delegation failure bypass"
-                );
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    fn gate_release_from_result(
-        task: &ApiResourceDelegationEntity,
-    ) -> Option<(String, ApiResourceGateResult)> {
-        let origin = task.origin_trade_no.clone()?;
-        let result = if is_original_order_resource_result_fact(task) {
-            match task.result_status {
-                Some(ApiResourceDelegationResultStatus::Success)
-                    if task.origin_trade_type == Some(ApiTradeType::Collect as i64) =>
-                {
-                    ApiResourceGateResult::PlatformDelegateSuccess
-                }
-                Some(ApiResourceDelegationResultStatus::Success) => {
-                    ApiResourceGateResult::ResourceDelegationSuccess
-                }
-                Some(ApiResourceDelegationResultStatus::Fail) => {
-                    ApiResourceGateResult::ResourceDelegationFailedBypass
-                }
-                None => return None,
-            }
-        } else if task.origin_trade_type == Some(ApiTradeType::Collect as i64)
-            && resource_chain_success(task)
-            && !resource_chain_failed(task)
-        {
-            ApiResourceGateResult::PlatformDelegateSuccess
-        } else if resource_chain_success(task) && !resource_chain_failed(task) {
-            ApiResourceGateResult::ResourceDelegationSuccess
-        } else if Self::is_failure(task) {
-            ApiResourceGateResult::ResourceDelegationFailedBypass
-        } else {
-            return None;
-        };
-        Some((origin, result))
-    }
-
-    fn is_failure(task: &ApiResourceDelegationEntity) -> bool {
-        resource_chain_failed(task)
     }
 
     fn build_receipt_payload(
