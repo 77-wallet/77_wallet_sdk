@@ -84,6 +84,9 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   broadcast without an order lifecycle.
 - Invariant: collect and withdraw local delegation recovery atomically persist
   chain success and terminal result before either origin resource gate advances.
+- Invariant: a pre-broadcast terminal resource failure that needs a local result
+  payload writes failure facts and result facts in one guarded update; it cannot
+  overwrite a built or broadcast transaction lifecycle.
 - Shared helper: resource side-effect workers use `resource_chain_facts` for
   broadcast, success, failure, and receipt-upload eligibility.
 - Uncertain fact: resource recover returning no final chain result records

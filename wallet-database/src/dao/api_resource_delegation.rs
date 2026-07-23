@@ -1021,6 +1021,56 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn mark_failed_with_result_if_unfinished<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        fail_type: Option<i64>,
+        err_code: &str,
+        err_msg: &str,
+        result_payload: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET err_code = ?3,
+                err_msg = ?4,
+                chain_failed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                result_status = ?6,
+                result_payload = ?5,
+                fail_type = ?2,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
+                status = ?7,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND tx_hash IS NULL
+              AND raw_tx IS NULL
+              AND last_broadcast_at IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(fail_type)
+        .bind(err_code)
+        .bind(err_msg)
+        .bind(result_payload)
+        .bind(ApiResourceDelegationResultStatus::Fail.as_i64())
+        .bind(ApiResourceDelegationStatus::Fail.as_i64())
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_result_ack_attempted<'a, E>(
         exec: E,
         resource_trade_no: &str,

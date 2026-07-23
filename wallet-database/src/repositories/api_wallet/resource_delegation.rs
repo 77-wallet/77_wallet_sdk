@@ -509,6 +509,25 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn mark_failed_with_result_if_unfinished(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        fail_type: Option<i64>,
+        err_code: &str,
+        err_msg: &str,
+        result_payload: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_failed_with_result_if_unfinished(
+            pool.write_ref(),
+            resource_trade_no,
+            fail_type,
+            err_code,
+            err_msg,
+            result_payload,
+        )
+        .await
+    }
+
     pub async fn scan_failed_for_origin_type_source_and_operation(
         pool: &ApiResourceDbPool,
         origin_trade_type: i64,
@@ -1497,6 +1516,92 @@ mod tests {
         assert!(got.broadcast_uncertain_last_checked_at.is_none());
         assert!(got.broadcast_uncertain_reconciled_at.is_some());
         assert_eq!(got.broadcast_uncertain_rebroadcast_count, 0);
+    }
+
+    #[tokio::test]
+    async fn terminal_failure_and_result_are_committed_together_before_broadcast() {
+        let pool = setup_api_resource_pool("resource_delegation_atomic_failure").await;
+        for trade_no in ["rsc_atomic_failure", "rsc_built_failure_guard"] {
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::platform_delegate(
+                    "uid_1",
+                    trade_no,
+                    &format!("origin_{trade_no}"),
+                    2,
+                    "owner",
+                    "receiver",
+                    "100",
+                ),
+            )
+            .await
+            .unwrap();
+            ApiResourceDelegationRepo::mark_task_ack_sent(&pool, trade_no).await.unwrap();
+        }
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_failed_with_result_if_unfinished(
+                &pool,
+                "rsc_atomic_failure",
+                Some(2),
+                "ERR_TERMINAL",
+                "terminal failure",
+                "terminal_payload",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        let failed =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_atomic_failure")
+                .await
+                .unwrap();
+        assert_eq!(failed.status, ApiResourceDelegationStatus::Fail);
+        assert_eq!(failed.result_status, Some(ApiResourceDelegationResultStatus::Fail));
+        assert_eq!(failed.fail_type, Some(2));
+        assert_eq!(failed.err_code.as_deref(), Some("ERR_TERMINAL"));
+        assert_eq!(failed.result_payload.as_deref(), Some("terminal_payload"));
+        assert!(failed.chain_failed_at.is_some());
+        assert!(failed.finished_at.is_some());
+
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_built_failure_guard")
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &pool,
+                "rsc_built_failure_guard",
+                "built_hash",
+                "built_raw",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_failed_with_result_if_unfinished(
+                &pool,
+                "rsc_built_failure_guard",
+                Some(2),
+                "ERR_STALE",
+                "stale failure",
+                "stale_payload",
+            )
+            .await
+            .unwrap(),
+            0
+        );
+        let built =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_built_failure_guard")
+                .await
+                .unwrap();
+        assert_eq!(built.tx_hash.as_deref(), Some("built_hash"));
+        assert_eq!(built.raw_tx.as_deref(), Some("built_raw"));
+        assert!(built.err_code.is_none());
+        assert!(built.finished_at.is_none());
     }
 
     #[tokio::test]

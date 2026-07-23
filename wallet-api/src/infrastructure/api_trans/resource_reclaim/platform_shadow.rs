@@ -673,30 +673,20 @@ impl PlatformResourceReclaimWorker {
     ) -> Result<(), ServiceError> {
         let err_msg = err.to_string();
         let payload = format!("platform_undelegation_terminal_failure:{err_msg}");
-        let failed = ApiResourceDelegationRepo::mark_failed_if_unfinished(
+        let affected = ApiResourceDelegationRepo::mark_failed_with_result_if_unfinished(
             &self.ctx.api_resource_pool()?,
             resource_trade_no,
+            Some(2),
             Self::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE,
             &err_msg,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-        let result = ApiResourceDelegationRepo::mark_result_received(
-            &self.ctx.api_resource_pool()?,
-            resource_trade_no,
-            ApiResourceDelegationResultStatus::Fail,
-            Some(2),
-            Some(Self::PLATFORM_UNDELEGATION_TERMINAL_ERR_CODE),
-            Some(&err_msg),
-            Some(&payload),
+            &payload,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
 
         info!(
             resource_trade_no = %resource_trade_no,
-            failed_rows = failed,
-            result_rows = result,
+            affected = affected,
             error = %err_msg,
             source = "platform_resource_reclaim_shadow",
             "Platform undelegation terminal failure recorded for backend reporting"
