@@ -496,6 +496,22 @@ impl PlatformResourceDelegateWorker {
         let load_start = Instant::now();
         let task = self.load_platform_delegate(&resource_trade_no).await?;
         let load_elapsed_ms = load_start.elapsed().as_millis();
+        let ack_to_execute_load_ms = task
+            .task_ack_sent_at
+            .map(|time| Utc::now().signed_duration_since(time).num_milliseconds())
+            .filter(|elapsed| *elapsed >= 0);
+
+        info!(
+            observability_event = "platform_resource_delegate_execute_task_loaded",
+            resource_trade_no = %resource_trade_no,
+            created_at = ?task.created_at,
+            task_ack_sent_at = ?task.task_ack_sent_at,
+            ack_to_execute_load_ms = ?ack_to_execute_load_ms,
+            claim_elapsed_ms = %claim_elapsed_ms,
+            load_elapsed_ms = %load_elapsed_ms,
+            source = "platform_resource_delegate",
+            "Platform resource delegation execute task loaded"
+        );
 
         let capacity_start = Instant::now();
         let capacity_reservation = self.reserve_delegate_capacity_if_needed(&task).await?;
@@ -551,14 +567,29 @@ impl PlatformResourceDelegateWorker {
         };
         let key = platform_capacity_key(&task.owner_address, task.resource_type);
 
+        let capacity_check_start = Instant::now();
+        info!(
+            observability_event = "platform_resource_delegate_capacity_check_start",
+            resource_trade_no = %task.resource_trade_no,
+            owner_address = %task.owner_address,
+            receiver_address = %task.receiver_address,
+            resource_type = ?task.resource_type,
+            required_native_amount = %required_native_amount,
+            source = "platform_resource_delegate",
+            "Platform resource delegation capacity check started"
+        );
+
         let chain = ChainAdapterFactory::get_tron_adapter(crate::context::get_context()?).await?;
         let available_native_amount = chain
             .get_provider()
             .can_delegate_resource(&task.owner_address, tron_resource_type)
             .await?
             .to_sun();
+        let chain_capacity_elapsed_ms = capacity_check_start.elapsed().as_millis();
 
+        let reservation_lock_start = Instant::now();
         let mut reservations = platform_capacity_reservations().lock().await;
+        let reservation_lock_elapsed_ms = reservation_lock_start.elapsed().as_millis();
         let reserved_native_amount = reservations.get(&key).copied().unwrap_or_default();
 
         if !reserve_platform_delegation_capacity(
@@ -576,6 +607,9 @@ impl PlatformResourceDelegateWorker {
                 required_native_amount = %required_native_amount,
                 available_native_amount = %available_native_amount,
                 reserved_native_amount = %reserved_native_amount,
+                chain_capacity_elapsed_ms = %chain_capacity_elapsed_ms,
+                reservation_lock_elapsed_ms = %reservation_lock_elapsed_ms,
+                total_capacity_elapsed_ms = %capacity_check_start.elapsed().as_millis(),
                 source = "platform_resource_delegate",
                 "Platform resource delegation capacity is insufficient before broadcast"
             );
@@ -595,6 +629,9 @@ impl PlatformResourceDelegateWorker {
             available_native_amount = %available_native_amount,
             reserved_native_amount_before = %reserved_native_amount,
             reserved_native_amount_after = %(reserved_native_amount + required_native_amount),
+            chain_capacity_elapsed_ms = %chain_capacity_elapsed_ms,
+            reservation_lock_elapsed_ms = %reservation_lock_elapsed_ms,
+            total_capacity_elapsed_ms = %capacity_check_start.elapsed().as_millis(),
             source = "platform_resource_delegate",
             "Platform resource delegation capacity reserved"
         );
@@ -672,12 +709,35 @@ impl PlatformResourceDelegateWorker {
     }
 
     async fn process_receipt_upload(&self, resource_trade_no: String) -> Result<(), ServiceError> {
+        let stage_start = Instant::now();
         let task = self.load_platform_delegate(&resource_trade_no).await?;
         if task.tx_exec_receipt_uploaded_at.is_some() {
+            info!(
+                observability_event = "platform_resource_delegate_receipt_upload_skipped",
+                resource_trade_no = %resource_trade_no,
+                elapsed_ms = %stage_start.elapsed().as_millis(),
+                source = "platform_resource_delegate",
+                "Platform resource delegation receipt upload skipped because it is already uploaded"
+            );
             return Ok(());
         }
         let payload = Self::build_receipt_payload(&task)?;
+        info!(
+            observability_event = "platform_resource_delegate_receipt_upload_start",
+            resource_trade_no = %resource_trade_no,
+            tx_hash = ?task.tx_hash,
+            result_status = ?task.result_status,
+            err_code = ?task.err_code,
+            chain_success_at = ?task.chain_success_at,
+            chain_failed_at = ?task.chain_failed_at,
+            result_received_at = ?task.result_received_at,
+            source = "platform_resource_delegate",
+            "Platform resource delegation receipt upload started"
+        );
+        let upload_start = Instant::now();
         CONTEXT.get().unwrap().get_global_backend_api().upload_tx_exec_receipt(&payload).await?;
+        let upload_elapsed_ms = upload_start.elapsed().as_millis();
+        let mark_start = Instant::now();
         ApiResourceDelegationRepo::mark_tx_exec_receipt_uploaded_for_source_and_operation(
             &self.pool,
             &resource_trade_no,
@@ -686,6 +746,20 @@ impl PlatformResourceDelegateWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        let mark_elapsed_ms = mark_start.elapsed().as_millis();
+
+        info!(
+            observability_event = "platform_resource_delegate_receipt_upload_complete",
+            resource_trade_no = %resource_trade_no,
+            tx_hash = ?task.tx_hash,
+            result_status = ?task.result_status,
+            err_code = ?task.err_code,
+            upload_elapsed_ms = %upload_elapsed_ms,
+            mark_elapsed_ms = %mark_elapsed_ms,
+            total_elapsed_ms = %stage_start.elapsed().as_millis(),
+            source = "platform_resource_delegate",
+            "Platform resource delegation receipt upload completed"
+        );
 
         // 失败路径可能没有 result message，所以在 receipt upload 后 bypass release。
         // 这是失败例外路径；成功路径仍必须等 result ACK 后才释放原单 gate。
