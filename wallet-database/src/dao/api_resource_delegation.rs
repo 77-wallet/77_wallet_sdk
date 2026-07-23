@@ -925,6 +925,7 @@ impl ApiResourceDelegationDao {
               AND finished_at IS NULL
               AND err_code IS NULL
               AND tx_hash IS NULL
+              AND last_broadcast_at IS NULL
               AND chain_success_at IS NULL
               AND chain_failed_at IS NULL
             "#,
@@ -1182,7 +1183,6 @@ impl ApiResourceDelegationDao {
             SET status = 1,
                 building_at = NULL,
                 tx_hash = NULL,
-                last_broadcast_at = NULL,
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,

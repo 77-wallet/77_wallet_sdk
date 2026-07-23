@@ -48,30 +48,28 @@ pub(crate) async fn mark_result_ack_and_project_gate(
         "Marking resource delegation result ACK and projecting origin gate"
     );
 
-    let ack_rows =
-        ApiResourceDelegationRepo::mark_result_ack_sent(resource_pool, &task.resource_trade_no)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
-    if ack_rows == 0 {
-        return Ok(());
+    // The gate projection is idempotent and lives in a different SQLite DB.
+    // Complete it before marking the resource ACK so a projection failure
+    // remains visible to the ACK retry scanner.
+    if let Some((origin, result)) = release.as_ref() {
+        match task.origin_trade_type {
+            Some(x) if x == ApiTradeType::Collect as i64 => {
+                ApiCollectRepo::mark_resource_released(transaction_pool, origin, *result)
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+            }
+            Some(x) if x == ApiTradeType::Withdraw as i64 => {
+                ApiWithdrawRepo::mark_resource_released(transaction_pool, origin, *result)
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+            }
+            _ => {}
+        }
     }
 
-    let Some((origin, result)) = release.as_ref() else {
-        return Ok(());
-    };
-    match task.origin_trade_type {
-        Some(x) if x == ApiTradeType::Collect as i64 => {
-            ApiCollectRepo::mark_resource_released(transaction_pool, origin, *result)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-        }
-        Some(x) if x == ApiTradeType::Withdraw as i64 => {
-            ApiWithdrawRepo::mark_resource_released(transaction_pool, origin, *result)
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-        }
-        _ => {}
-    }
+    ApiResourceDelegationRepo::mark_result_ack_sent(resource_pool, &task.resource_trade_no)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
     Ok(())
 }
 

@@ -1370,6 +1370,18 @@ mod tests {
                 .await
                 .unwrap();
         assert!(reset.tx_hash.is_none());
+        assert!(reset.last_broadcast_at.is_some());
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_failed_if_unfinished(
+                &pool,
+                "rsc_atomic_recovery",
+                "ERR_RACING_LOCAL_FAILURE",
+                "stale local failure",
+            )
+            .await
+            .unwrap(),
+            0
+        );
 
         ApiResourceDelegationRepo::mark_recovered_chain_success(
             &pool,
