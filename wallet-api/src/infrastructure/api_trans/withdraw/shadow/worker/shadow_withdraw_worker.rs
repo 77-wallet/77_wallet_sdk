@@ -129,6 +129,8 @@ impl ShadowWithdrawWorker {
     // const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 2;
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
     // const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 3;
+    const TRON_SHORT_CONFIRM_WINDOW_SECS: i64 = 30;
+    const TRON_SHORT_CONFIRM_DELAYS_SECS: [u64; 3] = [3, 5, 8];
     // 测试开关（仅用于本地压测 withdraw uncertain 超时收口）
     // 需要测试超时分支时改为 true，测完务必改回 false。
     const TEST_FORCE_WITHDRAW_EVM_RECOVER_NONE: bool = false;
@@ -299,6 +301,102 @@ impl ShadowWithdrawWorker {
         dl_trade_no: Option<String>,
     ) -> PlatformApplyOutcome {
         PlatformApplyOutcome::from_backend_response(is_success, dl_trade_no)
+    }
+
+    fn tron_short_confirm_delay_secs(
+        withdraw: &ApiWithdrawEntity,
+        now: chrono::DateTime<Utc>,
+    ) -> Option<u64> {
+        if !shared_mechanism::is_tron_chain(&withdraw.chain_code) {
+            return None;
+        }
+        if withdraw.transaction_time.is_some() || withdraw.err_code.is_some() {
+            return None;
+        }
+        if shared_mechanism::tron_withdraw_resource_needs_recovery(
+            &withdraw.chain_code,
+            Some(withdraw.token_addr.as_db_str()),
+            &withdraw.resource_consume,
+        ) {
+            return None;
+        }
+
+        let last_broadcast_at = withdraw.last_broadcast_at?;
+        let elapsed_secs = now.signed_duration_since(last_broadcast_at).num_seconds();
+        if !(0..=Self::TRON_SHORT_CONFIRM_WINDOW_SECS).contains(&elapsed_secs) {
+            return None;
+        }
+
+        let attempt_index = withdraw.broadcast_uncertain_retry_count.saturating_sub(1) as usize;
+        Self::TRON_SHORT_CONFIRM_DELAYS_SECS.get(attempt_index).copied()
+    }
+
+    fn schedule_tron_short_confirm_if_needed(
+        &self,
+        withdraw: &ApiWithdrawEntity,
+        now: chrono::DateTime<Utc>,
+    ) {
+        let Some(delay_secs) = Self::tron_short_confirm_delay_secs(withdraw, now) else {
+            return;
+        };
+        let trade_no = withdraw.trade_no.clone();
+        let scanner = self.scanner.clone();
+        info!(
+            observability_event = "tron_withdraw_short_confirm_scheduled",
+            trade_no = %trade_no,
+            tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(),
+            retry_count = withdraw.broadcast_uncertain_retry_count,
+            delay_secs = %delay_secs,
+            source = "shadow_withdraw_worker",
+            "Scheduled TRON withdraw short confirmation retry"
+        );
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+            scanner.try_advance(&trade_no).await;
+        });
+    }
+
+    fn tron_post_broadcast_short_confirm_eligible(withdraw: &ApiWithdrawEntity) -> bool {
+        if !shared_mechanism::is_tron_chain(&withdraw.chain_code) {
+            return false;
+        }
+        if withdraw.transaction_time.is_some() || withdraw.err_code.is_some() {
+            return false;
+        }
+        true
+    }
+
+    fn schedule_tron_post_broadcast_confirms_if_needed(&self, withdraw: &ApiWithdrawEntity) {
+        if !Self::tron_post_broadcast_short_confirm_eligible(withdraw) {
+            return;
+        }
+        let trade_no = withdraw.trade_no.clone();
+        let tx_hash = withdraw.tx_hash.as_deref().unwrap_or_default().to_string();
+        for delay_secs in Self::TRON_SHORT_CONFIRM_DELAYS_SECS {
+            let scanner = self.scanner.clone();
+            let trade_no = trade_no.clone();
+            let tx_hash = tx_hash.clone();
+            info!(
+                observability_event = "tron_withdraw_post_broadcast_confirm_scheduled",
+                trade_no = %trade_no,
+                tx_hash = %tx_hash,
+                delay_secs = %delay_secs,
+                source = "shadow_withdraw_worker",
+                "Scheduled TRON withdraw post-broadcast confirmation"
+            );
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+                info!(
+                    observability_event = "tron_withdraw_post_broadcast_confirm_triggered",
+                    trade_no = %trade_no,
+                    tx_hash = %tx_hash,
+                    delay_secs = %delay_secs,
+                    source = "shadow_withdraw_worker",
+                    "Triggering TRON withdraw post-broadcast confirmation"
+                );
+                scanner.try_advance(&trade_no).await;
+            });
+        }
     }
 
     fn resource_transaction_time(value: Option<u128>) -> Option<String> {
@@ -1356,6 +1454,7 @@ impl ShadowWithdrawWorker {
                 );
 
                 if !shared_mechanism::is_evm_chain(&refreshed.chain_code) {
+                    self.schedule_tron_short_confirm_if_needed(&refreshed, now);
                     return Ok(());
                 }
 
@@ -1881,6 +1980,8 @@ impl ShadowWithdrawWorker {
                             "mark_broadcast_executed skipped: broadcast already executed (idempotent hit)"
                         );
                     } else {
+                        let refreshed = self.get_withdraw_entity(&withdraw.trade_no).await?;
+                        self.schedule_tron_post_broadcast_confirms_if_needed(&refreshed);
                         // 直接调用 try_advance 进行点对点唤醒
                         self.scanner.try_advance(&withdraw.trade_no).await;
                     }
@@ -3028,6 +3129,72 @@ oss:
         withdraw.raw_tx = None;
 
         assert!(!ShadowWithdrawWorker::should_fail_expired_tron_missing_confirmed(&withdraw));
+    }
+
+    #[test]
+    fn tron_withdraw_short_confirm_uses_bounded_delays_inside_window() {
+        let now = Utc::now();
+        let mut withdraw = base_withdraw();
+        withdraw.chain_code = "tron".to_string();
+        withdraw.token_addr = AssetTokenKey::Native;
+        withdraw.resource_consume = r#"{"bandwidth":345,"energy":14650}"#.to_string();
+        withdraw.last_broadcast_at = Some(now - chrono::Duration::seconds(10));
+        withdraw.transaction_time = None;
+        withdraw.err_code = None;
+
+        withdraw.broadcast_uncertain_retry_count = 1;
+        assert_eq!(ShadowWithdrawWorker::tron_short_confirm_delay_secs(&withdraw, now), Some(3));
+
+        withdraw.broadcast_uncertain_retry_count = 2;
+        assert_eq!(ShadowWithdrawWorker::tron_short_confirm_delay_secs(&withdraw, now), Some(5));
+
+        withdraw.broadcast_uncertain_retry_count = 3;
+        assert_eq!(ShadowWithdrawWorker::tron_short_confirm_delay_secs(&withdraw, now), Some(8));
+
+        withdraw.broadcast_uncertain_retry_count = 4;
+        assert_eq!(ShadowWithdrawWorker::tron_short_confirm_delay_secs(&withdraw, now), None);
+    }
+
+    #[test]
+    fn tron_withdraw_short_confirm_skips_old_or_resource_recovery_cases() {
+        let now = Utc::now();
+        let mut withdraw = base_withdraw();
+        withdraw.chain_code = "tron".to_string();
+        withdraw.token_addr = AssetTokenKey::Native;
+        withdraw.resource_consume = r#"{"bandwidth":345,"energy":14650}"#.to_string();
+        withdraw.broadcast_uncertain_retry_count = 1;
+        withdraw.last_broadcast_at = Some(now - chrono::Duration::seconds(31));
+
+        assert_eq!(ShadowWithdrawWorker::tron_short_confirm_delay_secs(&withdraw, now), None);
+
+        withdraw.last_broadcast_at = Some(now - chrono::Duration::seconds(10));
+        withdraw.transaction_time = Some(now);
+        assert_eq!(ShadowWithdrawWorker::tron_short_confirm_delay_secs(&withdraw, now), None);
+
+        withdraw.transaction_time = None;
+        withdraw.token_addr = AssetTokenKey::Contract("TToken".to_string());
+        withdraw.resource_consume = r#"{"bandwidth":0,"energy":0}"#.to_string();
+        assert_eq!(ShadowWithdrawWorker::tron_short_confirm_delay_secs(&withdraw, now), None);
+    }
+
+    #[test]
+    fn tron_post_broadcast_short_confirm_allows_trc20_resource_recovery() {
+        let mut withdraw = base_withdraw();
+        withdraw.chain_code = "tron".to_string();
+        withdraw.token_addr =
+            AssetTokenKey::Contract("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string());
+        withdraw.resource_consume = r#"{"bandwidth":0,"energy":14650}"#.to_string();
+        withdraw.transaction_time = None;
+        withdraw.err_code = None;
+
+        assert!(ShadowWithdrawWorker::tron_post_broadcast_short_confirm_eligible(&withdraw));
+
+        withdraw.transaction_time = Some(Utc::now());
+        assert!(!ShadowWithdrawWorker::tron_post_broadcast_short_confirm_eligible(&withdraw));
+
+        withdraw.transaction_time = None;
+        withdraw.err_code = Some(ErrCode::SDKInternalError);
+        assert!(!ShadowWithdrawWorker::tron_post_broadcast_short_confirm_eligible(&withdraw));
     }
 
     #[test]
