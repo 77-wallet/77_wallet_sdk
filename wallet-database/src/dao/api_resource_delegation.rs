@@ -298,8 +298,9 @@ impl ApiResourceDelegationDao {
             WHERE source = 1
               AND operation_type = 1
               AND origin_trade_type = ?
-              AND status = 1
               AND task_ack_sent_at IS NOT NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
               AND building_at IS NULL
               AND tx_hash IS NULL
             ORDER BY task_ack_sent_at ASC
@@ -334,8 +335,9 @@ impl ApiResourceDelegationDao {
             WHERE source = ?
               AND operation_type = 1
               AND origin_trade_type = ?
-              AND status = 1
               {ack_clause}
+              AND finished_at IS NULL
+              AND err_code IS NULL
               AND building_at IS NULL
               AND tx_hash IS NULL
             ORDER BY {order_expr} ASC
@@ -389,7 +391,6 @@ impl ApiResourceDelegationDao {
             WHERE source = ?
               AND operation_type = ?
               AND origin_trade_type = ?
-              AND status = 1
               AND finished_at IS NULL
               AND err_code IS NULL
               {ack_clause}
@@ -525,7 +526,6 @@ impl ApiResourceDelegationDao {
             SET building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
-              AND status = 1
               AND (
                     source = 2
                     OR task_ack_sent_at IS NOT NULL
@@ -567,7 +567,6 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND status = 1
               AND building_at IS NOT NULL
               AND tx_hash IS NULL
               AND finished_at IS NULL
@@ -607,7 +606,6 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
-              AND status = 1
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
               AND finished_at IS NULL

@@ -72,12 +72,6 @@ fn evaluate_need_task_ack(task: &ApiResourceDelegationEntity, _now: DateTime<Utc
 fn evaluate_can_execute(task: &ApiResourceDelegationEntity, now: DateTime<Utc>) -> StageEval {
     let mut reasons = SmallVec::new();
 
-    if task.status != ApiResourceDelegationStatus::Pending {
-        reasons.push(StageReason {
-            code: "not_pending",
-            message: "Resource task is not pending".to_string(),
-        });
-    }
     if platform_source_requires_ack(task) && task.task_ack_sent_at.is_none() {
         reasons.push(StageReason {
             code: "task_ack_not_sent",
@@ -109,8 +103,7 @@ fn evaluate_can_execute(task: &ApiResourceDelegationEntity, now: DateTime<Utc>) 
         });
     }
 
-    let can_advance = task.status == ApiResourceDelegationStatus::Pending
-        && (!platform_source_requires_ack(task) || task.task_ack_sent_at.is_some())
+    let can_advance = (!platform_source_requires_ack(task) || task.task_ack_sent_at.is_some())
         && task.finished_at.is_none()
         && task.err_code.is_none()
         && build_slot_available(task, now)
@@ -290,6 +283,9 @@ mod tests {
         assert!(reason_codes(&before_ack).contains(&"task_ack_not_sent"));
 
         record.task_ack_sent_at = Some(now);
+        assert!(evaluate_stage(ResourceDelegationStage::CanExecute, &record, now).can_advance);
+
+        record.status = ApiResourceDelegationStatus::Success;
         assert!(evaluate_stage(ResourceDelegationStage::CanExecute, &record, now).can_advance);
 
         record.building_at = Some(now);

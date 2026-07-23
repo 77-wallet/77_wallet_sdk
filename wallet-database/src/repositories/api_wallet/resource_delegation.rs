@@ -992,6 +992,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(acked.task_ack_send_count, 1);
+        sqlx::query("UPDATE api_resource_delegation SET status = 2 WHERE resource_trade_no = ?")
+            .bind("rsc_ack_execute")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
         assert_eq!(
             ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_ack_execute").await.unwrap(),
             1
