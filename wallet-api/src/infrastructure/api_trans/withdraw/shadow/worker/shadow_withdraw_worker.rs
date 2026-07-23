@@ -14,7 +14,6 @@ use wallet_database::{
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            ApiResourceDelegationRecoverStatus,
         },
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
@@ -593,34 +592,18 @@ impl ShadowWithdrawWorker {
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(pool, resource_trade_no)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
-        let wait_secs = Self::resource_delegation_retry_wait_secs(task.retry_count);
-        let next_retry_at = Utc::now() + chrono::Duration::seconds(wait_secs);
-        let next_status = if err.is_network_error() {
-            ApiResourceDelegationRecoverStatus::RetryBuild
-        } else {
-            ApiResourceDelegationRecoverStatus::RetryRecover
-        };
-
-        let affected = ApiResourceDelegationRepo::reset_for_retry(
-            pool,
-            resource_trade_no,
-            next_status,
-            &next_retry_at.to_rfc3339(),
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
+        let affected = ApiResourceDelegationRepo::reset_for_rebuild(pool, resource_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
 
         info!(
             resource_trade_no = %resource_trade_no,
             origin_trade_no = ?task.origin_trade_no,
             affected = %affected,
             retry_count = task.retry_count + 1,
-            recover_status = ?next_status,
-            next_retry_at = %next_retry_at.to_rfc3339(),
-            wait_secs,
             error = %err,
             source = "shadow_withdraw_worker",
-            "Withdraw resource delegation reset for retry"
+            "Withdraw resource delegation reset for rebuild"
         );
 
         Ok(())
@@ -714,7 +697,6 @@ impl ShadowWithdrawWorker {
                 let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
                     &self.ctx.api_resource_pool()?,
                     &delegation.resource_trade_no,
-                    ApiResourceDelegationRecoverStatus::RetryBuild,
                 )
                 .await?;
                 if rebroadcast {
@@ -2778,8 +2760,7 @@ mod tests {
         ApiWalletDbPool, SqliteContext,
         entities::{
             api_resource_delegation::{
-                ApiResourceDelegationOperationType, ApiResourceDelegationRecoverStatus,
-                NewApiResourceDelegation,
+                ApiResourceDelegationOperationType, NewApiResourceDelegation,
             },
             api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
             api_resource_type::ApiResourceType,
@@ -3415,8 +3396,6 @@ oss:
         assert!(task.building_at.is_none());
         assert_eq!(task.tx_hash, None);
         assert_eq!(task.retry_count, 1);
-        assert_eq!(task.recover_status, Some(ApiResourceDelegationRecoverStatus::RetryRecover));
-        assert!(task.next_retry_at.is_some());
     }
 
     #[tokio::test]

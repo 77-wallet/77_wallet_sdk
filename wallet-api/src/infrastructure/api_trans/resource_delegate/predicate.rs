@@ -212,10 +212,7 @@ fn evaluate_need_result_ack(task: &ApiResourceDelegationEntity, _now: DateTime<U
 mod tests {
     use super::*;
     use wallet_database::entities::{
-        api_resource_delegation::{
-            ApiResourceDelegationMode, ApiResourceDelegationRecoverStatus,
-            ApiResourceDelegationResultStatus,
-        },
+        api_resource_delegation::{ApiResourceDelegationMode, ApiResourceDelegationResultStatus},
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
     };
@@ -262,8 +259,6 @@ mod tests {
             fail_type: None,
             err_code: None,
             err_msg: None,
-            recover_status: None::<ApiResourceDelegationRecoverStatus>,
-            next_retry_at: None,
             retry_count: 0,
             created_at: now,
             updated_at: None,
@@ -306,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn resource_delegate_predicate_recover_ignores_legacy_retry_schedule() {
+    fn resource_delegate_predicate_recover_requires_broadcast_hash() {
         let now = Utc::now();
         let mut record = task(now);
         record.task_ack_sent_at = Some(now);
@@ -316,9 +311,6 @@ mod tests {
         assert!(reason_codes(&no_hash).contains(&"tx_hash_not_exists"));
 
         record.tx_hash = Some("hash".to_string());
-        assert!(evaluate_stage(ResourceDelegationStage::NeedRecover, &record, now).can_advance);
-
-        record.next_retry_at = Some(now + Duration::seconds(60));
         assert!(evaluate_stage(ResourceDelegationStage::NeedRecover, &record, now).can_advance);
     }
 

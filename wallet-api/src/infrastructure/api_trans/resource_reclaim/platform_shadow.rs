@@ -11,8 +11,7 @@ use wallet_database::{
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
-            ApiResourceDelegationSource,
+            ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
         },
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
@@ -706,7 +705,6 @@ impl PlatformResourceReclaimWorker {
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %Self::origin_trade_no(&delegation),
                 retry_count = delegation.retry_count,
-                recover_status = ?delegation.recover_status,
                 source = "platform_resource_reclaim_shadow",
                 "Platform undelegation already has tx_hash, skipping execution"
             );
@@ -843,13 +841,12 @@ impl PlatformResourceReclaimWorker {
                 let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
                     &self.ctx.api_resource_pool()?,
                     &resource_trade_no,
-                    ApiResourceDelegationRecoverStatus::RetryBuild,
                 )
                 .await?;
                 if rebroadcast {
                     return Ok(());
                 }
-                self.schedule_platform_undelegation_recover_retry(&resource_trade_no).await
+                Ok(())
             }
             Err(err) => {
                 warn!(
@@ -859,7 +856,7 @@ impl PlatformResourceReclaimWorker {
                     source = "platform_resource_reclaim_shadow",
                     "Platform undelegation recover query failed; retrying original tx hash"
                 );
-                self.schedule_platform_undelegation_recover_retry(&resource_trade_no).await
+                Err(err)
             }
         }
     }
@@ -1078,39 +1075,6 @@ impl PlatformResourceReclaimWorker {
         }
     }
 
-    async fn schedule_platform_undelegation_recover_retry(
-        &self,
-        resource_trade_no: &str,
-    ) -> Result<(), ServiceError> {
-        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_resource_pool()?,
-            resource_trade_no,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-        let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
-        let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
-        ApiResourceDelegationRepo::mark_recover_retry_wait(
-            &self.ctx.api_resource_pool()?,
-            resource_trade_no,
-            ApiResourceDelegationRecoverStatus::RecoverWaiting,
-            &next_retry_at.to_rfc3339(),
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-        info!(
-            resource_trade_no = %resource_trade_no,
-            origin_trade_no = %Self::origin_trade_no(&task),
-            retry_count = task.retry_count + 1,
-            recover_status = ?ApiResourceDelegationRecoverStatus::RecoverWaiting,
-            next_retry_at = %next_retry_at.to_rfc3339(),
-            wait_secs,
-            source = "platform_resource_reclaim_shadow",
-            "Platform undelegation recover scheduled for retry"
-        );
-        Ok(())
-    }
-
     async fn schedule_platform_undelegation_rebuild_retry(
         &self,
         resource_trade_no: &str,
@@ -1122,18 +1086,9 @@ impl PlatformResourceReclaimWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
-        let next_retry_at = chrono::Utc::now() + chrono::Duration::seconds(wait_secs);
-        let next_status = if err.is_network_error() {
-            ApiResourceDelegationRecoverStatus::RetryBuild
-        } else {
-            ApiResourceDelegationRecoverStatus::RetryRecover
-        };
-        ApiResourceDelegationRepo::reset_for_retry(
+        ApiResourceDelegationRepo::reset_for_rebuild(
             &self.ctx.api_resource_pool()?,
             resource_trade_no,
-            next_status,
-            &next_retry_at.to_rfc3339(),
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
@@ -1141,12 +1096,9 @@ impl PlatformResourceReclaimWorker {
             resource_trade_no = %resource_trade_no,
             origin_trade_no = %Self::origin_trade_no(&task),
             retry_count = task.retry_count + 1,
-            recover_status = ?next_status,
-            next_retry_at = %next_retry_at.to_rfc3339(),
-            wait_secs,
             error = %err,
             source = "platform_resource_reclaim_shadow",
-            "Platform undelegation reset for retry"
+            "Platform undelegation reset for rebuild"
         );
         Ok(())
     }
@@ -1541,7 +1493,6 @@ mod tests {
                 .contains("delegated Resource does not exist")
         );
         assert_eq!(got.result_status, Some(ApiResourceDelegationResultStatus::Fail));
-        assert!(got.next_retry_at.is_none());
     }
 
     #[tokio::test]
@@ -1645,68 +1596,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn platform_undelegation_recover_retry_preserves_broadcast_hash() {
-        let ctx = crate::testkit::context::api_trans_test_ctx().await;
-        let pool = ctx.api_resource_pool().expect("transaction pool");
-
-        ApiResourceDelegationRepo::upsert(
-            &pool,
-            NewApiResourceDelegation::platform_delegate_task(
-                "uid",
-                "rsc_platform_undelegate_recover_retry",
-                ApiTradeType::Collect,
-                ApiResourceDelegationOperationType::Undelegate,
-                "tron",
-                "owner",
-                "receiver",
-                ApiResourceType::Energy,
-                "5",
-                "1000",
-            ),
-        )
-        .await
-        .expect("insert platform undelegate");
-        ApiResourceDelegationRepo::mark_task_ack_sent(
-            &pool,
-            "rsc_platform_undelegate_recover_retry",
-        )
-        .await
-        .expect("mark task ack");
-        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_platform_undelegate_recover_retry")
-            .await
-            .expect("claim build slot");
-        ApiResourceDelegationRepo::mark_broadcast_success(
-            &pool,
-            "rsc_platform_undelegate_recover_retry",
-            "tx_hash_keep",
-        )
-        .await
-        .expect("mark broadcast success");
-
-        let worker = PlatformResourceReclaimWorker::new(ctx);
-        worker
-            .schedule_platform_undelegation_recover_retry("rsc_platform_undelegate_recover_retry")
-            .await
-            .expect("schedule recover retry");
-
-        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &pool,
-            "rsc_platform_undelegate_recover_retry",
-        )
-        .await
-        .expect("load task");
-        assert_eq!(persisted.tx_hash.as_deref(), Some("tx_hash_keep"));
-        assert_eq!(persisted.tx_status.as_deref(), Some("success"));
-        assert_eq!(
-            persisted.recover_status,
-            Some(ApiResourceDelegationRecoverStatus::RecoverWaiting)
-        );
-        assert!(persisted.next_retry_at.is_some());
-        assert_eq!(persisted.retry_count, 1);
-    }
-
-    #[tokio::test]
-    async fn platform_undelegation_rebuild_retry_clears_broadcast_hash() {
+    async fn platform_undelegation_rebuild_clears_broadcast_hash() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
         let pool = ctx.api_resource_pool().expect("transaction pool");
 
@@ -1752,11 +1642,6 @@ mod tests {
         .expect("load task");
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(
-            persisted.recover_status,
-            Some(ApiResourceDelegationRecoverStatus::RetryRecover)
-        );
-        assert!(persisted.next_retry_at.is_some());
         assert_eq!(persisted.retry_count, 1);
     }
 
@@ -2022,8 +1907,6 @@ mod tests {
             fail_type: None,
             err_code: None,
             err_msg: None,
-            recover_status: None,
-            next_retry_at: None,
             retry_count: 0,
             created_at: chrono::Utc::now(),
             updated_at: None,
@@ -2084,8 +1967,6 @@ mod tests {
             fail_type: None,
             err_code: None,
             err_msg: None,
-            recover_status: None,
-            next_retry_at: None,
             retry_count: 0,
             created_at: chrono::Utc::now(),
             updated_at: None,
@@ -2144,8 +2025,6 @@ mod tests {
             fail_type: None,
             err_code: None,
             err_msg: None,
-            recover_status: None,
-            next_retry_at: None,
             retry_count: 0,
             created_at: chrono::Utc::now(),
             updated_at: None,

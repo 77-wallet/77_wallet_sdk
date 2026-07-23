@@ -42,8 +42,7 @@ mod tests {
     use wallet_database::entities::{
         api_resource_delegation::{
             ApiResourceDelegationMode, ApiResourceDelegationOperationType,
-            ApiResourceDelegationRecoverStatus, ApiResourceDelegationSource,
-            ApiResourceDelegationStatus,
+            ApiResourceDelegationSource, ApiResourceDelegationStatus,
         },
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
@@ -92,8 +91,6 @@ mod tests {
             fail_type: None,
             err_code: None,
             err_msg: None,
-            recover_status: None::<ApiResourceDelegationRecoverStatus>,
-            next_retry_at: None,
             retry_count: 0,
             created_at: now,
             updated_at: None,

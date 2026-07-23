@@ -22,7 +22,6 @@ use wallet_database::{
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            ApiResourceDelegationRecoverStatus,
         },
         api_resource_type::ApiResourceType,
     },
@@ -33,9 +32,8 @@ use wallet_utils::RetryableError as _;
 const RESOURCE_BROADCAST_UNCERTAIN_TIMEOUT_SECS: i64 = 300;
 const RESOURCE_BROADCAST_UNCERTAIN_AUTO_REBROADCAST_LIMIT: i64 = 1;
 
-/// 资源代理重试退避：指数退避上限 5 分钟。
-/// - 第 0 次：60s
-/// - 之后每次翻倍，最终上限 300s
+/// Shared bounded backoff for non-delegation recovery tables that still own a
+/// dedicated retry schedule, such as TRON account activation.
 pub(crate) fn resource_delegation_retry_wait_secs(retry_count: i64) -> i64 {
     let exponent = retry_count.clamp(0, 3) as u32;
     (60_i64 * (1_i64 << exponent)).min(300)
@@ -57,7 +55,6 @@ pub(crate) fn should_rebroadcast_resource_uncertain(
 pub(crate) async fn record_resource_uncertain_and_maybe_rebroadcast(
     pool: &wallet_database::ApiResourceDbPool,
     resource_trade_no: &str,
-    recover_status: ApiResourceDelegationRecoverStatus,
 ) -> Result<bool, ServiceError> {
     ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(pool, resource_trade_no)
         .await
@@ -75,14 +72,9 @@ pub(crate) async fn record_resource_uncertain_and_maybe_rebroadcast(
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
 
-    let rows = ApiResourceDelegationRepo::reset_for_retry(
-        pool,
-        resource_trade_no,
-        recover_status,
-        &chrono::Utc::now().to_rfc3339(),
-    )
-    .await
-    .map_err(|e| ServiceError::Database(e.into()))?;
+    let rows = ApiResourceDelegationRepo::reset_for_rebuild(pool, resource_trade_no)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
 
     if rows > 0 {
         ApiResourceDelegationRepo::mark_broadcast_uncertain_rebroadcast_attempted(

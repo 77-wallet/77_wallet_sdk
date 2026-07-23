@@ -17,8 +17,8 @@ use wallet_database::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode, PendingCollectResourceBudget},
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
-            ApiResourceDelegationSource, NewApiResourceDelegation,
+            ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
+            NewApiResourceDelegation,
         },
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
@@ -887,34 +887,18 @@ impl ShadowCollectWorker {
         let task = ApiResourceDelegationRepo::get_by_resource_trade_no(pool, resource_trade_no)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
-        let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
-        let next_retry_at = Utc::now() + chrono::Duration::seconds(wait_secs);
-        let next_status = if err.is_network_error() {
-            ApiResourceDelegationRecoverStatus::RetryBuild
-        } else {
-            ApiResourceDelegationRecoverStatus::RetryRecover
-        };
-
-        let affected = ApiResourceDelegationRepo::reset_for_retry(
-            pool,
-            resource_trade_no,
-            next_status,
-            &next_retry_at.to_rfc3339(),
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
+        let affected = ApiResourceDelegationRepo::reset_for_rebuild(pool, resource_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
 
         info!(
             resource_trade_no = %resource_trade_no,
             origin_trade_no = ?task.origin_trade_no,
             affected = %affected,
             retry_count = task.retry_count + 1,
-            recover_status = ?next_status,
-            next_retry_at = %next_retry_at.to_rfc3339(),
-            wait_secs,
             error = %err,
             source = "shadow_worker_v2",
-            "Resource delegation reset for retry"
+            "Resource delegation reset for rebuild"
         );
 
         Ok(())
@@ -1050,7 +1034,6 @@ impl ShadowCollectWorker {
                 let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
                     &self.ctx.api_resource_pool()?,
                     &delegation.resource_trade_no,
-                    ApiResourceDelegationRecoverStatus::RetryBuild,
                 )
                 .await?;
                 if rebroadcast {
@@ -4243,8 +4226,8 @@ mod tests {
         entities::{
             api_collect::{ApiCollectEntity, ApiCollectStatus, PendingCollectResourceBudget},
             api_resource_delegation::{
-                ApiResourceDelegationOperationType, ApiResourceDelegationRecoverStatus,
-                ApiResourceDelegationSource, NewApiResourceDelegation,
+                ApiResourceDelegationOperationType, ApiResourceDelegationSource,
+                NewApiResourceDelegation,
             },
             api_resource_gate::{
                 ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
@@ -5373,8 +5356,6 @@ oss:
         assert!(task.building_at.is_none());
         assert_eq!(task.tx_hash, None);
         assert_eq!(task.retry_count, 1);
-        assert_eq!(task.recover_status, Some(ApiResourceDelegationRecoverStatus::RetryRecover));
-        assert!(task.next_retry_at.is_some());
     }
 
     #[tokio::test]

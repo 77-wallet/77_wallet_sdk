@@ -12,8 +12,7 @@ use wallet_database::{
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-            ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
-            ApiResourceDelegationSource,
+            ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
         },
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
@@ -672,19 +671,16 @@ impl PlatformResourceDelegateWorker {
                 Ok(true)
             }
             Ok(None) => {
-                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
-                    &self.pool,
-                    &resource_trade_no,
-                    ApiResourceDelegationRecoverStatus::RetryBuild,
-                )
-                .await?;
+                let rebroadcast =
+                    record_resource_uncertain_and_maybe_rebroadcast(&self.pool, &resource_trade_no)
+                        .await?;
                 if rebroadcast {
                     return Ok(false);
                 }
                 Ok(false)
             }
-            Err(err) => {
-                self.schedule_retry(&resource_trade_no, &err).await?;
+            Err(_err) => {
+                self.schedule_rebuild(&resource_trade_no).await?;
                 Ok(false)
             }
         }
@@ -803,7 +799,7 @@ impl PlatformResourceDelegateWorker {
             return Ok(());
         };
         if err.is_transient_db_pool_timeout() {
-            return self.schedule_retry(resource_trade_no, &err).await;
+            return self.schedule_rebuild(resource_trade_no).await;
         }
         match err.retry_policy() {
             wallet_utils::RetryPolicy::Never => {
@@ -824,31 +820,14 @@ impl PlatformResourceDelegateWorker {
                 )
                 .await
             }
-            wallet_utils::RetryPolicy::Delay => self.schedule_retry(resource_trade_no, &err).await,
+            wallet_utils::RetryPolicy::Delay => self.schedule_rebuild(resource_trade_no).await,
         }
     }
 
-    async fn schedule_retry(
-        &self,
-        resource_trade_no: &str,
-        err: &ServiceError,
-    ) -> Result<(), ServiceError> {
-        let task = self.load_platform_delegate(resource_trade_no).await?;
-        let wait_secs = resource_delegation_retry_wait_secs(task.retry_count);
-        let next_retry_at = Utc::now() + chrono::Duration::seconds(wait_secs);
-        let next_status = if err.is_network_error() {
-            ApiResourceDelegationRecoverStatus::RetryBuild
-        } else {
-            ApiResourceDelegationRecoverStatus::RetryRecover
-        };
-        ApiResourceDelegationRepo::reset_for_retry(
-            &self.pool,
-            resource_trade_no,
-            next_status,
-            &next_retry_at.to_rfc3339(),
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
+    async fn schedule_rebuild(&self, resource_trade_no: &str) -> Result<(), ServiceError> {
+        ApiResourceDelegationRepo::reset_for_rebuild(&self.pool, resource_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
         Ok(())
     }
 

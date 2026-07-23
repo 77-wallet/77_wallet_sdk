@@ -143,8 +143,6 @@ mod tests {
             fail_type: None,
             err_code: None,
             err_msg: None,
-            recover_status: None,
-            next_retry_at: None,
             retry_count: 0,
             created_at: Utc::now(),
             updated_at: None,

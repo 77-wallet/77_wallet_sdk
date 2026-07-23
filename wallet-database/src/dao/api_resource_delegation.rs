@@ -1,7 +1,7 @@
 use crate::entities::api_resource_delegation::{
     ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-    ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
-    ApiResourceDelegationSource, ApiResourceDelegationStatus, NewApiResourceDelegation,
+    ApiResourceDelegationResultStatus, ApiResourceDelegationSource, ApiResourceDelegationStatus,
+    NewApiResourceDelegation,
 };
 use sqlx::{Executor, Sqlite};
 
@@ -103,8 +103,6 @@ impl ApiResourceDelegationDao {
             r#"
             UPDATE api_resource_delegation
             SET task_ack_sent_at = COALESCE(task_ack_sent_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-                next_retry_at = NULL,
-                recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
               AND task_ack_sent_at IS NULL
@@ -464,8 +462,7 @@ impl ApiResourceDelegationDao {
               AND err_code IS NULL
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
-              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            ORDER BY COALESCE(next_retry_at, created_at) ASC, id ASC
+            ORDER BY created_at ASC, id ASC
             LIMIT ?
             "#,
         )
@@ -528,8 +525,6 @@ impl ApiResourceDelegationDao {
             r#"
             UPDATE api_resource_delegation
             SET building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                next_retry_at = NULL,
-                recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
               AND status = 1
@@ -573,8 +568,6 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_last_checked_at = NULL,
                 broadcast_uncertain_reconciled_at = NULL,
                 broadcast_uncertain_rebroadcast_count = 0,
-                next_retry_at = NULL,
-                recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
               AND status = 1
@@ -616,8 +609,6 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
                 broadcast_uncertain_rebroadcast_count = 0,
-                next_retry_at = NULL,
-                recover_status = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
               AND status = 1
@@ -1037,7 +1028,6 @@ impl ApiResourceDelegationDao {
                 ),
                 result_payload = COALESCE(excluded.result_payload, api_resource_delegation.result_payload),
                 fail_type = excluded.fail_type,
-                next_retry_at = NULL,
                 updated_at = excluded.updated_at
             "#,
         )
@@ -1087,8 +1077,6 @@ impl ApiResourceDelegationDao {
                 err_code = ?4,
                 err_msg = ?5,
                 status = ?7,
-                recover_status = NULL,
-                next_retry_at = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
             "#,
@@ -1134,8 +1122,6 @@ impl ApiResourceDelegationDao {
                 err_code = ?4,
                 err_msg = ?5,
                 status = ?7,
-                recover_status = NULL,
-                next_retry_at = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
             "#,
@@ -1158,42 +1144,9 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
-    pub async fn mark_recover_retry_wait<'a, E>(
+    pub async fn reset_for_rebuild<'a, E>(
         exec: E,
         resource_trade_no: &str,
-        recover_status: ApiResourceDelegationRecoverStatus,
-        next_retry_at: &str,
-    ) -> Result<u64, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let res = sqlx::query(
-            r#"
-            UPDATE api_resource_delegation
-            SET recover_status = ?2,
-                next_retry_at = ?3,
-                retry_count = retry_count + 1,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE resource_trade_no = ?1
-              AND operation_type IN (1, 2)
-              AND result_received_at IS NULL
-              AND err_code IS NULL
-            "#,
-        )
-        .bind(resource_trade_no)
-        .bind(recover_status.as_i64())
-        .bind(next_retry_at)
-        .execute(exec)
-        .await
-        .map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(res.rows_affected())
-    }
-
-    pub async fn reset_for_retry<'a, E>(
-        exec: E,
-        resource_trade_no: &str,
-        _recover_status: ApiResourceDelegationRecoverStatus,
-        _next_retry_at: &str,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -1211,8 +1164,6 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_last_checked_at = NULL,
                 broadcast_uncertain_reconciled_at = NULL,
                 broadcast_uncertain_rebroadcast_count = 0,
-                recover_status = NULL,
-                next_retry_at = NULL,
                 retry_count = retry_count + 1,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1

@@ -3,8 +3,7 @@ use crate::{
     dao::api_resource_delegation::ApiResourceDelegationDao,
     entities::api_resource_delegation::{
         ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
-        ApiResourceDelegationRecoverStatus, ApiResourceDelegationResultStatus,
-        ApiResourceDelegationSource, NewApiResourceDelegation,
+        ApiResourceDelegationResultStatus, ApiResourceDelegationSource, NewApiResourceDelegation,
     },
 };
 
@@ -510,34 +509,11 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
-    pub async fn mark_recover_retry_wait(
+    pub async fn reset_for_rebuild(
         pool: &ApiResourceDbPool,
         resource_trade_no: &str,
-        recover_status: ApiResourceDelegationRecoverStatus,
-        next_retry_at: &str,
     ) -> Result<u64, crate::Error> {
-        ApiResourceDelegationDao::mark_recover_retry_wait(
-            pool.write_ref(),
-            resource_trade_no,
-            recover_status,
-            next_retry_at,
-        )
-        .await
-    }
-
-    pub async fn reset_for_retry(
-        pool: &ApiResourceDbPool,
-        resource_trade_no: &str,
-        recover_status: ApiResourceDelegationRecoverStatus,
-        next_retry_at: &str,
-    ) -> Result<u64, crate::Error> {
-        ApiResourceDelegationDao::reset_for_retry(
-            pool.write_ref(),
-            resource_trade_no,
-            recover_status,
-            next_retry_at,
-        )
-        .await
+        ApiResourceDelegationDao::reset_for_rebuild(pool.write_ref(), resource_trade_no).await
     }
 }
 
@@ -825,7 +801,6 @@ mod tests {
                 .unwrap();
         assert_eq!(persisted.task_ack_send_count, 1);
         assert_eq!(persisted.retry_count, 0);
-        assert!(persisted.next_retry_at.is_none());
     }
 
     #[tokio::test]
@@ -1019,7 +994,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(acked.task_ack_send_count, 1);
-        assert!(acked.next_retry_at.is_none());
         assert_eq!(
             ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_ack_execute").await.unwrap(),
             1
@@ -1027,7 +1001,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resource_delegation_retry_reset_no_longer_blocks_build_claim() {
+    async fn resource_delegation_rebuild_reset_releases_build_claim() {
         let pool = setup_api_resource_pool("resource_delegation_retry_blocks_build").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1044,14 +1018,7 @@ mod tests {
         .await
         .unwrap();
         ApiResourceDelegationRepo::mark_task_ack_sent(&pool, "rsc_retry_execute").await.unwrap();
-        ApiResourceDelegationRepo::reset_for_retry(
-            &pool,
-            "rsc_retry_execute",
-            ApiResourceDelegationRecoverStatus::RetryBuild,
-            "2099-01-01T00:00:00Z",
-        )
-        .await
-        .unwrap();
+        ApiResourceDelegationRepo::reset_for_rebuild(&pool, "rsc_retry_execute").await.unwrap();
 
         assert_eq!(
             ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_retry_execute").await.unwrap(),
@@ -1968,7 +1935,6 @@ mod tests {
             .unwrap();
         assert_eq!(waiting.result_ack_send_count, 1);
         assert_eq!(waiting.retry_count, 0);
-        assert!(waiting.next_retry_at.is_none());
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
             &pool,
@@ -2050,7 +2016,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_undelegation_execute_and_recover_scans_respect_source_operation_and_retry() {
+    async fn local_undelegation_scans_respect_source_operation_and_chain_facts() {
         let pool = setup_api_resource_pool("resource_delegation_local_undelegation_scan").await;
 
         ApiResourceDelegationRepo::upsert(
@@ -2124,7 +2090,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_undelegation_retry_reset_returns_task_to_executable_state() {
+    async fn local_undelegation_rebuild_reset_returns_task_to_executable_state() {
         let pool = setup_api_resource_pool("resource_delegation_local_undelegation_retry").await;
 
         ApiResourceDelegationRepo::upsert(
@@ -2152,14 +2118,9 @@ mod tests {
         )
         .await
         .unwrap();
-        ApiResourceDelegationRepo::reset_for_retry(
-            &pool,
-            "rsc_local_undelegate_retry",
-            ApiResourceDelegationRecoverStatus::RetryRecover,
-            "2099-01-01T00:00:00Z",
-        )
-        .await
-        .unwrap();
+        ApiResourceDelegationRepo::reset_for_rebuild(&pool, "rsc_local_undelegate_retry")
+            .await
+            .unwrap();
 
         let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
             &pool,
@@ -2169,13 +2130,11 @@ mod tests {
         .unwrap();
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.recover_status, None);
-        assert_eq!(persisted.next_retry_at, None);
         assert_eq!(persisted.retry_count, 1);
     }
 
     #[tokio::test]
-    async fn platform_undelegation_reset_for_retry_releases_build_slot() {
+    async fn platform_undelegation_reset_for_rebuild_releases_build_slot() {
         let pool = setup_api_resource_pool("resource_delegation_platform_undelegation_retry").await;
 
         ApiResourceDelegationRepo::upsert(
@@ -2210,14 +2169,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            ApiResourceDelegationRepo::reset_for_retry(
-                &pool,
-                "rsc_platform_undelegate_retry",
-                ApiResourceDelegationRecoverStatus::RetryRecover,
-                "2099-01-01T00:00:00Z",
-            )
-            .await
-            .unwrap(),
+            ApiResourceDelegationRepo::reset_for_rebuild(&pool, "rsc_platform_undelegate_retry")
+                .await
+                .unwrap(),
             1
         );
 
@@ -2230,13 +2184,11 @@ mod tests {
         assert!(persisted.building_at.is_none());
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.recover_status, None);
-        assert_eq!(persisted.next_retry_at, None);
         assert_eq!(persisted.retry_count, 1);
     }
 
     #[tokio::test]
-    async fn platform_delegate_reset_for_retry_releases_build_slot() {
+    async fn platform_delegate_reset_for_rebuild_releases_build_slot() {
         let pool = setup_api_resource_pool("resource_delegation_platform_delegate_retry").await;
 
         ApiResourceDelegationRepo::upsert(
@@ -2264,14 +2216,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            ApiResourceDelegationRepo::reset_for_retry(
-                &pool,
-                "rsc_platform_delegate_retry",
-                ApiResourceDelegationRecoverStatus::RetryRecover,
-                "2099-01-01T00:00:00Z",
-            )
-            .await
-            .unwrap(),
+            ApiResourceDelegationRepo::reset_for_rebuild(&pool, "rsc_platform_delegate_retry")
+                .await
+                .unwrap(),
             1
         );
 
@@ -2284,9 +2231,7 @@ mod tests {
         assert!(persisted.building_at.is_none());
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(persisted.recover_status, None);
         assert_eq!(persisted.retry_count, 1);
-        assert_eq!(persisted.next_retry_at, None);
     }
 
     #[tokio::test]
