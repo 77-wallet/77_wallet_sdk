@@ -1088,7 +1088,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resource_delegation_retry_cooldown_still_blocks_build_claim() {
+    async fn resource_delegation_retry_reset_no_longer_blocks_build_claim() {
         let pool = setup_api_resource_pool("resource_delegation_retry_blocks_build").await;
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -1116,7 +1116,7 @@ mod tests {
 
         assert_eq!(
             ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_retry_execute").await.unwrap(),
-            0
+            1
         );
     }
 
@@ -1824,7 +1824,14 @@ mod tests {
         .await
         .unwrap();
 
-        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+            &pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Delegate,
+            100,
+        )
+        .await
+        .unwrap();
         let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
         assert!(trade_nos.contains(&"rsc_ack".to_string()));
         assert!(!trade_nos.contains(&"rsc_no_result".to_string()));
@@ -1840,7 +1847,14 @@ mod tests {
             0
         );
 
-        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+            &pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Delegate,
+            100,
+        )
+        .await
+        .unwrap();
         assert!(rows.is_empty());
     }
 
@@ -1993,7 +2007,14 @@ mod tests {
         .await
         .unwrap();
 
-        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+            &pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Delegate,
+            100,
+        )
+        .await
+        .unwrap();
         assert!(rows.iter().any(|row| row.resource_trade_no == "rsc_ack_retry"));
 
         let future = (chrono::Utc::now() + chrono::Duration::minutes(10))
@@ -2012,7 +2033,14 @@ mod tests {
         assert_eq!(waiting.retry_count, 1);
         assert!(waiting.next_retry_at.is_some());
 
-        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+            &pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Delegate,
+            100,
+        )
+        .await
+        .unwrap();
         assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_ack_retry"));
 
         let past = (chrono::Utc::now() - chrono::Duration::minutes(10))
@@ -2025,7 +2053,14 @@ mod tests {
             1
         );
 
-        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+            &pool,
+            ApiResourceDelegationSource::Platform,
+            ApiResourceDelegationOperationType::Delegate,
+            100,
+        )
+        .await
+        .unwrap();
         assert!(rows.iter().any(|row| row.resource_trade_no == "rsc_ack_retry"));
     }
 
@@ -2216,10 +2251,8 @@ mod tests {
         .unwrap();
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(
-            persisted.recover_status,
-            Some(ApiResourceDelegationRecoverStatus::RetryRecover)
-        );
+        assert_eq!(persisted.recover_status, None);
+        assert_eq!(persisted.next_retry_at, None);
         assert_eq!(persisted.retry_count, 1);
     }
 
@@ -2279,10 +2312,8 @@ mod tests {
         assert!(persisted.building_at.is_none());
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(
-            persisted.recover_status,
-            Some(ApiResourceDelegationRecoverStatus::RetryRecover)
-        );
+        assert_eq!(persisted.recover_status, None);
+        assert_eq!(persisted.next_retry_at, None);
         assert_eq!(persisted.retry_count, 1);
     }
 
@@ -2335,12 +2366,9 @@ mod tests {
         assert!(persisted.building_at.is_none());
         assert_eq!(persisted.tx_hash, None);
         assert_eq!(persisted.tx_status, None);
-        assert_eq!(
-            persisted.recover_status,
-            Some(ApiResourceDelegationRecoverStatus::RetryRecover)
-        );
+        assert_eq!(persisted.recover_status, None);
         assert_eq!(persisted.retry_count, 1);
-        assert!(persisted.next_retry_at.is_some());
+        assert_eq!(persisted.next_retry_at, None);
     }
 
     #[tokio::test]

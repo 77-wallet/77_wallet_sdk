@@ -406,11 +406,6 @@ impl ApiResourceDelegationDao {
               AND err_code IS NULL
               {ack_clause}
               AND (
-                    recover_status IS NULL
-                    OR next_retry_at IS NULL
-                    OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                  )
-              AND (
                     building_at IS NULL
                     OR datetime(building_at) <= datetime('now', '-5 minutes')
                   )
@@ -516,8 +511,7 @@ impl ApiResourceDelegationDao {
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
               {ack_clause}
-              AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            ORDER BY COALESCE(next_retry_at, {order_expr}) ASC, id ASC
+            ORDER BY {order_expr} ASC, id ASC
             LIMIT ?
             "#
         );
@@ -553,11 +547,6 @@ impl ApiResourceDelegationDao {
               )
               AND result_received_at IS NULL
               AND err_code IS NULL
-              AND (
-                    recover_status IS NULL
-                    OR next_retry_at IS NULL
-                    OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                  )
               AND (
                     building_at IS NULL
                     OR datetime(building_at) <= datetime('now', '-5 minutes')
@@ -1269,8 +1258,8 @@ impl ApiResourceDelegationDao {
     pub async fn reset_for_retry<'a, E>(
         exec: E,
         resource_trade_no: &str,
-        recover_status: ApiResourceDelegationRecoverStatus,
-        next_retry_at: &str,
+        _recover_status: ApiResourceDelegationRecoverStatus,
+        _next_retry_at: &str,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -1288,8 +1277,8 @@ impl ApiResourceDelegationDao {
                 broadcast_uncertain_last_checked_at = NULL,
                 broadcast_uncertain_reconciled_at = NULL,
                 broadcast_uncertain_rebroadcast_count = 0,
-                recover_status = ?2,
-                next_retry_at = ?3,
+                recover_status = NULL,
+                next_retry_at = NULL,
                 retry_count = retry_count + 1,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?1
@@ -1299,8 +1288,6 @@ impl ApiResourceDelegationDao {
             "#,
         )
         .bind(resource_trade_no)
-        .bind(recover_status.as_i64())
-        .bind(next_retry_at)
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
