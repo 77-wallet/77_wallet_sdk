@@ -551,13 +551,14 @@ impl PlatformResourceDelegateWorker {
         };
         let key = platform_capacity_key(&task.owner_address, task.resource_type);
 
-        let mut reservations = platform_capacity_reservations().lock().await;
         let chain = ChainAdapterFactory::get_tron_adapter(crate::context::get_context()?).await?;
         let available_native_amount = chain
             .get_provider()
             .can_delegate_resource(&task.owner_address, tron_resource_type)
             .await?
             .to_sun();
+
+        let mut reservations = platform_capacity_reservations().lock().await;
         let reserved_native_amount = reservations.get(&key).copied().unwrap_or_default();
 
         if !reserve_platform_delegation_capacity(

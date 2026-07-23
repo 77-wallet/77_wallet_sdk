@@ -129,9 +129,7 @@ impl WithdrawShadowDispatcherActor {
         });
 
         // 创建Semaphore和JoinSet
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(
-            self.config.chain_semaphore_size + self.config.side_effect_semaphore_size,
-        ));
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.outer_admission_size()));
         let mut join_set = tokio::task::JoinSet::new();
 
         loop {

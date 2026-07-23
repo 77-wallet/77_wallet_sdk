@@ -110,7 +110,7 @@ mod tests {
 
     use dashmap::{DashMap, DashSet};
 
-    use super::{DispatcherLane, RunningGuard, RunningKey};
+    use super::{DispatcherConfig, DispatcherLane, RunningGuard, RunningKey};
     use crate::infrastructure::api_trans::withdraw::shadow::{WithdrawChainIntent, WithdrawIntent};
 
     #[test]
@@ -143,6 +143,18 @@ mod tests {
         assert_eq!(DispatcherLane::for_intent(&resource_gate), DispatcherLane::ResourceGate);
         assert_eq!(DispatcherLane::for_intent(&broadcast), DispatcherLane::Chain);
         assert_eq!(DispatcherLane::for_intent(&recover), DispatcherLane::Chain);
+    }
+
+    #[test]
+    fn withdraw_dispatcher_outer_admission_includes_resource_gate_lane_capacity() {
+        let config = DispatcherConfig {
+            chain_semaphore_size: 24,
+            resource_gate_semaphore_size: 8,
+            side_effect_semaphore_size: 12,
+            db_check_timeout: std::time::Duration::from_secs(5),
+        };
+
+        assert_eq!(config.outer_admission_size(), 44);
     }
 
     #[test]
@@ -229,6 +241,14 @@ impl Default for DispatcherConfig {
             side_effect_semaphore_size,
             db_check_timeout: Duration::from_secs(5), // 5秒
         }
+    }
+}
+
+impl DispatcherConfig {
+    pub(crate) fn outer_admission_size(&self) -> usize {
+        self.chain_semaphore_size
+            .saturating_add(self.resource_gate_semaphore_size)
+            .saturating_add(self.side_effect_semaphore_size)
     }
 }
 
