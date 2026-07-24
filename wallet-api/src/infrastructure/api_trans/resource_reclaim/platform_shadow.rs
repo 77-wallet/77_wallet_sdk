@@ -43,8 +43,10 @@ use crate::{
                 resource_failure_receipt_uploadable, resource_success_receipt_uploadable,
             },
             resource_delegation::{
-                execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
+                execute_resource_delegation, mark_recovered_resource_delegation_failure,
+                record_resource_uncertain_and_maybe_rebroadcast,
                 resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
+                resource_recovery_error_is_uncertain,
             },
             resource_rpc_auth, shadow_rpc_policy,
         },
@@ -860,15 +862,24 @@ impl PlatformResourceReclaimWorker {
                 }
                 Ok(())
             }
+            Err(err) if resource_recovery_error_is_uncertain(&err) => {
+                record_resource_uncertain_and_maybe_rebroadcast(
+                    &self.ctx.api_resource_pool()?,
+                    &resource_trade_no,
+                )
+                .await?;
+                Ok(())
+            }
             Err(err) => {
-                warn!(
-                    resource_trade_no = %resource_trade_no,
-                    tx_hash = %tx_hash,
-                    error = %err,
-                    source = "platform_resource_reclaim_shadow",
-                    "Platform undelegation recover query failed; retrying original tx hash"
-                );
-                Err(err)
+                mark_recovered_resource_delegation_failure(
+                    &self.ctx.api_resource_pool()?,
+                    &delegation,
+                    tx_hash,
+                    &err,
+                    "platform_undelegation_recovered_failure",
+                )
+                .await?;
+                Ok(())
             }
         }
     }

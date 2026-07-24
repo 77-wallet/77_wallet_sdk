@@ -14,6 +14,7 @@ use wallet_database::{
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
+            ApiResourceDelegationResultStatus,
         },
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
@@ -68,9 +69,10 @@ use crate::{
                 resolve_resource_delegation_signer,
             },
             resource_delegation::{
-                execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
-                resource_delegation_failure_fact, resource_delegation_is_built_unbroadcast,
-                resource_delegation_retry_wait_secs,
+                execute_resource_delegation, mark_recovered_resource_delegation_failure,
+                record_resource_uncertain_and_maybe_rebroadcast, resource_delegation_failure_fact,
+                resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
+                resource_recovery_error_is_uncertain,
             },
             resource_reservation::{
                 ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
@@ -425,7 +427,8 @@ impl ShadowWithdrawWorker {
             }
             super::ShadowWithdrawCommand::Recover(trade_no) => self.process_recover(trade_no).await,
             super::ShadowWithdrawCommand::ExecuteResourceDelegation(trade_no) => {
-                self.process_resource_delegation_execute(trade_no).await
+                let result = self.process_resource_delegation_execute(trade_no.clone()).await;
+                self.handle_resource_delegation_terminal_failure_if_needed(&trade_no, result).await
             }
         }
     }
@@ -551,7 +554,17 @@ impl ShadowWithdrawWorker {
 
         match err.retry_policy() {
             wallet_utils::RetryPolicy::Never => {
-                self.mark_resource_delegation_failed(resource_trade_no, &err).await?;
+                if self.mark_resource_delegation_failed(resource_trade_no, &err).await? {
+                    let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
+                        &self.ctx.api_resource_pool()?,
+                        resource_trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                    if let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() {
+                        self.scanner.try_advance(origin_trade_no).await;
+                    }
+                }
                 Ok(())
             }
             wallet_utils::RetryPolicy::Delay => {
@@ -730,16 +743,30 @@ impl ShadowWithdrawWorker {
                     "Withdraw resource delegation recover is uncertain; waiting"
                 );
             }
-            Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
-                Self::schedule_resource_delegation_rebuild_retry_in_pool(
+            Err(err) if resource_recovery_error_is_uncertain(&err) => {
+                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
                     &self.ctx.api_resource_pool()?,
                     &delegation.resource_trade_no,
-                    &err,
                 )
                 .await?;
+                if rebroadcast {
+                    if let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() {
+                        self.scanner.try_advance(origin_trade_no).await;
+                    }
+                }
             }
             Err(err) => {
-                self.mark_resource_delegation_failed(&delegation.resource_trade_no, &err).await?;
+                let failed = mark_recovered_resource_delegation_failure(
+                    &self.ctx.api_resource_pool()?,
+                    &delegation,
+                    tx_hash,
+                    &err,
+                    "local_delegation_recovered_failure",
+                )
+                .await?;
+                if let Some(origin_trade_no) = failed.origin_trade_no.as_deref() {
+                    self.scanner.try_advance(origin_trade_no).await;
+                }
             }
         }
 
@@ -2241,7 +2268,7 @@ impl ShadowWithdrawWorker {
         &self,
         resource_trade_no: &str,
         err: &ServiceError,
-    ) -> Result<(), ServiceError> {
+    ) -> Result<bool, ServiceError> {
         if err.is_transient_db_pool_timeout() {
             warn!(
                 resource_trade_no = %resource_trade_no,
@@ -2249,19 +2276,34 @@ impl ShadowWithdrawWorker {
                 source = "shadow_withdraw_worker",
                 "Skip marking resource delegation failed: local DB pool timeout is retryable infrastructure noise"
             );
-            return Ok(());
+            return Ok(false);
         }
 
-        let err_code = if err.is_network_error() { "ERR_6005" } else { "ERR_6008" };
-        ApiResourceDelegationRepo::mark_failed_if_unfinished(
+        let (err_code, err_msg) = resource_delegation_failure_fact(err);
+        let result_payload = format!("local_delegation_terminal_failure:{err_msg}");
+        let affected = ApiResourceDelegationRepo::mark_failed_with_result_if_unfinished(
             &self.ctx.api_resource_pool()?,
             resource_trade_no,
-            err_code,
-            &err.to_string(),
+            None,
+            &err_code,
+            &err_msg,
+            &result_payload,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        Ok(())
+        if affected > 0 {
+            return Ok(true);
+        }
+
+        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_resource_pool()?,
+            resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        Ok(persisted.result_status == Some(ApiResourceDelegationResultStatus::Fail)
+            && persisted.chain_failed_at.is_some()
+            && persisted.finished_at.is_some())
     }
 
     /// 交易恢复逻辑
@@ -2640,7 +2682,8 @@ mod tests {
         ApiWalletDbPool, SqliteContext,
         entities::{
             api_resource_delegation::{
-                ApiResourceDelegationOperationType, NewApiResourceDelegation,
+                ApiResourceDelegationOperationType, ApiResourceDelegationResultStatus,
+                NewApiResourceDelegation,
             },
             api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
             api_resource_type::ApiResourceType,
@@ -3275,6 +3318,132 @@ oss:
         .expect("load platform task");
         assert!(task.building_at.is_none());
         assert_eq!(task.tx_hash, None);
+    }
+
+    #[tokio::test]
+    async fn withdraw_local_delegation_terminal_failure_commits_result_atomically() {
+        let test_ctx = test_ctx().await;
+        let resource_pool = test_ctx.api_resource_pool().expect("resource pool");
+        let test_id = uuid::Uuid::new_v4().simple().to_string();
+        let origin_trade_no = format!("W_local_delegate_terminal_failure_{test_id}");
+        let resource_trade_no = format!("wd_local_delegate_terminal_failure_{test_id}");
+
+        ApiResourceDelegationRepo::upsert(
+            &resource_pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                &resource_trade_no,
+                &origin_trade_no,
+                ApiTradeType::Withdraw as i64,
+                "withdraw_owner",
+                "receiver",
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert local delegation");
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner =
+            Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
+                test_ctx,
+                crate::infrastructure::api_trans::withdraw::shadow::ScannerConfig::default(),
+                intent_tx,
+                None,
+            ));
+        let worker = ShadowWithdrawWorker::new(test_ctx, scanner);
+
+        let committed = worker
+            .mark_resource_delegation_failed(
+                &resource_trade_no,
+                &crate::error::service::ServiceError::Parameter(
+                    "terminal local failure".to_string(),
+                ),
+            )
+            .await
+            .expect("mark terminal failure");
+        assert!(committed);
+
+        let persisted =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, &resource_trade_no)
+                .await
+                .expect("load delegation");
+        assert_eq!(persisted.result_status, Some(ApiResourceDelegationResultStatus::Fail));
+        assert!(persisted.chain_failed_at.is_some());
+        assert!(persisted.finished_at.is_some());
+        assert!(persisted.result_payload.is_some());
+    }
+
+    #[tokio::test]
+    async fn stale_withdraw_local_delegation_failure_does_not_overwrite_built_transaction() {
+        let test_ctx = test_ctx().await;
+        let resource_pool = test_ctx.api_resource_pool().expect("resource pool");
+        let test_id = uuid::Uuid::new_v4().simple().to_string();
+        let origin_trade_no = format!("W_local_delegate_stale_failure_{test_id}");
+        let resource_trade_no = format!("wd_local_delegate_stale_failure_{test_id}");
+
+        ApiResourceDelegationRepo::upsert(
+            &resource_pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                &resource_trade_no,
+                &origin_trade_no,
+                ApiTradeType::Withdraw as i64,
+                "withdraw_owner",
+                "receiver",
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert local delegation");
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&resource_pool, &resource_trade_no)
+                .await
+                .expect("claim build"),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &resource_pool,
+                &resource_trade_no,
+                "built_hash",
+                "built_raw",
+            )
+            .await
+            .expect("mark built"),
+            1
+        );
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner =
+            Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
+                test_ctx,
+                crate::infrastructure::api_trans::withdraw::shadow::ScannerConfig::default(),
+                intent_tx,
+                None,
+            ));
+        let worker = ShadowWithdrawWorker::new(test_ctx, scanner);
+
+        let committed = worker
+            .mark_resource_delegation_failed(
+                &resource_trade_no,
+                &crate::error::service::ServiceError::Parameter("late local failure".to_string()),
+            )
+            .await
+            .expect("handle stale failure");
+        assert!(!committed);
+
+        let persisted =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, &resource_trade_no)
+                .await
+                .expect("load delegation");
+        assert_eq!(persisted.tx_hash.as_deref(), Some("built_hash"));
+        assert_eq!(persisted.raw_tx.as_deref(), Some("built_raw"));
+        assert!(persisted.chain_failed_at.is_none());
+        assert!(persisted.finished_at.is_none());
+        assert!(persisted.result_status.is_none());
     }
 
     #[tokio::test]

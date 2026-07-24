@@ -82,9 +82,10 @@ use crate::{
         resource_amount::energy_shortfall_to_apply_amounts,
         resource_apply_outcome::PlatformApplyOutcome,
         resource_delegation::{
-            execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
-            resource_delegation_failure_fact, resource_delegation_is_built_unbroadcast,
-            resource_delegation_retry_wait_secs,
+            execute_resource_delegation, mark_recovered_resource_delegation_failure,
+            record_resource_uncertain_and_maybe_rebroadcast, resource_delegation_failure_fact,
+            resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
+            resource_recovery_error_is_uncertain,
         },
         resource_reservation::{
             ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
@@ -849,8 +850,10 @@ impl ShadowCollectWorker {
                     source = "shadow_worker_v2",
                     "Resource delegation execution failed permanently"
                 );
-                self.mark_local_resource_delegation_failed(resource_trade_no, &err).await?;
-                self.release_collect_gate_after_local_delegation_failure(resource_trade_no).await?;
+                if self.mark_local_resource_delegation_failed(resource_trade_no, &err).await? {
+                    self.release_collect_gate_after_local_delegation_failure(resource_trade_no)
+                        .await?;
+                }
                 Ok(())
             }
             wallet_utils::RetryPolicy::Delay => {
@@ -1055,14 +1058,30 @@ impl ShadowCollectWorker {
                     "Collect local resource delegation recover is uncertain; waiting"
                 );
             }
-            Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
-                self.schedule_local_resource_delegation_rebuild_retry(
+            Err(err) if resource_recovery_error_is_uncertain(&err) => {
+                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
+                    &self.ctx.api_resource_pool()?,
                     &delegation.resource_trade_no,
-                    &err,
                 )
                 .await?;
+                if rebroadcast {
+                    if let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() {
+                        self.advancer.try_advance(origin_trade_no).await;
+                    }
+                }
             }
-            Err(err) => return Err(err),
+            Err(err) => {
+                let failed = mark_recovered_resource_delegation_failure(
+                    &self.ctx.api_resource_pool()?,
+                    &delegation,
+                    tx_hash,
+                    &err,
+                    "local_delegation_recovered_failure",
+                )
+                .await?;
+                self.release_collect_gate_after_local_delegation_failure(&failed.resource_trade_no)
+                    .await?;
+            }
         }
 
         Ok(())
@@ -1072,7 +1091,7 @@ impl ShadowCollectWorker {
         &self,
         resource_trade_no: &str,
         err: &ServiceError,
-    ) -> Result<(), ServiceError> {
+    ) -> Result<bool, ServiceError> {
         if err.is_transient_db_pool_timeout() {
             warn!(
                 resource_trade_no = %resource_trade_no,
@@ -1080,16 +1099,19 @@ impl ShadowCollectWorker {
                 source = "shadow_worker_v2",
                 "Skip marking resource delegation failed: local DB pool timeout is retryable infrastructure noise"
             );
-            return Ok(());
+            return Ok(false);
         }
 
         // 统一失败 fact 映射，保持与其他 resource delegation 统一上报约定。
         let (err_code, err_msg) = resource_delegation_failure_fact(err);
-        let affected = ApiResourceDelegationRepo::mark_failed_if_unfinished(
+        let payload = format!("local_delegation_terminal_failure:{err_msg}");
+        let affected = ApiResourceDelegationRepo::mark_failed_with_result_if_unfinished(
             &self.ctx.api_resource_pool()?,
             resource_trade_no,
+            None,
             &err_code,
             &err_msg,
+            &payload,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
@@ -1112,7 +1134,19 @@ impl ShadowCollectWorker {
             );
         }
 
-        Ok(())
+        if affected > 0 {
+            return Ok(true);
+        }
+
+        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_resource_pool()?,
+            resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        Ok(persisted.result_status == Some(ApiResourceDelegationResultStatus::Fail)
+            && persisted.chain_failed_at.is_some()
+            && persisted.finished_at.is_some())
     }
 
     /// 执行资源闸门检查，入参是原归集订单号，不是资源任务号。
@@ -1806,17 +1840,12 @@ impl ShadowCollectWorker {
         if delegation.operation_type != ApiResourceDelegationOperationType::Delegate {
             return Ok(());
         }
-        let _ = ApiResourceDelegationRepo::mark_result_received(
-            &self.ctx.api_resource_pool()?,
-            &delegation.resource_trade_no,
-            ApiResourceDelegationResultStatus::Fail,
-            None,
-            delegation.err_code.as_deref(),
-            delegation.err_msg.as_deref(),
-            None,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
+        if delegation.result_status != Some(ApiResourceDelegationResultStatus::Fail)
+            || delegation.chain_failed_at.is_none()
+            || delegation.finished_at.is_none()
+        {
+            return Ok(());
+        }
         let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
             return Ok(());
         };
@@ -5136,23 +5165,15 @@ oss:
 
     #[tokio::test]
     async fn local_delegation_failure_releases_collect_gate() {
-        let dir = tempdir().expect("tempdir");
-        let dir_path = dir.path().to_string_lossy().to_string();
-
-        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
-            .await
-            .expect("init api_transaction.db");
-        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
-            .await
-            .expect("init api_resource.db");
-        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let resource_pool = ctx.api_resource_pool().expect("resource pool");
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            test_ctx().await,
+            ctx,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                test_ctx().await,
+                ctx,
                 intent_tx.clone(),
                 None,
             )),
@@ -5201,11 +5222,13 @@ oss:
         )
         .await
         .expect("insert local delegation");
-        ApiResourceDelegationRepo::mark_failed_if_unfinished(
+        ApiResourceDelegationRepo::mark_failed_with_result_if_unfinished(
             &resource_pool,
             "rsc_local_delegate_C_local_release",
+            None,
             "ERR_6008",
             "local delegate failed",
+            "local_delegation_terminal_failure",
         )
         .await
         .expect("mark failed");
@@ -5224,6 +5247,101 @@ oss:
         assert_eq!(
             persisted.resource_gate_result,
             Some(ApiResourceGateResult::LocalDelegationFailedBypass)
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_local_delegation_failure_does_not_release_collect_gate() {
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let resource_pool = ctx.api_resource_pool().expect("resource pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            ctx,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                ctx, intent_tx, None,
+            )),
+        );
+        let test_id = uuid::Uuid::new_v4().simple().to_string();
+        let trade_no = format!("C_local_stale_failure_{test_id}");
+        let resource_trade_no = format!("rsc_local_delegate_{trade_no}");
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            &trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        ApiCollectRepo::mark_resource_blocked(
+            &collect_pool,
+            &trade_no,
+            ApiResourceBlockReason::NeedLocalDelegate,
+            Some(&resource_trade_no),
+            Some(ApiResourceDependencyType::LocalDelegate),
+        )
+        .await
+        .expect("block collect");
+        ApiResourceDelegationRepo::upsert(
+            &resource_pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                &resource_trade_no,
+                &trade_no,
+                2,
+                "withdraw_owner",
+                "from",
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert local delegation");
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&resource_pool, &resource_trade_no)
+                .await
+                .expect("claim build"),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &resource_pool,
+                &resource_trade_no,
+                "built_hash",
+                "built_raw",
+            )
+            .await
+            .expect("mark built"),
+            1
+        );
+
+        let committed = worker
+            .mark_local_resource_delegation_failed(
+                &resource_trade_no,
+                &ServiceError::Parameter("late local failure".to_string()),
+            )
+            .await
+            .expect("handle stale failure");
+        assert!(!committed);
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_none());
+        assert_eq!(
+            persisted.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedLocalDelegate)
         );
     }
 

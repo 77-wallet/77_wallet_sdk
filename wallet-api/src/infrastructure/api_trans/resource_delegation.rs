@@ -106,6 +106,36 @@ pub(crate) fn resource_delegation_failure_fact(err: &ServiceError) -> (String, S
     (err_code.to_string(), err.to_string())
 }
 
+pub(crate) fn resource_recovery_error_is_uncertain(err: &ServiceError) -> bool {
+    shared_mechanism::is_tron_missing_confirmed_and_pending_error(err)
+}
+
+pub(crate) async fn mark_recovered_resource_delegation_failure(
+    pool: &ApiResourceDbPool,
+    delegation: &ApiResourceDelegationEntity,
+    tx_hash: &str,
+    err: &ServiceError,
+    payload_source: &'static str,
+) -> Result<ApiResourceDelegationEntity, ServiceError> {
+    let (err_code, err_msg) = resource_delegation_failure_fact(err);
+    let payload = format!("{payload_source}:{err_msg}");
+    ApiResourceDelegationRepo::mark_recovered_chain_failure(
+        pool,
+        &delegation.resource_trade_no,
+        tx_hash,
+        None,
+        &err_code,
+        &err_msg,
+        &payload,
+    )
+    .await
+    .map_err(|e| ServiceError::Database(e.into()))?;
+
+    ApiResourceDelegationRepo::get_by_resource_trade_no(pool, &delegation.resource_trade_no)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))
+}
+
 /// 使用统一 RPC-auth 策略执行资源代理广播。
 ///
 /// 注意：
@@ -307,10 +337,23 @@ async fn sign_tron_resource_delegation(
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_resource_delegation_broadcast_hash, resource_delegation_failure_fact,
-        resource_delegation_retry_wait_secs,
+        mark_recovered_resource_delegation_failure, resolve_resource_delegation_broadcast_hash,
+        resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
+        resource_recovery_error_is_uncertain,
     };
     use crate::error::service::ServiceError;
+    use tempfile::tempdir;
+    use wallet_database::{
+        SqliteContext,
+        entities::{
+            api_resource_delegation::{
+                ApiResourceDelegationResultStatus, ApiResourceDelegationStatus,
+                NewApiResourceDelegation,
+            },
+            api_trade_type::ApiTradeType,
+        },
+        repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
+    };
 
     #[test]
     fn retry_wait_secs_follows_exp_backoff_with_cap() {
@@ -332,6 +375,16 @@ mod tests {
     }
 
     #[test]
+    fn recovery_error_classifier_keeps_tron_visibility_gap_uncertain() {
+        let visibility_gap =
+            ServiceError::Parameter("tron tx missing from confirmed and pending pools".to_string());
+        let confirmed_failure = ServiceError::Parameter("chain execution failed".to_string());
+
+        assert!(resource_recovery_error_is_uncertain(&visibility_gap));
+        assert!(!resource_recovery_error_is_uncertain(&confirmed_failure));
+    }
+
+    #[test]
     fn uncertain_broadcast_preserves_signed_hash_for_recovery() {
         let hash = resolve_resource_delegation_broadcast_hash("signed-hash", None)
             .expect("uncertain broadcast keeps deterministic hash");
@@ -346,5 +399,79 @@ mod tests {
                 .expect_err("hash mismatch must fail");
 
         assert!(error.to_string().contains("tx_hash mismatch"));
+    }
+
+    #[tokio::test]
+    async fn recovered_failure_helper_commits_complete_failure_fact() {
+        let dir = tempdir().expect("tempdir");
+        let sqlite = SqliteContext::new(&dir.path().to_string_lossy(), Some("api_resource.db"))
+            .await
+            .expect("init resource db");
+        let pool = sqlite.into_api_resource_db_pool().expect("resource pool");
+        let resource_trade_no = "rsc_api_recovered_failure";
+        let tx_hash = "rsc_api_recovered_failure_hash";
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid",
+                resource_trade_no,
+                "W_api_recovered_failure",
+                ApiTradeType::Withdraw as i64,
+                "owner",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .expect("insert delegation");
+        ApiResourceDelegationRepo::mark_task_ack_sent(&pool, resource_trade_no)
+            .await
+            .expect("mark task ack");
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&pool, resource_trade_no)
+                .await
+                .expect("claim build"),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(&pool, resource_trade_no, tx_hash, "signed_raw",)
+                .await
+                .expect("mark built"),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcasted(&pool, resource_trade_no, tx_hash)
+                .await
+                .expect("mark broadcast"),
+            1
+        );
+        let delegation =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, resource_trade_no)
+                .await
+                .expect("load delegation");
+
+        let failed = mark_recovered_resource_delegation_failure(
+            &pool,
+            &delegation,
+            tx_hash,
+            &ServiceError::Parameter("confirmed failure".to_string()),
+            "api_recovered_failure",
+        )
+        .await
+        .expect("commit recovered failure");
+
+        assert_eq!(failed.tx_hash.as_deref(), Some(tx_hash));
+        assert_eq!(failed.status, ApiResourceDelegationStatus::Fail);
+        assert_eq!(failed.result_status, Some(ApiResourceDelegationResultStatus::Fail));
+        assert_eq!(failed.err_code.as_deref(), Some("ERR_6008"));
+        assert!(failed.chain_failed_at.is_some());
+        assert!(failed.finished_at.is_some());
+        assert!(
+            failed
+                .result_payload
+                .as_deref()
+                .is_some_and(|payload| payload.starts_with("api_recovered_failure:"))
+        );
     }
 }

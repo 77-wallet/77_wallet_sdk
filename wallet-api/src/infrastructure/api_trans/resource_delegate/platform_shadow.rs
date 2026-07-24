@@ -42,9 +42,10 @@ use crate::{
             },
             resource_delegate::resource_gate_projection,
             resource_delegation::{
-                execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
-                resource_delegation_failure_fact, resource_delegation_is_built_unbroadcast,
-                resource_delegation_retry_wait_secs,
+                execute_resource_delegation, mark_recovered_resource_delegation_failure,
+                record_resource_uncertain_and_maybe_rebroadcast, resource_delegation_failure_fact,
+                resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
+                resource_recovery_error_is_uncertain,
             },
             shadow_rpc_policy,
         },
@@ -75,6 +76,18 @@ fn can_reserve_platform_delegation_capacity(
 ) -> bool {
     required_native_amount > 0
         && available_native_amount.saturating_sub(reserved_native_amount) >= required_native_amount
+}
+
+fn can_project_platform_terminal_failure(
+    affected: u64,
+    result_status: Option<ApiResourceDelegationResultStatus>,
+    chain_failed: bool,
+    finished: bool,
+) -> bool {
+    affected > 0
+        || (result_status == Some(ApiResourceDelegationResultStatus::Fail)
+            && chain_failed
+            && finished)
 }
 
 fn reserve_platform_delegation_capacity(
@@ -688,9 +701,21 @@ impl PlatformResourceDelegateWorker {
                 }
                 Ok(false)
             }
-            Err(_err) => {
-                self.schedule_rebuild(&resource_trade_no).await?;
+            Err(err) if resource_recovery_error_is_uncertain(&err) => {
+                record_resource_uncertain_and_maybe_rebroadcast(&self.pool, &resource_trade_no)
+                    .await?;
                 Ok(false)
+            }
+            Err(err) => {
+                mark_recovered_resource_delegation_failure(
+                    &self.pool,
+                    &task,
+                    tx_hash,
+                    &err,
+                    "platform_delegation_recovered_failure",
+                )
+                .await?;
+                Ok(true)
             }
         }
     }
@@ -824,15 +849,31 @@ impl PlatformResourceDelegateWorker {
         match err.retry_policy() {
             wallet_utils::RetryPolicy::Never => {
                 let (err_code, err_msg) = resource_delegation_failure_fact(&err);
-                ApiResourceDelegationRepo::mark_failed_if_unfinished(
+                let payload = format!("platform_delegation_terminal_failure:{err_msg}");
+                let affected = ApiResourceDelegationRepo::mark_failed_with_result_if_unfinished(
                     &self.pool,
                     resource_trade_no,
+                    None,
                     &err_code,
                     &err_msg,
+                    &payload,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
                 let task = self.load_platform_delegate(resource_trade_no).await?;
+                if !can_project_platform_terminal_failure(
+                    affected,
+                    task.result_status,
+                    task.chain_failed_at.is_some(),
+                    task.finished_at.is_some(),
+                ) {
+                    info!(
+                        resource_trade_no = %resource_trade_no,
+                        source = "platform_resource_delegate",
+                        "Skip platform delegation failure projection because the task is no longer eligible"
+                    );
+                    return Ok(());
+                }
                 resource_gate_projection::project_gate_if_failure(
                     &self.transaction_pool,
                     &task,
@@ -1113,9 +1154,10 @@ pub async fn scan_and_process_once(
 mod tests {
     use super::{
         PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY, PlatformCapacityReservations,
-        PlatformResourceDelegateIntent, release_platform_delegation_capacity,
-        reserve_platform_delegation_capacity,
+        PlatformResourceDelegateIntent, can_project_platform_terminal_failure,
+        release_platform_delegation_capacity, reserve_platform_delegation_capacity,
     };
+    use wallet_database::entities::api_resource_delegation::ApiResourceDelegationResultStatus;
 
     #[test]
     fn platform_resource_delegate_intent_chains_success_stages() {
@@ -1158,6 +1200,24 @@ mod tests {
     fn platform_resource_delegate_default_concurrency_is_parallel_but_bounded() {
         assert!(PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY > 1);
         assert!(PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY <= 32);
+    }
+
+    #[test]
+    fn platform_terminal_failure_projection_requires_complete_persisted_fact() {
+        assert!(can_project_platform_terminal_failure(1, None, false, false));
+        assert!(can_project_platform_terminal_failure(
+            0,
+            Some(ApiResourceDelegationResultStatus::Fail),
+            true,
+            true,
+        ));
+        assert!(!can_project_platform_terminal_failure(
+            0,
+            Some(ApiResourceDelegationResultStatus::Fail),
+            false,
+            true,
+        ));
+        assert!(!can_project_platform_terminal_failure(0, None, false, false));
     }
 
     #[test]

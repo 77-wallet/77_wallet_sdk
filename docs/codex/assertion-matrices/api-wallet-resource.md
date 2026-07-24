@@ -87,6 +87,22 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Invariant: a pre-broadcast terminal resource failure that needs a local result
   payload writes failure facts and result facts in one guarded update; it cannot
   overwrite a built or broadcast transaction lifecycle.
+- Invariant: collect local-delegation failure bypass releases the origin gate
+  only after the resource row durably contains the complete failure terminal;
+  a zero-row stale failure cannot release the gate.
+- Invariant: withdraw resource-delegation execution routes errors through the
+  terminal/retry classifier; a pre-broadcast permanent failure atomically
+  records its failure result and wakes the origin order, while a stale failure
+  after build cannot overwrite the signed transaction lifecycle.
+- Invariant: platform delegation projects a permanent-failure outcome to the
+  origin gate only after the resource row contains a complete atomic failure
+  terminal; a stale zero-row update cannot advance the origin order.
+- Invariant: collect, withdraw, platform delegation, and local/platform reclaim
+  interpret ordinary recovered `Err` as a confirmed chain failure and atomically
+  persist the matching broadcast hash, `chain_failed_at`, and FAIL result.
+  Recovered `Ok(None)` and TRON's explicit confirmed/pending visibility error
+  remain uncertain, use the bounded uncertain/rebroadcast lifecycle, and cannot
+  create a terminal failure fact.
 - Shared helper: resource side-effect workers use `resource_chain_facts` for
   broadcast, success, failure, and receipt-upload eligibility.
 - Uncertain fact: resource recover returning no final chain result records

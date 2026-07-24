@@ -379,6 +379,47 @@ impl ApiResourceDelegationRepo {
         Ok(())
     }
 
+    pub async fn mark_recovered_chain_failure(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        tx_hash: &str,
+        fail_type: Option<i64>,
+        err_code: &str,
+        err_msg: &str,
+        result_payload: &str,
+    ) -> Result<(), crate::Error> {
+        let affected = ApiResourceDelegationDao::mark_recovered_chain_failure(
+            pool.write_ref(),
+            resource_trade_no,
+            tx_hash,
+            fail_type,
+            err_code,
+            err_msg,
+            result_payload,
+        )
+        .await?;
+        if affected == 1 {
+            return Ok(());
+        }
+
+        let persisted = Self::get_by_resource_trade_no(pool, resource_trade_no).await?;
+        if persisted.tx_hash.as_deref() == Some(tx_hash)
+            && persisted.result_status == Some(ApiResourceDelegationResultStatus::Fail)
+            && persisted.chain_failed_at.is_some()
+            && persisted.finished_at.is_some()
+        {
+            return Ok(());
+        }
+
+        Err(crate::Error::Other(format!(
+            "resource delegation recovery failure fact conflict: trade_no={resource_trade_no}, expected_hash={tx_hash}, persisted_hash={:?}, result_status={:?}, chain_failed={}, finished={}",
+            persisted.tx_hash,
+            persisted.result_status,
+            persisted.chain_failed_at.is_some(),
+            persisted.finished_at.is_some(),
+        )))
+    }
+
     pub async fn mark_broadcast_uncertain_attempt(
         pool: &ApiResourceDbPool,
         resource_trade_no: &str,
@@ -1602,6 +1643,111 @@ mod tests {
         assert_eq!(built.raw_tx.as_deref(), Some("built_raw"));
         assert!(built.err_code.is_none());
         assert!(built.finished_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn recovered_chain_failure_and_result_are_committed_together() {
+        let pool = setup_api_resource_pool("resource_delegation_recovered_atomic_failure").await;
+        for trade_no in ["rsc_recovered_failure", "rsc_recovered_failure_hash_conflict"] {
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::platform_delegate(
+                    "uid_1",
+                    trade_no,
+                    &format!("origin_{trade_no}"),
+                    2,
+                    "owner",
+                    "receiver",
+                    "100",
+                ),
+            )
+            .await
+            .unwrap();
+            ApiResourceDelegationRepo::mark_task_ack_sent(&pool, trade_no).await.unwrap();
+            assert_eq!(
+                ApiResourceDelegationRepo::claim_build_slot(&pool, trade_no).await.unwrap(),
+                1
+            );
+            assert_eq!(
+                ApiResourceDelegationRepo::mark_built(
+                    &pool,
+                    trade_no,
+                    &format!("{trade_no}_hash"),
+                    &format!("{trade_no}_raw"),
+                )
+                .await
+                .unwrap(),
+                1
+            );
+            assert_eq!(
+                ApiResourceDelegationRepo::mark_broadcasted(
+                    &pool,
+                    trade_no,
+                    &format!("{trade_no}_hash"),
+                )
+                .await
+                .unwrap(),
+                1
+            );
+        }
+
+        let trade_no = "rsc_recovered_failure";
+        let tx_hash = "rsc_recovered_failure_hash";
+        ApiResourceDelegationRepo::mark_recovered_chain_failure(
+            &pool,
+            trade_no,
+            tx_hash,
+            Some(2),
+            "ERR_CHAIN",
+            "confirmed chain failure",
+            "recovered_failure_payload",
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_recovered_chain_failure(
+            &pool,
+            trade_no,
+            tx_hash,
+            Some(2),
+            "ERR_CHAIN",
+            "confirmed chain failure",
+            "recovered_failure_payload",
+        )
+        .await
+        .expect("same confirmed failure is idempotent");
+
+        let failed =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, trade_no).await.unwrap();
+        assert_eq!(failed.tx_hash.as_deref(), Some(tx_hash));
+        assert_eq!(failed.status, ApiResourceDelegationStatus::Fail);
+        assert_eq!(failed.result_status, Some(ApiResourceDelegationResultStatus::Fail));
+        assert_eq!(failed.fail_type, Some(2));
+        assert_eq!(failed.err_code.as_deref(), Some("ERR_CHAIN"));
+        assert_eq!(failed.result_payload.as_deref(), Some("recovered_failure_payload"));
+        assert!(failed.chain_failed_at.is_some());
+        assert!(failed.finished_at.is_some());
+
+        let conflict_trade_no = "rsc_recovered_failure_hash_conflict";
+        let conflict = ApiResourceDelegationRepo::mark_recovered_chain_failure(
+            &pool,
+            conflict_trade_no,
+            "different_hash",
+            None,
+            "ERR_STALE",
+            "stale recovery failure",
+            "stale_payload",
+        )
+        .await;
+        assert!(conflict.is_err());
+        let unchanged =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, conflict_trade_no)
+                .await
+                .unwrap();
+        assert_eq!(unchanged.tx_hash.as_deref(), Some("rsc_recovered_failure_hash_conflict_hash"));
+        assert!(unchanged.err_code.is_none());
+        assert!(unchanged.chain_failed_at.is_none());
+        assert!(unchanged.finished_at.is_none());
+        assert!(unchanged.result_status.is_none());
     }
 
     #[tokio::test]

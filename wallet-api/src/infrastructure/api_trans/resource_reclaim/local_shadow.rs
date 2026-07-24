@@ -22,10 +22,7 @@ use wallet_utils::RetryableError as _;
 
 use crate::{
     domain::{
-        api_wallet::{
-            adapter::tx::RawTx,
-            trans::{ApiTransDomain, shared_mechanism},
-        },
+        api_wallet::{adapter::tx::RawTx, trans::ApiTransDomain},
         chain::adapter::ChainAdapterFactory,
     },
     error::{service::ServiceError, system::SystemError},
@@ -33,8 +30,10 @@ use crate::{
         api_trans::{
             resource_amount::parse_resource_delegation_native_trx_units,
             resource_delegation::{
-                execute_resource_delegation, record_resource_uncertain_and_maybe_rebroadcast,
+                execute_resource_delegation, mark_recovered_resource_delegation_failure,
+                record_resource_uncertain_and_maybe_rebroadcast,
                 resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
+                resource_recovery_error_is_uncertain,
             },
             shadow_rpc_policy,
         },
@@ -382,8 +381,24 @@ impl LocalResourceReclaimWorker {
                 }
                 Ok(())
             }
+            Err(err) if resource_recovery_error_is_uncertain(&err) => {
+                record_resource_uncertain_and_maybe_rebroadcast(
+                    &self.ctx.api_resource_pool()?,
+                    &resource_trade_no,
+                )
+                .await?;
+                Ok(())
+            }
             Err(err) => {
-                self.schedule_local_undelegation_rebuild_retry(&resource_trade_no, &err).await
+                mark_recovered_resource_delegation_failure(
+                    &self.ctx.api_resource_pool()?,
+                    &delegation,
+                    tx_hash,
+                    &err,
+                    "local_undelegation_recovered_failure",
+                )
+                .await?;
+                Ok(())
             }
         }
     }

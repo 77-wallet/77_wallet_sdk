@@ -1071,6 +1071,64 @@ impl ApiResourceDelegationDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn mark_recovered_chain_failure<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        tx_hash: &str,
+        fail_type: Option<i64>,
+        err_code: &str,
+        err_msg: &str,
+        result_payload: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET err_code = ?4,
+                err_msg = ?5,
+                chain_failed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                result_status = ?7,
+                result_payload = ?6,
+                fail_type = ?3,
+                broadcast_uncertain_reconciled_at = CASE
+                    WHEN broadcast_uncertain_since_at IS NOT NULL
+                    THEN strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                    ELSE broadcast_uncertain_reconciled_at
+                END,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
+                status = ?8,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND tx_hash = ?2
+              AND trim(tx_hash) <> ''
+              AND last_broadcast_at IS NOT NULL
+              AND finished_at IS NULL
+              AND result_status IS NULL
+              AND err_code IS NULL
+              AND chain_success_at IS NULL
+              AND chain_failed_at IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(tx_hash)
+        .bind(fail_type)
+        .bind(err_code)
+        .bind(err_msg)
+        .bind(result_payload)
+        .bind(ApiResourceDelegationResultStatus::Fail.as_i64())
+        .bind(ApiResourceDelegationStatus::Fail.as_i64())
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_result_ack_attempted<'a, E>(
         exec: E,
         resource_trade_no: &str,
