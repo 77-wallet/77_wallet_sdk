@@ -749,7 +749,8 @@ mod tests {
         entities::{
             api_collect::ApiCollectStatus,
             api_resource_delegation::{
-                ApiResourceDelegationResultStatus, NewApiResourceDelegation,
+                ApiResourceDelegationOperationType, ApiResourceDelegationResultStatus,
+                ApiResourceDelegationSource, NewApiResourceDelegation,
             },
             api_resource_gate::ApiResourceGateResult,
             api_trade_type::ApiTradeType,
@@ -837,6 +838,85 @@ mod tests {
                 if trade_no == "C_pending_rsc_ack"
         ));
         assert!(intent_rx.try_recv().is_err());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn collect_scanner_dispatches_broadcasted_local_delegate_recover() -> anyhow::Result<()> {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let resource_pool = ctx.api_resource_pool()?;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
+        let resource_trade_no = "rsc_local_delegate_C_recover_scan";
+
+        ApiResourceDelegationRepo::upsert(
+            &resource_pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid_1",
+                resource_trade_no,
+                "C_recover_scan",
+                ApiTradeType::Collect as i64,
+                "owner_addr",
+                "receiver_addr",
+                "100",
+                "1000",
+            ),
+        )
+        .await?;
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&resource_pool, resource_trade_no).await?,
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &resource_pool,
+                resource_trade_no,
+                "tx_hash_recover_scan",
+                r#"{"raw":"tx"}"#,
+            )
+            .await?,
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcasted(
+                &resource_pool,
+                resource_trade_no,
+                "tx_hash_recover_scan",
+            )
+            .await?,
+            1
+        );
+
+        scanner.scan_can_resource_delegation_recover().await?;
+
+        let mut dispatched = Vec::new();
+        while let Ok(intent) = intent_rx.try_recv() {
+            if let CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) =
+                intent
+            {
+                dispatched.push(trade_no);
+            }
+        }
+
+        assert!(
+            dispatched.iter().any(|trade_no| trade_no == resource_trade_no),
+            "broadcasted local delegate should be dispatched for recover; got {dispatched:?}"
+        );
+
+        let executable =
+            ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+                &resource_pool,
+                ApiTradeType::Collect as i64,
+                ApiResourceDelegationSource::Local,
+                ApiResourceDelegationOperationType::Delegate,
+                100,
+            )
+            .await?;
+        assert!(
+            !executable.iter().any(|row| row.resource_trade_no == resource_trade_no),
+            "broadcasted local delegate should not be treated as pre-broadcast executable"
+        );
 
         Ok(())
     }
@@ -1011,6 +1091,7 @@ impl ShadowScanner {
         for (stage, result) in [
             ("need_resource_task_ack", self.scan_need_resource_task_ack().await),
             ("can_resource_delegation_execute", self.scan_can_resource_delegation_execute().await),
+            ("can_resource_delegation_recover", self.scan_can_resource_delegation_recover().await),
             ("can_account_activation_execute", self.scan_can_account_activation_execute().await),
             ("can_account_activation_verify", self.scan_can_account_activation_verify().await),
             (
@@ -1120,12 +1201,39 @@ impl ShadowScanner {
         self.scan_can_local_resource_delegate().await
     }
 
+    async fn scan_can_resource_delegation_recover(&self) -> Result<(), ServiceError> {
+        self.scan_can_local_resource_delegate_recover().await
+    }
+
     async fn scan_can_local_resource_delegate(&self) -> Result<(), ServiceError> {
         let pool = self.ctx.api_resource_pool()?;
 
         trace!(max_items = %self.config.max_items_per_scan, "Scanning executable local delegate records");
 
         let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+            &pool,
+            ApiTradeType::Collect as i64,
+            ApiResourceDelegationSource::Local,
+            ApiResourceDelegationOperationType::Delegate,
+            self.config.max_items_per_scan,
+        ).await?;
+
+        for record in records {
+            let intent = CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+
+        Ok(())
+    }
+
+    async fn scan_can_local_resource_delegate_recover(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning recoverable local delegate records");
+
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
             &pool,
             ApiTradeType::Collect as i64,
             ApiResourceDelegationSource::Local,
