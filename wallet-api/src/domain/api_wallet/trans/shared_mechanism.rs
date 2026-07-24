@@ -234,7 +234,7 @@ pub(crate) fn should_retry_after_tron_missing_confirmed_and_pending(
     if !is_tron_chain(chain_code) {
         return false;
     }
-    let Some(timeout_base) = last_broadcast_at.or(broadcast_uncertain_since_at) else {
+    let Some(timeout_base) = broadcast_uncertain_since_at.or(last_broadcast_at) else {
         return false;
     };
     now.signed_duration_since(timeout_base).num_seconds() >= timeout_secs
@@ -497,7 +497,7 @@ mod tests {
     fn tron_missing_confirmed_and_pending_retry_waits_for_timeout() {
         let now = Utc::now();
 
-        assert!(!should_retry_after_tron_missing_confirmed_and_pending(
+        assert!(should_retry_after_tron_missing_confirmed_and_pending(
             "tron",
             Some(now - Duration::seconds(10)),
             Some(now - Duration::seconds(120)),
