@@ -995,6 +995,19 @@ mod tests {
         wallet_utils::pbkdf2_string(&uid, salt, 100000, 32).unwrap()
     }
 
+    #[test]
+    fn wallet_uid_pbkdf2_matches_fixed_vector() {
+        let phrase = "weekend napkin attend chicken ask story keep domain panic grow wave large";
+        let salt = "test-salt";
+
+        let uid = uid_pbkdf2(phrase, salt);
+
+        assert_eq!(
+            uid,
+            "65a22f8aed8a36225a75640865477f5f3b3769926f1d1102f5766970a4f4dadb"
+        );
+    }
+
     #[tokio::test]
     async fn physical_reset_multisig_cleanup_uses_core_pool() -> Result<(), anyhow::Error> {
         let temp = tempdir()?;
