@@ -352,6 +352,15 @@ impl ShadowCollectWorker {
             && Self::is_insufficient_fee_balance_error(err)
     }
 
+    fn should_precheck_collect_amount_before_resource_gate(req: &ApiCollectEntity) -> bool {
+        shared_mechanism::is_tron_chain(&req.chain_code)
+            && req.raw_tx.is_none()
+            && req.transaction_time.is_none()
+            && req.finished_at.is_none()
+            && req.err_code.is_none()
+            && req.resource_gate_released_at.is_none()
+    }
+
     fn is_stale_tron_resource_ready_candidate(req: &ApiCollectEntity) -> bool {
         shared_mechanism::is_tron_chain(&req.chain_code)
             && req.token_addr.is_contract()
@@ -1179,6 +1188,18 @@ impl ShadowCollectWorker {
                 source = "shadow_worker_v2",
                 "Resource gate already resolved or collect is no longer eligible"
             );
+            return Ok(());
+        }
+
+        if Self::should_precheck_collect_amount_before_resource_gate(&req)
+            && !self.check_collect_amount(&req).await?
+        {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Collect amount insufficient before resource gate; marking collect failed without delegation"
+            );
+            self.mark_collect_amount_insufficient(&req).await?;
             return Ok(());
         }
 
@@ -3223,6 +3244,51 @@ impl ShadowCollectWorker {
         Ok(!Self::is_collect_amount_shortage(&balance_str, &req.value)?)
     }
 
+    async fn mark_collect_amount_insufficient(
+        &self,
+        req: &ApiCollectEntity,
+    ) -> Result<(), ServiceError> {
+        let err = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(
+            InsufficientBalanceDetail::new()
+                .from_addr(req.from_addr.clone())
+                .to_addr(req.to_addr.clone())
+                .chain_code(req.chain_code.clone())
+                .token_addr(req.token_addr.to_string())
+                .value(req.value.clone())
+                .reason("collect amount is insufficient; balance is below requested value"),
+        )));
+
+        self.clear_build_slot_after_claim(&req.trade_no).await?;
+
+        let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+            &self.ctx.api_transaction_pool()?,
+            &req.trade_no,
+            ApiCollectStatus::InsufficientBalance,
+            ErrCode::BalanceInsufficient,
+            &format!("{}", err),
+        )
+        .await
+        .map_err(|db_err| {
+            error!(
+                trade_no = %req.trade_no,
+                error = %db_err,
+                source = "shadow_worker_v2",
+                "Failed to mark collect as terminal failure due to insufficient balance"
+            );
+            ServiceError::Database(db_err.into())
+        })?;
+
+        info!(
+            trade_no = %req.trade_no,
+            rows_affected = %rows_affected,
+            source = "shadow_worker_v2",
+            "Marked collect as terminal failure due to insufficient balance"
+        );
+        self.advancer.try_advance(&req.trade_no).await;
+
+        Ok(())
+    }
+
     /// Fee 不足时的构建回退策略。
     ///
     /// - 首次手续费不足：继续打回 `need_service_fee = true`
@@ -3880,28 +3946,7 @@ impl ShadowCollectWorker {
                 "Detected collect amount insufficient error; marking collect as terminal failure"
             );
 
-            self.clear_build_slot_after_claim(trade_no).await?;
-
-            let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                &self.ctx.api_transaction_pool()?,
-                trade_no,
-                ApiCollectStatus::InsufficientBalance,
-                ErrCode::BalanceInsufficient,
-                &format!("{}", err),
-            )
-            .await
-            .map_err(|db_err| {
-                error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark collect as terminal failure due to insufficient balance");
-                ServiceError::Database(db_err.into())
-            })?;
-
-            info!(
-                trade_no = %trade_no,
-                rows_affected = %rows_affected,
-                source = "shadow_worker_v2",
-                "Marked collect as terminal failure due to insufficient balance"
-            );
-            self.advancer.try_advance(&req.trade_no).await;
+            self.mark_collect_amount_insufficient(&req).await?;
 
             return Ok(());
         }
@@ -4712,6 +4757,23 @@ oss:
     fn tron_collect_resource_gate_ignores_bandwidth_shortage() {
         assert!(ShadowCollectWorker::tron_resource_ready(0, 0, 0, 268));
         assert!(!ShadowCollectWorker::tron_resource_ready(0, 1024, 1, 0));
+    }
+
+    #[test]
+    fn tron_collect_amount_is_prechecked_before_resource_gate() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Native;
+        req.raw_tx = None;
+        req.transaction_time = None;
+        req.finished_at = None;
+        req.err_code = None;
+        req.resource_gate_released_at = None;
+
+        assert!(ShadowCollectWorker::should_precheck_collect_amount_before_resource_gate(&req));
+
+        req.resource_gate_released_at = Some(Utc::now());
+        assert!(!ShadowCollectWorker::should_precheck_collect_amount_before_resource_gate(&req));
     }
 
     #[test]

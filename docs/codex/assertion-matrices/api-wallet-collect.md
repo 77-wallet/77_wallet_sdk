@@ -258,6 +258,26 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ### Collect TRON Token Resource Fee Gate
 
+### Collect TRON Amount Shortage Before Resource Gate
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/collect_resource_gate/mod.rs
+  tron_collect_amount_shortage_fails_before_resource_delegation
+  ```
+
+- Backend: fake TRON adapter returns zero balance and no real network is used.
+- DB facts: collect row is marked `InsufficientBalance` with
+  `BalanceInsufficient`, resource gate remains unreleased, and no resource
+  delegation row exists for the origin order.
+- Resource delegation: TRON collect orders that have not released the resource
+  gate, built a raw transaction, confirmed, finished, or failed must check the
+  collect amount before resource delegation.
+- Invariant: collect amount shortage must become a collect failure without
+  creating platform or local resource delegation work.
+
 - Layer: unit / collect worker predicate.
 - Entrypoint:
 

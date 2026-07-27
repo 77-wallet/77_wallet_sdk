@@ -8,13 +8,15 @@ use wallet_api::testkit::{
 use wallet_database::{
     ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
-        api_collect::ApiCollectEntity,
+        api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
         },
         api_trade_type::ApiTradeType,
     },
-    repositories::api_wallet::collect::ApiCollectRepo,
+    repositories::api_wallet::{
+        collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+    },
 };
 
 use crate::harness::{
@@ -27,7 +29,7 @@ use super::{
     db::{
         mark_collect_chain_success, seed_blocked_collect, seed_failed_resource_receipt_row,
         seed_resource_result, seed_same_address_collect_resource_window,
-        seed_tron_collect_resource_gate_basics,
+        seed_tron_collect_resource_gate_basics, seed_tron_native_collect_order,
     },
     fixtures::CollectResourceGateFixture,
 };
@@ -91,6 +93,11 @@ pub(crate) trait CollectResourceGateGiven {
         first: &CollectResourceGateFixture,
         second: &CollectResourceGateFixture,
     );
+
+    async fn tron_native_collect_with_insufficient_amount(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    );
 }
 
 #[async_trait::async_trait(?Send)]
@@ -139,6 +146,13 @@ impl CollectResourceGateGiven for GivenRole<'_, CollectResourceGateScenario> {
             .same_address_collect_with_unconsumed_platform_resource(first, second)
             .await;
     }
+
+    async fn tron_native_collect_with_insufficient_amount(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    ) {
+        self.scenario().seed().tron_native_collect_with_insufficient_amount(fixture).await;
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -162,6 +176,11 @@ trait CollectResourceGateSeed {
         &self,
         first: &CollectResourceGateFixture,
         second: &CollectResourceGateFixture,
+    );
+
+    async fn tron_native_collect_with_insufficient_amount(
+        &self,
+        fixture: &CollectResourceGateFixture,
     );
 }
 
@@ -257,6 +276,18 @@ impl CollectResourceGateSeed for SeedRole<'_, CollectResourceGateScenario> {
         )
         .await;
     }
+
+    async fn tron_native_collect_with_insufficient_amount(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    ) {
+        seed_tron_native_collect_order(
+            &self.scenario().wallet_pool,
+            &self.scenario().collect_pool,
+            &fixture.trade_no,
+        )
+        .await;
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -308,6 +339,11 @@ pub(crate) trait CollectResourceGateThen {
     async fn collect_waits_for_local_delegate(&self, fixture: &CollectResourceGateFixture);
 
     async fn platform_resource_request_uses_full_order_energy(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    );
+
+    async fn collect_fails_amount_shortage_without_resource_delegation(
         &self,
         fixture: &CollectResourceGateFixture,
     );
@@ -368,6 +404,18 @@ impl CollectResourceGateThen for ThenRole<'_, CollectResourceGateScenario> {
         assert_eq!(payload["resourceAmount"].as_f64(), Some(14_650.0));
         assert_eq!(payload["nativeTokenAmount"].as_i64(), Some(200));
     }
+
+    async fn collect_fails_amount_shortage_without_resource_delegation(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    ) {
+        let collect = self.scenario().load().collect(&fixture.trade_no).await;
+        let delegation_count =
+            self.scenario().load().resource_delegation_count(&fixture.trade_no).await;
+        self.scenario()
+            .assert()
+            .collect_fails_amount_shortage_without_resource_delegation(&collect, delegation_count);
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -375,6 +423,8 @@ trait CollectResourceGateLoad {
     async fn collect(&self, trade_no: &str) -> ApiCollectEntity;
 
     async fn is_collect_build_candidate(&self, trade_no: &str) -> bool;
+
+    async fn resource_delegation_count(&self, trade_no: &str) -> usize;
 }
 
 #[async_trait::async_trait(?Send)]
@@ -392,6 +442,13 @@ impl CollectResourceGateLoad for LoadRole<'_, CollectResourceGateScenario> {
             .iter()
             .any(|collect| collect.trade_no == trade_no)
     }
+
+    async fn resource_delegation_count(&self, trade_no: &str) -> usize {
+        ApiResourceDelegationRepo::list_by_origin_trade_no(&self.scenario().resource_pool, trade_no)
+            .await
+            .expect("list resource delegations by origin")
+            .len()
+    }
 }
 
 trait CollectResourceGateAssert {
@@ -408,6 +465,12 @@ trait CollectResourceGateAssert {
     fn collect_cannot_build(&self, is_candidate: bool);
 
     fn collect_waits_for_local_delegate(&self, collect: &ApiCollectEntity);
+
+    fn collect_fails_amount_shortage_without_resource_delegation(
+        &self,
+        collect: &ApiCollectEntity,
+        delegation_count: usize,
+    );
 }
 
 impl CollectResourceGateAssert for AssertRole<'_, CollectResourceGateScenario> {
@@ -458,5 +521,29 @@ impl CollectResourceGateAssert for AssertRole<'_, CollectResourceGateScenario> {
             Some(ApiResourceDependencyType::LocalDelegate)
         );
         assert_eq!(collect.resource_block_reason, Some(ApiResourceBlockReason::NeedLocalDelegate));
+    }
+
+    fn collect_fails_amount_shortage_without_resource_delegation(
+        &self,
+        collect: &ApiCollectEntity,
+        delegation_count: usize,
+    ) {
+        assert_eq!(collect.status, ApiCollectStatus::InsufficientBalance);
+        assert_eq!(collect.err_code, Some(ErrCode::BalanceInsufficient));
+        assert!(
+            collect
+                .err_msg
+                .as_deref()
+                .unwrap_or_default()
+                .contains("collect amount is insufficient"),
+            "unexpected collect error message: {:?}",
+            collect.err_msg
+        );
+        assert!(
+            collect.resource_gate_released_at.is_none(),
+            "amount-shortage collect should not release resource gate"
+        );
+        assert!(collect.resource_gate_result.is_none());
+        assert_eq!(delegation_count, 0, "amount-shortage collect created resource delegation");
     }
 }

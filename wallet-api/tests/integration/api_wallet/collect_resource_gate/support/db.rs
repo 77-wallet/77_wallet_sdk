@@ -148,6 +148,42 @@ pub(crate) async fn seed_same_address_collect_resource_window(
     .expect("release first collect resource gate");
 }
 
+pub(crate) async fn seed_tron_native_collect_order(
+    wallet_pool: &wallet_database::ApiWalletDbPool,
+    collect_pool: &ApiTransactionDbPool,
+    trade_no: &str,
+) {
+    let uid = "uid_collect_native_shortage";
+    seed_tron_collect_resource_gate_basics(wallet_pool, uid).await;
+
+    ApiCollectRepo::upsert_api_collect(
+        collect_pool,
+        uid,
+        "collect",
+        "TCollectAmountShortage111111111111111111",
+        "TW6h166qfNfibxgovAnVyDDMNV1BFXp5A5",
+        "5.00100",
+        "digest",
+        "tron",
+        None,
+        "TRX",
+        trade_no,
+        ApiTradeType::Collect as u8,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert native collect order");
+
+    sqlx::query(
+        "UPDATE api_collect SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE trade_no = ?",
+    )
+    .bind(trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed native collect order ack");
+}
+
 async fn seed_collect_order(
     collect_pool: &ApiTransactionDbPool,
     trade_no: &str,
