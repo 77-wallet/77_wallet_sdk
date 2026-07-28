@@ -1,6 +1,6 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::error::service::ServiceError;
+use crate::{error::service::ServiceError, infrastructure::path_guard::validate_path_segment};
 
 #[derive(Debug, Clone, Default)]
 pub struct Dirs {
@@ -36,7 +36,7 @@ impl Dirs {
     ) -> Result<std::path::PathBuf, ServiceError> {
         match address {
             Some(addr) => Ok(PathBuf::from(&self.wallet_dir)
-                .join(Self::validate_path_segment(addr, "wallet address")?)),
+                .join(validate_path_segment(addr, "wallet address")?)),
             None => Ok(PathBuf::from(&self.wallet_dir)),
         }
     }
@@ -55,7 +55,7 @@ impl Dirs {
     ) -> Result<std::path::PathBuf, ServiceError> {
         let root_dir = self
             .wallet_dir
-            .join(Self::validate_path_segment(wallet_address, "wallet address")?)
+            .join(validate_path_segment(wallet_address, "wallet address")?)
             .join("root");
 
         wallet_utils::file_func::create_dir_all(&root_dir)?;
@@ -69,58 +69,11 @@ impl Dirs {
     ) -> Result<std::path::PathBuf, ServiceError> {
         let subs_dir = self
             .wallet_dir
-            .join(Self::validate_path_segment(wallet_address, "wallet address")?)
+            .join(validate_path_segment(wallet_address, "wallet address")?)
             .join("subs");
 
         wallet_utils::file_func::create_dir_all(&subs_dir)?;
 
         Ok(subs_dir)
-    }
-
-    pub(crate) fn validate_path_segment<'a>(
-        segment: &'a str,
-        label: &str,
-    ) -> Result<&'a str, ServiceError> {
-        let path = Path::new(segment);
-        let mut components = path.components();
-        let Some(Component::Normal(_)) = components.next() else {
-            return Err(ServiceError::Parameter(format!("invalid {label} path segment")));
-        };
-        if components.next().is_some() {
-            return Err(ServiceError::Parameter(format!("invalid {label} path segment")));
-        }
-        if segment.as_bytes().contains(&0) {
-            return Err(ServiceError::Parameter(format!("invalid {label} path segment")));
-        }
-        Ok(segment)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Dirs;
-
-    #[test]
-    fn validate_path_segment_accepts_plain_wallet_address() {
-        let segment = Dirs::validate_path_segment("TXYZ1234567890", "wallet address")
-            .expect("plain address should be valid");
-
-        assert_eq!(segment, "TXYZ1234567890");
-    }
-
-    #[test]
-    fn validate_path_segment_rejects_traversal() {
-        let err = Dirs::validate_path_segment("../secret", "wallet address")
-            .expect_err("traversal must be rejected");
-
-        assert!(err.to_string().contains("invalid wallet address path segment"));
-    }
-
-    #[test]
-    fn validate_path_segment_rejects_nested_path() {
-        let err = Dirs::validate_path_segment("wallet/root", "wallet address")
-            .expect_err("nested path must be rejected");
-
-        assert!(err.to_string().contains("invalid wallet address path segment"));
     }
 }

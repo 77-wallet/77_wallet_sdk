@@ -213,7 +213,7 @@ impl AppService {
         req: Vec<crate::request::app::UploadLogFileReq>,
     ) -> Result<(), ServiceError> {
         let oss_client = self.ctx.get_global_oss_client();
-        let log_dir = self.ctx.get_global_dirs().get_log_dir();
+        let log_dir = Self::canonical_log_upload_dir(&self.ctx.get_global_dirs().get_log_dir())?;
         for req in req.into_iter() {
             let src_file_path = Self::validate_log_upload_source(&log_dir, &req.src_file_path)?;
             let dst_file_name = Self::validate_log_upload_file_name(&req.dst_file_name)?;
@@ -225,18 +225,21 @@ impl AppService {
         Ok(())
     }
 
+    fn canonical_log_upload_dir(log_dir: &Path) -> Result<PathBuf, ServiceError> {
+        log_dir
+            .canonicalize()
+            .map_err(|e| ServiceError::Parameter(format!("invalid log directory for upload: {e}")))
+    }
+
     fn validate_log_upload_source(
         log_dir: &Path,
         src_file_path: &str,
     ) -> Result<PathBuf, ServiceError> {
-        let log_dir = log_dir.canonicalize().map_err(|e| {
-            ServiceError::Parameter(format!("invalid log directory for upload: {e}"))
-        })?;
         let src = Path::new(src_file_path)
             .canonicalize()
             .map_err(|e| ServiceError::Parameter(format!("invalid log upload source file: {e}")))?;
 
-        if !src.starts_with(&log_dir) {
+        if !src.starts_with(log_dir) {
             return Err(ServiceError::Parameter(
                 "log upload source must be under log directory".to_string(),
             ));
@@ -249,7 +252,10 @@ impl AppService {
     }
 
     fn validate_log_upload_file_name(file_name: &str) -> Result<&str, ServiceError> {
-        crate::dirs::Dirs::validate_path_segment(file_name, "log upload destination file name")?;
+        crate::infrastructure::path_guard::validate_path_segment(
+            file_name,
+            "log upload destination file name",
+        )?;
         if file_name.contains('\\') {
             return Err(ServiceError::Parameter(
                 "invalid log upload destination file name".to_string(),
@@ -525,6 +531,7 @@ mod tests {
         fs::create_dir_all(&log_dir).expect("create log dir");
         let log_file = log_dir.join("log.txt");
         fs::write(&log_file, "hello").expect("write log file");
+        let log_dir = AppService::canonical_log_upload_dir(&log_dir).expect("canonical log dir");
 
         let resolved = AppService::validate_log_upload_source(&log_dir, log_file.to_str().unwrap())
             .expect("log file under log dir should be valid");
@@ -539,6 +546,7 @@ mod tests {
         fs::create_dir_all(&log_dir).expect("create log dir");
         let secret_file = dir.path().join("secret.txt");
         fs::write(&secret_file, "secret").expect("write secret file");
+        let log_dir = AppService::canonical_log_upload_dir(&log_dir).expect("canonical log dir");
 
         let err = AppService::validate_log_upload_source(&log_dir, secret_file.to_str().unwrap())
             .expect_err("outside file must be rejected");

@@ -5,6 +5,7 @@ pub(crate) mod api_wallet_total_assets_cache;
 pub mod cache;
 pub mod expand_address;
 pub mod expand_init;
+pub(crate) mod path_guard;
 pub mod phrase_package;
 pub mod private_key_manager;
 pub(crate) mod protected_query;
