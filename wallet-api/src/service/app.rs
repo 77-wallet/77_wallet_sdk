@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use wallet_database::{
     entities::{
         api_wallet::ApiWalletType,
@@ -23,6 +25,7 @@ use crate::{
         api_wallet::wallet::ApiWalletDomain,
         app::{DeviceDomain, config::ConfigDomain},
     },
+    error::service::ServiceError,
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
@@ -208,13 +211,51 @@ impl AppService {
     pub async fn upload_log_file(
         self,
         req: Vec<crate::request::app::UploadLogFileReq>,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let oss_client = self.ctx.get_global_oss_client();
+        let log_dir = self.ctx.get_global_dirs().get_log_dir();
         for req in req.into_iter() {
-            oss_client.upload_local_file(&req.src_file_path, &req.dst_file_name).await?;
+            let src_file_path = Self::validate_log_upload_source(&log_dir, &req.src_file_path)?;
+            let dst_file_name = Self::validate_log_upload_file_name(&req.dst_file_name)?;
+            oss_client
+                .upload_local_file(src_file_path.to_string_lossy().as_ref(), dst_file_name)
+                .await?;
         }
 
         Ok(())
+    }
+
+    fn validate_log_upload_source(
+        log_dir: &Path,
+        src_file_path: &str,
+    ) -> Result<PathBuf, ServiceError> {
+        let log_dir = log_dir.canonicalize().map_err(|e| {
+            ServiceError::Parameter(format!("invalid log directory for upload: {e}"))
+        })?;
+        let src = Path::new(src_file_path)
+            .canonicalize()
+            .map_err(|e| ServiceError::Parameter(format!("invalid log upload source file: {e}")))?;
+
+        if !src.starts_with(&log_dir) {
+            return Err(ServiceError::Parameter(
+                "log upload source must be under log directory".to_string(),
+            ));
+        }
+        if !src.is_file() {
+            return Err(ServiceError::Parameter("log upload source must be a file".to_string()));
+        }
+
+        Ok(src)
+    }
+
+    fn validate_log_upload_file_name(file_name: &str) -> Result<&str, ServiceError> {
+        crate::dirs::Dirs::validate_path_segment(file_name, "log upload destination file name")?;
+        if file_name.contains('\\') {
+            return Err(ServiceError::Parameter(
+                "invalid log upload destination file name".to_string(),
+            ));
+        }
+        Ok(file_name)
     }
 
     pub async fn mqtt_subscribe(
@@ -468,5 +509,56 @@ impl AppService {
 
     pub async fn get_current_wallet_type(&self) -> ReturnType<ApiWalletType> {
         self.ctx.get_current_wallet_type().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::AppService;
+
+    #[test]
+    fn upload_log_file_source_accepts_file_under_log_dir() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let log_dir = dir.path().join("log");
+        fs::create_dir_all(&log_dir).expect("create log dir");
+        let log_file = log_dir.join("log.txt");
+        fs::write(&log_file, "hello").expect("write log file");
+
+        let resolved = AppService::validate_log_upload_source(&log_dir, log_file.to_str().unwrap())
+            .expect("log file under log dir should be valid");
+
+        assert_eq!(resolved, log_file.canonicalize().expect("canonical log file"));
+    }
+
+    #[test]
+    fn upload_log_file_source_rejects_file_outside_log_dir() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let log_dir = dir.path().join("log");
+        fs::create_dir_all(&log_dir).expect("create log dir");
+        let secret_file = dir.path().join("secret.txt");
+        fs::write(&secret_file, "secret").expect("write secret file");
+
+        let err = AppService::validate_log_upload_source(&log_dir, secret_file.to_str().unwrap())
+            .expect_err("outside file must be rejected");
+
+        assert!(err.to_string().contains("source must be under log directory"));
+    }
+
+    #[test]
+    fn upload_log_file_name_rejects_nested_oss_key() {
+        let err = AppService::validate_log_upload_file_name("../secret.txt")
+            .expect_err("traversal destination must be rejected");
+
+        assert!(err.to_string().contains("invalid log upload destination file name"));
+    }
+
+    #[test]
+    fn upload_log_file_name_rejects_windows_separator() {
+        let err = AppService::validate_log_upload_file_name(r"nested\secret.txt")
+            .expect_err("windows separator destination must be rejected");
+
+        assert!(err.to_string().contains("invalid log upload destination file name"));
     }
 }

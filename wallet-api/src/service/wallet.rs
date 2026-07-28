@@ -768,7 +768,7 @@ impl WalletService {
 
         tracing::info!("delete wallet ------------ -2");
         let dirs = self.ctx.get_global_dirs();
-        let wallet_dir = dirs.get_wallet_dir(Some(address));
+        let wallet_dir = dirs.get_wallet_dir(Some(address))?;
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
         tracing::info!("delete wallet ------------ -1");
 
@@ -871,7 +871,7 @@ impl WalletService {
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
 
         let dirs = self.ctx.get_global_dirs();
-        let wallet_dir = dirs.get_wallet_dir(None);
+        let wallet_dir = dirs.get_wallet_dir(None)?;
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
@@ -948,7 +948,7 @@ impl WalletService {
             .await?;
 
         let dirs = self.ctx.get_global_dirs();
-        let wallet_dir = dirs.get_wallet_dir(None);
+        let wallet_dir = dirs.get_wallet_dir(None)?;
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
         ApiWalletDomain::new(self.ctx).clear_wallet_unlock_session().await?;
@@ -1002,10 +1002,7 @@ mod tests {
 
         let uid = uid_pbkdf2(phrase, salt);
 
-        assert_eq!(
-            uid,
-            "65a22f8aed8a36225a75640865477f5f3b3769926f1d1102f5766970a4f4dadb"
-        );
+        assert_eq!(uid, "65a22f8aed8a36225a75640865477f5f3b3769926f1d1102f5766970a4f4dadb");
     }
 
     #[tokio::test]
