@@ -316,22 +316,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   `tx_hash` / `raw_tx` so recover can query chain facts after the current
   `ChainTx` attempt exits.
 
-### Withdraw Resource Gate Uses Independent Single Lane
+### Withdraw Resource Gate Uses Shared Small Lane
 
 - Layer: unit.
 - Entrypoint:
 
   ```text
   src/infrastructure/api_trans/withdraw/shadow/dispatcher.rs
-  resource_gate_uses_single_independent_dispatcher_lane
+  resource_gate_uses_shared_dispatcher_lane
   ```
 
 - Backend: none.
 - Dispatcher facts: all `EvalResourceGate` intents use the process-wide shared
-  one-permit lane; Build, Broadcast, and Recover continue using the chain lane.
-- Invariant: an audit batch must not create concurrent TRON resource-gate RPC
-  evaluations, overlap Collect resource evaluation, or consume the dispatcher
-  capacity reserved for transaction execution and recovery.
+  small resource-gate lane; Build, Broadcast, and Recover continue using the
+  chain lane.
+- Invariant: an audit batch must not bypass the collect/withdraw resource-gate
+  pool or consume the dispatcher capacity reserved for transaction execution
+  and recovery.
 
 ### Withdraw Build Balance Failure
 

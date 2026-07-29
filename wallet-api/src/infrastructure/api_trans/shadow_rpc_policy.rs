@@ -35,6 +35,10 @@ pub(crate) fn shared_resource_gate_semaphore() -> Arc<Semaphore> {
     SHARED_RESOURCE_GATE_SEMAPHORE.clone()
 }
 
+pub(crate) fn shared_resource_gate_concurrency() -> usize {
+    SHARED_RESOURCE_GATE_CONCURRENCY
+}
+
 fn parse_usize_env(raw: Option<&str>, default: usize, min: usize, max: usize) -> usize {
     let parsed = raw.and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(default);
     parsed.clamp(min, max)
@@ -166,7 +170,7 @@ mod tests {
     use super::{
         SHARED_RESOURCE_GATE_CONCURRENCY, allow_recover_dispatch, next_recover_cooldown,
         parse_u64_env, parse_usize_env, recover_dispatch_key, resource_recover_dispatch_key,
-        shared_resource_gate_semaphore,
+        shared_resource_gate_concurrency, shared_resource_gate_semaphore,
     };
     use std::{sync::Arc, time::Duration};
 
@@ -197,6 +201,7 @@ mod tests {
 
     #[test]
     fn shared_resource_gate_concurrency_is_fixed_small_pool() {
+        assert_eq!(shared_resource_gate_concurrency(), 4);
         assert_eq!(SHARED_RESOURCE_GATE_CONCURRENCY, 4);
     }
 
