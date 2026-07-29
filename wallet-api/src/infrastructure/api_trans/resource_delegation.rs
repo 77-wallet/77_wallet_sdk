@@ -1,3 +1,5 @@
+use std::{collections::HashMap, sync::OnceLock, time::Instant};
+
 use crate::{
     context::Context,
     domain::{
@@ -14,9 +16,12 @@ use crate::{
         resource_rpc_auth,
     },
 };
+use tokio::sync::Mutex;
 use wallet_chain_interact::{
     BillResourceConsume,
-    tron::operations::{RawTransactionParams, TronTxOperation},
+    tron::operations::{
+        RawTransactionParams, TronTxOperation, stake::ResourceType as TronStakeResourceType,
+    },
 };
 use wallet_database::{
     ApiResourceDbPool,
@@ -32,6 +37,147 @@ use wallet_utils::RetryableError as _;
 
 const RESOURCE_BROADCAST_UNCERTAIN_TIMEOUT_SECS: i64 = 300;
 const RESOURCE_BROADCAST_UNCERTAIN_AUTO_REBROADCAST_LIMIT: i64 = 1;
+
+type DelegationCapacityReservations = HashMap<String, i64>;
+
+static DELEGATION_CAPACITY_RESERVATIONS: OnceLock<Mutex<DelegationCapacityReservations>> =
+    OnceLock::new();
+
+fn delegation_capacity_reservations() -> &'static Mutex<DelegationCapacityReservations> {
+    DELEGATION_CAPACITY_RESERVATIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn delegation_capacity_key(owner_address: &str, resource_type: ApiResourceType) -> String {
+    format!("{}:{}", owner_address, resource_type.as_i64())
+}
+
+fn reserve_delegation_capacity(
+    reservations: &mut DelegationCapacityReservations,
+    key: &str,
+    available_native_amount: i64,
+    required_native_amount: i64,
+) -> bool {
+    let reserved_native_amount = reservations.get(key).copied().unwrap_or_default();
+    if required_native_amount <= 0
+        || available_native_amount.saturating_sub(reserved_native_amount) < required_native_amount
+    {
+        return false;
+    }
+
+    reservations.insert(key.to_string(), reserved_native_amount + required_native_amount);
+    true
+}
+
+fn release_delegation_capacity(
+    reservations: &mut DelegationCapacityReservations,
+    key: &str,
+    reserved_native_amount: i64,
+) {
+    let Some(current) = reservations.get_mut(key) else {
+        return;
+    };
+    *current = current.saturating_sub(reserved_native_amount);
+    if *current == 0 {
+        reservations.remove(key);
+    }
+}
+
+#[derive(Debug)]
+struct DelegationCapacityReservation {
+    key: String,
+    native_amount: i64,
+    released: bool,
+}
+
+impl DelegationCapacityReservation {
+    async fn release(mut self) {
+        let mut reservations = delegation_capacity_reservations().lock().await;
+        release_delegation_capacity(&mut reservations, &self.key, self.native_amount);
+        self.released = true;
+    }
+}
+
+impl Drop for DelegationCapacityReservation {
+    fn drop(&mut self) {
+        if self.released {
+            return;
+        }
+        let key = self.key.clone();
+        let native_amount = self.native_amount;
+        tokio::spawn(async move {
+            let mut reservations = delegation_capacity_reservations().lock().await;
+            release_delegation_capacity(&mut reservations, &key, native_amount);
+        });
+    }
+}
+
+async fn reserve_delegate_capacity_if_needed(
+    ctx: &'static Context,
+    delegation: &ApiResourceDelegationEntity,
+) -> Result<Option<DelegationCapacityReservation>, ServiceError> {
+    if delegation.operation_type != ApiResourceDelegationOperationType::Delegate {
+        return Ok(None);
+    }
+
+    let required_native_amount =
+        parse_resource_delegation_native_trx_units(&delegation.native_amount)?;
+    let tron_resource_type = match delegation.resource_type {
+        ApiResourceType::Bandwidth => TronStakeResourceType::BANDWIDTH,
+        ApiResourceType::Energy => TronStakeResourceType::ENERGY,
+    };
+    let key = delegation_capacity_key(&delegation.owner_address, delegation.resource_type);
+    let capacity_check_start = Instant::now();
+    let chain = ChainAdapterFactory::get_tron_adapter(ctx).await?;
+    let available_native_amount = chain
+        .get_provider()
+        .can_delegate_resource(&delegation.owner_address, tron_resource_type)
+        .await?
+        .to_sun();
+
+    let mut reservations = delegation_capacity_reservations().lock().await;
+    let reserved_native_amount = reservations.get(&key).copied().unwrap_or_default();
+    if !reserve_delegation_capacity(
+        &mut reservations,
+        &key,
+        available_native_amount,
+        required_native_amount,
+    ) {
+        tracing::warn!(
+            observability_event = "resource_delegation_capacity_insufficient",
+            resource_trade_no = %delegation.resource_trade_no,
+            source = ?delegation.source,
+            owner_address = %delegation.owner_address,
+            required_native_amount,
+            available_native_amount,
+            reserved_native_amount,
+            capacity_elapsed_ms = %capacity_check_start.elapsed().as_millis(),
+            "Resource delegation capacity is insufficient before broadcast"
+        );
+        return Err(ServiceError::Parameter(format!(
+            "resource delegation capacity insufficient: required={}, available={}, reserved={}",
+            required_native_amount, available_native_amount, reserved_native_amount
+        )));
+    }
+
+    tracing::info!(
+        observability_event = "resource_delegation_capacity_reserved",
+        resource_trade_no = %delegation.resource_trade_no,
+        source = ?delegation.source,
+        owner_address = %delegation.owner_address,
+        required_native_amount,
+        available_native_amount,
+        reserved_native_amount_before = reserved_native_amount,
+        reserved_native_amount_after = reserved_native_amount + required_native_amount,
+        capacity_elapsed_ms = %capacity_check_start.elapsed().as_millis(),
+        "Resource delegation capacity reserved"
+    );
+
+    Ok(Some(DelegationCapacityReservation {
+        key,
+        native_amount: required_native_amount,
+        released: false,
+    }))
+}
 
 pub(crate) fn resource_delegation_is_built_unbroadcast(
     delegation: &ApiResourceDelegationEntity,
@@ -179,6 +325,7 @@ async fn execute_resource_delegation_once(
         &delegation.chain_code,
     )
     .await;
+    let capacity_reservation = reserve_delegate_capacity_if_needed(ctx, &delegation).await?;
     if delegation.raw_tx.is_none() && delegation.tx_hash.is_none() {
         let (tx_hash, raw_tx) = build_signed_resource_delegation(ctx, &delegation).await?;
         let raw_tx_json = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
@@ -238,6 +385,9 @@ async fn execute_resource_delegation_once(
                 )),
             )));
         }
+    }
+    if let Some(reservation) = capacity_reservation {
+        reservation.release().await;
     }
     if tx_resp.is_none() {
         tracing::info!(
@@ -337,10 +487,38 @@ async fn sign_tron_resource_delegation(
 #[cfg(test)]
 mod tests {
     use super::{
-        mark_recovered_resource_delegation_failure, resolve_resource_delegation_broadcast_hash,
-        resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
-        resource_recovery_error_is_uncertain,
+        DelegationCapacityReservations, mark_recovered_resource_delegation_failure,
+        release_delegation_capacity, reserve_delegation_capacity,
+        resolve_resource_delegation_broadcast_hash, resource_delegation_failure_fact,
+        resource_delegation_retry_wait_secs, resource_recovery_error_is_uncertain,
     };
+
+    #[test]
+    fn resource_delegation_capacity_allows_only_one_of_ten_when_one_order_fits() {
+        let mut reservations = DelegationCapacityReservations::new();
+        let key = "TY9:1";
+
+        let admitted = (0..10)
+            .filter(|_| reserve_delegation_capacity(&mut reservations, key, 199, 199))
+            .count();
+
+        assert_eq!(admitted, 1);
+        assert_eq!(reservations.get(key).copied(), Some(199));
+    }
+
+    #[test]
+    fn resource_delegation_capacity_release_is_immediately_reusable() {
+        let mut reservations = DelegationCapacityReservations::new();
+        let key = "TY9:1";
+
+        assert!(reserve_delegation_capacity(&mut reservations, key, 199, 199));
+        assert!(!reserve_delegation_capacity(&mut reservations, key, 199, 199));
+
+        release_delegation_capacity(&mut reservations, key, 199);
+
+        assert_eq!(reservations.get(key), None);
+        assert!(reserve_delegation_capacity(&mut reservations, key, 199, 199));
+    }
     use crate::error::service::ServiceError;
     use tempfile::tempdir;
     use wallet_database::{

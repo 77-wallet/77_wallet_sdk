@@ -206,6 +206,25 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   address-level `ResourceReady` shortage may re-evaluate, but platform success
   shortage must not trigger a second Energy request.
 
+### Shared Local Delegation Capacity Reservation
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/resource_delegation.rs
+  resource_delegation_capacity_allows_only_one_of_ten_when_one_order_fits
+  ```
+
+- Backend: none; the test exercises the shared pre-broadcast capacity ledger.
+- Resource delegation: Platform and Local delegate operations share capacity by
+  owner address and resource type.
+- Failure: when ten concurrent orders each require the full available frozen
+  Energy balance, only one reservation succeeds and the other nine fail before
+  broadcast.
+- Invariant: pending delegate broadcasts must be deducted from the latest chain
+  capacity snapshot; `Undelegate` operations do not reserve delegation capacity.
+
 ### Collect TRON Account Activation Block Commit
 
 - Layer: component / worker orchestration.
