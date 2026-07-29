@@ -262,6 +262,10 @@ mod unit_tests {
         assert_eq!(json.get("clientId").and_then(|v| v.as_str()), Some("client-1"));
         assert_eq!(json.get("createTime").and_then(|v| v.as_str()), Some("2026-05-19 10:11:12"));
         assert_eq!(json.get("chainCode").and_then(|v| v.as_str()), Some("tron"));
+        assert_eq!(
+            json.get("tokenAddr").and_then(|v| v.as_str()),
+            Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf")
+        );
         assert!(json.get("network").is_none());
         assert_eq!(json.get("blockHeight").and_then(|v| v.as_str()), Some("12345"));
         assert_eq!(json.get("transactionFee").and_then(|v| v.as_str()), Some("1.23"));
@@ -292,6 +296,9 @@ mod unit_tests {
         entity.out_order_id = Some("merchant-order-2".to_string());
         entity.client_id = Some("client-2".to_string());
         entity.create_time = Some("2026-05-19 13:14:15".to_string());
+        entity.chain_code = "bnb".to_string();
+        entity.token_addr =
+            AssetTokenKey::Contract("0x55d398326f99059fF775485246999027B3197955".to_string());
 
         let json = serde_json::to_value(ApiWithdrawOrderDetailVo::from(entity)).unwrap();
 
@@ -299,7 +306,11 @@ mod unit_tests {
         assert_eq!(json.get("outOrderId").and_then(|v| v.as_str()), Some("merchant-order-2"));
         assert_eq!(json.get("clientId").and_then(|v| v.as_str()), Some("client-2"));
         assert_eq!(json.get("createTime").and_then(|v| v.as_str()), Some("2026-05-19 13:14:15"));
-        assert_eq!(json.get("chainCode").and_then(|v| v.as_str()), Some("TRX"));
+        assert_eq!(json.get("chainCode").and_then(|v| v.as_str()), Some("bnb"));
+        assert_eq!(
+            json.get("tokenAddr").and_then(|v| v.as_str()),
+            Some("0x55d398326f99059fF775485246999027B3197955")
+        );
         assert!(json.get("network").is_none());
         assert_eq!(json.get("validate").and_then(|v| v.as_str()), Some("validate-payload"));
         assert_eq!(json.get("auditReason").and_then(|v| v.as_str()), Some("risk rejected"));

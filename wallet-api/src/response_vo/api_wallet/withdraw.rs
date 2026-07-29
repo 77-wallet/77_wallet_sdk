@@ -14,6 +14,7 @@ pub struct ApiWithdrawOrderVo {
     /// 商户交易申请时间，来自 MQTT createTime。
     pub create_time: Option<String>,
     pub chain_code: String,
+    pub token_addr: String,
     pub symbol: String,
     pub value: String,
     pub from_addr: String,
@@ -80,6 +81,7 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderVo {
             client_id: entity.client_id,
             create_time: entity.create_time,
             chain_code: entity.chain_code,
+            token_addr: entity.token_addr.as_db_str().to_string(),
             symbol: entity.symbol,
             value: entity.value,
             from_addr: entity.from_addr,
@@ -114,6 +116,7 @@ pub struct ApiWithdrawOrderDetailVo {
     /// 商户交易申请时间，来自 MQTT createTime。
     pub create_time: Option<String>,
     pub chain_code: String,
+    pub token_addr: String,
     pub symbol: String,
     pub value: String,
     pub from_addr: String,
@@ -183,6 +186,7 @@ impl From<ApiWithdrawEntity> for ApiWithdrawOrderDetailVo {
             client_id: entity.client_id,
             create_time: entity.create_time,
             chain_code: entity.chain_code,
+            token_addr: entity.token_addr.as_db_str().to_string(),
             symbol: entity.symbol,
             value: entity.value,
             from_addr: entity.from_addr,
