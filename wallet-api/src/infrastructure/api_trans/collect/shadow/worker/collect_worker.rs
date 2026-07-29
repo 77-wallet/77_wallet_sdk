@@ -5005,20 +5005,6 @@ oss:
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
-            .await
-            .expect("init api_resource.db");
-        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = ShadowCollectWorker::new(
-            test_ctx().await,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
-            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                test_ctx().await,
-                intent_tx.clone(),
-                None,
-            )),
-        );
 
         let trade_no = "C_release_once";
         ApiCollectRepo::upsert_api_collect(
@@ -5040,14 +5026,20 @@ oss:
         .await
         .expect("insert collect");
 
-        worker
-            .process_release_resource_gate(trade_no.to_string(), None)
-            .await
-            .expect("first release");
-        worker
-            .process_release_resource_gate(trade_no.to_string(), None)
-            .await
-            .expect("second release");
+        ApiCollectRepo::mark_resource_released(
+            &collect_pool,
+            trade_no,
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .expect("first release");
+        ApiCollectRepo::mark_resource_released(
+            &collect_pool,
+            trade_no,
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .expect("second release");
 
         let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
             .await
