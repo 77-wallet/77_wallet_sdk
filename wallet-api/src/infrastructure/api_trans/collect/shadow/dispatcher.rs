@@ -45,7 +45,7 @@ enum DispatcherLane {
     SideEffect,
 }
 
-const RESOURCE_GATE_QUEUE_WAIT_TIMEOUT: Duration = Duration::from_secs(1);
+const RESOURCE_GATE_QUEUE_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum PermitAcquireError {
