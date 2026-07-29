@@ -538,6 +538,20 @@ use crate::{
 
 use super::CollectIntent;
 
+const FRESH_BROADCAST_RECOVER_WINDOW_SECS: i64 = 120;
+
+fn allow_collect_recover_dispatch(record: &ApiCollectEntity, recover_key: &str) -> bool {
+    let fresh_broadcast = record.last_broadcast_at.is_some_and(|broadcast_at| {
+        let age = chrono::Utc::now().signed_duration_since(broadcast_at);
+        age >= chrono::Duration::zero() && age.num_seconds() <= FRESH_BROADCAST_RECOVER_WINDOW_SECS
+    });
+    if fresh_broadcast {
+        shadow_rpc_policy::allow_fresh_broadcast_recover_dispatch(recover_key)
+    } else {
+        shadow_rpc_policy::allow_recover_dispatch(recover_key)
+    }
+}
+
 async fn dispatch_account_activation_execute_records(
     pool: &ApiResourceDbPool,
     limit: usize,
@@ -1727,7 +1741,7 @@ impl ShadowScanner {
                 continue;
             }
             let recover_key = shadow_rpc_policy::recover_dispatch_key(&record.trade_no);
-            if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
+            if !allow_collect_recover_dispatch(&record, &recover_key) {
                 trace!(
                     trade_no = %record.trade_no,
                     cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
@@ -1947,7 +1961,7 @@ impl ShadowScanner {
                             return Ok(());
                         }
                         let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
-                        if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
+                        if !allow_collect_recover_dispatch(&collect, &recover_key) {
                             trace!(
                                 trade_no = %trade_no,
                                 cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),

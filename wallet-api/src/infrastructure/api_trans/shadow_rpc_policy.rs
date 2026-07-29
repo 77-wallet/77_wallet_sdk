@@ -10,6 +10,7 @@ use std::{
 use tokio::sync::Semaphore;
 
 const DEFAULT_RECOVER_COOLDOWN: Duration = Duration::from_secs(60);
+const FRESH_BROADCAST_RECOVER_COOLDOWN: Duration = Duration::from_secs(3);
 const MAX_RECOVER_COOLDOWN: Duration = Duration::from_secs(300);
 const BREAKER_WARN_COOLDOWN: Duration = Duration::from_secs(10);
 const MAX_RECOVER_COOLDOWN_MAP_SIZE: usize = 100_000;
@@ -58,21 +59,36 @@ pub(crate) fn read_u64_env(name: &str, default: u64, min: u64, max: u64) -> u64 
 }
 
 fn next_recover_cooldown(current: Duration) -> Duration {
-    current.saturating_mul(2).min(MAX_RECOVER_COOLDOWN)
+    match current.as_secs() {
+        0..=3 => Duration::from_secs(8),
+        4..=8 => Duration::from_secs(15),
+        9..=15 => Duration::from_secs(30),
+        16..=30 => DEFAULT_RECOVER_COOLDOWN,
+        _ => current.saturating_mul(2).min(MAX_RECOVER_COOLDOWN),
+    }
 }
 
 pub(crate) fn allow_recover_dispatch(key: &str) -> bool {
+    allow_recover_dispatch_with_initial_cooldown(key, DEFAULT_RECOVER_COOLDOWN)
+}
+
+pub(crate) fn allow_fresh_broadcast_recover_dispatch(key: &str) -> bool {
+    allow_recover_dispatch_with_initial_cooldown(key, FRESH_BROADCAST_RECOVER_COOLDOWN)
+}
+
+fn allow_recover_dispatch_with_initial_cooldown(key: &str, initial: Duration) -> bool {
     let now = Instant::now();
     if let Some(state) = RECOVER_LAST_DISPATCH_TS.get(key) {
-        if now.duration_since(state.last_dispatch) < state.next_cooldown {
+        let effective_cooldown = state.next_cooldown.max(initial);
+        if now.duration_since(state.last_dispatch) < effective_cooldown {
             return false;
         }
     }
 
     let next_cooldown = RECOVER_LAST_DISPATCH_TS
         .get(key)
-        .map(|state| next_recover_cooldown(state.next_cooldown))
-        .unwrap_or(DEFAULT_RECOVER_COOLDOWN);
+        .map(|state| next_recover_cooldown(state.next_cooldown.max(initial)))
+        .unwrap_or(initial);
     RECOVER_LAST_DISPATCH_TS
         .insert(key.to_string(), RecoverDispatchState { last_dispatch: now, next_cooldown });
 
@@ -168,18 +184,43 @@ pub(crate) fn record_chain_intent_dispatch(intent_kind: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        SHARED_RESOURCE_GATE_CONCURRENCY, allow_recover_dispatch, next_recover_cooldown,
-        parse_u64_env, parse_usize_env, recover_dispatch_key, resource_recover_dispatch_key,
-        shared_resource_gate_concurrency, shared_resource_gate_semaphore,
+        RECOVER_LAST_DISPATCH_TS, SHARED_RESOURCE_GATE_CONCURRENCY,
+        allow_fresh_broadcast_recover_dispatch, allow_recover_dispatch, next_recover_cooldown,
+        parse_u64_env, parse_usize_env, recover_dispatch_cooldown, recover_dispatch_key,
+        resource_recover_dispatch_key, shared_resource_gate_concurrency,
+        shared_resource_gate_semaphore,
     };
     use std::{sync::Arc, time::Duration};
 
     #[test]
     fn recover_backoff_doubles_and_is_capped() {
+        assert_eq!(next_recover_cooldown(Duration::from_secs(3)), Duration::from_secs(8));
+        assert_eq!(next_recover_cooldown(Duration::from_secs(8)), Duration::from_secs(15));
+        assert_eq!(next_recover_cooldown(Duration::from_secs(15)), Duration::from_secs(30));
+        assert_eq!(next_recover_cooldown(Duration::from_secs(30)), Duration::from_secs(60));
         assert_eq!(next_recover_cooldown(Duration::from_secs(60)), Duration::from_secs(120));
         assert_eq!(next_recover_cooldown(Duration::from_secs(120)), Duration::from_secs(240));
         assert_eq!(next_recover_cooldown(Duration::from_secs(240)), Duration::from_secs(300));
         assert_eq!(next_recover_cooldown(Duration::from_secs(300)), Duration::from_secs(300));
+    }
+
+    #[test]
+    fn fresh_recover_uses_fast_sequence_then_returns_to_default_backoff() {
+        let key = "fresh-recover-sequence";
+        RECOVER_LAST_DISPATCH_TS.remove(key);
+
+        assert!(allow_fresh_broadcast_recover_dispatch(key));
+        assert_eq!(recover_dispatch_cooldown(key), Duration::from_secs(3));
+
+        RECOVER_LAST_DISPATCH_TS.get_mut(key).unwrap().last_dispatch -= Duration::from_secs(3);
+        assert!(allow_fresh_broadcast_recover_dispatch(key));
+        assert_eq!(recover_dispatch_cooldown(key), Duration::from_secs(8));
+
+        RECOVER_LAST_DISPATCH_TS.get_mut(key).unwrap().last_dispatch -= Duration::from_secs(60);
+        assert!(allow_recover_dispatch(key));
+        assert_eq!(recover_dispatch_cooldown(key), Duration::from_secs(120));
+
+        RECOVER_LAST_DISPATCH_TS.remove(key);
     }
 
     #[test]

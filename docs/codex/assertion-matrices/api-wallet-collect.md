@@ -719,6 +719,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: recovery must prefer durable chain evidence over rebuilding an
   expired raw transaction too early.
 
+### Fresh Collect Broadcast Fast Confirmation
+
+- Layer: unit / scanner policy.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/shadow_rpc_policy.rs
+  fresh_recover_uses_fast_sequence_then_returns_to_default_backoff
+  ```
+
+- DB facts: a durable `last_broadcast_at` within the last two minutes selects
+  the fresh-broadcast confirmation policy.
+- Retry: fresh confirmation uses `3s -> 8s -> 15s -> 30s`; older transactions
+  return to the existing `60s -> 120s -> 240s -> 300s` recovery backoff.
+- Invariant: every confirmation query still passes through the chain RPC guard
+  and circuit breaker.
+
 ### Collect Recover Backfills Missing Hash
 
 - Layer: integration.
