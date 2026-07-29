@@ -30,17 +30,21 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
   ```text
   wallet-api/src/infrastructure/api_trans/collect/shadow/dispatcher.rs
-  resource_gate_queue_wait_times_out
+  resource_gate_queue_waits_without_losing_fifo_order
   ```
 
 - DB facts: RPC unavailability, timeout, and an open circuit breaker do not
   write `resource_gate_released_at` or `FallbackAllowed`.
-- Retry: a resource-gate intent has bounded semaphore queue time; timing out
-  releases its in-flight marker so a later scanner pass can retry it.
+- Retry: an admitted resource-gate intent keeps its in-flight marker and queue
+  position until a permit is available; worker/RPC failures remain retryable by
+  a later scanner pass after execution returns.
 - Concurrency: collect and withdraw resource gates share one small fixed
   process-local pool with four permits.
-- Queueing: collect resource-gate intents wait up to ten seconds for that shared
-  pool before falling back to the scanner retry path.
+- Queueing: the process-local semaphore serves continuously waiting intents in
+  FIFO order, so a saturated pool cannot repeatedly move an old collect behind
+  newer work.
+- Restart: after process restart, pending rows are scanned by `created_at ASC`
+  and rebuild the process-local queue from oldest to newest.
 - Invariant: technical RPC failure must never be converted into a business
   decision to bypass platform/local resource delegation.
 

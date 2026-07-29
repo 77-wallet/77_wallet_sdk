@@ -45,26 +45,14 @@ enum DispatcherLane {
     SideEffect,
 }
 
-const RESOURCE_GATE_QUEUE_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum PermitAcquireError {
     Closed,
-    TimedOut,
 }
 
 async fn acquire_dispatch_permit(
-    lane: DispatcherLane,
     semaphore: Arc<Semaphore>,
-    resource_gate_wait_timeout: Duration,
 ) -> Result<OwnedSemaphorePermit, PermitAcquireError> {
-    if lane == DispatcherLane::ResourceGate {
-        return tokio::time::timeout(resource_gate_wait_timeout, semaphore.acquire_owned())
-            .await
-            .map_err(|_| PermitAcquireError::TimedOut)?
-            .map_err(|_| PermitAcquireError::Closed);
-    }
-
     semaphore.acquire_owned().await.map_err(|_| PermitAcquireError::Closed)
 }
 
@@ -140,9 +128,9 @@ impl RunningKey {
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use tokio::sync::Semaphore;
+    use tokio::sync::{Semaphore, mpsc};
 
-    use super::{DispatcherLane, PermitAcquireError, RunningKey, acquire_dispatch_permit};
+    use super::{DispatcherLane, RunningKey, acquire_dispatch_permit};
     use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     #[test]
@@ -190,19 +178,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resource_gate_queue_wait_times_out() {
+    async fn resource_gate_queue_waits_without_losing_fifo_order() {
         let semaphore = Arc::new(Semaphore::new(1));
         let held_permit = semaphore.clone().acquire_owned().await.expect("initial permit");
+        let (acquired_tx, mut acquired_rx) = mpsc::channel(2);
 
-        let result = acquire_dispatch_permit(
-            DispatcherLane::ResourceGate,
-            semaphore,
-            Duration::from_millis(10),
-        )
-        .await;
+        for name in ["older", "newer"] {
+            let semaphore = semaphore.clone();
+            let acquired_tx = acquired_tx.clone();
+            tokio::spawn(async move {
+                let _permit = acquire_dispatch_permit(semaphore).await.expect("shared permit");
+                acquired_tx.send(name).await.expect("record acquisition");
+            });
+            tokio::task::yield_now().await;
+        }
 
-        assert!(matches!(result, Err(PermitAcquireError::TimedOut)));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), acquired_rx.recv()).await.is_err(),
+            "waiters must remain queued while the shared permit is held"
+        );
         drop(held_permit);
+
+        assert_eq!(acquired_rx.recv().await, Some("older"));
+        assert_eq!(acquired_rx.recv().await, Some("newer"));
     }
 }
 
@@ -587,46 +585,43 @@ impl ShadowDispatcher {
                     "Collect resource gate dispatcher wait started"
                 );
             }
-            let _permit =
-                match acquire_dispatch_permit(lane, semaphore, RESOURCE_GATE_QUEUE_WAIT_TIMEOUT)
-                    .await
-                {
-                    Ok(p) => {
-                        let acquire_duration = start.elapsed();
-                        if lane == DispatcherLane::ResourceGate {
-                            info!(
-                                phase = trace.phase,
-                                worker = trace.worker,
-                                command = trace.command,
-                                trade_no = %trace.trade_no,
-                                key = ?trace.key,
-                                dispatcher_lane = lane.as_str(),
-                                queue_wait_ms = acquire_duration.as_millis(),
-                                "Collect resource gate dispatcher permit acquired"
-                            );
-                        } else {
-                            debug!(
-                                key = ?running_key,
-                                duration = ?acquire_duration,
-                                dispatcher_lane = lane.as_str(),
-                                "Acquired dispatcher semaphore permit"
-                            );
-                        }
-                        p
-                    }
-                    Err(reason) => {
-                        warn!(
-                            key = ?running_key,
-                            trade_no = %trace.trade_no,
+            let _permit = match acquire_dispatch_permit(semaphore).await {
+                Ok(p) => {
+                    let acquire_duration = start.elapsed();
+                    if lane == DispatcherLane::ResourceGate {
+                        info!(
+                            phase = trace.phase,
+                            worker = trace.worker,
                             command = trace.command,
+                            trade_no = %trace.trade_no,
+                            key = ?trace.key,
                             dispatcher_lane = lane.as_str(),
-                            queue_wait_ms = start.elapsed().as_millis(),
-                            reason = ?reason,
-                            "Dispatcher semaphore acquire did not complete; intent will be retried"
+                            queue_wait_ms = acquire_duration.as_millis(),
+                            "Collect resource gate dispatcher permit acquired"
                         );
-                        return;
+                    } else {
+                        debug!(
+                            key = ?running_key,
+                            duration = ?acquire_duration,
+                            dispatcher_lane = lane.as_str(),
+                            "Acquired dispatcher semaphore permit"
+                        );
                     }
-                };
+                    p
+                }
+                Err(reason) => {
+                    warn!(
+                        key = ?running_key,
+                        trade_no = %trace.trade_no,
+                        command = trace.command,
+                        dispatcher_lane = lane.as_str(),
+                        queue_wait_ms = start.elapsed().as_millis(),
+                        reason = ?reason,
+                        "Dispatcher semaphore closed; intent will be retried"
+                    );
+                    return;
+                }
+            };
 
             // 路由 Intent 到正确的 Worker
             let execute_start = std::time::Instant::now();
