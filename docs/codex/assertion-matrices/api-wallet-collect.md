@@ -755,6 +755,28 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: every confirmation query still passes through the chain RPC guard
   and circuit breaker.
 
+### Idempotent Collect And Fee Confirmation Race
+
+- Layer: unit / domain orchestration.
+- Entrypoints:
+
+  ```text
+  wallet-api/src/domain/api_wallet/trans/collect.rs
+  collect_confirmation_status_accepts_concurrent_result_and_terminal_states
+  wallet-api/src/domain/api_wallet/trans/fee.rs
+  fee_confirmation_status_accepts_concurrent_result_and_terminal_states
+  ```
+
+- DB facts: when a conditional status update affects zero rows, confirmation
+  reloads the persisted transaction before acknowledging the message.
+- Idempotency: the expected result state and its corresponding confirmed-report
+  terminal state are accepted as advancement completed by a concurrent path;
+  persisted `transaction_time` also accepts legal result-before-receipt ordering
+  while the derived status remains `SendingTx`.
+- Failure: every other persisted status returns an error and prevents the
+  confirmation message from being silently acknowledged.
+- Invariant: a zero-row update alone is never treated as success.
+
 ### Collect Recover Backfills Missing Hash
 
 - Layer: integration.

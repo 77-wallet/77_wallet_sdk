@@ -21,6 +21,53 @@ use wallet_database::{
 
 pub struct ApiFeeDomain {}
 
+fn fee_confirmation_status_matches(
+    current: ApiFeeStatus,
+    expected: ApiFeeStatus,
+    has_transaction_time: bool,
+) -> bool {
+    if has_transaction_time {
+        return true;
+    }
+    match expected {
+        ApiFeeStatus::Success => {
+            matches!(current, ApiFeeStatus::Success | ApiFeeStatus::ConfirmSuccessReport)
+        }
+        ApiFeeStatus::Failure => {
+            matches!(current, ApiFeeStatus::Failure | ApiFeeStatus::ConfirmFailureReport)
+        }
+        _ => current == expected,
+    }
+}
+
+async fn verify_fee_confirmation_after_zero_update(
+    pool: &wallet_database::ApiTransactionDbPool,
+    trade_no: &str,
+    expected: ApiFeeStatus,
+) -> Result<(), ServiceError> {
+    let refreshed = ApiFeeRepo::get_api_fee_by_trade_no(pool, trade_no).await?;
+    if fee_confirmation_status_matches(
+        refreshed.status,
+        expected,
+        refreshed.transaction_time.is_some(),
+    ) {
+        tracing::info!(
+            trade_no = %trade_no,
+            persisted_status = %refreshed.status,
+            expected_status = %expected,
+            has_transaction_time = %refreshed.transaction_time.is_some(),
+            "Fee confirmation was already persisted or advanced concurrently"
+        );
+        return Ok(());
+    }
+
+    Err(crate::error::system::SystemError::Internal(format!(
+        "fee confirmation status mismatch: trade_no={trade_no}, expected={expected}, persisted={}",
+        refreshed.status
+    ))
+    .into())
+}
+
 impl ApiFeeDomain {
     pub(crate) async fn transfer_fee_with_ctx(
         ctx: &'static Context,
@@ -248,12 +295,51 @@ impl ApiFeeDomain {
         .await?;
         tracing::info!(trade_no=%trade_no, "更新交易状态, 影响行数: {}, 耗时: {:?}", rows_affected, update_time.elapsed());
 
-        if rows_affected != 1 {
-            tracing::error!(trade_no=%trade_no, "更新手续费交易状态失败，影响行数不符合预期");
-            // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+        if rows_affected == 0 {
+            verify_fee_confirmation_after_zero_update(pool, trade_no, next_status).await?;
         }
 
         tracing::info!(trade_no=%trade_no, "手续费交易确认完成, 总耗时: {:?}", start_time.elapsed());
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fee_confirmation_status_matches;
+    use wallet_database::entities::api_fee::ApiFeeStatus;
+
+    #[test]
+    fn fee_confirmation_status_accepts_concurrent_result_and_terminal_states() {
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::Success,
+            ApiFeeStatus::Success,
+            false
+        ));
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::ConfirmSuccessReport,
+            ApiFeeStatus::Success,
+            false
+        ));
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::Failure,
+            ApiFeeStatus::Failure,
+            false
+        ));
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::ConfirmFailureReport,
+            ApiFeeStatus::Failure,
+            false
+        ));
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::SendingTx,
+            ApiFeeStatus::Success,
+            true
+        ));
+        assert!(!fee_confirmation_status_matches(
+            ApiFeeStatus::SendingTxReport,
+            ApiFeeStatus::Success,
+            false
+        ));
     }
 }
