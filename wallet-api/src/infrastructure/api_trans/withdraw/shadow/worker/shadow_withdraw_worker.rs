@@ -797,19 +797,45 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
-        let fee_details = self.estimate_tron_fee_details_for_withdraw(&req).await?;
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
-                .await?;
-        let Some(resource) = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
-            self.ctx,
-            &req.chain_code,
-            trade_no,
-            "withdraw_resource_gate_account_resource",
-            "shadow_withdraw_worker",
-            adapter.account_resource(&req.from_addr),
-        )
-        .await?
+        let guarded_snapshot = async {
+            let resource_gate_semaphore =
+                crate::infrastructure::api_trans::shadow_rpc_policy::shared_resource_gate_semaphore(
+                );
+            let wait_started = std::time::Instant::now();
+            info!(
+                trade_no = %trade_no,
+                available_permits = resource_gate_semaphore.available_permits(),
+                source = "shadow_withdraw_worker",
+                "Withdraw resource gate worker wait started after chain RPC admission"
+            );
+            let _resource_gate_permit =
+                resource_gate_semaphore.acquire_owned().await.map_err(|_| {
+                    ServiceError::Parameter("shared resource gate semaphore closed".into())
+                })?;
+            info!(
+                trade_no = %trade_no,
+                queue_wait_ms = wait_started.elapsed().as_millis(),
+                source = "shadow_withdraw_worker",
+                "Withdraw resource gate worker permit acquired"
+            );
+
+            let fee_details = self.estimate_tron_fee_details_for_withdraw(&req).await?;
+            let adapter =
+                ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
+                    .await?;
+            let resource = adapter.account_resource(&req.from_addr).await?;
+            Ok((fee_details, resource))
+        };
+        let Some((fee_details, resource)) =
+            crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx(
+                self.ctx,
+                &req.chain_code,
+                trade_no,
+                "withdraw_resource_gate_snapshot",
+                "shadow_withdraw_worker",
+                guarded_snapshot,
+            )
+            .await?
         else {
             info!(
                 trade_no = %trade_no,

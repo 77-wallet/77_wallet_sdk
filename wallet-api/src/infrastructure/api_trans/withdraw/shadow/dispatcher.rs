@@ -58,6 +58,10 @@ impl DispatcherLane {
             Self::SideEffect => "side_effect",
         }
     }
+
+    fn uses_dispatcher_permit(self) -> bool {
+        self != Self::ResourceGate
+    }
 }
 
 impl RunningKey {
@@ -132,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn resource_gate_uses_shared_dispatcher_lane() {
+    fn resource_gate_defers_shared_permit_to_chain_first_worker() {
         let resource_gate =
             WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate("W_RESOURCE".to_string()));
         let broadcast =
@@ -141,8 +145,11 @@ mod tests {
             WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx("W_RECOVER".to_string()));
 
         assert_eq!(DispatcherLane::for_intent(&resource_gate), DispatcherLane::ResourceGate);
+        assert!(!DispatcherLane::for_intent(&resource_gate).uses_dispatcher_permit());
         assert_eq!(DispatcherLane::for_intent(&broadcast), DispatcherLane::Chain);
+        assert!(DispatcherLane::for_intent(&broadcast).uses_dispatcher_permit());
         assert_eq!(DispatcherLane::for_intent(&recover), DispatcherLane::Chain);
+        assert!(DispatcherLane::for_intent(&recover).uses_dispatcher_permit());
     }
 
     #[test]
@@ -325,10 +332,11 @@ impl ShadowDispatcher {
         let running = self.running.clone();
         let running_times = self.running_times.clone();
         let lane = DispatcherLane::for_intent(&intent);
+        debug_assert_eq!(lane.uses_dispatcher_permit(), lane != DispatcherLane::ResourceGate);
         let semaphore = match lane {
-            DispatcherLane::Chain => self.chain_semaphore.clone(),
-            DispatcherLane::ResourceGate => shadow_rpc_policy::shared_resource_gate_semaphore(),
-            DispatcherLane::SideEffect => self.side_effect_semaphore.clone(),
+            DispatcherLane::Chain => Some(self.chain_semaphore.clone()),
+            DispatcherLane::ResourceGate => None,
+            DispatcherLane::SideEffect => Some(self.side_effect_semaphore.clone()),
         };
         let shadow_worker = self.shadow_worker.clone();
         let side_effect_worker = self.side_effect_worker.clone();
@@ -337,22 +345,33 @@ impl ShadowDispatcher {
         tokio::spawn(async move {
             // 获取信号量许可
             let start = std::time::Instant::now();
-            let _permit = match semaphore.acquire_owned().await {
-                Ok(p) => {
+            let _permit = match semaphore {
+                Some(semaphore) => match semaphore.acquire_owned().await {
+                    Ok(p) => {
+                        let acquire_duration = start.elapsed();
+                        info!(
+                            key = ?running_key,
+                            duration = ?acquire_duration,
+                            dispatcher_lane = lane.as_str(),
+                            "Acquired dispatcher semaphore permit"
+                        );
+                        Some(p)
+                    }
+                    Err(_) => {
+                        running.remove(&running_key);
+                        running_times.remove(&running_key);
+                        return;
+                    }
+                },
+                None => {
                     let acquire_duration = start.elapsed();
                     info!(
                         key = ?running_key,
                         duration = ?acquire_duration,
                         dispatcher_lane = lane.as_str(),
-                        "Acquired dispatcher semaphore permit"
+                        "Withdraw resource gate deferred to chain-first worker admission"
                     );
-                    p
-                }
-                Err(_) => {
-                    // 信号量已关闭，释放 running 标记并返回
-                    running.remove(&running_key);
-                    running_times.remove(&running_key);
-                    return;
+                    None
                 }
             };
 

@@ -1377,6 +1377,26 @@ impl ShadowCollectWorker {
         req: &ApiCollectEntity,
         exec_to_addr: &str,
     ) -> Result<ResourceGateSnapshot, ServiceError> {
+        let resource_gate_semaphore =
+            crate::infrastructure::api_trans::shadow_rpc_policy::shared_resource_gate_semaphore();
+        let wait_started = std::time::Instant::now();
+        info!(
+            origin_trade_no = %req.trade_no,
+            available_permits = resource_gate_semaphore.available_permits(),
+            source = "shadow_worker_v2",
+            "Collect resource gate worker wait started after chain RPC admission"
+        );
+        let _resource_gate_permit = resource_gate_semaphore
+            .acquire_owned()
+            .await
+            .map_err(|_| ServiceError::Parameter("shared resource gate semaphore closed".into()))?;
+        info!(
+            origin_trade_no = %req.trade_no,
+            queue_wait_ms = wait_started.elapsed().as_millis(),
+            source = "shadow_worker_v2",
+            "Collect resource gate worker permit acquired"
+        );
+
         let ctx = self.ctx;
         // 这里只做“评估快照”：
         // - 估算如果现在 BuildTx，需要多少资源

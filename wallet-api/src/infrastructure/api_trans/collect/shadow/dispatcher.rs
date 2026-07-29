@@ -72,6 +72,10 @@ impl DispatcherLane {
             Self::SideEffect => "side_effect",
         }
     }
+
+    fn uses_dispatcher_permit(self) -> bool {
+        self != Self::ResourceGate
+    }
 }
 
 impl RunningKey {
@@ -126,11 +130,7 @@ impl RunningKey {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
-
-    use tokio::sync::{Semaphore, mpsc};
-
-    use super::{DispatcherLane, RunningKey, acquire_dispatch_permit};
+    use super::{DispatcherLane, RunningKey};
     use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     #[test]
@@ -166,41 +166,18 @@ mod tests {
     }
 
     #[test]
-    fn resource_gate_uses_shared_lane_while_transaction_actions_use_chain_lane() {
+    fn resource_gate_defers_shared_permit_to_chain_first_worker() {
         let resource_gate =
             CollectIntent::Chain(ChainIntent::EvalResourceGate("C_RESOURCE".to_string()));
         let broadcast = CollectIntent::Chain(ChainIntent::BroadcastTx("C_BROADCAST".to_string()));
         let recover = CollectIntent::Chain(ChainIntent::RecoverTx("C_RECOVER".to_string()));
 
         assert_eq!(DispatcherLane::for_intent(&resource_gate), DispatcherLane::ResourceGate);
+        assert!(!DispatcherLane::for_intent(&resource_gate).uses_dispatcher_permit());
         assert_eq!(DispatcherLane::for_intent(&broadcast), DispatcherLane::Chain);
+        assert!(DispatcherLane::for_intent(&broadcast).uses_dispatcher_permit());
         assert_eq!(DispatcherLane::for_intent(&recover), DispatcherLane::Chain);
-    }
-
-    #[tokio::test]
-    async fn resource_gate_queue_waits_without_losing_fifo_order() {
-        let semaphore = Arc::new(Semaphore::new(1));
-        let held_permit = semaphore.clone().acquire_owned().await.expect("initial permit");
-        let (acquired_tx, mut acquired_rx) = mpsc::channel(2);
-
-        for name in ["older", "newer"] {
-            let semaphore = semaphore.clone();
-            let acquired_tx = acquired_tx.clone();
-            tokio::spawn(async move {
-                let _permit = acquire_dispatch_permit(semaphore).await.expect("shared permit");
-                acquired_tx.send(name).await.expect("record acquisition");
-            });
-            tokio::task::yield_now().await;
-        }
-
-        assert!(
-            tokio::time::timeout(Duration::from_millis(20), acquired_rx.recv()).await.is_err(),
-            "waiters must remain queued while the shared permit is held"
-        );
-        drop(held_permit);
-
-        assert_eq!(acquired_rx.recv().await, Some("older"));
-        assert_eq!(acquired_rx.recv().await, Some("newer"));
+        assert!(DispatcherLane::for_intent(&recover).uses_dispatcher_permit());
     }
 }
 
@@ -557,10 +534,11 @@ impl ShadowDispatcher {
         let running = self.running.clone();
         let running_times = self.running_times.clone();
         let lane = DispatcherLane::for_intent(&intent);
+        debug_assert_eq!(lane.uses_dispatcher_permit(), lane != DispatcherLane::ResourceGate);
         let semaphore = match lane {
-            DispatcherLane::Chain => self.chain_semaphore.clone(),
-            DispatcherLane::ResourceGate => shadow_rpc_policy::shared_resource_gate_semaphore(),
-            DispatcherLane::SideEffect => self.side_effect_semaphore.clone(),
+            DispatcherLane::Chain => Some(self.chain_semaphore.clone()),
+            DispatcherLane::ResourceGate => None,
+            DispatcherLane::SideEffect => Some(self.side_effect_semaphore.clone()),
         };
         let shadow_worker = self.shadow_worker.clone();
         let side_effect_worker = self.side_effect_worker.clone();
@@ -573,53 +551,44 @@ impl ShadowDispatcher {
 
             // 获取信号量许可
             let start = std::time::Instant::now();
-            if lane == DispatcherLane::ResourceGate {
-                info!(
-                    phase = trace.phase,
-                    worker = trace.worker,
-                    command = trace.command,
-                    trade_no = %trace.trade_no,
-                    key = ?trace.key,
-                    dispatcher_lane = lane.as_str(),
-                    available_permits = semaphore.available_permits(),
-                    "Collect resource gate dispatcher wait started"
-                );
-            }
-            let _permit = match acquire_dispatch_permit(semaphore).await {
-                Ok(p) => {
-                    let acquire_duration = start.elapsed();
-                    if lane == DispatcherLane::ResourceGate {
-                        info!(
-                            phase = trace.phase,
-                            worker = trace.worker,
-                            command = trace.command,
-                            trade_no = %trace.trade_no,
-                            key = ?trace.key,
-                            dispatcher_lane = lane.as_str(),
-                            queue_wait_ms = acquire_duration.as_millis(),
-                            "Collect resource gate dispatcher permit acquired"
-                        );
-                    } else {
+            let _permit = match semaphore {
+                Some(semaphore) => match acquire_dispatch_permit(semaphore).await {
+                    Ok(p) => {
+                        let acquire_duration = start.elapsed();
                         debug!(
                             key = ?running_key,
                             duration = ?acquire_duration,
                             dispatcher_lane = lane.as_str(),
                             "Acquired dispatcher semaphore permit"
                         );
+                        Some(p)
                     }
-                    p
-                }
-                Err(reason) => {
-                    warn!(
-                        key = ?running_key,
-                        trade_no = %trace.trade_no,
+                    Err(reason) => {
+                        warn!(
+                            key = ?running_key,
+                            trade_no = %trace.trade_no,
+                            command = trace.command,
+                            dispatcher_lane = lane.as_str(),
+                            queue_wait_ms = start.elapsed().as_millis(),
+                            reason = ?reason,
+                            "Dispatcher semaphore closed; intent will be retried"
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    let acquire_duration = start.elapsed();
+                    info!(
+                        phase = trace.phase,
+                        worker = trace.worker,
                         command = trace.command,
+                        trade_no = %trace.trade_no,
+                        key = ?trace.key,
                         dispatcher_lane = lane.as_str(),
-                        queue_wait_ms = start.elapsed().as_millis(),
-                        reason = ?reason,
-                        "Dispatcher semaphore closed; intent will be retried"
+                        queue_wait_ms = acquire_duration.as_millis(),
+                        "Collect resource gate deferred to chain-first worker admission"
                     );
-                    return;
+                    None
                 }
             };
 

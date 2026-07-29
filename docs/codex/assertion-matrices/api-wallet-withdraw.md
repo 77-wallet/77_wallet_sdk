@@ -316,20 +316,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   `tx_hash` / `raw_tx` so recover can query chain facts after the current
   `ChainTx` attempt exits.
 
-### Withdraw Resource Gate Uses Shared Small Lane
+### Withdraw Resource Gate Uses Chain-First Shared Lane
 
 - Layer: unit.
 - Entrypoint:
 
   ```text
   src/infrastructure/api_trans/withdraw/shadow/dispatcher.rs
-  resource_gate_uses_shared_dispatcher_lane
+  resource_gate_defers_shared_permit_to_chain_first_worker
   ```
 
 - Backend: none.
-- Dispatcher facts: all `EvalResourceGate` intents use the process-wide shared
-  small resource-gate lane; Build, Broadcast, and Recover continue using the
-  chain lane.
+- Dispatcher facts: `EvalResourceGate` keeps dispatcher running-key dedupe but
+  defers shared resource admission to the worker; Build, Broadcast, and Recover
+  continue using the chain lane.
+- Worker facts: collect and withdraw acquire the chain RPC guard before the
+  process-wide four-permit resource gate, so neither flow can hold a resource
+  slot while waiting for chain admission.
 - Invariant: an audit batch must not bypass the collect/withdraw resource-gate
   pool or consume the dispatcher capacity reserved for transaction execution
   and recovery.

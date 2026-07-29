@@ -30,19 +30,18 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
   ```text
   wallet-api/src/infrastructure/api_trans/collect/shadow/dispatcher.rs
-  resource_gate_queue_waits_without_losing_fifo_order
+  resource_gate_defers_shared_permit_to_chain_first_worker
   ```
 
 - DB facts: RPC unavailability, timeout, and an open circuit breaker do not
   write `resource_gate_released_at` or `FallbackAllowed`.
-- Retry: an admitted resource-gate intent keeps its in-flight marker and queue
-  position until a permit is available; worker/RPC failures remain retryable by
-  a later scanner pass after execution returns.
+- Admission: the dispatcher keeps the running-key marker but does not acquire a
+  shared resource permit before the chain RPC guard.
 - Concurrency: collect and withdraw resource gates share one small fixed
   process-local pool with four permits.
-- Queueing: the process-local semaphore serves continuously waiting intents in
-  FIFO order, so a saturated pool cannot repeatedly move an old collect behind
-  newer work.
+- Queueing: the worker acquires the shared resource permit only after chain RPC
+  admission, preventing a 30-second chain-guard wait from occupying one of the
+  four resource slots.
 - Restart: after process restart, pending rows are scanned by `created_at ASC`
   and rebuild the process-local queue from oldest to newest.
 - Invariant: technical RPC failure must never be converted into a business
