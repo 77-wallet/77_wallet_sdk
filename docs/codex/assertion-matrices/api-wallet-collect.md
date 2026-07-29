@@ -37,6 +37,8 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   write `resource_gate_released_at` or `FallbackAllowed`.
 - Retry: a resource-gate intent has bounded semaphore queue time; timing out
   releases its in-flight marker so a later scanner pass can retry it.
+- Concurrency: collect and withdraw resource gates share one small fixed
+  process-local pool with four permits.
 - Invariant: technical RPC failure must never be converted into a business
   decision to bypass platform/local resource delegation.
 

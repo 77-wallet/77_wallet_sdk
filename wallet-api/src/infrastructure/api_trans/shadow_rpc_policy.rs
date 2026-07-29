@@ -14,6 +14,7 @@ const MAX_RECOVER_COOLDOWN: Duration = Duration::from_secs(300);
 const BREAKER_WARN_COOLDOWN: Duration = Duration::from_secs(10);
 const MAX_RECOVER_COOLDOWN_MAP_SIZE: usize = 100_000;
 const INTENT_REPORT_WINDOW_SECS: u64 = 60;
+const SHARED_RESOURCE_GATE_CONCURRENCY: usize = 4;
 
 #[derive(Clone, Copy)]
 struct RecoverDispatchState {
@@ -28,7 +29,7 @@ static BROADCAST_INTENT_DISPATCH_COUNT: AtomicU64 = AtomicU64::new(0);
 static RECOVER_INTENT_DISPATCH_COUNT: AtomicU64 = AtomicU64::new(0);
 static LAST_INTENT_REPORT_TS: AtomicU64 = AtomicU64::new(0);
 static SHARED_RESOURCE_GATE_SEMAPHORE: Lazy<Arc<Semaphore>> =
-    Lazy::new(|| Arc::new(Semaphore::new(1)));
+    Lazy::new(|| Arc::new(Semaphore::new(SHARED_RESOURCE_GATE_CONCURRENCY)));
 
 pub(crate) fn shared_resource_gate_semaphore() -> Arc<Semaphore> {
     SHARED_RESOURCE_GATE_SEMAPHORE.clone()
@@ -163,8 +164,9 @@ pub(crate) fn record_chain_intent_dispatch(intent_kind: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        allow_recover_dispatch, next_recover_cooldown, parse_u64_env, parse_usize_env,
-        recover_dispatch_key, resource_recover_dispatch_key, shared_resource_gate_semaphore,
+        SHARED_RESOURCE_GATE_CONCURRENCY, allow_recover_dispatch, next_recover_cooldown,
+        parse_u64_env, parse_usize_env, recover_dispatch_key, resource_recover_dispatch_key,
+        shared_resource_gate_semaphore,
     };
     use std::{sync::Arc, time::Duration};
 
@@ -194,14 +196,21 @@ mod tests {
     }
 
     #[test]
-    fn shared_resource_gate_semaphore_allows_only_one_cross_flow_permit() {
+    fn shared_resource_gate_concurrency_is_fixed_small_pool() {
+        assert_eq!(SHARED_RESOURCE_GATE_CONCURRENCY, 4);
+    }
+
+    #[test]
+    fn shared_resource_gate_semaphore_uses_one_shared_cross_flow_pool() {
         let withdraw_handle = shared_resource_gate_semaphore();
         let collect_handle = shared_resource_gate_semaphore();
         assert!(Arc::ptr_eq(&withdraw_handle, &collect_handle));
 
-        let permit = withdraw_handle.clone().try_acquire_owned().unwrap();
+        let permits: Vec<_> = (0..withdraw_handle.available_permits())
+            .map(|_| withdraw_handle.clone().try_acquire_owned().unwrap())
+            .collect();
         assert!(collect_handle.clone().try_acquire_owned().is_err());
-        drop(permit);
+        drop(permits);
         assert!(collect_handle.try_acquire_owned().is_ok());
     }
 
