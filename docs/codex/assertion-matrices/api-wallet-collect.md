@@ -23,6 +23,25 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Current Standard Tests
 
+### Collect And Fee Build Slot Retry Recovery
+
+- Layer: component.
+- Entrypoints:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  reclaim_stale_build_slot_clears_and_allows_reclaim
+
+  src/infrastructure/api_trans/collect_fee/shadow/worker/shadow_fee_worker.rs
+  fee_reclaim_stale_build_slot_clears_and_allows_reclaim
+  ```
+
+- DB facts: stale collect and fee `building_at` slots without raw transaction
+  facts can be cleared and reclaimed.
+- Retry: guarded BuildTx skips release the short-lived build slot before
+  returning.
+- Invariant: retryable build skips must not block the next scanner attempt.
+
 ### Collect Resource Gate RPC Queue Recovery
 
 - Layer: dispatcher unit test; no DB, backend, or chain RPC.

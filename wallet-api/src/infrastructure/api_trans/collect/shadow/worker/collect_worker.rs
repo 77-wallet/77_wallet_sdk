@@ -2558,6 +2558,7 @@ impl ShadowCollectWorker {
             )
             .await?
         else {
+            self.clear_build_slot_after_claim(trade_no).await?;
             return Ok(());
         };
         info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee, source = "shadow_worker_v2", "Built transfer raw transaction successfully");

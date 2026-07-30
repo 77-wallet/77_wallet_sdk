@@ -678,6 +678,7 @@ impl ShadowFeeWorker {
             )
             .await?
         else {
+            self.clear_build_slot_after_claim(trade_no).await?;
             return Ok(());
         };
         info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee_str, source = "shadow_fee_worker", "Built transfer raw transaction successfully");

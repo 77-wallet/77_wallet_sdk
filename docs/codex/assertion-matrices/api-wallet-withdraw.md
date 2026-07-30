@@ -25,6 +25,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Current Standard Tests
 
+### Withdraw Build Slot Retry Recovery
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
+  withdraw_reclaim_stale_build_slot_clears_and_allows_reclaim
+  ```
+
+- DB facts: a stale `building_at` without `raw_tx` or `tx_hash` can be cleared
+  and reclaimed for a later BuildTx attempt.
+- Retry: guarded BuildTx skips release the short-lived build slot before
+  returning.
+- Invariant: retryable build skips must not create a durable transaction fact or
+  leave an in-flight slot that prevents the next scanner attempt.
+
 ### Recover Cooldown Isolation
 
 - Layer: unit.

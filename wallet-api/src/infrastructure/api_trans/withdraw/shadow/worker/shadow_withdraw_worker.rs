@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use tracing::{error, info, warn};
 use wallet_chain_interact::{
     BillResourceConsume,
@@ -128,6 +128,7 @@ impl ShadowWithdrawWorker {
     // const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 2;
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
     // const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 3;
+    const BUILD_SLOT_STALE_SECS: i64 = 30;
     const TRON_SHORT_CONFIRM_WINDOW_SECS: i64 = 30;
     const TRON_SHORT_CONFIRM_DELAYS_SECS: [u64; 3] = [3, 5, 8];
     // 测试开关（仅用于本地压测 withdraw uncertain 超时收口）
@@ -1612,12 +1613,34 @@ impl ShadowWithdrawWorker {
             ApiWithdrawRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no)
                 .await?;
         if build_slot_rows == 0 {
-            info!(
-                trade_no = %trade_no,
-                source = "shadow_withdraw_worker",
-                "Build slot already claimed or recently updated, skipping BuildTx"
-            );
-            return Ok(());
+            if self.reclaim_stale_build_slot(trade_no, withdraw.building_at).await? {
+                let reclaimed_build_slot_rows = ApiWithdrawRepo::update_building_at(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                )
+                .await?;
+                if reclaimed_build_slot_rows > 0 {
+                    info!(
+                        trade_no = %trade_no,
+                        source = "shadow_withdraw_worker",
+                        "Reclaimed stale build slot, continuing BuildTx"
+                    );
+                } else {
+                    info!(
+                        trade_no = %trade_no,
+                        source = "shadow_withdraw_worker",
+                        "Build slot still unavailable after stale reclaim attempt, skipping BuildTx"
+                    );
+                    return Ok(());
+                }
+            } else {
+                info!(
+                    trade_no = %trade_no,
+                    source = "shadow_withdraw_worker",
+                    "Build slot already claimed or recently updated, skipping BuildTx"
+                );
+                return Ok(());
+            }
         }
 
         // ====== phase 2: 网络执行 ======
@@ -1654,6 +1677,7 @@ impl ShadowWithdrawWorker {
             )
             .await?
         else {
+            self.clear_build_slot_after_claim(trade_no).await?;
             return Ok(());
         };
         info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee_str, source = "shadow_withdraw_worker", "Built transfer raw transaction successfully");
@@ -2556,6 +2580,54 @@ impl ShadowWithdrawWorker {
             .await
     }
 
+    fn is_stale_build_slot(building_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
+        shared_mechanism::is_stale_slot(building_at, Self::BUILD_SLOT_STALE_SECS, now)
+    }
+
+    async fn reclaim_stale_build_slot(
+        &self,
+        trade_no: &str,
+        building_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, ServiceError> {
+        if !Self::is_stale_build_slot(building_at, Utc::now()) {
+            return Ok(false);
+        }
+
+        Self::reclaim_stale_build_slot_in_pool(
+            &self.ctx.api_transaction_pool()?,
+            trade_no,
+            building_at,
+        )
+        .await
+    }
+
+    async fn reclaim_stale_build_slot_in_pool(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        building_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, ServiceError> {
+        if !Self::is_stale_build_slot(building_at, Utc::now()) {
+            return Ok(false);
+        }
+
+        let rows_affected = ApiWithdrawRepo::clear_building_at(pool, trade_no)
+            .await
+            .map_err(|e: wallet_database::Error| {
+                error!(trade_no = %trade_no, error = %e, source = "shadow_withdraw_worker", "Failed to clear stale build slot");
+                ServiceError::Database(e.into())
+            })?;
+
+        info!(
+            trade_no = %trade_no,
+            rows_affected = %rows_affected,
+            building_at = ?building_at,
+            source = "shadow_withdraw_worker",
+            "Cleared stale build slot before retrying BuildTx"
+        );
+
+        Ok(rows_affected > 0)
+    }
+
     async fn clear_build_slot_after_claim_in_pool(
         pool: &ApiTransactionDbPool,
         trade_no: &str,
@@ -3124,14 +3196,15 @@ oss:
         let dir = tempdir().expect("tempdir");
         let dir_path = dir.path().to_string_lossy().to_string();
 
-        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+        let transaction_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
             .await
             .expect("init api_transaction.db");
-        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let transaction_pool =
+            transaction_ctx.into_transaction_db_pool().expect("transaction pool");
 
         let trade_no = "W_clear_build_slot_after_claim";
         ApiWithdrawRepo::upsert_api_withdraw(
-            &collect_pool,
+            &transaction_pool,
             "uid",
             "withdraw",
             "from",
@@ -3158,23 +3231,108 @@ oss:
         .await
         .expect("insert withdraw");
 
-        let claimed = ApiWithdrawRepo::update_building_at(&collect_pool, trade_no)
+        let claimed = ApiWithdrawRepo::update_building_at(&transaction_pool, trade_no)
             .await
             .expect("claim build slot");
         assert_eq!(claimed, 1);
 
-        ShadowWithdrawWorker::clear_build_slot_after_claim_in_pool(&collect_pool, trade_no)
+        ShadowWithdrawWorker::clear_build_slot_after_claim_in_pool(&transaction_pool, trade_no)
             .await
             .expect("clear build slot");
 
         let persisted = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &collect_pool,
+            &transaction_pool,
             trade_no,
             ApiTradeType::Withdraw,
         )
         .await
         .expect("load withdraw");
         assert!(persisted.building_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn withdraw_reclaim_stale_build_slot_clears_and_allows_reclaim() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let transaction_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let transaction_pool =
+            transaction_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let trade_no = "W_reclaim_stale_build_slot";
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &transaction_pool,
+            "uid",
+            "withdraw",
+            "from",
+            "to",
+            "1",
+            "digest",
+            "eth",
+            None,
+            "USDT",
+            trade_no,
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::SendingTx,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .expect("insert withdraw");
+
+        let claimed = ApiWithdrawRepo::update_building_at(&transaction_pool, trade_no)
+            .await
+            .expect("claim build slot");
+        assert_eq!(claimed, 1);
+
+        let stale_building_at = Utc::now() - chrono::Duration::seconds(60);
+        sqlx::query(
+            r#"
+            UPDATE api_withdraws
+            SET building_at = $2
+            WHERE trade_no = $1
+            "#,
+        )
+        .bind(trade_no)
+        .bind(stale_building_at)
+        .execute(transaction_pool.write_ref())
+        .await
+        .expect("age build slot");
+
+        let reclaimed = ShadowWithdrawWorker::reclaim_stale_build_slot_in_pool(
+            &transaction_pool,
+            trade_no,
+            Some(stale_building_at),
+        )
+        .await
+        .expect("reclaim stale build slot");
+        assert!(reclaimed);
+
+        let claimed_again = ApiWithdrawRepo::update_building_at(&transaction_pool, trade_no)
+            .await
+            .expect("reclaim build slot");
+        assert_eq!(claimed_again, 1);
+
+        let persisted = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &transaction_pool,
+            trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .expect("load withdraw");
+        assert!(persisted.building_at.is_some());
+        assert!(persisted.raw_tx.is_none());
+        assert!(persisted.tx_hash.is_none());
     }
 
     #[tokio::test]
