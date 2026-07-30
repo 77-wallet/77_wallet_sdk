@@ -557,7 +557,25 @@ impl ResourceOperationWorker {
             return Ok(());
         }
 
-        let (tx_hash, raw_tx, transaction_fee) = self.build_tron_resource_raw(&operation).await?;
+        let Some((tx_hash, raw_tx, transaction_fee)) =
+            crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+                self.ctx,
+                &operation.chain_code,
+                resource_trade_no,
+                "build",
+                "resource_operation_shadow",
+                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(resource_trade_no)
+                    .chain_code(&operation.chain_code)
+                    .source("resource_operation_shadow")
+                    .op("build"),
+                self.build_tron_resource_raw(&operation),
+            )
+            .await?
+        else {
+            self.clear_build_slot_after_claim(resource_trade_no).await?;
+            return Ok(());
+        };
         let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
         let affected = ApiResourceOperationRepo::update_after_build(
             &self.ctx.api_resource_pool()?,
@@ -586,6 +604,33 @@ impl ResourceOperationWorker {
         Ok(())
     }
 
+    async fn clear_build_slot_after_claim(
+        &self,
+        resource_trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let rows_affected = ApiResourceOperationRepo::clear_building_at(
+            &self.ctx.api_resource_pool()?,
+            resource_trade_no,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                resource_trade_no = %resource_trade_no,
+                error = %e,
+                "Failed to release resource operation build slot after early exit"
+            );
+            ServiceError::Database(e.into())
+        })?;
+
+        info!(
+            resource_trade_no = %resource_trade_no,
+            rows_affected = %rows_affected,
+            "Resource operation BuildTx early exit cleared build slot"
+        );
+
+        Ok(())
+    }
+
     async fn build_tron_resource_raw(
         &self,
         operation: &ApiResourceOperationEntity,
@@ -600,12 +645,6 @@ impl ResourceOperationWorker {
         let amount = Self::parse_trx_amount(&operation.amount)?;
         let resource = Self::tron_resource_name(operation.resource_type);
         let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
-
-        let _chain_rpc_guard = crate::infrastructure::chain_rpc_guard::acquire_if_guarded_with_ctx(
-            self.ctx,
-            &operation.chain_code,
-        )
-        .await;
 
         let raw = match operation.operation_type {
             ApiResourceOperationType::Stake => {

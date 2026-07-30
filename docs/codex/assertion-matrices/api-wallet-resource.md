@@ -10,6 +10,8 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Entry point: platform resource operation BuildTx worker.
 - DB facts: a stale `building_at` with no `raw_tx` can be cleared and reclaimed
   for another BuildTx attempt.
+- Retry: guarded BuildTx skips release the short-lived build slot before
+  returning, matching withdraw, collect, and fee BuildTx behavior.
 - Invariant: a row that already persisted `raw_tx` and `tx_hash` is not
   reclaimed by stale-slot repair, so signed transaction facts remain durable.
 
