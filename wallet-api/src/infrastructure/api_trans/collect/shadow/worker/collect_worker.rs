@@ -1736,7 +1736,6 @@ impl ShadowCollectWorker {
             return Ok(());
         }
         if delegation.result_status != Some(ApiResourceDelegationResultStatus::Fail)
-            || delegation.chain_failed_at.is_none()
             || delegation.finished_at.is_none()
         {
             return Ok(());
@@ -5160,6 +5159,15 @@ oss:
         )
         .await
         .expect("mark failed");
+
+        let failed = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &resource_pool,
+            "rsc_local_delegate_C_local_release",
+        )
+        .await
+        .expect("load failed delegation");
+        assert!(failed.chain_failed_at.is_none());
+        assert!(failed.finished_at.is_some());
 
         worker
             .release_collect_gate_after_local_delegation_failure(
