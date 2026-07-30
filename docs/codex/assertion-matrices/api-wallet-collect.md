@@ -261,6 +261,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: the failure still projects back to the collect/withdraw resource
   gate and activates the existing fee fallback.
 
+### Shared Local Delegate Execution Core
+
+- Layer: worker orchestration.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/resource_delegate/local_execution.rs
+  execute_local_delegate_step
+  ```
+
+- Shared behavior: collect and withdraw use one implementation for eligibility,
+  build claim, broadcast, uncertain rebroadcast, and chain recovery facts.
+- Flow ownership: collect retains resource-gate release; withdraw retains
+  scanner wakeup after rebroadcast or recovered failure.
+- Invariant: centralizing chain execution must not move business projection or
+  scanner ownership out of the originating flow.
+
 ### Collect TRON Account Activation Block Commit
 
 - Layer: component / worker orchestration.

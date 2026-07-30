@@ -69,11 +69,7 @@ use crate::{
                 resolve_resource_delegation_signer,
             },
             resource_delegation::{
-                execute_resource_delegation, local_delegate_execution_allowed,
-                mark_recovered_resource_delegation_failure,
-                record_resource_uncertain_and_maybe_rebroadcast, resource_delegation_failure_fact,
-                resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
-                resource_recovery_error_is_uncertain,
+                resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
             },
             resource_reservation::{
                 ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
@@ -402,12 +398,6 @@ impl ShadowWithdrawWorker {
         }
     }
 
-    fn resource_transaction_time(value: Option<u128>) -> Option<String> {
-        value
-            .and_then(|millis| chrono::DateTime::<Utc>::from_timestamp_millis(millis as i64))
-            .map(|time| time.to_rfc3339())
-    }
-
     pub fn new(ctx: &'static crate::context::Context, scanner: Arc<ShadowScanner>) -> Self {
         Self { ctx, scanner, resource_reservations: WithdrawResourceReservationManager::default() }
     }
@@ -627,155 +617,42 @@ impl ShadowWithdrawWorker {
         &self,
         resource_trade_no: String,
     ) -> Result<(), ServiceError> {
-        let existing = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_resource_pool()?,
-            &resource_trade_no,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-        if !local_delegate_execution_allowed(&existing) {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                source = ?existing.source,
-                operation_type = ?existing.operation_type,
-                finished_at = ?existing.finished_at,
-                err_code = ?existing.err_code,
-                "Skipping ineligible local delegation execution command"
-            );
-            return Ok(());
-        }
-        let built_unbroadcast = resource_delegation_is_built_unbroadcast(&existing);
-        if existing.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_some()
-            && existing.last_broadcast_at.is_some()
-        {
-            self.process_resource_delegation_recover(existing).await?;
-            return Ok(());
-        }
-
-        let affected = if built_unbroadcast {
-            1
-        } else {
-            ApiResourceDelegationRepo::claim_build_slot(
-                &self.ctx.api_resource_pool()?,
-                &resource_trade_no,
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?
+        use crate::infrastructure::api_trans::resource_delegate::local_execution::{
+            LocalDelegateExecutionOutcome, execute_local_delegate_step,
         };
-        if affected == 0 {
-            return Ok(());
-        }
 
-        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_resource_pool()?,
-            &resource_trade_no,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-
-        if delegation.tx_hash.is_some() && delegation.last_broadcast_at.is_some() {
-            return Ok(());
-        }
-
-        execute_resource_delegation(
+        let outcome = execute_local_delegate_step(
             self.ctx,
             &self.ctx.api_resource_pool()?,
-            &delegation,
+            &resource_trade_no,
             "withdraw_resource_delegation",
         )
         .await?;
-
-        Ok(())
-    }
-
-    async fn process_resource_delegation_recover(
-        &self,
-        delegation: ApiResourceDelegationEntity,
-    ) -> Result<(), ServiceError> {
-        if resource_delegation_is_built_unbroadcast(&delegation) {
-            execute_resource_delegation(
-                self.ctx,
-                &self.ctx.api_resource_pool()?,
-                &delegation,
-                "withdraw_resource_delegation",
-            )
-            .await?;
-            return Ok(());
-        }
-        let Some(tx_hash) = delegation.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
-        else {
-            return Ok(());
-        };
-
-        match ApiTransDomain::process_recovered_tx(
-            &self.ctx,
-            &delegation.chain_code,
-            &delegation.owner_address,
-            tx_hash,
-            0,
-            "0",
-        )
-        .await
-        {
-            Ok(Some(resp)) => {
-                let transaction_time = Self::resource_transaction_time(resp.transaction_time_ms);
-                let payload = format!("local_delegation_recovered:{}", resp.tx_hash);
-                ApiResourceDelegationRepo::mark_recovered_chain_success(
-                    &self.ctx.api_resource_pool()?,
-                    &delegation.resource_trade_no,
-                    tx_hash,
-                    transaction_time.as_deref(),
-                    &payload,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+        match outcome {
+            LocalDelegateExecutionOutcome::Skipped => {}
+            LocalDelegateExecutionOutcome::Broadcasted { tx_hash } => {
                 info!(
-                    resource_trade_no = %delegation.resource_trade_no,
+                    resource_trade_no,
                     tx_hash = %tx_hash,
                     source = "shadow_withdraw_worker",
-                    "Withdraw resource delegation chain success confirmed"
+                    "Withdraw resource delegation broadcast fact committed"
                 );
             }
-            Ok(None) => {
-                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
-                    &self.ctx.api_resource_pool()?,
-                    &delegation.resource_trade_no,
-                )
-                .await?;
-                if rebroadcast {
-                    if let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() {
-                        self.scanner.try_advance(origin_trade_no).await;
-                    }
-                    return Ok(());
-                }
+            LocalDelegateExecutionOutcome::RecoveredSuccess(_) => {}
+            LocalDelegateExecutionOutcome::RecoveryUncertain { rebroadcasted, origin_trade_no } => {
                 info!(
-                    resource_trade_no = %delegation.resource_trade_no,
-                    tx_hash = %tx_hash,
+                    resource_trade_no,
+                    rebroadcasted,
                     source = "shadow_withdraw_worker",
                     "Withdraw resource delegation recover is uncertain; waiting"
                 );
-            }
-            Err(err) if resource_recovery_error_is_uncertain(&err) => {
-                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
-                    &self.ctx.api_resource_pool()?,
-                    &delegation.resource_trade_no,
-                )
-                .await?;
-                if rebroadcast {
-                    if let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() {
+                if rebroadcasted {
+                    if let Some(origin_trade_no) = origin_trade_no.as_deref() {
                         self.scanner.try_advance(origin_trade_no).await;
                     }
                 }
             }
-            Err(err) => {
-                let failed = mark_recovered_resource_delegation_failure(
-                    &self.ctx.api_resource_pool()?,
-                    &delegation,
-                    tx_hash,
-                    &err,
-                    "local_delegation_recovered_failure",
-                )
-                .await?;
+            LocalDelegateExecutionOutcome::RecoveredFailure(failed) => {
                 if let Some(origin_trade_no) = failed.origin_trade_no.as_deref() {
                     self.scanner.try_advance(origin_trade_no).await;
                 }

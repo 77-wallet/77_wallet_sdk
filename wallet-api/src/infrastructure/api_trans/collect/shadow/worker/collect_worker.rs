@@ -82,11 +82,7 @@ use crate::{
         resource_amount::energy_shortfall_to_apply_amounts,
         resource_apply_outcome::PlatformApplyOutcome,
         resource_delegation::{
-            execute_resource_delegation, local_delegate_execution_allowed,
-            mark_recovered_resource_delegation_failure,
-            record_resource_uncertain_and_maybe_rebroadcast, resource_delegation_failure_fact,
-            resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
-            resource_recovery_error_is_uncertain,
+            resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
         },
         resource_reservation::{
             ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
@@ -461,12 +457,6 @@ impl ShadowCollectWorker {
         advancer: Arc<ShadowAdvancer>,
     ) -> Self {
         Self { ctx, address_locks, advancer, resource_reservations: Default::default() }
-    }
-
-    fn resource_transaction_time(value: Option<u128>) -> Option<String> {
-        value
-            .and_then(|millis| chrono::DateTime::<Utc>::from_timestamp_millis(millis as i64))
-            .map(|time| time.to_rfc3339())
     }
 
     /// 处理单个 Command
@@ -921,185 +911,38 @@ impl ShadowCollectWorker {
         &self,
         resource_trade_no: String,
     ) -> Result<(), ServiceError> {
-        info!(
-            resource_trade_no = %resource_trade_no,
-            source = "shadow_worker_v2",
-            "Processing resource delegation execution"
-        );
-
-        let existing = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_resource_pool()?,
-            &resource_trade_no,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-        if !local_delegate_execution_allowed(&existing) {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                source = ?existing.source,
-                operation_type = ?existing.operation_type,
-                finished_at = ?existing.finished_at,
-                err_code = ?existing.err_code,
-                "Skipping ineligible local delegation execution command"
-            );
-            return Ok(());
-        }
-        let built_unbroadcast = resource_delegation_is_built_unbroadcast(&existing);
-        if existing.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_some()
-            && existing.last_broadcast_at.is_some()
-        {
-            self.process_local_resource_delegation_recover(existing).await?;
-            return Ok(());
-        }
-
-        let affected = if built_unbroadcast {
-            1
-        } else {
-            ApiResourceDelegationRepo::claim_build_slot(
-                &self.ctx.api_resource_pool()?,
-                &resource_trade_no,
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?
+        use crate::infrastructure::api_trans::resource_delegate::local_execution::{
+            LocalDelegateExecutionOutcome, execute_local_delegate_step,
         };
-        if affected == 0 {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                source = "shadow_worker_v2",
-                "Resource delegation execution was already claimed or completed"
-            );
-            return Ok(());
-        }
 
-        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &self.ctx.api_resource_pool()?,
-            &resource_trade_no,
-        )
-        .await
-        .map_err(|e| ServiceError::Database(e.into()))?;
-
-        if delegation.tx_hash.is_some() && delegation.last_broadcast_at.is_some() {
-            info!(
-                resource_trade_no = %resource_trade_no,
-                source = "shadow_worker_v2",
-                "Resource delegation already has tx_hash, skipping execution"
-            );
-            return Ok(());
-        }
-
-        // 共享执行能力：仅完成资源代理任务广播，本体不关心 collect 阶段语义。
-        let tx_hash = execute_resource_delegation(
+        let outcome = execute_local_delegate_step(
             self.ctx,
             &self.ctx.api_resource_pool()?,
-            &delegation,
+            &resource_trade_no,
             "collect_resource_delegation",
         )
         .await?;
-        info!(
-            resource_trade_no = %resource_trade_no,
-            tx_hash = %tx_hash,
-            source = "shadow_worker_v2",
-            "Resource delegation broadcast fact committed"
-        );
-
-        Ok(())
-    }
-
-    async fn process_local_resource_delegation_recover(
-        &self,
-        delegation: ApiResourceDelegationEntity,
-    ) -> Result<(), ServiceError> {
-        if resource_delegation_is_built_unbroadcast(&delegation) {
-            execute_resource_delegation(
-                self.ctx,
-                &self.ctx.api_resource_pool()?,
-                &delegation,
-                "collect_resource_delegation",
-            )
-            .await?;
-            return Ok(());
-        }
-        let Some(tx_hash) = delegation.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
-        else {
-            return Ok(());
-        };
-
-        match ApiTransDomain::process_recovered_tx(
-            &self.ctx,
-            &delegation.chain_code,
-            &delegation.owner_address,
-            tx_hash,
-            0,
-            "0",
-        )
-        .await
-        {
-            Ok(Some(resp)) => {
-                let transaction_time = Self::resource_transaction_time(resp.transaction_time_ms);
-                let payload = format!("local_delegation_recovered:{}", resp.tx_hash);
-                ApiResourceDelegationRepo::mark_recovered_chain_success(
-                    &self.ctx.api_resource_pool()?,
-                    &delegation.resource_trade_no,
-                    tx_hash,
-                    transaction_time.as_deref(),
-                    &payload,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+        match outcome {
+            LocalDelegateExecutionOutcome::Skipped => {}
+            LocalDelegateExecutionOutcome::Broadcasted { tx_hash } => {
                 info!(
-                    resource_trade_no = %delegation.resource_trade_no,
+                    resource_trade_no,
                     tx_hash = %tx_hash,
                     source = "shadow_worker_v2",
-                    "Collect local resource delegation chain success confirmed"
+                    "Resource delegation broadcast fact committed"
                 );
-                let refreshed = ApiResourceDelegationRepo::get_by_resource_trade_no(
-                    &self.ctx.api_resource_pool()?,
-                    &delegation.resource_trade_no,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+            }
+            LocalDelegateExecutionOutcome::RecoveredSuccess(refreshed) => {
                 self.release_collect_gate_after_local_delegation_success(&refreshed).await?;
             }
-            Ok(None) => {
-                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
-                    &self.ctx.api_resource_pool()?,
-                    &delegation.resource_trade_no,
-                )
-                .await?;
-                if rebroadcast {
-                    if let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() {
-                        self.advancer.try_advance(origin_trade_no).await;
-                    }
-                    return Ok(());
-                }
-                info!(
-                    resource_trade_no = %delegation.resource_trade_no,
-                    tx_hash = %tx_hash,
-                    source = "shadow_worker_v2",
-                    "Collect local resource delegation recover is uncertain; waiting"
-                );
-            }
-            Err(err) if resource_recovery_error_is_uncertain(&err) => {
-                let rebroadcast = record_resource_uncertain_and_maybe_rebroadcast(
-                    &self.ctx.api_resource_pool()?,
-                    &delegation.resource_trade_no,
-                )
-                .await?;
-                if rebroadcast {
-                    if let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() {
+            LocalDelegateExecutionOutcome::RecoveryUncertain { rebroadcasted, origin_trade_no } => {
+                if rebroadcasted {
+                    if let Some(origin_trade_no) = origin_trade_no.as_deref() {
                         self.advancer.try_advance(origin_trade_no).await;
                     }
                 }
             }
-            Err(err) => {
-                let failed = mark_recovered_resource_delegation_failure(
-                    &self.ctx.api_resource_pool()?,
-                    &delegation,
-                    tx_hash,
-                    &err,
-                    "local_delegation_recovered_failure",
-                )
-                .await?;
+            LocalDelegateExecutionOutcome::RecoveredFailure(failed) => {
                 self.release_collect_gate_after_local_delegation_failure(&failed.resource_trade_no)
                     .await?;
             }
