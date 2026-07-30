@@ -54,13 +54,9 @@ const PLATFORM_RESOURCE_DELEGATE_DEFAULT_CONCURRENCY: usize = 4;
 fn can_project_platform_terminal_failure(
     affected: u64,
     result_status: Option<ApiResourceDelegationResultStatus>,
-    chain_failed: bool,
     finished: bool,
 ) -> bool {
-    affected > 0
-        || (result_status == Some(ApiResourceDelegationResultStatus::Fail)
-            && chain_failed
-            && finished)
+    affected > 0 || (result_status == Some(ApiResourceDelegationResultStatus::Fail) && finished)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -673,7 +669,6 @@ impl PlatformResourceDelegateWorker {
                 if !can_project_platform_terminal_failure(
                     affected,
                     task.result_status,
-                    task.chain_failed_at.is_some(),
                     task.finished_at.is_some(),
                 ) {
                     info!(
@@ -1012,19 +1007,17 @@ mod tests {
 
     #[test]
     fn platform_terminal_failure_projection_requires_complete_persisted_fact() {
-        assert!(can_project_platform_terminal_failure(1, None, false, false));
+        assert!(can_project_platform_terminal_failure(1, None, false));
         assert!(can_project_platform_terminal_failure(
             0,
             Some(ApiResourceDelegationResultStatus::Fail),
-            true,
             true,
         ));
         assert!(!can_project_platform_terminal_failure(
             0,
             Some(ApiResourceDelegationResultStatus::Fail),
             false,
-            true,
         ));
-        assert!(!can_project_platform_terminal_failure(0, None, false, false));
+        assert!(!can_project_platform_terminal_failure(0, None, false));
     }
 }

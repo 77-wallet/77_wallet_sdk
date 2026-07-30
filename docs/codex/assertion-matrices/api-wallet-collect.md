@@ -225,6 +225,42 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: pending delegate broadcasts must be deducted from the latest chain
   capacity snapshot; `Undelegate` operations do not reserve delegation capacity.
 
+### Local Delegate Execution Boundary
+
+- Layer: unit / worker orchestration.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/resource_delegation.rs
+  local_delegate_execution_boundary_allows_only_active_local_delegate
+  ```
+
+- Eligibility: collect and withdraw only execute tasks whose source is `Local`,
+  operation is `Delegate`, and chain/terminal failure facts are absent.
+- Idempotency: queued commands for already finished local delegation tasks are
+  skipped before claim, recover, build, or broadcast.
+- Invariant: Platform delegation and Local undelegation tasks cannot cross into
+  the collect/withdraw Local Delegate execution path.
+
+### Pre-Broadcast Local Delegation Failure Facts
+
+- Layer: component / resource-gate projection.
+- Entrypoints:
+
+  ```text
+  wallet-database/src/repositories/api_wallet/resource_delegation.rs
+  terminal_failure_and_result_are_committed_together_before_broadcast
+  wallet-api/src/infrastructure/api_trans/resource_delegate/platform_shadow.rs
+  platform_terminal_failure_projection_requires_complete_persisted_fact
+  ```
+
+- DB facts: a terminal validation or capacity failure before build/broadcast
+  persists `result_status=Fail`, `err_code`, `err_msg`, and `finished_at`.
+- Chain facts: `chain_failed_at` remains null because no chain transaction was
+  broadcast; recovered post-broadcast failures still write it.
+- Invariant: the failure still projects back to the collect/withdraw resource
+  gate and activates the existing fee fallback.
+
 ### Collect TRON Account Activation Block Commit
 
 - Layer: component / worker orchestration.

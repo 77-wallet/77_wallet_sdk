@@ -1037,7 +1037,6 @@ impl ApiResourceDelegationDao {
             UPDATE api_resource_delegation
             SET err_code = ?3,
                 err_msg = ?4,
-                chain_failed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 result_status = ?6,
                 result_payload = ?5,

@@ -69,7 +69,8 @@ use crate::{
                 resolve_resource_delegation_signer,
             },
             resource_delegation::{
-                execute_resource_delegation, mark_recovered_resource_delegation_failure,
+                execute_resource_delegation, local_delegate_execution_allowed,
+                mark_recovered_resource_delegation_failure,
                 record_resource_uncertain_and_maybe_rebroadcast, resource_delegation_failure_fact,
                 resource_delegation_is_built_unbroadcast, resource_delegation_retry_wait_secs,
                 resource_recovery_error_is_uncertain,
@@ -632,6 +633,17 @@ impl ShadowWithdrawWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        if !local_delegate_execution_allowed(&existing) {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                source = ?existing.source,
+                operation_type = ?existing.operation_type,
+                finished_at = ?existing.finished_at,
+                err_code = ?existing.err_code,
+                "Skipping ineligible local delegation execution command"
+            );
+            return Ok(());
+        }
         let built_unbroadcast = resource_delegation_is_built_unbroadcast(&existing);
         if existing.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_some()
             && existing.last_broadcast_at.is_some()
@@ -2328,7 +2340,6 @@ impl ShadowWithdrawWorker {
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
         Ok(persisted.result_status == Some(ApiResourceDelegationResultStatus::Fail)
-            && persisted.chain_failed_at.is_some()
             && persisted.finished_at.is_some())
     }
 
@@ -3396,7 +3407,7 @@ oss:
                 .await
                 .expect("load delegation");
         assert_eq!(persisted.result_status, Some(ApiResourceDelegationResultStatus::Fail));
-        assert!(persisted.chain_failed_at.is_some());
+        assert!(persisted.chain_failed_at.is_none());
         assert!(persisted.finished_at.is_some());
         assert!(persisted.result_payload.is_some());
     }

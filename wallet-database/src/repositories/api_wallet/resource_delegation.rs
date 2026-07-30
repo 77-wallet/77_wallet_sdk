@@ -1602,7 +1602,7 @@ mod tests {
         assert_eq!(failed.fail_type, Some(2));
         assert_eq!(failed.err_code.as_deref(), Some("ERR_TERMINAL"));
         assert_eq!(failed.result_payload.as_deref(), Some("terminal_payload"));
-        assert!(failed.chain_failed_at.is_some());
+        assert!(failed.chain_failed_at.is_none());
         assert!(failed.finished_at.is_some());
 
         assert_eq!(

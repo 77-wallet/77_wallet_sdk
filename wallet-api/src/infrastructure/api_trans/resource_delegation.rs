@@ -28,6 +28,7 @@ use wallet_database::{
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
+            ApiResourceDelegationSource,
         },
         api_resource_type::ApiResourceType,
     },
@@ -37,6 +38,15 @@ use wallet_utils::RetryableError as _;
 
 const RESOURCE_BROADCAST_UNCERTAIN_TIMEOUT_SECS: i64 = 300;
 const RESOURCE_BROADCAST_UNCERTAIN_AUTO_REBROADCAST_LIMIT: i64 = 1;
+
+pub(crate) fn local_delegate_execution_allowed(delegation: &ApiResourceDelegationEntity) -> bool {
+    delegation.source == ApiResourceDelegationSource::Local
+        && delegation.operation_type == ApiResourceDelegationOperationType::Delegate
+        && delegation.finished_at.is_none()
+        && delegation.err_code.is_none()
+        && delegation.chain_success_at.is_none()
+        && delegation.chain_failed_at.is_none()
+}
 
 type DelegationCapacityReservations = HashMap<String, i64>;
 
@@ -487,10 +497,11 @@ async fn sign_tron_resource_delegation(
 #[cfg(test)]
 mod tests {
     use super::{
-        DelegationCapacityReservations, mark_recovered_resource_delegation_failure,
-        release_delegation_capacity, reserve_delegation_capacity,
-        resolve_resource_delegation_broadcast_hash, resource_delegation_failure_fact,
-        resource_delegation_retry_wait_secs, resource_recovery_error_is_uncertain,
+        DelegationCapacityReservations, local_delegate_execution_allowed,
+        mark_recovered_resource_delegation_failure, release_delegation_capacity,
+        reserve_delegation_capacity, resolve_resource_delegation_broadcast_hash,
+        resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
+        resource_recovery_error_is_uncertain,
     };
 
     #[test]
@@ -532,6 +543,73 @@ mod tests {
         },
         repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
     };
+
+    fn local_delegate_task()
+    -> wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
+        let now = chrono::Utc::now();
+        wallet_database::entities::api_resource_delegation::ApiResourceDelegationEntity {
+            id: 1,
+            uid: "uid".to_string(),
+            source: wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Local,
+            operation_type: wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Delegate,
+            origin_trade_no: Some("C1".to_string()),
+            origin_trade_type: Some(ApiTradeType::Collect as i64),
+            resource_trade_no: "rsc_local_delegate_C1".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: "receiver".to_string(),
+            delegation_mode: wallet_database::entities::api_resource_delegation::ApiResourceDelegationMode::WithdrawAddress,
+            permission_id: None,
+            resource_type: wallet_database::entities::api_resource_type::ApiResourceType::Energy,
+            native_amount: "199".to_string(),
+            amount: "14650".to_string(),
+            status: wallet_database::entities::api_resource_delegation::ApiResourceDelegationStatus::Pending,
+            task_ack_sent_at: None,
+            task_ack_send_count: 0,
+            building_at: None,
+            raw_tx: None,
+            last_broadcast_at: None,
+            tx_hash: None,
+            chain_success_at: None,
+            chain_failed_at: None,
+            transaction_time: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
+            tx_exec_receipt_uploaded_at: None,
+            result_status: None,
+            tx_res_received_at: None,
+            finished_at: None,
+            result_ack_sent_at: None,
+            result_ack_send_count: 0,
+            result_payload: None,
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            created_at: now,
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn local_delegate_execution_boundary_allows_only_active_local_delegate() {
+        let active = local_delegate_task();
+        assert!(local_delegate_execution_allowed(&active));
+
+        let mut platform = active.clone();
+        platform.source = wallet_database::entities::api_resource_delegation::ApiResourceDelegationSource::Platform;
+        assert!(!local_delegate_execution_allowed(&platform));
+
+        let mut undelegate = active.clone();
+        undelegate.operation_type = wallet_database::entities::api_resource_delegation::ApiResourceDelegationOperationType::Undelegate;
+        assert!(!local_delegate_execution_allowed(&undelegate));
+
+        let mut terminal = active;
+        terminal.finished_at = Some(chrono::Utc::now());
+        assert!(!local_delegate_execution_allowed(&terminal));
+    }
 
     #[test]
     fn retry_wait_secs_follows_exp_backoff_with_cap() {
