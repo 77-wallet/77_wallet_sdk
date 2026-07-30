@@ -2,6 +2,17 @@
 
 Scope: `wallet-api` API wallet foreground resource and governance operations.
 
+## Resource Operation Build Slot Retry Recovery
+
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_operation/shadow.rs`
+  `resource_operation_reclaim_stale_build_slot_only_without_raw_tx`
+- Entry point: platform resource operation BuildTx worker.
+- DB facts: a stale `building_at` with no `raw_tx` can be cleared and reclaimed
+  for another BuildTx attempt.
+- Invariant: a row that already persisted `raw_tx` and `tx_hash` is not
+  reclaimed by stale-slot repair, so signed transaction facts remain durable.
+
 ## Resource Delegation Retry Backoff
 
 - Test:

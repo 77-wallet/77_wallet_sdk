@@ -328,6 +328,8 @@ pub struct ResourceOperationWorker {
 }
 
 impl ResourceOperationWorker {
+    const BUILD_SLOT_STALE_SECS: i64 = 30;
+
     pub fn new(ctx: &'static crate::context::Context) -> Self {
         Self { ctx }
     }
@@ -438,8 +440,35 @@ impl ResourceOperationWorker {
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
         if affected == 0 {
-            trace!(resource_trade_no = %resource_trade_no, "Resource operation build slot not claimed");
-            return Ok(());
+            let operation = ApiResourceOperationRepo::get_by_resource_trade_no(
+                &self.ctx.api_resource_pool()?,
+                &resource_trade_no,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+            if self.reclaim_stale_build_slot(&resource_trade_no, operation.building_at).await? {
+                let reclaimed = ApiResourceOperationRepo::claim_building_at(
+                    &self.ctx.api_resource_pool()?,
+                    &resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                if reclaimed == 0 {
+                    trace!(
+                        resource_trade_no = %resource_trade_no,
+                        "Resource operation build slot still unavailable after stale reclaim"
+                    );
+                    return Ok(());
+                }
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    "Reclaimed stale resource operation build slot"
+                );
+            } else {
+                trace!(resource_trade_no = %resource_trade_no, "Resource operation build slot not claimed");
+                return Ok(());
+            }
         }
 
         if let Err(err) = self.build_resource_operation(&resource_trade_no).await {
@@ -459,6 +488,57 @@ impl ResourceOperationWorker {
         }
 
         Ok(())
+    }
+
+    fn is_stale_build_slot(building_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
+        shared_mechanism::is_stale_slot(building_at, Self::BUILD_SLOT_STALE_SECS, now)
+    }
+
+    async fn reclaim_stale_build_slot(
+        &self,
+        resource_trade_no: &str,
+        building_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, ServiceError> {
+        if !Self::is_stale_build_slot(building_at, Utc::now()) {
+            return Ok(false);
+        }
+
+        Self::reclaim_stale_build_slot_in_pool(
+            &self.ctx.api_resource_pool()?,
+            resource_trade_no,
+            building_at,
+        )
+        .await
+    }
+
+    async fn reclaim_stale_build_slot_in_pool(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        building_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, ServiceError> {
+        if !Self::is_stale_build_slot(building_at, Utc::now()) {
+            return Ok(false);
+        }
+
+        let rows_affected = ApiResourceOperationRepo::clear_building_at(pool, resource_trade_no)
+            .await
+            .map_err(|e| {
+                error!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %e,
+                    "Failed to clear stale resource operation build slot"
+                );
+                ServiceError::Database(e.into())
+            })?;
+
+        info!(
+            resource_trade_no = %resource_trade_no,
+            rows_affected = %rows_affected,
+            building_at = ?building_at,
+            "Cleared stale resource operation build slot before retrying BuildTx"
+        );
+
+        Ok(rows_affected > 0)
     }
 
     async fn build_resource_operation(&self, resource_trade_no: &str) -> Result<(), ServiceError> {
@@ -1409,6 +1489,106 @@ mod tests {
         assert!(intents.iter().any(|intent| {
             matches!(intent, ResourceOperationIntent::SendResultAck(trade_no) if trade_no == "op_need_result_ack")
         }));
+    }
+
+    #[tokio::test]
+    async fn resource_operation_reclaim_stale_build_slot_only_without_raw_tx() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
+
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_stale_build_slot", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_stale_build_slot").await.unwrap();
+        assert_eq!(
+            ApiResourceOperationRepo::claim_building_at(&pool, "op_stale_build_slot")
+                .await
+                .unwrap(),
+            1
+        );
+
+        let stale_building_at = Utc::now() - chrono::Duration::seconds(60);
+        sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET building_at = ?
+            WHERE resource_trade_no = ?
+            "#,
+        )
+        .bind(stale_building_at)
+        .bind("op_stale_build_slot")
+        .execute(pool.write_ref())
+        .await
+        .expect("age build slot");
+
+        let reclaimed = ResourceOperationWorker::reclaim_stale_build_slot_in_pool(
+            &pool,
+            "op_stale_build_slot",
+            Some(stale_building_at),
+        )
+        .await
+        .expect("reclaim stale build slot");
+        assert!(reclaimed);
+        assert_eq!(
+            ApiResourceOperationRepo::claim_building_at(&pool, "op_stale_build_slot")
+                .await
+                .unwrap(),
+            1
+        );
+
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_built_slot", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_built_slot").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_built_slot").await.unwrap();
+        ApiResourceOperationRepo::update_after_build(
+            &pool,
+            "op_built_slot",
+            "0xhash_built",
+            "{\"Tron\":[{\"tx_id\":\"0xhash_built\",\"raw_data_hex\":\"00\",\"signature\":[]},{\"netUsed\":0,\"energyUsed\":0},\"0\"]}",
+            "0",
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET building_at = ?
+            WHERE resource_trade_no = ?
+            "#,
+        )
+        .bind(stale_building_at)
+        .bind("op_built_slot")
+        .execute(pool.write_ref())
+        .await
+        .expect("age built slot");
+
+        let built_reclaimed = ResourceOperationWorker::reclaim_stale_build_slot_in_pool(
+            &pool,
+            "op_built_slot",
+            Some(stale_building_at),
+        )
+        .await
+        .expect("attempt built slot reclaim");
+        assert!(!built_reclaimed);
+
+        let built = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_built_slot")
+            .await
+            .unwrap();
+        assert_eq!(built.raw_tx.as_deref().map(str::is_empty), Some(false));
+        assert_eq!(built.tx_hash.as_deref(), Some("0xhash_built"));
+        assert!(built.building_at.is_some());
     }
 
     #[test]

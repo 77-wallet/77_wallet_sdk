@@ -41,9 +41,15 @@ use crate::infrastructure::api_trans::collect::diagnose::{
     event::DiagnoseEvent,
     stuck_monitor::{CURRENT_BURST, CollectStuckMonitor, LAST_SUCCESS_SEND_AT},
 };
-use wallet_database::entities::{
-    api_resource_delegation::{ApiResourceDelegationOperationType, ApiResourceDelegationSource},
-    api_trade_type::ApiTradeType,
+use wallet_database::{
+    entities::{
+        api_resource_delegation::{
+            ApiResourceDelegationOperationType, ApiResourceDelegationSource,
+        },
+        api_resource_gate::{ApiResourceBlockReason, ApiResourceGateResult},
+        api_trade_type::ApiTradeType,
+    },
+    repositories::api_wallet::collect::ApiCollectRepo,
 };
 
 const DIAGNOSE_EVENT_IDLE_THRESHOLD: Duration = Duration::from_secs(30);
@@ -122,8 +128,8 @@ impl CollectorShadowScannerActor {
         crate::infrastructure::system_ready::wait_system_ready().await;
         info!("Collector Shadow Scanner Actor running");
 
-        if let Err(error) = log_startup_failed_local_delegate_diagnostics(self.ctx).await {
-            warn!(%error, "Collect shadow startup local delegate diagnostic failed");
+        if let Err(error) = reconcile_startup_failed_local_delegations(self.ctx).await {
+            warn!(%error, "Collect shadow startup local delegate reconciliation failed");
         }
 
         // 自定义扫描循环，支持shutdown信号
@@ -148,10 +154,11 @@ impl CollectorShadowScannerActor {
     }
 }
 
-async fn log_startup_failed_local_delegate_diagnostics(
+async fn reconcile_startup_failed_local_delegations(
     ctx: &'static crate::context::Context,
 ) -> Result<(), ServiceError> {
-    let pool = ctx.api_resource_pool()?;
+    let resource_pool = ctx.api_resource_pool()?;
+    let transaction_pool = ctx.api_transaction_pool()?;
     let limit = shadow_rpc_policy::read_usize_env(
         "COLLECT_SHADOW_STARTUP_DIAG_MAX_ITEMS",
         STARTUP_FAILED_LOCAL_DELEGATE_DIAG_DEFAULT_LIMIT,
@@ -159,7 +166,7 @@ async fn log_startup_failed_local_delegate_diagnostics(
         STARTUP_FAILED_LOCAL_DELEGATE_DIAG_MAX_LIMIT,
     );
     let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_failed_for_origin_type_source_and_operation(
-        &pool,
+        &resource_pool,
         ApiTradeType::Collect as i64,
         ApiResourceDelegationSource::Local,
         ApiResourceDelegationOperationType::Delegate,
@@ -167,9 +174,38 @@ async fn log_startup_failed_local_delegate_diagnostics(
     ).await?;
 
     for record in records {
+        let Some(origin_trade_no) = record.origin_trade_no.as_deref() else {
+            warn!(
+                resource_trade_no = %record.resource_trade_no,
+                source = "collect_shadow_startup",
+                "Historical collect local resource delegation failure has no origin order"
+            );
+            continue;
+        };
+        let origin =
+            ApiCollectRepo::get_api_collect_by_trade_no(&transaction_pool, origin_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if origin.finished_at.is_some()
+            || origin.err_code.is_some()
+            || origin.raw_tx.is_some()
+            || origin.resource_gate_released_at.is_some()
+            || origin.resource_block_reason != Some(ApiResourceBlockReason::NeedLocalDelegate)
+            || origin.resource_dependency_trade_no.as_deref()
+                != Some(record.resource_trade_no.as_str())
+        {
+            continue;
+        }
+        let rows = ApiCollectRepo::mark_resource_released(
+            &transaction_pool,
+            origin_trade_no,
+            ApiResourceGateResult::LocalDelegationFailedBypass,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         warn!(
             resource_trade_no = %record.resource_trade_no,
-            origin_trade_no = ?record.origin_trade_no,
+            origin_trade_no = %origin_trade_no,
             err_code = ?record.err_code,
             err_msg = ?record.err_msg,
             owner_address = %record.owner_address,
@@ -178,8 +214,9 @@ async fn log_startup_failed_local_delegate_diagnostics(
             amount = %record.amount,
             tx_hash = ?record.tx_hash,
             updated_at = ?record.updated_at,
+            rows_affected = rows,
             source = "collect_shadow_startup",
-            "Historical collect local resource delegation failure"
+            "Reconciled historical collect local resource delegation failure"
         );
     }
 
