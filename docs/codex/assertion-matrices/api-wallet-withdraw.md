@@ -387,6 +387,30 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   `tx_hash` / `raw_tx` so recover can query chain facts after the current
   `ChainTx` attempt exits.
 
+### Withdraw Post-Broadcast Confirmation Window
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
+  tron_post_broadcast_confirm_delays_cover_thirty_second_window
+  tron_post_broadcast_reset_restarts_fresh_recover_without_touching_other_chains
+  tron_post_broadcast_short_confirm_allows_trc20_resource_recovery
+  src/infrastructure/api_trans/shadow_rpc_policy.rs
+  successful_broadcast_resets_pre_broadcast_recover_cooldown
+  ```
+
+- Backend: none.
+- Worker facts: an eligible successful TRON broadcast schedules direct
+  confirmation attempts after 3, 5, 8, 15, and 30 seconds and clears any
+  confirmation cooldown admitted before the broadcast fact was committed.
+- Invariant: the extended post-broadcast schedule is independent from the
+  bounded 3, 5, and 8 second uncertain-broadcast retry sequence; the periodic
+  scanner remains the restart and delayed-chain fallback. Resetting the TRON
+  confirmation key must not clear another chain's key or the independent TRON
+  resource-recovery key.
+
 ### Withdraw Resource Gate Uses Chain-First Shared Lane
 
 - Layer: unit.

@@ -74,7 +74,7 @@ use crate::{
             resource_reservation::{
                 ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
             },
-            resource_rpc_auth,
+            resource_rpc_auth, shadow_rpc_policy,
             withdraw::shadow::ShadowScanner,
         },
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
@@ -135,6 +135,7 @@ impl ShadowWithdrawWorker {
     const TRON_BROADCAST_RESOURCE_RECHECK_SECS: i64 = 30;
     const TRON_SHORT_CONFIRM_WINDOW_SECS: i64 = 30;
     const TRON_SHORT_CONFIRM_DELAYS_SECS: [u64; 3] = [3, 5, 8];
+    const TRON_POST_BROADCAST_CONFIRM_DELAYS_SECS: [u64; 5] = [3, 5, 8, 15, 30];
     // 测试开关（仅用于本地压测 withdraw uncertain 超时收口）
     // 需要测试超时分支时改为 true，测完务必改回 false。
     const TEST_FORCE_WITHDRAW_EVM_RECOVER_NONE: bool = false;
@@ -463,13 +464,21 @@ impl ShadowWithdrawWorker {
         true
     }
 
+    fn reset_tron_post_broadcast_recover_cooldown(withdraw: &ApiWithdrawEntity) -> bool {
+        if !shared_mechanism::is_tron_chain(&withdraw.chain_code) {
+            return false;
+        }
+        let recover_key = shadow_rpc_policy::recover_dispatch_key(&withdraw.trade_no);
+        shadow_rpc_policy::reset_recover_dispatch(&recover_key)
+    }
+
     fn schedule_tron_post_broadcast_confirms_if_needed(&self, withdraw: &ApiWithdrawEntity) {
         if !Self::tron_post_broadcast_short_confirm_eligible(withdraw) {
             return;
         }
         let trade_no = withdraw.trade_no.clone();
         let tx_hash = withdraw.tx_hash.as_deref().unwrap_or_default().to_string();
-        for delay_secs in Self::TRON_SHORT_CONFIRM_DELAYS_SECS {
+        for delay_secs in Self::TRON_POST_BROADCAST_CONFIRM_DELAYS_SECS {
             let scanner = self.scanner.clone();
             let trade_no = trade_no.clone();
             let tx_hash = tx_hash.clone();
@@ -2050,6 +2059,20 @@ impl ShadowWithdrawWorker {
                         );
                     } else {
                         let refreshed = self.get_withdraw_entity(&withdraw.trade_no).await?;
+                        if shared_mechanism::is_tron_chain(&refreshed.chain_code) {
+                            let recover_key =
+                                shadow_rpc_policy::recover_dispatch_key(&withdraw.trade_no);
+                            let cleared_pre_broadcast_cooldown =
+                                Self::reset_tron_post_broadcast_recover_cooldown(&refreshed);
+                            info!(
+                                observability_event = "tron_withdraw_post_broadcast_recover_cooldown_reset",
+                                trade_no = %withdraw.trade_no,
+                                recover_key = %recover_key,
+                                cleared_pre_broadcast_cooldown,
+                                source = "shadow_withdraw_worker",
+                                "Reset TRON withdraw confirmation cooldown after successful broadcast"
+                            );
+                        }
                         self.schedule_tron_post_broadcast_confirms_if_needed(&refreshed);
                         // 直接调用 try_advance 进行点对点唤醒
                         self.scanner.try_advance(&withdraw.trade_no).await;
@@ -3134,6 +3157,41 @@ oss:
         withdraw.raw_tx = None;
 
         assert!(!ShadowWithdrawWorker::should_fail_expired_tron_missing_confirmed(&withdraw));
+    }
+
+    #[test]
+    fn tron_post_broadcast_confirm_delays_cover_thirty_second_window() {
+        assert_eq!(
+            ShadowWithdrawWorker::TRON_POST_BROADCAST_CONFIRM_DELAYS_SECS.as_slice(),
+            &[3, 5, 8, 15, 30]
+        );
+        assert_eq!(ShadowWithdrawWorker::TRON_SHORT_CONFIRM_DELAYS_SECS.as_slice(), &[3, 5, 8]);
+    }
+
+    #[test]
+    fn tron_post_broadcast_reset_restarts_fresh_recover_without_touching_other_chains() {
+        use crate::infrastructure::api_trans::shadow_rpc_policy;
+
+        let mut tron = base_withdraw();
+        tron.trade_no = "W_TRON_POST_BROADCAST_RESET".to_string();
+        tron.chain_code = "tron".to_string();
+        let tron_key = shadow_rpc_policy::recover_dispatch_key(&tron.trade_no);
+        assert!(shadow_rpc_policy::allow_recover_dispatch(&tron_key));
+
+        assert!(ShadowWithdrawWorker::reset_tron_post_broadcast_recover_cooldown(&tron));
+        assert!(shadow_rpc_policy::allow_fresh_broadcast_recover_dispatch(&tron_key));
+
+        let mut evm = base_withdraw();
+        evm.trade_no = "W_EVM_POST_BROADCAST_RESET".to_string();
+        evm.chain_code = "ethereum".to_string();
+        let evm_key = shadow_rpc_policy::recover_dispatch_key(&evm.trade_no);
+        assert!(shadow_rpc_policy::allow_recover_dispatch(&evm_key));
+
+        assert!(!ShadowWithdrawWorker::reset_tron_post_broadcast_recover_cooldown(&evm));
+        assert!(!shadow_rpc_policy::allow_fresh_broadcast_recover_dispatch(&evm_key));
+
+        shadow_rpc_policy::reset_recover_dispatch(&tron_key);
+        shadow_rpc_policy::reset_recover_dispatch(&evm_key);
     }
 
     #[test]

@@ -275,16 +275,14 @@ impl ShadowCollectWorker {
                 .is_service_unavailable()
     }
 
-    fn tron_resource_ready(
-        available_energy: i64,
-        _available_bandwidth: i64,
+    fn tron_collect_required_budget(
         required_energy: u64,
         _required_bandwidth: u64,
-    ) -> bool {
+    ) -> ResourceBudget {
         // The collect resource gate only owns Energy delegation. Bandwidth
         // shortage is paid/bypassed by the existing collect main flow, so it
         // must not trigger `/resourceDl/apply` for an Energy task.
-        available_energy >= required_energy as i64
+        ResourceBudget::new(required_energy, 0)
     }
 
     fn tron_fee_estimate_resource_json(
@@ -329,12 +327,11 @@ impl ShadowCollectWorker {
         )
     }
 
-    fn should_invalidate_tron_resource_ready_for_fee_shortage(
+    fn should_open_fee_cycle_for_tron_resource_ready(
         req: &ApiCollectEntity,
         err: &ServiceError,
     ) -> bool {
-        Self::is_stale_tron_resource_ready_candidate(req)
-            && Self::is_insufficient_fee_balance_error(err)
+        Self::is_tron_resource_ready_candidate(req) && Self::is_insufficient_fee_balance_error(err)
     }
 
     fn should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
@@ -358,7 +355,7 @@ impl ShadowCollectWorker {
             && req.resource_gate_released_at.is_none()
     }
 
-    fn is_stale_tron_resource_ready_candidate(req: &ApiCollectEntity) -> bool {
+    fn is_tron_resource_ready_candidate(req: &ApiCollectEntity) -> bool {
         shared_mechanism::is_tron_chain(&req.chain_code)
             && req.token_addr.is_contract()
             && req.resource_gate_result == Some(ApiResourceGateResult::ResourceReady)
@@ -1308,7 +1305,10 @@ impl ShadowCollectWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        let required = ResourceBudget::new(snapshot.required_energy, snapshot.required_bandwidth);
+        let required = Self::tron_collect_required_budget(
+            snapshot.required_energy,
+            snapshot.required_bandwidth,
+        );
         let available = Self::effective_resource_after_pending_collects(
             snapshot.available_energy,
             snapshot.available_bandwidth,
@@ -3178,32 +3178,6 @@ impl ShadowCollectWorker {
     ) -> Result<u64, ServiceError> {
         let fee_cycle_completed = req.service_fee_uploaded_at.is_some();
 
-        if Self::is_stale_tron_resource_ready_candidate(req) {
-            info!(
-                trade_no = %req.trade_no,
-                from_addr = %req.from_addr,
-                chain_code = %req.chain_code,
-                resource_gate_result = ?req.resource_gate_result,
-                service_fee_uploaded_at = ?req.service_fee_uploaded_at,
-                tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
-                source = "shadow_worker_v2",
-                "TRON token collect fee check contradicted address-level ResourceReady; reopening resource gate"
-            );
-
-            let rows_affected = ApiCollectRepo::invalidate_resource_ready_for_reeval(
-                &self.ctx.api_transaction_pool()?,
-                &req.trade_no,
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
-
-            if rows_affected > 0 {
-                self.resource_reservations.release(&req.trade_no);
-            }
-
-            return Ok(rows_affected);
-        }
-
         if Self::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
             req,
         ) {
@@ -3725,28 +3699,19 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
-        if Self::should_invalidate_tron_resource_ready_for_fee_shortage(&req, &err) {
+        if Self::should_open_fee_cycle_for_tron_resource_ready(&req, &err) {
             info!(
                 trade_no = %trade_no,
                 from_addr = %req.from_addr,
                 chain_code = %req.chain_code,
                 resource_gate_result = ?req.resource_gate_result,
                 source = "shadow_worker_v2",
-                "Detected stale TRON address-level ResourceReady after fee shortage; reopening resource gate"
+                "Detected TRON Energy-ready bandwidth fee shortage; opening service fee cycle"
             );
 
-            let rows_affected = ApiCollectRepo::invalidate_resource_ready_for_reeval(
-                &self.ctx.api_transaction_pool()?,
-                trade_no,
-            )
-            .await
-            .map_err(|db_err| {
-                error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to invalidate stale TRON ResourceReady for re-evaluation");
-                ServiceError::Database(db_err.into())
-            })?;
+            let rows_affected = self.invalidate_build_attempt_after_fee_check_failure(&req).await?;
 
             if rows_affected > 0 {
-                self.resource_reservations.release(trade_no);
                 self.advancer.try_advance(&req.trade_no).await;
                 return Ok(());
             }
@@ -3754,7 +3719,7 @@ impl ShadowCollectWorker {
             info!(
                 trade_no = %trade_no,
                 source = "shadow_worker_v2",
-                "Stale TRON ResourceReady was not invalidated because newer collect facts exist"
+                "TRON ResourceReady fee shortage affected no rows because newer collect facts exist"
             );
         }
 
@@ -4149,7 +4114,10 @@ impl ShadowCollectWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::{ResourceGateSnapshot, ShadowCollectWorker};
+    use super::{
+        ResourceBudget, ResourceGateSnapshot, ResourceReservationDecision, ShadowCollectWorker,
+        WithdrawResourceReservationManager,
+    };
     use crate::{
         context::api_wallet_backend::ApiWalletBackend,
         error::{service::ServiceError, system::SystemError},
@@ -4633,8 +4601,24 @@ oss:
 
     #[test]
     fn tron_collect_resource_gate_ignores_bandwidth_shortage() {
-        assert!(ShadowCollectWorker::tron_resource_ready(0, 0, 0, 268));
-        assert!(!ShadowCollectWorker::tron_resource_ready(0, 1024, 1, 0));
+        let reservations = WithdrawResourceReservationManager::default();
+        let required = ShadowCollectWorker::tron_collect_required_budget(14_650, 345);
+
+        let bandwidth_only_shortage = reservations.reserve_if_available(
+            "T_ENERGY_READY",
+            "C_ENERGY_READY",
+            required,
+            ResourceBudget::new(73_442, 127),
+        );
+        assert!(matches!(bandwidth_only_shortage, ResourceReservationDecision::Reserved { .. }));
+
+        let energy_shortage = reservations.reserve_if_available(
+            "T_ENERGY_SHORT",
+            "C_ENERGY_SHORT",
+            required,
+            ResourceBudget::new(14_649, 10_000),
+        );
+        assert!(matches!(energy_shortage, ResourceReservationDecision::NeedMore(_)));
     }
 
     #[test]
@@ -5007,6 +4991,66 @@ oss:
             .expect("scan need resource gate");
         assert_eq!(need_resource_gate.len(), 1);
         assert_eq!(need_resource_gate[0].trade_no, trade_no);
+    }
+
+    #[tokio::test]
+    async fn tron_resource_ready_bandwidth_fee_shortage_opens_fee_cycle_without_reopening_gate() {
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            ctx,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                ctx, intent_tx, None,
+            )),
+        );
+        let trade_no = format!("C_energy_ready_fee_{}", uuid::Uuid::new_v4().simple());
+        let resource_estimate = r#"{"energy":14650,"bandwidth":345}"#;
+
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "5",
+            "digest",
+            "tron",
+            Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+            "USDT",
+            &trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        ApiCollectRepo::mark_resource_released_with_estimate(
+            &collect_pool,
+            &trade_no,
+            ApiResourceGateResult::ResourceReady,
+            resource_estimate,
+        )
+        .await
+        .expect("mark resource ready");
+        let released = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+            .await
+            .expect("load released collect");
+
+        let rows = worker
+            .invalidate_build_attempt_after_fee_check_failure(&released)
+            .await
+            .expect("open service fee cycle");
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+            .await
+            .expect("load collect after fee shortage");
+
+        assert_eq!(rows, 1);
+        assert_eq!(persisted.need_service_fee, Some(true));
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(persisted.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
+        assert_eq!(persisted.resource_consume, resource_estimate);
     }
 
     #[tokio::test]
@@ -5517,12 +5561,13 @@ oss:
 
         assert_eq!(effective.energy, 5_350);
         assert_eq!(effective.bandwidth, 600);
-        assert!(!ShadowCollectWorker::tron_resource_ready(
-            effective.energy as i64,
-            effective.bandwidth as i64,
-            14_650,
-            345
-        ));
+        let decision = WithdrawResourceReservationManager::default().reserve_if_available(
+            "T_PENDING_ENERGY",
+            "C_PENDING_ENERGY",
+            ShadowCollectWorker::tron_collect_required_budget(14_650, 345),
+            effective,
+        );
+        assert!(matches!(decision, ResourceReservationDecision::NeedMore(_)));
     }
 
     #[test]
@@ -5546,9 +5591,7 @@ oss:
         );
 
         req.resource_gate_result = Some(ApiResourceGateResult::ResourceReady);
-        assert!(ShadowCollectWorker::should_invalidate_tron_resource_ready_for_fee_shortage(
-            &req, &err
-        ));
+        assert!(ShadowCollectWorker::should_open_fee_cycle_for_tron_resource_ready(&req, &err));
         assert!(
             !ShadowCollectWorker::should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
                 &req,

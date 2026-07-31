@@ -122,6 +122,10 @@ pub(crate) fn recover_dispatch_key(trade_no: &str) -> String {
     format!("recover:{trade_no}")
 }
 
+pub(crate) fn reset_recover_dispatch(key: &str) -> bool {
+    RECOVER_LAST_DISPATCH_TS.remove(key).is_some()
+}
+
 pub(crate) fn resource_recover_dispatch_key(trade_no: &str) -> String {
     format!("recover-resource:{trade_no}")
 }
@@ -205,8 +209,9 @@ mod tests {
         RECOVER_LAST_DISPATCH_TS, SHARED_RESOURCE_GATE_CONCURRENCY,
         allow_broadcast_recover_dispatch, allow_fresh_broadcast_recover_dispatch,
         allow_recover_dispatch, next_recover_cooldown, parse_u64_env, parse_usize_env,
-        recover_dispatch_cooldown, recover_dispatch_key, resource_recover_dispatch_key,
-        shared_resource_gate_concurrency, shared_resource_gate_semaphore,
+        recover_dispatch_cooldown, recover_dispatch_key, reset_recover_dispatch,
+        resource_recover_dispatch_key, shared_resource_gate_concurrency,
+        shared_resource_gate_semaphore,
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use std::{sync::Arc, time::Duration};
@@ -240,6 +245,27 @@ mod tests {
         assert_eq!(recover_dispatch_cooldown(key), Duration::from_secs(120));
 
         RECOVER_LAST_DISPATCH_TS.remove(key);
+    }
+
+    #[test]
+    fn successful_broadcast_resets_pre_broadcast_recover_cooldown() {
+        let key = "withdraw-pre-broadcast-recover";
+        let resource_key = resource_recover_dispatch_key(key);
+        RECOVER_LAST_DISPATCH_TS.remove(key);
+        RECOVER_LAST_DISPATCH_TS.remove(&resource_key);
+
+        assert!(allow_recover_dispatch(key));
+        assert_eq!(recover_dispatch_cooldown(key), Duration::from_secs(60));
+        assert!(allow_recover_dispatch(&resource_key));
+
+        assert!(reset_recover_dispatch(key));
+
+        assert!(allow_fresh_broadcast_recover_dispatch(key));
+        assert_eq!(recover_dispatch_cooldown(key), Duration::from_secs(3));
+        assert!(!allow_recover_dispatch(&resource_key));
+
+        RECOVER_LAST_DISPATCH_TS.remove(key);
+        RECOVER_LAST_DISPATCH_TS.remove(&resource_key);
     }
 
     #[test]

@@ -66,6 +66,29 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: technical RPC failure must never be converted into a business
   decision to bypass platform/local resource delegation.
 
+### Collect Energy-Only Resource Reservation
+
+- Layer: unit; no DB, backend, or chain RPC.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  tron_collect_resource_gate_ignores_bandwidth_shortage
+  collect_resource_ready_budget_subtracts_pending_same_address_orders
+  tron_resource_ready_bandwidth_fee_shortage_opens_fee_cycle_without_reopening_gate
+  ```
+
+- Admission: the collect resource gate reserves only estimated Energy because
+  its delegation task cannot supply Bandwidth.
+- Concurrency: pending and process-local reservations still reduce effective
+  Energy before a new collect is admitted.
+- Fee fallback: if BuildTx later needs TRX for Bandwidth, the released collect
+  enters the service-fee cycle without clearing `ResourceReady` facts or
+  releasing its Energy reservation.
+- Invariant: sufficient effective Energy releases the gate regardless of a
+  Bandwidth shortfall; insufficient effective Energy remains `NeedMore`, and a
+  Bandwidth fee shortage cannot reopen the Energy gate.
+
 ### Collect Fresh Broadcast Recover Admission
 
 - Layer: unit plus existing Recover flow coverage.
