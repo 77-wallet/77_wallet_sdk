@@ -389,6 +389,9 @@ impl LocalResourceReclaimWorker {
                 .await?;
                 Ok(())
             }
+            Err(err) if Self::is_transaction_expired_error(&err) => {
+                self.schedule_local_undelegation_rebuild_retry(&resource_trade_no, &err).await
+            }
             Err(err) => {
                 mark_recovered_resource_delegation_failure(
                     &self.ctx.api_resource_pool()?,
@@ -401,6 +404,10 @@ impl LocalResourceReclaimWorker {
                 Ok(())
             }
         }
+    }
+
+    fn is_transaction_expired_error(err: &ServiceError) -> bool {
+        err.to_string().contains("Transaction expired")
     }
 
     async fn schedule_local_undelegation_rebuild_retry(
@@ -690,6 +697,19 @@ mod tests {
         .await
         .expect("load task");
         assert_eq!(persisted.tx_hash, None);
+    }
+
+    #[test]
+    fn local_undelegation_treats_transaction_expired_as_rebuildable() {
+        let expired = ServiceError::System(SystemError::Internal(
+            "Chain interact error: `rpc error Transaction expired`".to_string(),
+        ));
+        let other = ServiceError::System(SystemError::Internal(
+            "Chain interact error: `broadcasted tx failed`".to_string(),
+        ));
+
+        assert!(LocalResourceReclaimWorker::is_transaction_expired_error(&expired));
+        assert!(!LocalResourceReclaimWorker::is_transaction_expired_error(&other));
     }
 
     #[tokio::test]
