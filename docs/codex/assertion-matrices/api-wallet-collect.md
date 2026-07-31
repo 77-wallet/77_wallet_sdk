@@ -66,6 +66,58 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: technical RPC failure must never be converted into a business
   decision to bypass platform/local resource delegation.
 
+### Collect Fresh Broadcast Recover Admission
+
+- Layer: unit plus existing Recover flow coverage.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/advancer.rs
+  collect_fresh_broadcast_recover_advancer_dispatches_with_fast_admission
+  collect_fresh_broadcast_recover_wakeup_dispatches_without_scanner
+
+  src/infrastructure/api_trans/shadow_rpc_policy.rs
+  collect_fresh_broadcast_recover_policy_uses_fast_then_generic_admission
+  ```
+
+- Fresh path: Advancer and Scanner share the same recent-broadcast admission
+  function, which starts Recover with the 3-second cooldown.
+- Point-to-point retry: an uncertain TRON Recover schedules a delayed
+  `try_advance` using the current shared cooldown, so the 3/8/15-second sequence
+  has an active wakeup instead of depending on the periodic Scanner cadence.
+- Fallback: broadcasts older than 120 seconds retain the generic 60-second
+  admission policy.
+- Invariant: direct and periodic advancement cannot overwrite one another with
+  conflicting cooldown classes; the DB predicate still suppresses a delayed
+  wakeup after the order reaches a final state.
+
+### Collect Local Delegation Fast Path
+
+- Layer: unit plus existing local-delegation component coverage.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/advancer.rs
+  collect_local_delegation_fast_path_dispatches_execute_intent
+
+  src/infrastructure/api_trans/resource_delegation.rs
+  delegation_capacity_insufficient_cache_short_circuits_zero_snapshot
+  delegation_capacity_insufficient_cache_expires
+  delegation_capacity_insufficient_cache_coalesces_same_owner_resource
+  ```
+
+- DB facts: the local delegation dependency is persisted before the direct
+  execution intent is emitted.
+- Fast path: `ExecuteLocalResourceDelegation` enters the chain dispatcher
+  immediately after persistence; periodic scanning remains the restart and
+  dispatch-failure fallback.
+- Capacity admission: tasks for the same owner/resource serialize the live
+  capacity observation and may reuse an insufficient snapshot for two seconds,
+  preventing a burst from repeating the same zero-capacity chain RPC.
+- Invariant: the local delegation worker still owns capacity checks, terminal
+  fact persistence, and collect-gate release; sufficient capacity is never
+  admitted from cache, and an insufficient snapshot expires promptly.
+
 ### Collect Order Notification Retry
 
 - Layer: integration.
@@ -115,6 +167,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   `resource_gate_result = PlatformDelegateSuccess`.
 - Scanner: released collect becomes eligible for `BuildTx`.
 - Invariant: only a successful collect-origin delegation releases the gate.
+
+### Collect Resource Gate Monotonic Release
+
+- Layer: database.
+- Entrypoint:
+
+  ```text
+  wallet-database/src/dao/api_collect.rs
+  late_resource_block_cannot_overwrite_released_collect_gate
+  ```
+
+- DB facts: the gate is released before a stale platform-apply response tries
+  to mark the collect blocked again.
+- Persistence: the stale blocked write affects zero rows and preserves the
+  release timestamp and `PlatformDelegateSuccess` result.
+- Invariant: a released resource gate is terminal and cannot move backward to
+  blocked.
 
 ### Collect Platform Resource Result ACK After Chain Success
 

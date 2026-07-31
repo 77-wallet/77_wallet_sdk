@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::OnceLock, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+    time::{Duration, Instant},
+};
 
 use crate::{
     context::Context,
@@ -38,6 +42,7 @@ use wallet_utils::RetryableError as _;
 
 const RESOURCE_BROADCAST_UNCERTAIN_TIMEOUT_SECS: i64 = 300;
 const RESOURCE_BROADCAST_UNCERTAIN_AUTO_REBROADCAST_LIMIT: i64 = 1;
+const DELEGATION_CAPACITY_INSUFFICIENT_CACHE_TTL: Duration = Duration::from_secs(2);
 
 pub(crate) fn local_delegate_execution_allowed(delegation: &ApiResourceDelegationEntity) -> bool {
     delegation.source == ApiResourceDelegationSource::Local
@@ -50,15 +55,51 @@ pub(crate) fn local_delegate_execution_allowed(delegation: &ApiResourceDelegatio
 
 type DelegationCapacityReservations = HashMap<String, i64>;
 
+#[derive(Clone, Copy)]
+struct DelegationCapacitySnapshot {
+    available_native_amount: i64,
+    observed_at: Instant,
+}
+
+type DelegationCapacitySnapshots = HashMap<String, DelegationCapacitySnapshot>;
+type DelegationCapacityLocks = HashMap<String, Arc<Mutex<()>>>;
+
 static DELEGATION_CAPACITY_RESERVATIONS: OnceLock<Mutex<DelegationCapacityReservations>> =
     OnceLock::new();
+static DELEGATION_CAPACITY_SNAPSHOTS: OnceLock<Mutex<DelegationCapacitySnapshots>> =
+    OnceLock::new();
+static DELEGATION_CAPACITY_LOCKS: OnceLock<Mutex<DelegationCapacityLocks>> = OnceLock::new();
 
 fn delegation_capacity_reservations() -> &'static Mutex<DelegationCapacityReservations> {
     DELEGATION_CAPACITY_RESERVATIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn delegation_capacity_snapshots() -> &'static Mutex<DelegationCapacitySnapshots> {
+    DELEGATION_CAPACITY_SNAPSHOTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn delegation_capacity_locks() -> &'static Mutex<DelegationCapacityLocks> {
+    DELEGATION_CAPACITY_LOCKS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+async fn delegation_capacity_lock(key: &str) -> Arc<Mutex<()>> {
+    let mut locks = delegation_capacity_locks().lock().await;
+    locks.entry(key.to_string()).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
+}
+
 fn delegation_capacity_key(owner_address: &str, resource_type: ApiResourceType) -> String {
     format!("{}:{}", owner_address, resource_type.as_i64())
+}
+
+fn cached_delegation_capacity_is_insufficient(
+    snapshot: DelegationCapacitySnapshot,
+    reserved_native_amount: i64,
+    required_native_amount: i64,
+    now: Instant,
+) -> bool {
+    now.duration_since(snapshot.observed_at) <= DELEGATION_CAPACITY_INSUFFICIENT_CACHE_TTL
+        && snapshot.available_native_amount.saturating_sub(reserved_native_amount)
+            < required_native_amount
 }
 
 fn reserve_delegation_capacity(
@@ -136,6 +177,38 @@ async fn reserve_delegate_capacity_if_needed(
         ApiResourceType::Energy => TronStakeResourceType::ENERGY,
     };
     let key = delegation_capacity_key(&delegation.owner_address, delegation.resource_type);
+    let capacity_lock = delegation_capacity_lock(&key).await;
+    let _capacity_guard = capacity_lock.lock().await;
+
+    let cached_snapshot = delegation_capacity_snapshots().lock().await.get(&key).copied();
+    let reserved_native_amount =
+        delegation_capacity_reservations().lock().await.get(&key).copied().unwrap_or_default();
+    if cached_snapshot.is_some_and(|snapshot| {
+        cached_delegation_capacity_is_insufficient(
+            snapshot,
+            reserved_native_amount,
+            required_native_amount,
+            Instant::now(),
+        )
+    }) {
+        let available_native_amount =
+            cached_snapshot.map(|snapshot| snapshot.available_native_amount).unwrap_or_default();
+        tracing::warn!(
+            observability_event = "resource_delegation_capacity_insufficient_cached",
+            resource_trade_no = %delegation.resource_trade_no,
+            source = ?delegation.source,
+            owner_address = %delegation.owner_address,
+            required_native_amount,
+            available_native_amount,
+            reserved_native_amount,
+            "Resource delegation skipped using recent insufficient capacity snapshot"
+        );
+        return Err(ServiceError::Parameter(format!(
+            "resource delegation capacity insufficient: required={}, available={}, reserved={}",
+            required_native_amount, available_native_amount, reserved_native_amount
+        )));
+    }
+
     let capacity_check_start = Instant::now();
     let chain = ChainAdapterFactory::get_tron_adapter(ctx).await?;
     let available_native_amount = chain
@@ -152,6 +225,10 @@ async fn reserve_delegate_capacity_if_needed(
         available_native_amount,
         required_native_amount,
     ) {
+        delegation_capacity_snapshots().lock().await.insert(
+            key.clone(),
+            DelegationCapacitySnapshot { available_native_amount, observed_at: Instant::now() },
+        );
         tracing::warn!(
             observability_event = "resource_delegation_capacity_insufficient",
             resource_trade_no = %delegation.resource_trade_no,
@@ -168,6 +245,8 @@ async fn reserve_delegate_capacity_if_needed(
             required_native_amount, available_native_amount, reserved_native_amount
         )));
     }
+
+    delegation_capacity_snapshots().lock().await.remove(&key);
 
     tracing::info!(
         observability_event = "resource_delegation_capacity_reserved",
@@ -497,7 +576,9 @@ async fn sign_tron_resource_delegation(
 #[cfg(test)]
 mod tests {
     use super::{
-        DelegationCapacityReservations, local_delegate_execution_allowed,
+        DELEGATION_CAPACITY_INSUFFICIENT_CACHE_TTL, DelegationCapacityReservations,
+        DelegationCapacitySnapshot, cached_delegation_capacity_is_insufficient,
+        delegation_capacity_lock, local_delegate_execution_allowed,
         mark_recovered_resource_delegation_failure, release_delegation_capacity,
         reserve_delegation_capacity, resolve_resource_delegation_broadcast_hash,
         resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
@@ -529,6 +610,35 @@ mod tests {
 
         assert_eq!(reservations.get(key), None);
         assert!(reserve_delegation_capacity(&mut reservations, key, 199, 199));
+    }
+
+    #[test]
+    fn delegation_capacity_insufficient_cache_short_circuits_zero_snapshot() {
+        let now = std::time::Instant::now();
+        let snapshot = DelegationCapacitySnapshot { available_native_amount: 0, observed_at: now };
+
+        assert!(cached_delegation_capacity_is_insufficient(snapshot, 0, 199, now));
+    }
+
+    #[test]
+    fn delegation_capacity_insufficient_cache_expires() {
+        let now = std::time::Instant::now();
+        let snapshot = DelegationCapacitySnapshot {
+            available_native_amount: 0,
+            observed_at: now
+                - DELEGATION_CAPACITY_INSUFFICIENT_CACHE_TTL
+                - std::time::Duration::from_millis(1),
+        };
+
+        assert!(!cached_delegation_capacity_is_insufficient(snapshot, 0, 199, now));
+    }
+
+    #[tokio::test]
+    async fn delegation_capacity_insufficient_cache_coalesces_same_owner_resource() {
+        let first = delegation_capacity_lock("owner:energy").await;
+        let second = delegation_capacity_lock("owner:energy").await;
+
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
     }
     use crate::error::service::ServiceError;
     use tempfile::tempdir;

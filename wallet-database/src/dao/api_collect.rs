@@ -365,6 +365,7 @@ impl ApiCollectDao {
                 resource_dependency_type = ?4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = ?1
+              AND resource_gate_released_at IS NULL
         "#;
 
         let res = sqlx::query(sql)
@@ -2556,7 +2557,9 @@ mod tests {
         SqliteContext,
         entities::{
             api_collect::ApiCollectStatus,
-            api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
+            api_resource_gate::{
+                ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+            },
         },
         repositories::api_wallet::collect::ApiCollectRepo,
     };
@@ -2568,6 +2571,75 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{prefix}_{pid}_{now}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir.to_string_lossy().to_string()
+    }
+
+    #[tokio::test]
+    async fn late_resource_block_cannot_overwrite_released_collect_gate() {
+        let dir = make_temp_dir("wallet_db_api_collect_late_resource_block");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+        let trade_no = "C_LATE_RESOURCE_BLOCK";
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "5",
+            "digest",
+            "tron",
+            None,
+            "USDT",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            ApiCollectDao::mark_resource_blocked(
+                pool.as_ref(),
+                trade_no,
+                ApiResourceBlockReason::NeedPlatformDelegate,
+                None,
+                Some(ApiResourceDependencyType::PlatformDelegate),
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiCollectDao::mark_resource_released(
+                pool.as_ref(),
+                trade_no,
+                ApiResourceGateResult::PlatformDelegateSuccess,
+            )
+            .await
+            .unwrap(),
+            1
+        );
+
+        let late_rows = ApiCollectDao::mark_resource_blocked(
+            pool.as_ref(),
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            None,
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .unwrap();
+        let persisted =
+            ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), trade_no).await.unwrap();
+
+        assert_eq!(late_rows, 0);
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(
+            persisted.resource_gate_result,
+            Some(ApiResourceGateResult::PlatformDelegateSuccess)
+        );
+        assert!(persisted.resource_block_reason.is_none());
     }
 
     #[tokio::test]

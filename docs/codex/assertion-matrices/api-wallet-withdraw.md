@@ -89,6 +89,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   limiter/breaker, but confirmation retries cannot delay the first resource
   backfill dispatch.
 
+### Fresh Broadcast Confirmation Admission
+
+- Layer: unit plus existing Recover flow coverage.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/scanner.rs
+  fresh_broadcast_recover_uses_fast_admission_then_old_broadcast_uses_generic_admission
+  ```
+
+- Fresh path: an unconfirmed withdrawal broadcast no more than 120 seconds ago
+  starts with the existing 3-second Recover admission policy.
+- Fallback: older, future-dated, and already-confirmed records retain the
+  generic Recover admission policy.
+- Invariant: both paths still pass through scanner fact evaluation, dispatcher
+  deduplication, the chain RPC guard, and worker terminal-fact idempotency.
+
 ### Withdraw Actual Resource Display
 
 - Layer: unit.

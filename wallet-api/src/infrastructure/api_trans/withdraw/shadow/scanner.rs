@@ -469,6 +469,14 @@ fn withdraw_recover_dispatch_key(withdraw: &ApiWithdrawEntity) -> String {
     }
 }
 
+fn allow_withdraw_recover_dispatch(withdraw: &ApiWithdrawEntity, recover_key: &str) -> bool {
+    if withdraw.transaction_time.is_none() {
+        shadow_rpc_policy::allow_broadcast_recover_dispatch(recover_key, withdraw.last_broadcast_at)
+    } else {
+        shadow_rpc_policy::allow_recover_dispatch(recover_key)
+    }
+}
+
 /// Shadow Scanner 配置
 #[derive(Debug, Clone)]
 pub struct ScannerConfig {
@@ -1010,7 +1018,7 @@ impl ShadowScanner {
                 continue;
             }
             let recover_key = withdraw_recover_dispatch_key(&record);
-            if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
+            if !allow_withdraw_recover_dispatch(&record, &recover_key) {
                 trace!(
                     trade_no = %record.trade_no,
                     cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
@@ -1331,7 +1339,7 @@ impl ShadowScanner {
                         return Ok(());
                     }
                     let recover_key = withdraw_recover_dispatch_key(&withdraw);
-                    if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
+                    if !allow_withdraw_recover_dispatch(&withdraw, &recover_key) {
                         trace!(
                             trade_no = %trade_no,
                             cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
@@ -1515,6 +1523,50 @@ mod tests {
 
         withdraw.transaction_time = None;
         assert_eq!(withdraw_recover_dispatch_key(&withdraw), "recover:W_RESOURCE_RECOVERY_KEY");
+    }
+
+    #[test]
+    fn fresh_broadcast_recover_uses_fast_admission_then_old_broadcast_uses_generic_admission() {
+        let mut fresh = base_withdraw("W_FRESH_BROADCAST_RECOVER");
+        fresh.last_broadcast_at = Some(Utc::now());
+        let fresh_key = withdraw_recover_dispatch_key(&fresh);
+
+        assert!(allow_withdraw_recover_dispatch(&fresh, &fresh_key));
+        assert_eq!(
+            shadow_rpc_policy::recover_dispatch_cooldown(&fresh_key),
+            std::time::Duration::from_secs(3)
+        );
+
+        let mut old = base_withdraw("W_OLD_BROADCAST_RECOVER");
+        old.last_broadcast_at = Some(Utc::now() - chrono::Duration::seconds(121));
+        let old_key = withdraw_recover_dispatch_key(&old);
+
+        assert!(allow_withdraw_recover_dispatch(&old, &old_key));
+        assert_eq!(
+            shadow_rpc_policy::recover_dispatch_cooldown(&old_key),
+            std::time::Duration::from_secs(60)
+        );
+
+        let mut confirmed = base_withdraw("W_CONFIRMED_BROADCAST_RECOVER");
+        confirmed.last_broadcast_at = Some(Utc::now());
+        confirmed.transaction_time = Some(Utc::now());
+        let confirmed_key = withdraw_recover_dispatch_key(&confirmed);
+
+        assert!(allow_withdraw_recover_dispatch(&confirmed, &confirmed_key));
+        assert_eq!(
+            shadow_rpc_policy::recover_dispatch_cooldown(&confirmed_key),
+            std::time::Duration::from_secs(60)
+        );
+
+        let mut future = base_withdraw("W_FUTURE_BROADCAST_RECOVER");
+        future.last_broadcast_at = Some(Utc::now() + chrono::Duration::seconds(1));
+        let future_key = withdraw_recover_dispatch_key(&future);
+
+        assert!(allow_withdraw_recover_dispatch(&future, &future_key));
+        assert_eq!(
+            shadow_rpc_policy::recover_dispatch_cooldown(&future_key),
+            std::time::Duration::from_secs(60)
+        );
     }
 
     #[tokio::test]

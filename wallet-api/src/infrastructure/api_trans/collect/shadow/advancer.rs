@@ -174,6 +174,41 @@ impl ShadowAdvancer {
         );
     }
 
+    pub fn trigger_local_delegation_fast_path(&self, resource_trade_no: &str) {
+        let intent = CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(
+            resource_trade_no.to_string(),
+        ));
+        let failed_trade_no = resource_trade_no.to_string();
+        dispatch_fast_path(
+            FastPathFlow::Collect,
+            FastPathReason::LocalDelegationPersisted,
+            FastPathTarget::ExecuteLocalResourceDelegation,
+            resource_trade_no,
+            || self.intent_tx.try_send(intent),
+            || self.emit_intent_dispatch_failed(failed_trade_no),
+        );
+    }
+
+    pub fn schedule_recover_retry(&self, trade_no: &str) {
+        let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
+        let delay = shadow_rpc_policy::recover_dispatch_cooldown(&recover_key);
+        self.schedule_recover_retry_after(trade_no, delay);
+    }
+
+    fn schedule_recover_retry_after(&self, trade_no: &str, delay: Duration) {
+        let advancer = self.clone();
+        let trade_no = trade_no.to_string();
+        tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            info!(
+                trade_no = %trade_no,
+                delay_ms = delay.as_millis(),
+                "Waking collect Recover point-to-point after cooldown"
+            );
+            advancer.try_advance(&trade_no).await;
+        });
+    }
+
     pub fn trigger_fast_path_after_tx_fee_res_ack(&self, trade_no: &str, raw_tx_present: bool) {
         let target =
             if raw_tx_present { FastPathTarget::BroadcastTx } else { FastPathTarget::BuildTx };
@@ -485,7 +520,10 @@ impl ShadowAdvancer {
                             return Ok(());
                         }
                         let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
-                        if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
+                        if !shadow_rpc_policy::allow_broadcast_recover_dispatch(
+                            &recover_key,
+                            collect.last_broadcast_at,
+                        ) {
                             debug!(
                                 trade_no = %trade_no,
                                 cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
@@ -717,6 +755,136 @@ mod tests {
                 if trade_no == "C_resource_released"
         ));
         assert!(intent_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn collect_local_delegation_fast_path_dispatches_execute_intent() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, None);
+
+        advancer.trigger_local_delegation_fast_path("rsc_local_delegate_C_fast");
+
+        let intent = intent_rx.try_recv().expect("local delegation intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(ref trade_no))
+                if trade_no == "rsc_local_delegate_C_fast"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn collect_fresh_broadcast_recover_advancer_dispatches_with_fast_admission()
+    -> anyhow::Result<()> {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let pool = ctx.api_transaction_pool()?;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, None);
+        let trade_no = format!("C_fresh_recover_{}", Uuid::new_v4().simple());
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid_fresh_recover",
+            "collect",
+            "from_addr",
+            "to_addr",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            &trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE api_collect
+            SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                raw_tx = '{}',
+                tx_hash = '0xfresh',
+                last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+            "#,
+        )
+        .bind(&trade_no)
+        .execute(pool.as_ref())
+        .await?;
+
+        advancer.try_advance(&trade_no).await;
+
+        let intent = intent_rx.try_recv().expect("fresh Recover intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::RecoverTx(ref dispatched_trade_no))
+                if dispatched_trade_no == &trade_no
+        ));
+        let recover_key = shadow_rpc_policy::recover_dispatch_key(&trade_no);
+        assert_eq!(
+            shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
+            Duration::from_secs(3)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn collect_fresh_broadcast_recover_wakeup_dispatches_without_scanner()
+    -> anyhow::Result<()> {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let pool = ctx.api_transaction_pool()?;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, None);
+        let trade_no = format!("C_fresh_recover_wakeup_{}", Uuid::new_v4().simple());
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid_fresh_recover_wakeup",
+            "collect",
+            "from_addr",
+            "to_addr",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            &trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE api_collect
+            SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                raw_tx = '{}',
+                tx_hash = '0xfresh-wakeup',
+                last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+            "#,
+        )
+        .bind(&trade_no)
+        .execute(pool.as_ref())
+        .await?;
+
+        advancer.schedule_recover_retry_after(&trade_no, Duration::from_millis(1));
+
+        let intent = tokio::time::timeout(Duration::from_secs(1), intent_rx.recv())
+            .await?
+            .expect("delayed wakeup should dispatch Recover");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::RecoverTx(ref dispatched_trade_no))
+                if dispatched_trade_no == &trade_no
+        ));
+
+        Ok(())
     }
 
     #[tokio::test]

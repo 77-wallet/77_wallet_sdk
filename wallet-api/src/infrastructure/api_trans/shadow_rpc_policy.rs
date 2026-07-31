@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::{
@@ -11,6 +12,7 @@ use tokio::sync::Semaphore;
 
 const DEFAULT_RECOVER_COOLDOWN: Duration = Duration::from_secs(60);
 const FRESH_BROADCAST_RECOVER_COOLDOWN: Duration = Duration::from_secs(3);
+const FRESH_BROADCAST_RECOVER_WINDOW_SECS: i64 = 120;
 const MAX_RECOVER_COOLDOWN: Duration = Duration::from_secs(300);
 const BREAKER_WARN_COOLDOWN: Duration = Duration::from_secs(10);
 const MAX_RECOVER_COOLDOWN_MAP_SIZE: usize = 100_000;
@@ -74,6 +76,22 @@ pub(crate) fn allow_recover_dispatch(key: &str) -> bool {
 
 pub(crate) fn allow_fresh_broadcast_recover_dispatch(key: &str) -> bool {
     allow_recover_dispatch_with_initial_cooldown(key, FRESH_BROADCAST_RECOVER_COOLDOWN)
+}
+
+pub(crate) fn allow_broadcast_recover_dispatch(
+    key: &str,
+    last_broadcast_at: Option<DateTime<Utc>>,
+) -> bool {
+    let fresh_broadcast = last_broadcast_at.is_some_and(|broadcast_at| {
+        let age = Utc::now().signed_duration_since(broadcast_at);
+        age >= chrono::Duration::zero() && age.num_seconds() <= FRESH_BROADCAST_RECOVER_WINDOW_SECS
+    });
+
+    if fresh_broadcast {
+        allow_fresh_broadcast_recover_dispatch(key)
+    } else {
+        allow_recover_dispatch(key)
+    }
 }
 
 fn allow_recover_dispatch_with_initial_cooldown(key: &str, initial: Duration) -> bool {
@@ -185,11 +203,12 @@ pub(crate) fn record_chain_intent_dispatch(intent_kind: &str) {
 mod tests {
     use super::{
         RECOVER_LAST_DISPATCH_TS, SHARED_RESOURCE_GATE_CONCURRENCY,
-        allow_fresh_broadcast_recover_dispatch, allow_recover_dispatch, next_recover_cooldown,
-        parse_u64_env, parse_usize_env, recover_dispatch_cooldown, recover_dispatch_key,
-        resource_recover_dispatch_key, shared_resource_gate_concurrency,
-        shared_resource_gate_semaphore,
+        allow_broadcast_recover_dispatch, allow_fresh_broadcast_recover_dispatch,
+        allow_recover_dispatch, next_recover_cooldown, parse_u64_env, parse_usize_env,
+        recover_dispatch_cooldown, recover_dispatch_key, resource_recover_dispatch_key,
+        shared_resource_gate_concurrency, shared_resource_gate_semaphore,
     };
+    use chrono::{Duration as ChronoDuration, Utc};
     use std::{sync::Arc, time::Duration};
 
     #[test]
@@ -221,6 +240,25 @@ mod tests {
         assert_eq!(recover_dispatch_cooldown(key), Duration::from_secs(120));
 
         RECOVER_LAST_DISPATCH_TS.remove(key);
+    }
+
+    #[test]
+    fn collect_fresh_broadcast_recover_policy_uses_fast_then_generic_admission() {
+        let fresh_key = "collect-fresh-broadcast-recover";
+        RECOVER_LAST_DISPATCH_TS.remove(fresh_key);
+        assert!(allow_broadcast_recover_dispatch(fresh_key, Some(Utc::now())));
+        assert_eq!(recover_dispatch_cooldown(fresh_key), Duration::from_secs(3));
+
+        let old_key = "collect-old-broadcast-recover";
+        RECOVER_LAST_DISPATCH_TS.remove(old_key);
+        assert!(allow_broadcast_recover_dispatch(
+            old_key,
+            Some(Utc::now() - ChronoDuration::seconds(121))
+        ));
+        assert_eq!(recover_dispatch_cooldown(old_key), Duration::from_secs(60));
+
+        RECOVER_LAST_DISPATCH_TS.remove(fresh_key);
+        RECOVER_LAST_DISPATCH_TS.remove(old_key);
     }
 
     #[test]

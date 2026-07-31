@@ -22,11 +22,12 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 /// Configuration (env):
 /// - `CHAIN_RPC_GUARD_HOSTS`: comma-separated hosts to guard (default: Nile public HTTP hosts)
 /// - `CHAIN_RPC_GUARD_MAX_CONCURRENCY`: guarded-endpoint global concurrency (default: 6)
+/// - `CHAIN_RPC_GUARD_ENDPOINT_MAX_CONCURRENCY`: per-endpoint concurrency
+///   (default: global concurrency, never exceeds the global limit)
 /// - `CHAIN_RPC_GUARD_ACQUIRE_TIMEOUT_MS`: max wait for a guarded permit (default: 30000)
 /// - `CHAIN_RPC_GUARD_RPC_TIMEOUT_MS`: max guarded RPC await time (default: 60000)
 const DEFAULT_GUARDED_HOSTS: &str = "api.nileex.io,nile.trongrid.io";
 const DEFAULT_MAX_CONCURRENCY: usize = 6;
-const DEFAULT_ENDPOINT_MAX_CONCURRENCY: usize = 3;
 const DEFAULT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_RPC_TIMEOUT: Duration = Duration::from_secs(60);
 const CHAIN_HOST_CACHE_TTL: Duration = Duration::from_secs(60);
@@ -51,6 +52,20 @@ fn max_concurrency() -> usize {
         .and_then(|v| v.trim().parse::<usize>().ok())
         .filter(|v| *v > 0)
         .unwrap_or(DEFAULT_MAX_CONCURRENCY)
+}
+
+fn endpoint_max_concurrency_from(raw: Option<&str>, global_max: usize) -> usize {
+    raw.and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(global_max)
+        .min(global_max)
+}
+
+fn endpoint_max_concurrency() -> usize {
+    endpoint_max_concurrency_from(
+        std::env::var("CHAIN_RPC_GUARD_ENDPOINT_MAX_CONCURRENCY").ok().as_deref(),
+        max_concurrency(),
+    )
 }
 
 fn acquire_timeout() -> Duration {
@@ -105,7 +120,7 @@ pub fn shared_chain_rpc_semaphore() -> Arc<Semaphore> {
 fn endpoint_semaphore(endpoint: &GuardedRpcEndpoint) -> Arc<Semaphore> {
     CHAIN_RPC_ENDPOINT_SEMS
         .entry(endpoint.key())
-        .or_insert_with(|| Arc::new(Semaphore::new(DEFAULT_ENDPOINT_MAX_CONCURRENCY)))
+        .or_insert_with(|| Arc::new(Semaphore::new(endpoint_max_concurrency())))
         .clone()
 }
 
@@ -1174,7 +1189,7 @@ mod tests {
     use super::{
         ChainRpcBreakerOpenDetail, ChainRpcErrorContext, ChainRpcGuardAcquire, GuardedRpcEndpoint,
         RpcCircuitBreaker, RpcCircuitBreakerAdmission, acquire_guarded_host_permit,
-        chain_rpc_error_code, classify_chain_rpc_error_message,
+        chain_rpc_error_code, classify_chain_rpc_error_message, endpoint_max_concurrency_from,
         guarded_chain_rpc_host_from_message, is_chain_rpc_html_error_page,
         is_empty_chain_rpc_response_message, is_service_unavailable_error,
         is_transient_chain_rpc_error_message, run_with_rpc_timeout_duration,
@@ -1184,6 +1199,15 @@ mod tests {
         time::Duration,
     };
     use tokio::sync::Semaphore;
+
+    #[test]
+    fn endpoint_max_concurrency_defaults_to_global_and_never_exceeds_it() {
+        assert_eq!(endpoint_max_concurrency_from(None, 6), 6);
+        assert_eq!(endpoint_max_concurrency_from(Some("4"), 6), 4);
+        assert_eq!(endpoint_max_concurrency_from(Some("8"), 6), 6);
+        assert_eq!(endpoint_max_concurrency_from(Some("0"), 6), 6);
+        assert_eq!(endpoint_max_concurrency_from(Some("invalid"), 6), 6);
+    }
 
     #[test]
     fn transient_chain_rpc_error_message_detects_503_and_html_payloads() {

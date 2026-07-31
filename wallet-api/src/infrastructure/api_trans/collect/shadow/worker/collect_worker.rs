@@ -1697,6 +1697,7 @@ impl ShadowCollectWorker {
             source = "shadow_worker_v2",
             "TRON collect resource gate switched to local delegation fallback"
         );
+        self.advancer.trigger_local_delegation_fast_path(&resource_trade_no);
         Ok(())
     }
 
@@ -2044,6 +2045,9 @@ impl ShadowCollectWorker {
                 }
 
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recover result is uncertain");
+                if shared_mechanism::is_tron_chain(&req.chain_code) {
+                    self.advancer.schedule_recover_retry(trade_no);
+                }
                 if !shared_mechanism::tracks_broadcast_uncertain_state(&req.chain_code) {
                     // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
                     // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
@@ -5007,29 +5011,22 @@ oss:
 
     #[tokio::test]
     async fn local_delegation_block_commit_is_idempotent() {
-        let dir = tempdir().expect("tempdir");
-        let dir_path = dir.path().to_string_lossy().to_string();
-
-        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
-            .await
-            .expect("init api_transaction.db");
-        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
-            .await
-            .expect("init api_resource.db");
-        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let resource_pool = ctx.api_resource_pool().expect("resource pool");
+        let (intent_tx, mut intent_rx) = mpsc::channel(4);
         let worker = ShadowCollectWorker::new(
-            test_ctx().await,
+            ctx,
             Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                test_ctx().await,
+                ctx,
                 intent_tx.clone(),
                 None,
             )),
         );
 
-        let trade_no = "C_local_block_once";
+        let trade_no = format!("C_local_block_once_{}", uuid::Uuid::new_v4().simple());
+        let resource_trade_no = format!("rsc_local_delegate_{trade_no}");
         ApiCollectRepo::upsert_api_collect(
             &collect_pool,
             "uid",
@@ -5041,32 +5038,32 @@ oss:
             "tron",
             None,
             "TRX",
-            trade_no,
+            &trade_no,
             2,
             ApiCollectStatus::Init,
             1,
         )
         .await
         .expect("insert collect");
-        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
             .await
             .expect("load collect");
 
         worker
-            .commit_local_delegation_block(trade_no, &req, "withdraw_owner", 100, 20, 10.0)
+            .commit_local_delegation_block(&trade_no, &req, "withdraw_owner", 100, 20, 10.0)
             .await
             .expect("first local block commit");
         worker
-            .commit_local_delegation_block(trade_no, &req, "withdraw_owner", 100, 20, 10.0)
+            .commit_local_delegation_block(&trade_no, &req, "withdraw_owner", 100, 20, 10.0)
             .await
             .expect("second local block commit");
 
-        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
             .await
             .expect("load collect");
         assert_eq!(
             persisted.resource_dependency_trade_no.as_deref(),
-            Some("rsc_local_delegate_C_local_block_once")
+            Some(resource_trade_no.as_str())
         );
         assert_eq!(
             persisted.resource_dependency_type,
@@ -5077,18 +5074,23 @@ oss:
             Some(ApiResourceBlockReason::NeedLocalDelegate)
         );
 
-        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &resource_pool,
-            "rsc_local_delegate_C_local_block_once",
-        )
-        .await
-        .expect("load delegation");
+        let delegation =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, &resource_trade_no)
+                .await
+                .expect("load delegation");
         assert_eq!(delegation.source, ApiResourceDelegationSource::Local);
-        assert_eq!(delegation.origin_trade_no.as_deref(), Some(trade_no));
+        assert_eq!(delegation.origin_trade_no.as_deref(), Some(trade_no.as_str()));
         assert_eq!(delegation.owner_address, "withdraw_owner");
         assert_eq!(delegation.receiver_address, "from");
-        assert_eq!(delegation.native_amount, "8");
-        assert_eq!(delegation.amount, "80");
+        assert_eq!(delegation.native_amount, "10");
+
+        let intent = intent_rx.try_recv().expect("local delegation fast path should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(ref dispatched))
+                if dispatched == &resource_trade_no
+        ));
+        assert_eq!(delegation.amount, "100");
     }
 
     #[tokio::test]
