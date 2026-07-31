@@ -484,7 +484,7 @@ pub struct ScannerConfig {
 impl Default for ScannerConfig {
     fn default() -> Self {
         let scan_interval_secs =
-            shadow_rpc_policy::read_u64_env("WITHDRAW_SHADOW_SCAN_INTERVAL_SECS", 10, 10, 120);
+            shadow_rpc_policy::read_u64_env("WITHDRAW_SHADOW_SCAN_INTERVAL_SECS", 5, 3, 120);
         let max_items_per_scan =
             shadow_rpc_policy::read_usize_env("WITHDRAW_SHADOW_MAX_ITEMS_PER_SCAN", 80, 20, 200);
         let max_fee_estimate_per_scan = shadow_rpc_policy::read_usize_env(
@@ -495,7 +495,7 @@ impl Default for ScannerConfig {
         );
         let max_resource_gate_per_scan = shadow_rpc_policy::read_usize_env(
             "WITHDRAW_SHADOW_MAX_RESOURCE_GATE_PER_SCAN",
-            20,
+            50,
             1,
             50,
         );

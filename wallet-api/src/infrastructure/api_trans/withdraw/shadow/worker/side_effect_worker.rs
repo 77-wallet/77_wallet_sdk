@@ -448,13 +448,22 @@ impl SideEffectWorker {
 
         if ack_rows > 0 {
             if let Some((origin_trade_no, release_result)) = release.as_ref() {
-                ApiWithdrawRepo::mark_resource_released(
+                let release_rows = ApiWithdrawRepo::mark_resource_released(
                     &self.ctx.api_transaction_pool()?,
                     origin_trade_no,
                     *release_result,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
+                info!(
+                    resource_trade_no = %resource_task.resource_trade_no,
+                    origin_trade_no = %origin_trade_no,
+                    release_result = ?release_result,
+                    ack_rows,
+                    release_rows,
+                    source = "side_effect_worker",
+                    "Withdraw resource gate projected from resource result ACK"
+                );
             }
         }
 
@@ -465,6 +474,12 @@ impl SideEffectWorker {
             );
         } else {
             if let Some((origin_trade_no, _)) = release {
+                info!(
+                    resource_trade_no = %resource_task.resource_trade_no,
+                    origin_trade_no = %origin_trade_no,
+                    source = "side_effect_worker",
+                    "Triggering withdraw fast path after resource gate projection"
+                );
                 self.scanner.try_advance(&origin_trade_no).await;
             }
         }
@@ -551,13 +566,21 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        ApiWithdrawRepo::mark_resource_released(
+        let release_rows = ApiWithdrawRepo::mark_resource_released(
             &self.ctx.api_transaction_pool()?,
             origin_trade_no,
             release_result,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            resource_trade_no = %resource_task.resource_trade_no,
+            origin_trade_no = %origin_trade_no,
+            release_result = ?release_result,
+            release_rows,
+            source = "side_effect_worker",
+            "Withdraw resource gate projected from resource task outcome"
+        );
         self.scanner.try_advance(origin_trade_no).await;
         Ok(())
     }

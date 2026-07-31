@@ -147,7 +147,12 @@ impl ApiWithdrawDomain {
         // ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
         //     .await?;
 
-        ApiWithdrawRepo::set_audit_passed(&pool, trade_no).await?;
+        let audit_rows = ApiWithdrawRepo::set_audit_passed(&pool, trade_no).await?;
+        tracing::info!(
+            trade_no = %trade_no,
+            audit_rows,
+            "withdraw audit pass fact persisted"
+        );
 
         // 立即触发一次 Shadow 推进（快速通道）
         if let Some(handles) = ctx.get_global_handles().await.upgrade() {
@@ -157,9 +162,25 @@ impl ApiWithdrawDomain {
                 if let Err(e) = shadow_system.trigger_withdraw(trade_no).await {
                     tracing::warn!(trade_no=%trade_no, "触发 Shadow 推进失败，但不影响流程: {:?}", e);
                 } else {
-                    tracing::info!(trade_no=%trade_no, "成功触发 Shadow 快速通道推进");
+                    tracing::info!(
+                        trade_no=%trade_no,
+                        audit_rows,
+                        "withdraw audit pass triggered Shadow fast path"
+                    );
                 }
+            } else {
+                tracing::warn!(
+                    trade_no = %trade_no,
+                    audit_rows,
+                    "withdraw audit pass fast path skipped: shadow system unavailable"
+                );
             }
+        } else {
+            tracing::warn!(
+                trade_no = %trade_no,
+                audit_rows,
+                "withdraw audit pass fast path skipped: global handles unavailable"
+            );
         }
 
         Ok(())
