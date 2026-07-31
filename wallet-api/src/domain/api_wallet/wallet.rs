@@ -796,6 +796,15 @@ impl ApiWalletDomain {
     pub async fn get_api_wallet_list(
         &self,
     ) -> Result<ApiWalletList, crate::error::service::ServiceError> {
+        super::wallet_list_policy::load_api_wallet_list(|| async {
+            self.get_api_wallet_list_uncached().await
+        })
+        .await
+    }
+
+    async fn get_api_wallet_list_uncached(
+        &self,
+    ) -> Result<ApiWalletList, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         let currency = ConfigDomain::get_currency(self.ctx).await?;

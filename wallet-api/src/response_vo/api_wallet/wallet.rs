@@ -2,7 +2,7 @@ use wallet_database::entities::api_wallet::ApiWalletEntity;
 
 use crate::response_vo::standard_wallet::account::BalanceInfo;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletInfo {
     pub address: String,
@@ -40,7 +40,7 @@ impl WalletInfo {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWalletList(pub Vec<ApiWalletItem>);
 
@@ -67,7 +67,7 @@ impl ApiWalletList {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWalletItem {
     pub recharge_wallet: Option<WalletInfo>,

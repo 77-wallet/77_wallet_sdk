@@ -23,6 +23,10 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   src/domain/api_wallet/assets/total_query_policy.rs
   total_assets_dedup_allows_single_real_query
   total_assets_query_returns_stale_cache_on_timeout
+
+  src/domain/api_wallet/wallet/wallet_list_policy.rs
+  api_wallet_list_query_deduplicates_concurrent_loads
+  api_wallet_list_query_returns_stale_on_timeout
   ```
 
 - Backend: none; tests cover local query protection behavior only.
@@ -30,7 +34,9 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: API wallet asset read endpoints may share protection mechanics
   while retaining distinct cache keys and business query semantics. Transient
   timeout/pool-timeout failures may return stale cached values only when a prior
-  successful value exists.
+  successful value exists. API wallet list reads use the same protected-query
+  behavior so repeated subaccount-list polling cannot fan out into duplicate
+  list queries under batch collect load.
 
 ### Account Change Syncs API Wallet Token By Address
 
