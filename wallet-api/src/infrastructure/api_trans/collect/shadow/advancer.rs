@@ -6,6 +6,7 @@ use crate::{
             diagnose::{DiagnoseEvent, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
             shadow::{ChainIntent, SideEffectIntent, stage::CollectStage},
         },
+        fast_path::{FastPathFlow, FastPathReason, FastPathTarget, dispatch_fast_path},
         shadow_rpc_policy,
     },
 };
@@ -161,21 +162,29 @@ impl ShadowAdvancer {
     /// BuildTx worker remains fact-driven and idempotent, so an early or
     /// duplicate wakeup is still guarded by the persisted collect state.
     pub fn trigger_build_fast_path_after_resource_gate_release(&self, trade_no: &str) {
-        info!(
-            trade_no = %trade_no,
-            fast_path = true,
-            "Triggering collect fast path after resource gate release"
+        let intent = CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
+        let failed_trade_no = trade_no.to_string();
+        dispatch_fast_path(
+            FastPathFlow::Collect,
+            FastPathReason::ResourceGateReleased,
+            FastPathTarget::BuildTx,
+            trade_no,
+            || self.intent_tx.try_send(intent),
+            || self.emit_intent_dispatch_failed(failed_trade_no),
         );
-        self.dispatch_intent(CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string())));
     }
 
     pub fn trigger_broadcast_fast_path_after_tx_fee_res_ack(&self, trade_no: &str) {
-        info!(
-            trade_no = %trade_no,
-            fast_path = true,
-            "Triggering collect fast path after tx fee result ACK"
+        let intent = CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
+        let failed_trade_no = trade_no.to_string();
+        dispatch_fast_path(
+            FastPathFlow::Collect,
+            FastPathReason::TxFeeResAckSent,
+            FastPathTarget::BroadcastTx,
+            trade_no,
+            || self.intent_tx.try_send(intent),
+            || self.emit_intent_dispatch_failed(failed_trade_no),
         );
-        self.dispatch_intent(CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string())));
     }
 
     async fn try_advance_result(&self, trade_no: &str) -> Result<(), ServiceError> {
@@ -542,20 +551,21 @@ impl ShadowAdvancer {
             error!("Failed to send collect intent: {}", e);
 
             // 触发scanner revisit
-            if let Some(diagnose_tx) = &self.diagnose_tx {
-                // 从保存的trade_no中提取
-                if let Some(trade_no) = trade_no {
-                    let meta = crate::infrastructure::api_trans::collect::diagnose::event::DiagnoseMeta::new(
-                        trade_no,
-                        crate::infrastructure::api_trans::collect::diagnose::event::DiagnoseSource::Advancer,
-                        crate::infrastructure::api_trans::collect::diagnose::event::DiagnoseStage::Unknown,
-                    );
-                    if let Err(e) =
-                        diagnose_tx.try_send(DiagnoseEvent::IntentDispatchFailed { meta })
-                    {
-                        error!("Failed to send IntentDispatchFailed event: {}", e);
-                    }
-                }
+            if let Some(trade_no) = trade_no {
+                self.emit_intent_dispatch_failed(trade_no);
+            }
+        }
+    }
+
+    fn emit_intent_dispatch_failed(&self, trade_no: String) {
+        if let Some(diagnose_tx) = &self.diagnose_tx {
+            let meta = crate::infrastructure::api_trans::collect::diagnose::event::DiagnoseMeta::new(
+                trade_no,
+                crate::infrastructure::api_trans::collect::diagnose::event::DiagnoseSource::Advancer,
+                crate::infrastructure::api_trans::collect::diagnose::event::DiagnoseStage::Unknown,
+            );
+            if let Err(e) = diagnose_tx.try_send(DiagnoseEvent::IntentDispatchFailed { meta }) {
+                error!("Failed to send IntentDispatchFailed event: {}", e);
             }
         }
     }

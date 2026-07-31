@@ -264,7 +264,7 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use tracing::{error, info, trace, warn};
+use tracing::{error, trace, warn};
 use wallet_database::{
     ApiTransactionDbPool,
     entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawEntity},
@@ -280,6 +280,7 @@ use crate::{
     domain::api_wallet::trans::shared_mechanism,
     error::service::ServiceError,
     infrastructure::api_trans::{
+        fast_path::{FastPathFlow, FastPathReason, FastPathTarget, dispatch_fast_path},
         shadow_rpc_policy,
         withdraw::diagnose::{
             DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage,
@@ -1078,15 +1079,16 @@ impl ShadowScanner {
 
                 warn!(trade_no = %trade_no, ?intent, "Failed to dispatch withdraw intent");
 
-                if let Some(tx) = &self.diagnose_tx {
-                    let meta = DiagnoseMeta::new(
-                        trade_no,
-                        DiagnoseSource::Advancer,
-                        DiagnoseStage::Unknown,
-                    );
-                    let _ = tx.try_send(DiagnoseEvent::IntentDispatchFailed { meta });
-                }
+                self.emit_intent_dispatch_failed(trade_no);
             }
+        }
+    }
+
+    fn emit_intent_dispatch_failed(&self, trade_no: String) {
+        if let Some(tx) = &self.diagnose_tx {
+            let meta =
+                DiagnoseMeta::new(trade_no, DiagnoseSource::Advancer, DiagnoseStage::Unknown);
+            let _ = tx.try_send(DiagnoseEvent::IntentDispatchFailed { meta });
         }
     }
 
@@ -1110,14 +1112,16 @@ impl ShadowScanner {
     }
 
     pub fn trigger_build_fast_path_after_resource_gate_release(&self, trade_no: &str) {
-        info!(
-            trade_no = %trade_no,
-            fast_path = true,
-            "Triggering withdraw fast path after resource gate release"
+        let intent = WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no.to_string()));
+        let failed_trade_no = trade_no.to_string();
+        dispatch_fast_path(
+            FastPathFlow::Withdraw,
+            FastPathReason::ResourceGateReleased,
+            FastPathTarget::BuildTx,
+            trade_no,
+            || self.intent_tx.try_send(intent),
+            || self.emit_intent_dispatch_failed(failed_trade_no),
         );
-        self.dispatch_intent(WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(
-            trade_no.to_string(),
-        )));
     }
 
     async fn try_advance_result(&self, trade_no: &str) -> Result<(), ServiceError> {
