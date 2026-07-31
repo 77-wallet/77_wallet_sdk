@@ -92,6 +92,49 @@ impl ApiResourceDelegationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_local_delegates_missing_undelegation<'a, E>(
+        exec: E,
+        origin_trade_type: i64,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT delegate.*
+            FROM api_resource_delegation delegate
+            WHERE delegate.source = ?1
+              AND delegate.operation_type = ?2
+              AND delegate.origin_trade_type = ?3
+              AND delegate.origin_trade_no IS NOT NULL
+              AND delegate.chain_failed_at IS NULL
+              AND (
+                    delegate.result_status = ?4
+                    OR delegate.chain_success_at IS NOT NULL
+                  )
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM api_resource_delegation undelegate
+                    WHERE undelegate.source = ?1
+                      AND undelegate.operation_type = ?5
+                      AND undelegate.origin_trade_no = delegate.origin_trade_no
+                  )
+            ORDER BY delegate.updated_at ASC, delegate.id ASC
+            LIMIT ?6
+            "#,
+        )
+        .bind(ApiResourceDelegationSource::Local.as_i64())
+        .bind(ApiResourceDelegationOperationType::Delegate.as_i64())
+        .bind(origin_trade_type)
+        .bind(ApiResourceDelegationResultStatus::Success.as_i64())
+        .bind(ApiResourceDelegationOperationType::Undelegate.as_i64())
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn mark_task_ack_sent<'a, E>(
         exec: E,
         resource_trade_no: &str,

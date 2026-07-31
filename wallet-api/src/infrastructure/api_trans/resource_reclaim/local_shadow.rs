@@ -12,6 +12,7 @@ use wallet_database::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
             ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
+            NewApiResourceDelegation,
         },
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
@@ -93,6 +94,10 @@ impl LocalResourceReclaimScanner {
     pub async fn scan_round(&self) -> Vec<LocalResourceReclaimIntent> {
         let mut intents = Vec::new();
 
+        if let Err(e) = self.reconcile_missing_local_undelegations().await {
+            error!(error = %e, "Failed to reconcile missing local undelegation records");
+        }
+
         match ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
             &self.api_resource_pool,
             ApiTradeType::Collect as i64,
@@ -135,6 +140,49 @@ impl LocalResourceReclaimScanner {
 
         intents
     }
+
+    async fn reconcile_missing_local_undelegations(&self) -> Result<(), wallet_database::Error> {
+        let delegates =
+            ApiResourceDelegationRepo::scan_local_delegates_missing_undelegation_for_origin_type(
+                &self.api_resource_pool,
+                ApiTradeType::Collect as i64,
+                self.config.max_items_per_scan,
+            )
+            .await?;
+
+        for delegate in delegates {
+            let Some(origin_trade_no) = delegate.origin_trade_no.clone() else {
+                continue;
+            };
+            let resource_trade_no = collect_local_undelegate_trade_no(&origin_trade_no);
+            ApiResourceDelegationRepo::upsert(
+                &self.api_resource_pool,
+                NewApiResourceDelegation::local_undelegate(
+                    delegate.uid,
+                    resource_trade_no.clone(),
+                    origin_trade_no.clone(),
+                    ApiTradeType::Collect as i64,
+                    delegate.owner_address,
+                    delegate.receiver_address,
+                    delegate.native_amount,
+                    delegate.amount,
+                ),
+            )
+            .await?;
+            info!(
+                resource_trade_no = %resource_trade_no,
+                origin_trade_no = %origin_trade_no,
+                source = "local_resource_reclaim_shadow",
+                "Reconciled missing local undelegation after local delegation success"
+            );
+        }
+
+        Ok(())
+    }
+}
+
+fn collect_local_undelegate_trade_no(origin_trade_no: &str) -> String {
+    format!("rsc_local_undelegate_{}", origin_trade_no)
 }
 
 pub struct LocalResourceReclaimScannerActor {
@@ -755,5 +803,67 @@ mod tests {
             LocalResourceReclaimIntent::ExecuteLocalUndelegation(trade_no)
                 if trade_no == "rsc_local_undelegate_future_retry"
         )));
+    }
+
+    #[tokio::test]
+    async fn scanner_reconciles_missing_local_undelegation_after_restart() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                "rsc_local_delegate_C_RESTART",
+                "C_RESTART",
+                ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert local delegate");
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_local_delegate_C_RESTART",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("mark delegate success");
+
+        let scanner = LocalResourceReclaimScanner::with_config(
+            pool.clone(),
+            LocalResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+        let intents = scanner.scan_round().await;
+
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            LocalResourceReclaimIntent::ExecuteLocalUndelegation(trade_no)
+                if trade_no == "rsc_local_undelegate_C_RESTART"
+        )));
+        let undelegate = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_local_undelegate_C_RESTART",
+        )
+        .await
+        .expect("load reconciled undelegate");
+        assert_eq!(undelegate.origin_trade_no.as_deref(), Some("C_RESTART"));
+        assert_eq!(undelegate.source, ApiResourceDelegationSource::Local);
+        assert_eq!(undelegate.operation_type, ApiResourceDelegationOperationType::Undelegate);
     }
 }

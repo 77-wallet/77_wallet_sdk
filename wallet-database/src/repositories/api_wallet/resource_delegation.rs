@@ -39,6 +39,19 @@ impl ApiResourceDelegationRepo {
         ApiResourceDelegationDao::list_by_origin_trade_no(pool.read_ref(), origin_trade_no).await
     }
 
+    pub async fn scan_local_delegates_missing_undelegation_for_origin_type(
+        pool: &ApiResourceDbPool,
+        origin_trade_type: i64,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_local_delegates_missing_undelegation(
+            pool.read_ref(),
+            origin_trade_type,
+            limit,
+        )
+        .await
+    }
+
     pub async fn mark_task_ack_sent(
         pool: &ApiResourceDbPool,
         resource_trade_no: &str,
@@ -2892,6 +2905,93 @@ mod tests {
             recover_rows.into_iter().map(|row| row.resource_trade_no).collect();
         assert!(recover_trade_nos.contains(&"rsc_local_undelegate_recover".to_string()));
         assert!(!recover_trade_nos.contains(&"rsc_local_undelegate_ready".to_string()));
+    }
+
+    #[tokio::test]
+    async fn local_delegate_missing_undelegation_scan_only_returns_unreclaimed_successes() {
+        let pool =
+            setup_api_resource_pool("resource_delegation_missing_local_undelegation_scan").await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid_1",
+                "rsc_local_delegate_missing",
+                "origin_collect_missing",
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_local_delegate_missing",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid_1",
+                "rsc_local_delegate_has_reclaim",
+                "origin_collect_has_reclaim",
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_local_delegate_has_reclaim",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_undelegate(
+                "uid_1",
+                "rsc_local_undelegate_origin_collect_has_reclaim",
+                "origin_collect_has_reclaim",
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .unwrap();
+
+        let rows =
+            ApiResourceDelegationRepo::scan_local_delegates_missing_undelegation_for_origin_type(
+                &pool,
+                crate::entities::api_trade_type::ApiTradeType::Collect as i64,
+                100,
+            )
+            .await
+            .unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+
+        assert_eq!(trade_nos, vec!["rsc_local_delegate_missing".to_string()]);
     }
 
     #[tokio::test]
