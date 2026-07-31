@@ -356,6 +356,7 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
+use chrono::{DateTime, Utc};
 use tracing::{error, trace, warn};
 use wallet_database::{ApiTransactionDbPool, entities::api_fee::ApiFeeEntity};
 
@@ -396,6 +397,29 @@ use crate::infrastructure::api_trans::collect_fee::diagnose::{
 /// Reserved for metrics / observability only
 fn is_chain_finished(fee: &ApiFeeEntity) -> bool {
     fee.transaction_time.is_some()
+}
+
+fn allow_fee_recover_dispatch(recover_key: &str, last_broadcast_at: Option<DateTime<Utc>>) -> bool {
+    shadow_rpc_policy::allow_broadcast_recover_dispatch(recover_key, last_broadcast_at)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::allow_fee_recover_dispatch;
+    use crate::infrastructure::api_trans::shadow_rpc_policy;
+    use chrono::Utc;
+    use std::time::Duration;
+
+    #[test]
+    fn fee_recover_dispatch_uses_fresh_broadcast_window() {
+        let key = shadow_rpc_policy::recover_dispatch_key("CF_FRESH_BROADCAST");
+        shadow_rpc_policy::reset_recover_dispatch(&key);
+
+        assert!(allow_fee_recover_dispatch(&key, Some(Utc::now())));
+        assert_eq!(shadow_rpc_policy::recover_dispatch_cooldown(&key), Duration::from_secs(3));
+
+        shadow_rpc_policy::reset_recover_dispatch(&key);
+    }
 }
 
 /// Shadow Scanner 配置
@@ -763,7 +787,7 @@ impl ShadowScanner {
                 continue;
             }
             let recover_key = shadow_rpc_policy::recover_dispatch_key(&record.trade_no);
-            if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
+            if !allow_fee_recover_dispatch(&recover_key, record.last_broadcast_at) {
                 trace!(
                     trade_no = %record.trade_no,
                     cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
@@ -965,7 +989,7 @@ impl ShadowScanner {
                         return Ok(());
                     }
                     let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
-                    if !shadow_rpc_policy::allow_recover_dispatch(&recover_key) {
+                    if !allow_fee_recover_dispatch(&recover_key, fee.last_broadcast_at) {
                         trace!(
                             trade_no = %trade_no,
                             cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),

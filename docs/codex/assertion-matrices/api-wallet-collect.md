@@ -919,6 +919,29 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: every confirmation query still passes through the chain RPC guard
   and circuit breaker.
 
+### Fresh Collect Fee Broadcast Fast Confirmation
+
+- Layer: unit / worker and scanner policy.
+- Entrypoints:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect_fee/shadow/worker/shadow_fee_worker.rs
+  tron_fee_post_broadcast_schedule_resets_only_tron_confirmation_cooldown
+
+  wallet-api/src/infrastructure/api_trans/collect_fee/shadow/scanner.rs
+  fee_recover_dispatch_uses_fresh_broadcast_window
+  ```
+
+- Broadcast: a successful TRON fee broadcast clears any pre-broadcast Recover
+  cooldown and schedules direct confirmation wakeups at `3/5/8/15/30` seconds.
+- Scanner: both safety scans and point-to-point advancement use the durable
+  `last_broadcast_at` timestamp, so a fresh broadcast starts with the 3-second
+  admission window instead of inheriting the generic 60-second cooldown.
+- Fallback: broadcasts older than 120 seconds retain the generic Recover
+  admission policy, and non-TRON broadcasts do not schedule direct wakeups.
+- Invariant: terminal fee rows are never scheduled for post-broadcast recovery,
+  and every confirmation query still passes through the chain RPC guard.
+
 ### Idempotent Collect And Fee Confirmation Race
 
 - Layer: unit / domain orchestration.

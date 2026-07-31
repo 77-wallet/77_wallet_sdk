@@ -29,7 +29,7 @@ use crate::{
     infrastructure::{
         api_trans::{
             collect_fee::{legacy::AddressLockManager, shadow::ShadowScanner},
-            nonce_recovery_mechanism,
+            nonce_recovery_mechanism, shadow_rpc_policy,
         },
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
@@ -91,6 +91,63 @@ impl ShadowFeeWorker {
     const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
     const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
     const BUILD_SLOT_STALE_SECS: i64 = 30;
+    const TRON_POST_BROADCAST_CONFIRM_DELAYS_SECS: [u64; 5] = [3, 5, 8, 15, 30];
+
+    fn tron_post_broadcast_confirm_eligible(
+        chain_code: &str,
+        transaction_time_present: bool,
+        err_code_present: bool,
+    ) -> bool {
+        shared_mechanism::is_tron_chain(chain_code)
+            && !transaction_time_present
+            && !err_code_present
+    }
+
+    fn reset_tron_post_broadcast_recover_cooldown(chain_code: &str, trade_no: &str) -> bool {
+        if !shared_mechanism::is_tron_chain(chain_code) {
+            return false;
+        }
+        let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
+        shadow_rpc_policy::reset_recover_dispatch(&recover_key)
+    }
+
+    fn schedule_tron_post_broadcast_confirms_if_needed(&self, fee: &ApiFeeEntity) {
+        if !Self::tron_post_broadcast_confirm_eligible(
+            &fee.chain_code,
+            fee.transaction_time.is_some(),
+            fee.err_code.is_some(),
+        ) {
+            return;
+        }
+
+        let trade_no = fee.trade_no.clone();
+        let tx_hash = fee.tx_hash.as_deref().unwrap_or_default().to_string();
+        for delay_secs in Self::TRON_POST_BROADCAST_CONFIRM_DELAYS_SECS {
+            let scanner = self.scanner.clone();
+            let trade_no = trade_no.clone();
+            let tx_hash = tx_hash.clone();
+            info!(
+                observability_event = "tron_fee_post_broadcast_confirm_scheduled",
+                trade_no = %trade_no,
+                tx_hash = %tx_hash,
+                delay_secs,
+                source = "shadow_fee_worker",
+                "Scheduled TRON fee post-broadcast confirmation"
+            );
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+                info!(
+                    observability_event = "tron_fee_post_broadcast_confirm_triggered",
+                    trade_no = %trade_no,
+                    tx_hash = %tx_hash,
+                    delay_secs,
+                    source = "shadow_fee_worker",
+                    "Triggering TRON fee post-broadcast confirmation"
+                );
+                scanner.try_advance(&trade_no).await;
+            });
+        }
+    }
 
     pub(crate) fn is_solana_recipient_rent_error(err: &ServiceError) -> bool {
         let msg = err.to_string();
@@ -864,6 +921,23 @@ impl ShadowFeeWorker {
                             "mark_broadcast_executed skipped: broadcast already executed (idempotent hit)"
                         );
                     } else {
+                        let recover_key = shadow_rpc_policy::recover_dispatch_key(&fee.trade_no);
+                        let cleared_pre_broadcast_cooldown =
+                            Self::reset_tron_post_broadcast_recover_cooldown(
+                                &fee.chain_code,
+                                &fee.trade_no,
+                            );
+                        if shared_mechanism::is_tron_chain(&fee.chain_code) {
+                            info!(
+                                observability_event = "tron_fee_post_broadcast_recover_cooldown_reset",
+                                trade_no = %fee.trade_no,
+                                recover_key = %recover_key,
+                                cleared_pre_broadcast_cooldown,
+                                source = "shadow_fee_worker",
+                                "Reset TRON fee confirmation cooldown after successful broadcast"
+                            );
+                        }
+                        self.schedule_tron_post_broadcast_confirms_if_needed(&fee);
                         // 直接调用 try_advance 进行点对点唤醒
                         self.scanner.try_advance(&fee.trade_no).await;
                     }
@@ -1384,6 +1458,7 @@ mod tests {
         config::Config,
         domain::api_wallet::adapter::tx::RawTx,
         error::{service::ServiceError, system::SystemError},
+        infrastructure::api_trans::shadow_rpc_policy,
     };
     use chrono::Utc;
     use std::{fs, path::PathBuf, sync::Arc};
@@ -1401,6 +1476,36 @@ mod tests {
         ));
 
         assert!(err.is_transient_db_pool_timeout());
+    }
+
+    #[test]
+    fn tron_fee_post_broadcast_schedule_resets_only_tron_confirmation_cooldown() {
+        assert_eq!(
+            ShadowFeeWorker::TRON_POST_BROADCAST_CONFIRM_DELAYS_SECS.as_slice(),
+            &[3, 5, 8, 15, 30]
+        );
+        assert!(ShadowFeeWorker::tron_post_broadcast_confirm_eligible("tron", false, false));
+        assert!(!ShadowFeeWorker::tron_post_broadcast_confirm_eligible("tron", true, false));
+        assert!(!ShadowFeeWorker::tron_post_broadcast_confirm_eligible("ethereum", false, false));
+
+        let tron_key = shadow_rpc_policy::recover_dispatch_key("CF_TRON_RESET");
+        assert!(shadow_rpc_policy::allow_recover_dispatch(&tron_key));
+        assert!(ShadowFeeWorker::reset_tron_post_broadcast_recover_cooldown(
+            "tron",
+            "CF_TRON_RESET"
+        ));
+        assert!(shadow_rpc_policy::allow_broadcast_recover_dispatch(&tron_key, Some(Utc::now())));
+
+        let evm_key = shadow_rpc_policy::recover_dispatch_key("CF_EVM_KEEP");
+        assert!(shadow_rpc_policy::allow_recover_dispatch(&evm_key));
+        assert!(!ShadowFeeWorker::reset_tron_post_broadcast_recover_cooldown(
+            "ethereum",
+            "CF_EVM_KEEP"
+        ));
+        assert!(!shadow_rpc_policy::allow_broadcast_recover_dispatch(&evm_key, Some(Utc::now())));
+
+        shadow_rpc_policy::reset_recover_dispatch(&tron_key);
+        shadow_rpc_policy::reset_recover_dispatch(&evm_key);
     }
 
     async fn test_ctx() -> &'static crate::context::Context {
