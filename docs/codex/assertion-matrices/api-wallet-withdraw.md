@@ -6,6 +6,43 @@ Scope: `wallet-api` API wallet withdraw flow.
   `transaction_time` before receipt resources, NeedRecover remains eligible and
   conditionally backfills actual energy/bandwidth without changing terminal facts.
 
+### Withdraw Broadcast Resource Reservation Reconciliation
+
+- Layer: unit plus existing Recover flow coverage.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
+  broadcast_resource_reservation_needs_recovery_after_grace
+  ```
+
+- DB facts: unfinished same-owner broadcasts remain part of the pending resource
+  budget regardless of age.
+- Recovery: after 30 seconds, the resource gate wakes Recover for those orders
+  and defers its own resource decision.
+- Invariant: elapsed time alone never releases a reservation; only persisted
+  chain success or failure facts remove it from the pending budget.
+
+### Withdraw In-Memory Resource Allocation
+
+- Layer: unit plus resource-gate flow coverage.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/resource_reservation.rs
+  restore_rebuilds_each_order_once
+  ```
+
+- Allocation: the chain account snapshot is allocated atomically per address
+  and trade number by the in-memory reservation manager.
+- Resource type: the ledger gates ENERGY only because platform delegation does
+  not supply bandwidth; bandwidth shortage remains on the existing TRX fee
+  fallback.
+- Restart: released but unbroadcast orders are restored into the ledger from
+  persisted estimated resource facts.
+- Invariant: the aggregate DB pending budget remains diagnostic and must not be
+  subtracted before per-order memory allocation.
+
 ### Withdraw Dispatcher Watchdog Timing
 
 - Layer: unit.

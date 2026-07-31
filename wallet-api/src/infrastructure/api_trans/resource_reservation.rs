@@ -58,6 +58,24 @@ pub(crate) struct WithdrawResourceReservationManager {
 }
 
 impl WithdrawResourceReservationManager {
+    pub(crate) fn restore(
+        &self,
+        resource_key: impl Into<String>,
+        trade_no: impl Into<String>,
+        budget: ResourceBudget,
+    ) -> bool {
+        let resource_key = resource_key.into();
+        let trade_no = trade_no.into();
+        let mut state = self.inner.lock().expect("resource reservation lock poisoned");
+        if state.by_trade_no.contains_key(&trade_no) {
+            return false;
+        }
+
+        state.totals.entry(resource_key.clone()).or_default().add_assign(budget);
+        state.by_trade_no.insert(trade_no, (resource_key, budget));
+        true
+    }
+
     pub(crate) fn reserve_if_available(
         &self,
         resource_key: impl Into<String>,
@@ -202,6 +220,21 @@ mod withdraw_resource_reservation_tests {
         assert!(matches!(
             manager.reserve_if_available(key, "B", required, available),
             ResourceReservationDecision::Reserved { .. }
+        ));
+    }
+
+    #[test]
+    fn restore_rebuilds_each_order_once() {
+        let manager = WithdrawResourceReservationManager::default();
+        let required = ResourceBudget::new(13_532, 345);
+
+        assert!(manager.restore("TAy4", "A", required));
+        assert!(!manager.restore("TAy4", "A", required));
+
+        assert_eq!(manager.reserved_for("TAy4"), required);
+        assert!(matches!(
+            manager.reserve_if_available("TAy4", "B", required, ResourceBudget::new(20_000, 1_000)),
+            ResourceReservationDecision::NeedMore(_)
         ));
     }
 }

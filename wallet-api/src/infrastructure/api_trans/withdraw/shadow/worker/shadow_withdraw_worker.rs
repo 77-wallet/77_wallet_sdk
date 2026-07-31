@@ -80,7 +80,10 @@ use crate::{
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-    response_vo::{TronFeeDetails, api_wallet::transaction::ApiWalletResourceConsume},
+    response_vo::{
+        TronFeeDetails,
+        api_wallet::transaction::{ApiWalletResourceConsume, api_wallet_resource_consume},
+    },
 };
 use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_utils::{RetryableError as _, conversion, unit};
@@ -129,6 +132,7 @@ impl ShadowWithdrawWorker {
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
     // const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 3;
     const BUILD_SLOT_STALE_SECS: i64 = 30;
+    const TRON_BROADCAST_RESOURCE_RECHECK_SECS: i64 = 30;
     const TRON_SHORT_CONFIRM_WINDOW_SECS: i64 = 30;
     const TRON_SHORT_CONFIRM_DELAYS_SECS: [u64; 3] = [3, 5, 8];
     // 测试开关（仅用于本地压测 withdraw uncertain 超时收口）
@@ -272,18 +276,6 @@ impl ShadowWithdrawWorker {
             && available_bandwidth >= required_bandwidth as i64
     }
 
-    fn effective_resource_after_pending_withdraws(
-        available_energy: i64,
-        available_bandwidth: i64,
-        pending_budget: PendingWithdrawResourceBudget,
-    ) -> ResourceBudget {
-        let effective_energy =
-            available_energy.saturating_sub(pending_budget.energy.min(i64::MAX as u64) as i64);
-        let effective_bandwidth = available_bandwidth
-            .saturating_sub(pending_budget.bandwidth.min(i64::MAX as u64) as i64);
-        ResourceBudget::new(effective_energy.max(0) as u64, effective_bandwidth.max(0) as u64)
-    }
-
     fn resource_shortfall(required: u64, available: i64) -> u64 {
         required.saturating_sub(available.max(0) as u64)
     }
@@ -294,6 +286,111 @@ impl ShadowWithdrawWorker {
     ) -> Option<String> {
         let shortfall = Self::resource_shortfall(required_energy, available_energy);
         if shortfall == 0 { None } else { Some(required_energy.to_string()) }
+    }
+
+    fn broadcast_resource_reservation_needs_recovery(
+        withdraw: &ApiWithdrawEntity,
+        now: DateTime<Utc>,
+    ) -> bool {
+        withdraw.transaction_time.is_none()
+            && withdraw.finished_at.is_none()
+            && withdraw.err_code.is_none()
+            && withdraw.tx_hash.as_deref().is_some_and(|hash| !hash.trim().is_empty())
+            && withdraw.last_broadcast_at.is_some_and(|broadcast_at| {
+                now.signed_duration_since(broadcast_at).num_seconds()
+                    >= Self::TRON_BROADCAST_RESOURCE_RECHECK_SECS
+            })
+    }
+
+    async fn reconcile_stale_broadcast_resource_reservations(
+        &self,
+        req: &ApiWithdrawEntity,
+    ) -> Result<bool, ServiceError> {
+        let pending_orders = ApiWithdrawRepo::pending_resource_orders_by_owner(
+            &self.ctx.api_transaction_pool()?,
+            &req.chain_code,
+            &req.from_addr,
+            &req.trade_no,
+            100,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let now = Utc::now();
+        let stale = pending_orders
+            .into_iter()
+            .filter(|pending| Self::broadcast_resource_reservation_needs_recovery(pending, now))
+            .collect::<Vec<_>>();
+
+        if stale.is_empty() {
+            return Ok(false);
+        }
+
+        info!(
+            trade_no = %req.trade_no,
+            from_addr = %req.from_addr,
+            stale_reservation_count = stale.len(),
+            recheck_after_secs = Self::TRON_BROADCAST_RESOURCE_RECHECK_SECS,
+            source = "shadow_withdraw_worker",
+            "Deferring resource gate until stale broadcast reservations are recovered"
+        );
+        for pending in stale {
+            info!(
+                trade_no = %req.trade_no,
+                pending_trade_no = %pending.trade_no,
+                pending_tx_hash = ?pending.tx_hash,
+                pending_last_broadcast_at = ?pending.last_broadcast_at,
+                source = "shadow_withdraw_worker",
+                "Triggering Recover for stale broadcast resource reservation"
+            );
+            self.scanner.try_advance(&pending.trade_no).await;
+        }
+
+        Ok(true)
+    }
+
+    async fn restore_unbroadcast_resource_reservations(
+        &self,
+        req: &ApiWithdrawEntity,
+    ) -> Result<usize, ServiceError> {
+        let pending_orders = ApiWithdrawRepo::pending_resource_orders_by_owner(
+            &self.ctx.api_transaction_pool()?,
+            &req.chain_code,
+            &req.from_addr,
+            &req.trade_no,
+            100,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let mut restored = 0;
+
+        for pending in pending_orders {
+            if pending.resource_gate_released_at.is_none() || pending.last_broadcast_at.is_some() {
+                continue;
+            }
+            let Some(consume) =
+                pending.estimated_resource_consume.as_deref().and_then(api_wallet_resource_consume)
+            else {
+                continue;
+            };
+            if self.resource_reservations.restore(
+                &pending.from_addr,
+                &pending.trade_no,
+                ResourceBudget::new(consume.energy, 0),
+            ) {
+                restored += 1;
+            }
+        }
+
+        if restored > 0 {
+            info!(
+                trade_no = %req.trade_no,
+                from_addr = %req.from_addr,
+                restored_reservation_count = restored,
+                source = "shadow_withdraw_worker",
+                "Restored unbroadcast withdraw resource reservations into memory ledger"
+            );
+        }
+        Ok(restored)
     }
 
     fn platform_apply_outcome(
@@ -521,6 +618,9 @@ impl ShadowWithdrawWorker {
             source = "shadow_withdraw_worker",
             "Withdraw fee estimate snapshot write attempted"
         );
+        if rows > 0 {
+            self.scanner.trigger_resource_gate_fast_path_after_fee_estimate(&trade_no);
+        }
         Ok(())
     }
 
@@ -687,6 +787,11 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
+        if self.reconcile_stale_broadcast_resource_reservations(&req).await? {
+            return Ok(());
+        }
+        self.restore_unbroadcast_resource_reservations(&req).await?;
+
         let guarded_snapshot = async {
             let resource_gate_semaphore =
                 crate::infrastructure::api_trans::shadow_rpc_policy::shared_resource_gate_semaphore(
@@ -746,12 +851,10 @@ impl ShadowWithdrawWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
-        let required = ResourceBudget::new(fee_details.energy, fee_details.bandwidth);
-        let available = Self::effective_resource_after_pending_withdraws(
-            available_energy,
-            available_bandwidth,
-            pending_budget,
-        );
+        // Platform delegation supplies ENERGY only. Bandwidth shortage is paid
+        // by the existing TRX fee fallback and must not block ENERGY allocation.
+        let required = ResourceBudget::new(fee_details.energy, 0);
+        let available = ResourceBudget::new(available_energy.max(0) as u64, 0);
 
         let decision = self.resource_reservations.reserve_if_available(
             &req.from_addr,
@@ -2917,25 +3020,37 @@ oss:
     }
 
     #[test]
-    fn withdraw_resource_gate_subtracts_db_pending_budget_from_chain_available() {
-        let available = ShadowWithdrawWorker::effective_resource_after_pending_withdraws(
-            13_532,
-            690,
-            PendingWithdrawResourceBudget { energy: 13_532, bandwidth: 345 },
-        );
+    fn broadcast_resource_reservation_needs_recovery_after_grace() {
+        let now = Utc::now();
+        let mut withdraw = base_withdraw();
+        withdraw.last_broadcast_at = Some(now - chrono::Duration::seconds(31));
 
-        assert_eq!(available, ResourceBudget::new(0, 345));
+        assert!(ShadowWithdrawWorker::broadcast_resource_reservation_needs_recovery(
+            &withdraw, now
+        ));
+
+        withdraw.last_broadcast_at = Some(now - chrono::Duration::seconds(29));
+        assert!(!ShadowWithdrawWorker::broadcast_resource_reservation_needs_recovery(
+            &withdraw, now
+        ));
     }
 
     #[test]
-    fn withdraw_resource_gate_pending_budget_saturates_at_zero() {
-        let available = ShadowWithdrawWorker::effective_resource_after_pending_withdraws(
-            326,
-            100,
-            PendingWithdrawResourceBudget { energy: 13_532, bandwidth: 345 },
-        );
+    fn broadcast_resource_reservation_keeps_terminal_facts_out_of_recovery() {
+        let now = Utc::now();
+        let mut withdraw = base_withdraw();
+        withdraw.last_broadcast_at = Some(now - chrono::Duration::minutes(1));
+        withdraw.transaction_time = Some(now);
 
-        assert_eq!(available, ResourceBudget::new(0, 0));
+        assert!(!ShadowWithdrawWorker::broadcast_resource_reservation_needs_recovery(
+            &withdraw, now
+        ));
+
+        withdraw.transaction_time = None;
+        withdraw.tx_hash = None;
+        assert!(!ShadowWithdrawWorker::broadcast_resource_reservation_needs_recovery(
+            &withdraw, now
+        ));
     }
 
     #[test]

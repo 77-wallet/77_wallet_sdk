@@ -358,7 +358,7 @@ pub struct DispatcherConfig {
 impl Default for DispatcherConfig {
     fn default() -> Self {
         let chain_semaphore_size =
-            shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_DISPATCHER_CONCURRENCY", 8, 2, 64);
+            shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_DISPATCHER_CONCURRENCY", 12, 2, 64);
         let side_effect_semaphore_size =
             shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_SIDE_EFFECT_CONCURRENCY", 4, 1, 32);
         Self {

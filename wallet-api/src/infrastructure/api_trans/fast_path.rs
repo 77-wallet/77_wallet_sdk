@@ -8,12 +8,14 @@ pub(crate) enum FastPathFlow {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum FastPathReason {
+    FeeEstimatePersisted,
     ResourceGateReleased,
     TxFeeResAckSent,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum FastPathTarget {
+    EvalResourceGate,
     BuildTx,
     BroadcastTx,
 }
@@ -30,6 +32,7 @@ impl FastPathFlow {
 impl FastPathReason {
     fn as_str(self) -> &'static str {
         match self {
+            Self::FeeEstimatePersisted => "fee_estimate_persisted",
             Self::ResourceGateReleased => "resource_gate_released",
             Self::TxFeeResAckSent => "tx_fee_res_ack_sent",
         }
@@ -39,6 +42,7 @@ impl FastPathReason {
 impl FastPathTarget {
     fn as_str(self) -> &'static str {
         match self {
+            Self::EvalResourceGate => "eval_resource_gate",
             Self::BuildTx => "build_tx",
             Self::BroadcastTx => "broadcast_tx",
         }

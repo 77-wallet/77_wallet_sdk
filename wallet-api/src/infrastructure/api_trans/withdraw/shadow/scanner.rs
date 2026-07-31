@@ -1124,6 +1124,20 @@ impl ShadowScanner {
         );
     }
 
+    pub fn trigger_resource_gate_fast_path_after_fee_estimate(&self, trade_no: &str) {
+        let intent =
+            WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no.to_string()));
+        let failed_trade_no = trade_no.to_string();
+        dispatch_fast_path(
+            FastPathFlow::Withdraw,
+            FastPathReason::FeeEstimatePersisted,
+            FastPathTarget::EvalResourceGate,
+            trade_no,
+            || self.intent_tx.try_send(intent),
+            || self.emit_intent_dispatch_failed(failed_trade_no),
+        );
+    }
+
     async fn try_advance_result(&self, trade_no: &str) -> Result<(), ServiceError> {
         trace!(trade_no = %trade_no, "Try advancing withdraw transaction");
         let pool = self.ctx.api_transaction_pool()?;
@@ -1687,6 +1701,23 @@ mod tests {
             intent,
             WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(ref trade_no))
                 if trade_no == "W_resource_released"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn withdraw_fee_estimate_fast_path_dispatches_resource_gate_intent() {
+        let ctx = test_ctx().await;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
+
+        scanner.trigger_resource_gate_fast_path_after_fee_estimate("W_fee_estimated");
+
+        let intent = intent_rx.try_recv().expect("resource gate intent should be dispatched");
+        assert!(matches!(
+            intent,
+            WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(ref trade_no))
+                if trade_no == "W_fee_estimated"
         ));
         assert!(intent_rx.try_recv().is_err());
     }
