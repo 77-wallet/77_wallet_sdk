@@ -317,6 +317,7 @@ impl DispatchTrace {
 pub struct RunningGuard {
     key: RunningKey,
     running_set: Arc<DashSet<RunningKey>>,
+    queued_times: Arc<DashMap<RunningKey, Instant>>,
     running_times: Arc<DashMap<RunningKey, Instant>>,
 }
 
@@ -326,9 +327,10 @@ impl RunningGuard {
     pub fn new(
         key: RunningKey,
         running_set: Arc<DashSet<RunningKey>>,
+        queued_times: Arc<DashMap<RunningKey, Instant>>,
         running_times: Arc<DashMap<RunningKey, Instant>>,
     ) -> Self {
-        Self { key, running_set, running_times }
+        Self { key, running_set, queued_times, running_times }
     }
 }
 
@@ -336,6 +338,7 @@ impl Drop for RunningGuard {
     fn drop(&mut self) {
         // 无论执行结果如何，都会释放 running 标记
         self.running_set.remove(&self.key);
+        self.queued_times.remove(&self.key);
         self.running_times.remove(&self.key);
         debug!(key = ?self.key, "Released running guard");
     }
@@ -378,7 +381,9 @@ pub(crate) struct ShadowDispatcher {
     config: DispatcherConfig,
     /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
     running: Arc<DashSet<RunningKey>>,
-    /// 运行中任务的开始时间，用于 Watchdog Scanner
+    /// 等待 dispatcher admission 的开始时间，用于排队诊断
+    queued_times: Arc<DashMap<RunningKey, Instant>>,
+    /// Worker 执行开始时间，用于 Watchdog Scanner
     running_times: Arc<DashMap<RunningKey, Instant>>,
     /// 链路任务并发控制信号量
     chain_semaphore: Arc<Semaphore>,
@@ -487,6 +492,7 @@ impl ShadowDispatcher {
             pool,
             config,
             running: Arc::new(DashSet::new()),
+            queued_times: Arc::new(DashMap::new()),
             running_times: Arc::new(DashMap::new()),
             chain_semaphore: Arc::new(Semaphore::new(chain_semaphore_size)),
             side_effect_semaphore: Arc::new(Semaphore::new(side_effect_semaphore_size)),
@@ -526,12 +532,13 @@ impl ShadowDispatcher {
             return Ok(());
         }
 
-        // 3. 记录任务开始时间
-        self.running_times.insert(running_key.clone(), Instant::now());
+        // 3. 记录排队开始时间。running key 仍提前插入，用于抑制排队期间的重复 intent。
+        self.queued_times.insert(running_key.clone(), Instant::now());
 
         // 4. 克隆需要的字段，用于 spawn 的任务中
         let trace = DispatchTrace::from_intent(&intent, running_key.clone());
         let running = self.running.clone();
+        let queued_times = self.queued_times.clone();
         let running_times = self.running_times.clone();
         let lane = DispatcherLane::for_intent(&intent);
         debug_assert_eq!(lane.uses_dispatcher_permit(), lane != DispatcherLane::ResourceGate);
@@ -547,7 +554,12 @@ impl ShadowDispatcher {
         tokio::spawn(async move {
             // Install the guard before waiting so queue timeout/cancellation
             // always makes the intent eligible for a later scanner retry.
-            let _guard = RunningGuard::new(running_key.clone(), running, running_times);
+            let _guard = RunningGuard::new(
+                running_key.clone(),
+                running,
+                queued_times,
+                running_times.clone(),
+            );
 
             // 获取信号量许可
             let start = std::time::Instant::now();
@@ -555,10 +567,12 @@ impl ShadowDispatcher {
                 Some(semaphore) => match acquire_dispatch_permit(semaphore).await {
                     Ok(p) => {
                         let acquire_duration = start.elapsed();
-                        debug!(
+                        info!(
                             key = ?running_key,
-                            duration = ?acquire_duration,
+                            trade_no = %trace.trade_no,
+                            command = trace.command,
                             dispatcher_lane = lane.as_str(),
+                            queue_wait_ms = acquire_duration.as_millis(),
                             "Acquired dispatcher semaphore permit"
                         );
                         Some(p)
@@ -594,6 +608,7 @@ impl ShadowDispatcher {
 
             // 路由 Intent 到正确的 Worker
             let execute_start = std::time::Instant::now();
+            running_times.insert(running_key.clone(), execute_start);
             let result = Self::execute_intent(intent, shadow_worker, side_effect_worker).await;
             if lane == DispatcherLane::ResourceGate {
                 info!(
@@ -629,6 +644,28 @@ impl ShadowDispatcher {
     /// 定期检查长时间运行的任务
     pub(crate) async fn watchdog_scan(&self) {
         let now = Instant::now();
+
+        // 排队耗时单独观察，避免把 dispatcher admission 等待误判为 worker 卡住。
+        for entry in self.queued_times.iter() {
+            let (key, queued_at) = entry.pair();
+            if self.running_times.contains_key(key) {
+                continue;
+            }
+
+            let duration = now.duration_since(*queued_at);
+            match duration.as_secs() {
+                60..=119 => {
+                    warn!(key = ?key, duration = ?duration, "Watchdog: Dispatcher queue waiting for more than 60 seconds");
+                }
+                120..=179 => {
+                    error!(key = ?key, duration = ?duration, "Watchdog: Dispatcher queue waiting for more than 120 seconds");
+                }
+                180.. => {
+                    error!(key = ?key, duration = ?duration, "Watchdog: Dispatcher queue stuck >180s — check dispatcher concurrency");
+                }
+                _ => {}
+            }
+        }
 
         // 遍历所有运行中的任务
         for entry in self.running_times.iter() {
