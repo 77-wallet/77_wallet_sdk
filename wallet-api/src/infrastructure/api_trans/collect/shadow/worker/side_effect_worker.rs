@@ -398,8 +398,7 @@ impl SideEffectWorker {
                     })?;
 
                 // 发送 Tick 通知，触发扫描
-                // 直接调用 try_advance 进行点对点唤醒
-                self.advancer.try_advance(&trade_no).await;
+                self.advancer.trigger_broadcast_fast_path_after_tx_fee_res_ack(&trade_no);
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send Order ACK");
@@ -677,13 +676,22 @@ impl SideEffectWorker {
 
         if ack_rows > 0 {
             if let Some((origin_trade_no, release_result)) = release.as_ref() {
-                ApiCollectRepo::mark_resource_released(
+                let release_rows = ApiCollectRepo::mark_resource_released(
                     &self.ctx.api_transaction_pool()?,
                     origin_trade_no,
                     *release_result,
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
+                info!(
+                    resource_trade_no = %resource_task.resource_trade_no,
+                    origin_trade_no = %origin_trade_no,
+                    release_result = ?release_result,
+                    ack_rows,
+                    release_rows,
+                    source = "side_effect_worker",
+                    "Collect resource gate projected from resource result ACK"
+                );
             }
         }
 
@@ -693,7 +701,7 @@ impl SideEffectWorker {
                 "Resource result ACK marked 0 rows"
             );
         } else if let Some((origin_trade_no, _)) = release {
-            self.advancer.try_advance(&origin_trade_no).await;
+            self.advancer.trigger_build_fast_path_after_resource_gate_release(&origin_trade_no);
         }
 
         Ok(())
@@ -798,7 +806,7 @@ impl SideEffectWorker {
                 source = "side_effect_worker",
                 "Collect resource gate already released after resource success"
             );
-            self.advancer.try_advance(origin_trade_no).await;
+            self.advancer.trigger_build_fast_path_after_resource_gate_release(origin_trade_no);
             return Ok(());
         }
 
@@ -826,7 +834,7 @@ impl SideEffectWorker {
             );
         }
 
-        self.advancer.try_advance(origin_trade_no).await;
+        self.advancer.trigger_build_fast_path_after_resource_gate_release(origin_trade_no);
         Ok(())
     }
 

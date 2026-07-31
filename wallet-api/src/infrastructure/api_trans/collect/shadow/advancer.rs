@@ -155,6 +155,29 @@ impl ShadowAdvancer {
         }
     }
 
+    /// Enqueue BuildTx directly after a resource gate release fact is persisted.
+    ///
+    /// This is a low-latency wakeup for the common platform-resource path. The
+    /// BuildTx worker remains fact-driven and idempotent, so an early or
+    /// duplicate wakeup is still guarded by the persisted collect state.
+    pub fn trigger_build_fast_path_after_resource_gate_release(&self, trade_no: &str) {
+        info!(
+            trade_no = %trade_no,
+            fast_path = true,
+            "Triggering collect fast path after resource gate release"
+        );
+        self.dispatch_intent(CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string())));
+    }
+
+    pub fn trigger_broadcast_fast_path_after_tx_fee_res_ack(&self, trade_no: &str) {
+        info!(
+            trade_no = %trade_no,
+            fast_path = true,
+            "Triggering collect fast path after tx fee result ACK"
+        );
+        self.dispatch_intent(CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string())));
+    }
+
     async fn try_advance_result(&self, trade_no: &str) -> Result<(), ServiceError> {
         // 执行 running map GC
         let running = self.running.clone();
@@ -661,5 +684,39 @@ mod tests {
         assert!(intent_rx.try_recv().is_err());
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn collect_resource_gate_fast_path_dispatches_build_intent() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, None);
+
+        advancer.trigger_build_fast_path_after_resource_gate_release("C_resource_released");
+
+        let intent = intent_rx.try_recv().expect("BuildTx intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::BuildTx(ref trade_no))
+                if trade_no == "C_resource_released"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn collect_tx_fee_res_ack_fast_path_dispatches_broadcast_intent() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, None);
+
+        advancer.trigger_broadcast_fast_path_after_tx_fee_res_ack("C_fee_ack_sent");
+
+        let intent = intent_rx.try_recv().expect("BroadcastTx intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::BroadcastTx(ref trade_no))
+                if trade_no == "C_fee_ack_sent"
+        ));
+        assert!(intent_rx.try_recv().is_err());
     }
 }

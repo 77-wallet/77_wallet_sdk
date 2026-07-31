@@ -264,7 +264,7 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use tracing::{error, trace, warn};
+use tracing::{error, info, trace, warn};
 use wallet_database::{
     ApiTransactionDbPool,
     entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawEntity},
@@ -1109,6 +1109,17 @@ impl ShadowScanner {
         }
     }
 
+    pub fn trigger_build_fast_path_after_resource_gate_release(&self, trade_no: &str) {
+        info!(
+            trade_no = %trade_no,
+            fast_path = true,
+            "Triggering withdraw fast path after resource gate release"
+        );
+        self.dispatch_intent(WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(
+            trade_no.to_string(),
+        )));
+    }
+
     async fn try_advance_result(&self, trade_no: &str) -> Result<(), ServiceError> {
         trace!(trade_no = %trade_no, "Try advancing withdraw transaction");
         let pool = self.ctx.api_transaction_pool()?;
@@ -1657,5 +1668,22 @@ mod tests {
         assert!(intent_rx.try_recv().is_err());
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn withdraw_resource_gate_fast_path_dispatches_build_intent() {
+        let ctx = test_ctx().await;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
+
+        scanner.trigger_build_fast_path_after_resource_gate_release("W_resource_released");
+
+        let intent = intent_rx.try_recv().expect("BuildTx intent should be dispatched");
+        assert!(matches!(
+            intent,
+            WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(ref trade_no))
+                if trade_no == "W_resource_released"
+        ));
+        assert!(intent_rx.try_recv().is_err());
     }
 }

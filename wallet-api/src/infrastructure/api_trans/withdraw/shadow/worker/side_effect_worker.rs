@@ -474,13 +474,7 @@ impl SideEffectWorker {
             );
         } else {
             if let Some((origin_trade_no, _)) = release {
-                info!(
-                    resource_trade_no = %resource_task.resource_trade_no,
-                    origin_trade_no = %origin_trade_no,
-                    source = "side_effect_worker",
-                    "Triggering withdraw fast path after resource gate projection"
-                );
-                self.scanner.try_advance(&origin_trade_no).await;
+                self.scanner.trigger_build_fast_path_after_resource_gate_release(&origin_trade_no);
             }
         }
 
@@ -562,7 +556,7 @@ impl SideEffectWorker {
         .map_err(|e| ServiceError::Database(e.into()))?;
 
         if withdraw.resource_gate_released_at.is_some() {
-            self.scanner.try_advance(origin_trade_no).await;
+            self.scanner.trigger_build_fast_path_after_resource_gate_release(origin_trade_no);
             return Ok(());
         }
 
@@ -581,7 +575,7 @@ impl SideEffectWorker {
             source = "side_effect_worker",
             "Withdraw resource gate projected from resource task outcome"
         );
-        self.scanner.try_advance(origin_trade_no).await;
+        self.scanner.trigger_build_fast_path_after_resource_gate_release(origin_trade_no);
         Ok(())
     }
 
