@@ -397,8 +397,7 @@ impl SideEffectWorker {
                         ServiceError::Database(e.into())
                     })?;
 
-                // 发送 Tick 通知，触发扫描
-                self.advancer.trigger_broadcast_fast_path_after_tx_fee_res_ack(&trade_no);
+                self.advancer.try_advance(&trade_no).await;
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send Order ACK");
@@ -579,8 +578,11 @@ impl SideEffectWorker {
                     warn!(trade_no = %trade_no, "Tx Fee Res ACK marked 0 rows (trade_no missing or already marked)");
                 }
 
-                // 直接调用 try_advance 进行点对点唤醒
-                self.advancer.try_advance(&trade_no).await;
+                let fresh = self.get_collect_entity(&trade_no).await?;
+                self.advancer.trigger_fast_path_after_tx_fee_res_ack(
+                    &trade_no,
+                    fresh.raw_tx.is_some(),
+                );
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send Tx Fee Res ACK");

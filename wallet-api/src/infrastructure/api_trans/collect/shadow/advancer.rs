@@ -174,13 +174,19 @@ impl ShadowAdvancer {
         );
     }
 
-    pub fn trigger_broadcast_fast_path_after_tx_fee_res_ack(&self, trade_no: &str) {
-        let intent = CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
+    pub fn trigger_fast_path_after_tx_fee_res_ack(&self, trade_no: &str, raw_tx_present: bool) {
+        let target =
+            if raw_tx_present { FastPathTarget::BroadcastTx } else { FastPathTarget::BuildTx };
+        let intent = if raw_tx_present {
+            CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()))
+        } else {
+            CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()))
+        };
         let failed_trade_no = trade_no.to_string();
         dispatch_fast_path(
             FastPathFlow::Collect,
             FastPathReason::TxFeeResAckSent,
-            FastPathTarget::BroadcastTx,
+            target,
             trade_no,
             || self.intent_tx.try_send(intent),
             || self.emit_intent_dispatch_failed(failed_trade_no),
@@ -714,12 +720,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn collect_tx_fee_res_ack_fast_path_dispatches_broadcast_intent() {
+    async fn collect_tx_fee_res_ack_fast_path_dispatches_build_intent_without_raw_tx() {
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
         let (intent_tx, mut intent_rx) = mpsc::channel(100);
         let advancer = ShadowAdvancer::new(ctx, intent_tx, None);
 
-        advancer.trigger_broadcast_fast_path_after_tx_fee_res_ack("C_fee_ack_sent");
+        advancer.trigger_fast_path_after_tx_fee_res_ack("C_fee_ack_sent", false);
+
+        let intent = intent_rx.try_recv().expect("BuildTx intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::BuildTx(ref trade_no))
+                if trade_no == "C_fee_ack_sent"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn collect_tx_fee_res_ack_fast_path_dispatches_broadcast_intent_with_raw_tx() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, None);
+
+        advancer.trigger_fast_path_after_tx_fee_res_ack("C_fee_ack_sent", true);
 
         let intent = intent_rx.try_recv().expect("BroadcastTx intent should be dispatched");
         assert!(matches!(
