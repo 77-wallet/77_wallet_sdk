@@ -5,7 +5,7 @@
 // - Broadcast success MUST only update last_broadcast_at
 // - transaction_time is an irreversible on-chain confirmation fact
 // - Only Scanner / Shadow Recovery may write transaction_time
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -87,7 +87,7 @@ use crate::{
         resource_reservation::{
             ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
         },
-        resource_rpc_auth,
+        resource_rpc_auth, shadow_rpc_policy,
     },
     request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
 };
@@ -138,6 +138,12 @@ enum ResourceGateNextStep {
     BlockOnLocal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TronMissingPoolsRecoveryAction {
+    ObserveWithPointToPointRetry,
+    Rebroadcast,
+}
+
 /// Shadow Worker
 /// 纯执行型、无状态假设、可随时 kill -9 的 Worker
 ///
@@ -182,6 +188,8 @@ pub struct ShadowCollectWorker {
 }
 
 impl ShadowCollectWorker {
+    const LOCAL_DELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS: [u64; 3] = [3, 8, 15];
+
     const TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
@@ -375,7 +383,11 @@ impl ShadowCollectWorker {
         err: &ServiceError,
     ) -> bool {
         Self::should_reopen_fee_cycle_for_solana_token_collect(req, err)
-            && req.service_fee_uploaded_at.is_some()
+            && Self::service_fee_cycle_completed(req)
+    }
+
+    fn service_fee_cycle_completed(req: &ApiCollectEntity) -> bool {
+        req.service_fee_uploaded_at.is_some() && req.tx_fee_res_ack_sent_at.is_some()
     }
 
     fn should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
@@ -383,7 +395,7 @@ impl ShadowCollectWorker {
     ) -> bool {
         shared_mechanism::is_sol_chain(&req.chain_code)
             && req.token_addr.is_contract()
-            && req.service_fee_uploaded_at.is_some()
+            && Self::service_fee_cycle_completed(req)
     }
 
     fn is_solana_rent_exempt_reserve_balance_error(
@@ -428,6 +440,16 @@ impl ShadowCollectWorker {
             Self::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS,
             Utc::now(),
         )
+    }
+
+    fn tron_missing_pools_recovery_action(
+        req: &ApiCollectEntity,
+    ) -> TronMissingPoolsRecoveryAction {
+        if Self::should_rebroadcast_tron_missing_confirmed_and_pending(req) {
+            TronMissingPoolsRecoveryAction::Rebroadcast
+        } else {
+            TronMissingPoolsRecoveryAction::ObserveWithPointToPointRetry
+        }
     }
 
     fn apply_exec_to_addr(req: &mut ApiCollectEntity, exec_to_addr: &str) -> bool {
@@ -928,6 +950,10 @@ impl ShadowCollectWorker {
                     source = "shadow_worker_v2",
                     "Resource delegation broadcast fact committed"
                 );
+                self.schedule_local_delegation_post_broadcast_confirms(
+                    &resource_trade_no,
+                    &tx_hash,
+                );
             }
             LocalDelegateExecutionOutcome::RecoveredSuccess(refreshed) => {
                 self.release_collect_gate_after_local_delegation_success(&refreshed).await?;
@@ -946,6 +972,36 @@ impl ShadowCollectWorker {
         }
 
         Ok(())
+    }
+
+    fn schedule_local_delegation_post_broadcast_confirms(
+        &self,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) {
+        for delay_secs in Self::LOCAL_DELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS {
+            let advancer = self.advancer.clone();
+            let resource_trade_no = resource_trade_no.to_string();
+            let tx_hash = tx_hash.to_string();
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                delay_secs = delay_secs,
+                source = "shadow_worker_v2",
+                "Scheduled local delegation post-broadcast confirmation"
+            );
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    tx_hash = %tx_hash,
+                    delay_secs = delay_secs,
+                    source = "shadow_worker_v2",
+                    "Triggering local delegation post-broadcast confirmation"
+                );
+                advancer.trigger_local_delegation_fast_path(&resource_trade_no);
+            });
+        }
     }
 
     async fn mark_local_resource_delegation_failed(
@@ -2245,14 +2301,23 @@ impl ShadowCollectWorker {
                 }
             }
             Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
-                if !Self::should_rebroadcast_tron_missing_confirmed_and_pending(&req) {
-                    info!(
-                        trade_no = %trade_no,
-                        tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
-                        source = "shadow_worker_v2",
-                        "Tron tx missing from confirmed and pending pools; keep observing before rebroadcast"
-                    );
-                    return Ok(());
+                match Self::tron_missing_pools_recovery_action(&req) {
+                    TronMissingPoolsRecoveryAction::ObserveWithPointToPointRetry => {
+                        let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
+                        let retry_delay =
+                            shadow_rpc_policy::recover_dispatch_cooldown(&recover_key);
+                        info!(
+                            observability_event = "tron_collect_missing_pools_recover_retry_scheduled",
+                            trade_no = %trade_no,
+                            tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                            retry_delay_ms = retry_delay.as_millis(),
+                            source = "shadow_worker_v2",
+                            "Tron tx missing from confirmed and pending pools; scheduling point-to-point observation"
+                        );
+                        self.advancer.schedule_recover_retry(trade_no);
+                        return Ok(());
+                    }
+                    TronMissingPoolsRecoveryAction::Rebroadcast => {}
                 }
 
                 warn!(
@@ -3176,17 +3241,18 @@ impl ShadowCollectWorker {
         &self,
         req: &ApiCollectEntity,
     ) -> Result<u64, ServiceError> {
-        let fee_cycle_completed = req.service_fee_uploaded_at.is_some();
+        let fee_cycle_completed = Self::service_fee_cycle_completed(req);
 
         if Self::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
             req,
         ) {
             info!(
                 trade_no = %req.trade_no,
+                chain_code = %req.chain_code,
                 service_fee_uploaded_at = ?req.service_fee_uploaded_at,
                 tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
                 source = "shadow_worker_v2",
-                "Solana token collect fee shortage after completed fee cycle; marking collect as terminal failure"
+                "Token collect fee shortage after completed fee cycle; marking collect as terminal failure"
             );
 
             let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
@@ -3194,7 +3260,7 @@ impl ShadowCollectWorker {
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
                 ErrCode::BalanceInsufficient,
-                "solana token collect fee shortage after completed fee cycle",
+                "token collect fee shortage after completed fee cycle",
             )
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
@@ -3203,7 +3269,7 @@ impl ShadowCollectWorker {
                 trade_no = %req.trade_no,
                 rows_affected = %rows_affected,
                 source = "shadow_worker_v2",
-                "Marked Solana token collect as terminal failure after completed fee cycle"
+                "Marked token collect as terminal failure after completed fee cycle"
             );
             return Ok(0);
         }
@@ -3724,7 +3790,7 @@ impl ShadowCollectWorker {
         }
 
         if Self::is_solana_rent_exempt_reserve_balance_error(&req, &err) {
-            if req.service_fee_uploaded_at.is_some() {
+            if Self::service_fee_cycle_completed(&req) {
                 info!(
                     trade_no = %trade_no,
                     error = %err,
@@ -4116,7 +4182,7 @@ impl ShadowCollectWorker {
 mod tests {
     use super::{
         ResourceBudget, ResourceGateSnapshot, ResourceReservationDecision, ShadowCollectWorker,
-        WithdrawResourceReservationManager,
+        TronMissingPoolsRecoveryAction, WithdrawResourceReservationManager,
     };
     use crate::{
         context::api_wallet_backend::ApiWalletBackend,
@@ -4348,6 +4414,30 @@ oss:
 
         req.raw_tx = Some("{}".to_string());
         assert!(!ShadowCollectWorker::should_retry_collect_build_service_unavailable(&req, &err));
+    }
+
+    #[test]
+    fn tron_missing_pools_recovery_action_observes_fresh_and_rebroadcasts_expired() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.last_broadcast_at = Some(Utc::now());
+
+        assert_eq!(
+            ShadowCollectWorker::tron_missing_pools_recovery_action(&req),
+            TronMissingPoolsRecoveryAction::ObserveWithPointToPointRetry
+        );
+
+        req.last_broadcast_at = Some(
+            Utc::now()
+                - chrono::Duration::seconds(
+                    ShadowCollectWorker::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS
+                        + 1,
+                ),
+        );
+        assert_eq!(
+            ShadowCollectWorker::tron_missing_pools_recovery_action(&req),
+            TronMissingPoolsRecoveryAction::Rebroadcast
+        );
     }
 
     #[tokio::test]
@@ -5731,6 +5821,7 @@ oss:
 
         let mut req = base_collect();
         req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
         let err = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(
             InsufficientBalanceDetail::new()
                 .reason("sender balance must keep rent-exempt reserve after transfer"),
@@ -5745,9 +5836,46 @@ oss:
     fn sol_token_collect_fee_shortage_after_fee_cycle_terminates() {
         let mut req = base_collect();
         req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
 
         assert!(
             ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
+        );
+    }
+
+    #[test]
+    fn service_fee_report_without_fee_order_ack_is_not_completed() {
+        let mut req = base_collect();
+        req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = None;
+
+        assert!(!ShadowCollectWorker::service_fee_cycle_completed(&req));
+
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
+        assert!(ShadowCollectWorker::service_fee_cycle_completed(&req));
+    }
+
+    #[test]
+    fn tron_token_collect_fee_report_does_not_complete_fee_cycle() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Contract("token".to_string());
+        req.service_fee_uploaded_at = Some(Utc::now());
+
+        assert!(
+            !ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
+        );
+    }
+
+    #[test]
+    fn tron_native_collect_fee_shortage_after_fee_cycle_does_not_use_token_terminal_rule() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Native;
+        req.service_fee_uploaded_at = Some(Utc::now());
+
+        assert!(
+            !ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
         );
     }
 
@@ -5797,4 +5925,11 @@ oss:
 
         assert!(ShadowCollectWorker::should_auto_fail_broadcast_uncertain(&req, Utc::now()));
     }
+}
+#[test]
+fn local_delegation_post_broadcast_confirm_delays_cover_short_window() {
+    assert_eq!(
+        ShadowCollectWorker::LOCAL_DELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS,
+        [3, 8, 15]
+    );
 }

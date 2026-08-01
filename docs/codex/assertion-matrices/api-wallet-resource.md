@@ -143,6 +143,27 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   must restore its deterministic hash and atomically persist the chain-success
   fact and terminal SUCCESS result, even if an uncertain rebuild cleared the
   prior pending-broadcast snapshot.
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_reclaim/local_shadow.rs`
+  `local_undelegation_missing_relationship_is_idempotent_success`
+- Invariant: `delegated Resource does not exist` proves the local undelegation
+  target state is already satisfied, so it is persisted as idempotent SUCCESS
+  and must not re-enter the execution scanner. An insufficient delegated
+  balance remains retryable because the remaining relationship may belong to
+  another active order and must not be reclaimed blindly.
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_reclaim/local_shadow.rs`
+  `local_undelegation_post_broadcast_confirm_delays_cover_short_window`
+- Invariant: every successful local undelegation broadcast schedules Recover
+  probes at 3, 8, and 15 seconds; terminal fact checks make later probes no-ops,
+  and the periodic scanner remains the durable fallback.
+- Test:
+  `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs`
+  `local_delegation_post_broadcast_confirm_delays_cover_short_window`
+- Invariant: every successful local delegation broadcast re-dispatches its
+  fact-driven execution command at 3, 8, and 15 seconds. Persisted broadcast
+  facts make each probe a Recover operation, and the periodic scanner remains
+  the durable fallback.
 - Invariant: cross-database resource-gate projection must complete before the
   resource result ACK fact is marked locally, so a projection failure remains
   retryable instead of leaving the origin order permanently blocked.
@@ -167,3 +188,36 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - UI/API facts: broadcast-only extraction detail returns confirming status.
 - Invariant: client-broadcasted API resource operations do not become success
   until chain/result confirmation is recorded.
+## Local Undelegation Fast Path
+
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_reclaim/local_shadow.rs`
+  `local_undelegation_fast_path_enqueues_exact_task`
+- Entry point: collect completion persists a local undelegation.
+- Runtime facts: the exact task is immediately enqueued to the existing reclaim
+  dispatcher; periodic scanning remains the fallback when its queue is unavailable.
+- Invariant: scanner pagination cannot delay a newly created local reclaim task.
+
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_reclaim/local_shadow.rs`
+  `local_undelegation_reconciliation_bypasses_full_execute_page`
+- Entry point: restart reconciliation creates a missing local undelegation.
+- Runtime facts: the executable scan page is already full of older rows.
+- Invariant: the reconciled task is emitted in the same scan round and cannot be
+  starved by the paginated executable scan.
+
+- Tests:
+  `scanner_does_not_reconcile_before_origin_collect_finishes` and
+  `scanner_reconciles_missing_local_undelegation_after_restart`
+- Invariant: restart reconciliation may create a missing local undelegation only
+  after the origin collect has a durable terminal fact. A successful delegation
+  alone never authorizes reclaim while the collect can still resume.
+## Local Reclaim Dispatcher Concurrency
+
+- Test:
+  `wallet-api/src/infrastructure/api_trans/resource_reclaim/local_shadow.rs`
+  `local_reclaim_execute_and_recover_share_running_key`
+- Invariant: Execute and Recover intents for one resource trade number share one
+  running key, while distinct local undelegations may use dispatcher concurrency.
+- Runtime facts: concurrency defaults to two and is bounded to `1..=16`; the
+  scanner remains the durable retry path for skipped or failed work.

@@ -63,6 +63,7 @@ use crate::{
             resource_chain_failed, resource_chain_success, resource_failure_receipt_uploadable,
             resource_success_receipt_uploadable,
         },
+        resource_reclaim::local_shadow::trigger_local_undelegation_fast_path,
     },
     request::api_wallet::trans::ApiBaseTransferReq,
 };
@@ -871,7 +872,7 @@ impl SideEffectWorker {
             &self.ctx.api_resource_pool()?,
             NewApiResourceDelegation::local_undelegate(
                 local_delegate.uid.clone(),
-                resource_trade_no,
+                resource_trade_no.clone(),
                 origin_trade_no.to_string(),
                 ApiTradeType::Collect as i64,
                 local_delegate.owner_address.clone(),
@@ -882,6 +883,8 @@ impl SideEffectWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+
+        trigger_local_undelegation_fast_path(&resource_trade_no);
 
         Ok(())
     }
@@ -1270,7 +1273,9 @@ impl SideEffectWorker {
         .map_err(|e| ServiceError::Database(e.into()))?;
         info!(trade_no = %trade_no, source = "side_effect_worker", "Service fee marked as uploaded successfully");
 
-        // 直接调用 try_advance 进行点对点唤醒
+        // Reporting the service-fee request does not mean the fee transfer has
+        // arrived. Stay asleep until the backend fee order is received and its
+        // TX_FEE_RES ACK fact wakes the collect flow.
         self.advancer.try_advance(&trade_no).await;
 
         Ok(())

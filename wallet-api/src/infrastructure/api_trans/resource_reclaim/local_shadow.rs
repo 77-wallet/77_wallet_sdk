@@ -1,13 +1,20 @@
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    fs,
+    path::PathBuf,
+    sync::{Arc, Mutex, OnceLock},
+    time::Duration,
+};
 
-use tokio::sync::{broadcast, mpsc};
+use dashmap::DashSet;
+use tokio::sync::{Semaphore, broadcast, mpsc};
 use tracing::{error, info, warn};
 use wallet_chain_interact::{
     BillResourceConsume,
     tron::operations::{RawTransactionParams, TronTxOperation, stake::UnDelegateArgs},
 };
 use wallet_database::{
-    ApiResourceDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool,
     entities::{
         api_resource_delegation::{
             ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
@@ -17,7 +24,9 @@ use wallet_database::{
         api_resource_type::ApiResourceType,
         api_trade_type::ApiTradeType,
     },
-    repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
+    repositories::api_wallet::{
+        collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+    },
 };
 use wallet_utils::RetryableError as _;
 
@@ -48,6 +57,64 @@ pub enum LocalResourceReclaimIntent {
     RecoverLocalUndelegation(String),
 }
 
+impl LocalResourceReclaimIntent {
+    fn resource_trade_no(&self) -> &str {
+        match self {
+            Self::ExecuteLocalUndelegation(resource_trade_no)
+            | Self::RecoverLocalUndelegation(resource_trade_no) => resource_trade_no,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalResourceReclaimDispatcherConfig {
+    pub concurrency: usize,
+}
+
+impl Default for LocalResourceReclaimDispatcherConfig {
+    fn default() -> Self {
+        let concurrency = shadow_rpc_policy::read_usize_env(
+            "LOCAL_RESOURCE_RECLAIM_DISPATCHER_CONCURRENCY",
+            2,
+            1,
+            16,
+        );
+        Self { concurrency }
+    }
+}
+
+static LOCAL_RESOURCE_RECLAIM_INTENT_TX: OnceLock<
+    Mutex<Option<mpsc::Sender<LocalResourceReclaimIntent>>>,
+> = OnceLock::new();
+
+fn local_resource_reclaim_intent_tx()
+-> &'static Mutex<Option<mpsc::Sender<LocalResourceReclaimIntent>>> {
+    LOCAL_RESOURCE_RECLAIM_INTENT_TX.get_or_init(|| Mutex::new(None))
+}
+
+pub(crate) fn trigger_local_undelegation_fast_path(resource_trade_no: &str) -> bool {
+    let intent_tx = local_resource_reclaim_intent_tx()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    let Some(intent_tx) = intent_tx else {
+        return false;
+    };
+
+    match intent_tx.try_send(LocalResourceReclaimIntent::ExecuteLocalUndelegation(
+        resource_trade_no.to_string(),
+    )) {
+        Ok(()) => {
+            info!(resource_trade_no, "Local undelegation fast path enqueued");
+            true
+        }
+        Err(e) => {
+            warn!(resource_trade_no, error = %e, "Local undelegation fast path unavailable; scanner will retry");
+            false
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LocalResourceReclaimScannerConfig {
     pub scan_interval: Duration,
@@ -76,6 +143,7 @@ impl Default for LocalResourceReclaimScannerConfig {
 #[derive(Debug, Clone)]
 pub struct LocalResourceReclaimScanner {
     api_resource_pool: ApiResourceDbPool,
+    api_transaction_pool: Option<ApiTransactionDbPool>,
     config: LocalResourceReclaimScannerConfig,
 }
 
@@ -88,14 +156,33 @@ impl LocalResourceReclaimScanner {
         api_resource_pool: ApiResourceDbPool,
         config: LocalResourceReclaimScannerConfig,
     ) -> Self {
-        Self { api_resource_pool, config }
+        Self { api_resource_pool, api_transaction_pool: None, config }
+    }
+
+    pub fn with_transaction_pool_and_config(
+        api_resource_pool: ApiResourceDbPool,
+        api_transaction_pool: ApiTransactionDbPool,
+        config: LocalResourceReclaimScannerConfig,
+    ) -> Self {
+        Self { api_resource_pool, api_transaction_pool: Some(api_transaction_pool), config }
     }
 
     pub async fn scan_round(&self) -> Vec<LocalResourceReclaimIntent> {
         let mut intents = Vec::new();
+        let mut execute_trade_nos = HashSet::new();
 
-        if let Err(e) = self.reconcile_missing_local_undelegations().await {
-            error!(error = %e, "Failed to reconcile missing local undelegation records");
+        match self.reconcile_missing_local_undelegations().await {
+            Ok(resource_trade_nos) => {
+                for resource_trade_no in resource_trade_nos {
+                    execute_trade_nos.insert(resource_trade_no.clone());
+                    intents.push(LocalResourceReclaimIntent::ExecuteLocalUndelegation(
+                        resource_trade_no,
+                    ));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to reconcile missing local undelegation records");
+            }
         }
 
         match ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
@@ -109,9 +196,11 @@ impl LocalResourceReclaimScanner {
         {
             Ok(records) => {
                 for record in records {
-                    intents.push(LocalResourceReclaimIntent::ExecuteLocalUndelegation(
-                        record.resource_trade_no,
-                    ));
+                    if execute_trade_nos.insert(record.resource_trade_no.clone()) {
+                        intents.push(LocalResourceReclaimIntent::ExecuteLocalUndelegation(
+                            record.resource_trade_no,
+                        ));
+                    }
                 }
             }
             Err(e) => {
@@ -141,7 +230,12 @@ impl LocalResourceReclaimScanner {
         intents
     }
 
-    async fn reconcile_missing_local_undelegations(&self) -> Result<(), wallet_database::Error> {
+    async fn reconcile_missing_local_undelegations(
+        &self,
+    ) -> Result<Vec<String>, wallet_database::Error> {
+        let Some(api_transaction_pool) = &self.api_transaction_pool else {
+            return Ok(Vec::new());
+        };
         let delegates =
             ApiResourceDelegationRepo::scan_local_delegates_missing_undelegation_for_origin_type(
                 &self.api_resource_pool,
@@ -150,10 +244,27 @@ impl LocalResourceReclaimScanner {
             )
             .await?;
 
+        let mut resource_trade_nos = Vec::with_capacity(delegates.len());
         for delegate in delegates {
             let Some(origin_trade_no) = delegate.origin_trade_no.clone() else {
                 continue;
             };
+            let Some(origin_collect) = ApiCollectRepo::find_api_collect_by_trade_no(
+                api_transaction_pool,
+                &origin_trade_no,
+            )
+            .await?
+            else {
+                continue;
+            };
+            if origin_collect.finished_at.is_none() {
+                info!(
+                    origin_trade_no = %origin_trade_no,
+                    source = "local_resource_reclaim_shadow",
+                    "Skipping missing local undelegation reconciliation before collect terminal fact"
+                );
+                continue;
+            }
             let resource_trade_no = collect_local_undelegate_trade_no(&origin_trade_no);
             ApiResourceDelegationRepo::upsert(
                 &self.api_resource_pool,
@@ -169,6 +280,7 @@ impl LocalResourceReclaimScanner {
                 ),
             )
             .await?;
+            resource_trade_nos.push(resource_trade_no.clone());
             info!(
                 resource_trade_no = %resource_trade_no,
                 origin_trade_no = %origin_trade_no,
@@ -177,7 +289,7 @@ impl LocalResourceReclaimScanner {
             );
         }
 
-        Ok(())
+        Ok(resource_trade_nos)
     }
 }
 
@@ -233,6 +345,8 @@ pub struct LocalResourceReclaimWorker {
 }
 
 impl LocalResourceReclaimWorker {
+    const LOCAL_UNDELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS: [u64; 3] = [3, 8, 15];
+
     pub fn new(ctx: &'static crate::context::Context) -> Self {
         Self { ctx }
     }
@@ -262,7 +376,99 @@ impl LocalResourceReclaimWorker {
         let Err(err) = result else {
             return Ok(());
         };
+        if Self::is_local_undelegation_already_reclaimed_error(&err) {
+            return self.mark_local_undelegation_already_reclaimed(resource_trade_no, &err).await;
+        }
         self.schedule_local_undelegation_rebuild_retry(resource_trade_no, &err).await
+    }
+
+    fn is_local_undelegation_already_reclaimed_error(err: &ServiceError) -> bool {
+        err.to_string().contains("delegated Resource does not exist")
+    }
+
+    fn schedule_local_undelegation_post_broadcast_confirms(
+        &self,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) {
+        for delay_secs in Self::LOCAL_UNDELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS {
+            let worker = self.clone();
+            let resource_trade_no = resource_trade_no.to_string();
+            let tx_hash = tx_hash.to_string();
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                delay_secs = delay_secs,
+                source = "local_resource_reclaim_shadow",
+                "Scheduled local undelegation post-broadcast confirmation"
+            );
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    tx_hash = %tx_hash,
+                    delay_secs = delay_secs,
+                    source = "local_resource_reclaim_shadow",
+                    "Triggering local undelegation post-broadcast confirmation"
+                );
+                if let Err(err) = worker
+                    .handle(LocalResourceReclaimIntent::RecoverLocalUndelegation(
+                        resource_trade_no.clone(),
+                    ))
+                    .await
+                {
+                    warn!(
+                        resource_trade_no = %resource_trade_no,
+                        tx_hash = %tx_hash,
+                        delay_secs = delay_secs,
+                        error = %err,
+                        source = "local_resource_reclaim_shadow",
+                        "Local undelegation post-broadcast confirmation failed"
+                    );
+                }
+            });
+        }
+    }
+
+    async fn mark_local_undelegation_already_reclaimed(
+        &self,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        Self::mark_local_undelegation_already_reclaimed_in_pool(
+            &self.ctx.api_resource_pool()?,
+            resource_trade_no,
+            err,
+        )
+        .await
+    }
+
+    async fn mark_local_undelegation_already_reclaimed_in_pool(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let payload = format!("local_undelegation_already_reclaimed:{err}");
+        let affected = ApiResourceDelegationRepo::mark_result_received(
+            pool,
+            resource_trade_no,
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            Some(&payload),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        info!(
+            resource_trade_no = %resource_trade_no,
+            affected = affected,
+            error = %err,
+            source = "local_resource_reclaim_shadow",
+            "Local undelegation recorded as already reclaimed"
+        );
+        Ok(())
     }
 
     async fn process_local_undelegation_execute(
@@ -320,13 +526,14 @@ impl LocalResourceReclaimWorker {
             )));
         }
 
-        execute_resource_delegation(
+        let tx_hash = execute_resource_delegation(
             self.ctx,
             &self.ctx.api_resource_pool()?,
             &delegation,
             "local_resource_delegation_undelegate",
         )
         .await?;
+        self.schedule_local_undelegation_post_broadcast_confirms(&resource_trade_no, &tx_hash);
 
         Ok(())
     }
@@ -367,13 +574,14 @@ impl LocalResourceReclaimWorker {
         }
 
         if resource_delegation_is_built_unbroadcast(&delegation) {
-            execute_resource_delegation(
+            let tx_hash = execute_resource_delegation(
                 self.ctx,
                 &self.ctx.api_resource_pool()?,
                 &delegation,
                 "local_resource_delegation_undelegate",
             )
             .await?;
+            self.schedule_local_undelegation_post_broadcast_confirms(&resource_trade_no, &tx_hash);
             return Ok(());
         }
 
@@ -490,6 +698,8 @@ pub struct LocalResourceReclaimDispatcherActor {
     worker: LocalResourceReclaimWorker,
     intent_rx: mpsc::Receiver<LocalResourceReclaimIntent>,
     shutdown_rx: broadcast::Receiver<()>,
+    running: Arc<DashSet<String>>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl LocalResourceReclaimDispatcherActor {
@@ -497,8 +707,15 @@ impl LocalResourceReclaimDispatcherActor {
         worker: LocalResourceReclaimWorker,
         intent_rx: mpsc::Receiver<LocalResourceReclaimIntent>,
         shutdown_rx: broadcast::Receiver<()>,
+        config: LocalResourceReclaimDispatcherConfig,
     ) -> Self {
-        Self { worker, intent_rx, shutdown_rx }
+        Self {
+            worker,
+            intent_rx,
+            shutdown_rx,
+            running: Arc::new(DashSet::new()),
+            semaphore: Arc::new(Semaphore::new(config.concurrency)),
+        }
     }
 
     pub async fn run(mut self) {
@@ -512,9 +729,27 @@ impl LocalResourceReclaimDispatcherActor {
                     break;
                 }
                 Some(intent) = self.intent_rx.recv() => {
-                    if let Err(e) = self.worker.handle(intent).await {
-                        error!(error = %e, "Failed to handle local resource reclaim intent");
+                    let resource_trade_no = intent.resource_trade_no().to_string();
+                    if !self.running.insert(resource_trade_no.clone()) {
+                        info!(resource_trade_no, "Local resource reclaim task already running; skipping duplicate intent");
+                        continue;
                     }
+
+                    let worker = self.worker.clone();
+                    let running = self.running.clone();
+                    let semaphore = self.semaphore.clone();
+                    tokio::spawn(async move {
+                        let permit = semaphore.acquire_owned().await;
+                        let Ok(_permit) = permit else {
+                            running.remove(&resource_trade_no);
+                            return;
+                        };
+
+                        if let Err(e) = worker.handle(intent).await {
+                            error!(resource_trade_no, error = %e, "Failed to handle local resource reclaim intent");
+                        }
+                        running.remove(&resource_trade_no);
+                    });
                 }
                 else => {
                     info!("Local resource reclaim intent channel closed");
@@ -530,6 +765,7 @@ impl LocalResourceReclaimDispatcherActor {
 #[derive(Debug)]
 pub struct LocalResourceReclaimShadowActorSystem {
     shutdown_tx: broadcast::Sender<()>,
+    intent_tx: mpsc::Sender<LocalResourceReclaimIntent>,
     scanner_handle: Option<tokio::task::JoinHandle<()>>,
     dispatcher_handle: Option<tokio::task::JoinHandle<()>>,
 }
@@ -537,16 +773,26 @@ pub struct LocalResourceReclaimShadowActorSystem {
 impl LocalResourceReclaimShadowActorSystem {
     pub fn new(ctx: &'static crate::context::Context) -> Result<Self, ServiceError> {
         let api_resource_pool = ctx.api_resource_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
         let (shutdown_tx, shutdown_rx1) = broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let (intent_tx, intent_rx) = mpsc::channel(100);
+        *local_resource_reclaim_intent_tx()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(intent_tx.clone());
 
-        let scanner = Arc::new(LocalResourceReclaimScanner::new(api_resource_pool.clone()));
+        let scanner = Arc::new(LocalResourceReclaimScanner::with_transaction_pool_and_config(
+            api_resource_pool.clone(),
+            api_transaction_pool,
+            LocalResourceReclaimScannerConfig::default(),
+        ));
         let worker = LocalResourceReclaimWorker::new(ctx);
+        let dispatcher_config = LocalResourceReclaimDispatcherConfig::default();
 
         info!(
             scan_interval_secs = scanner.config.scan_interval.as_secs(),
             max_items_per_scan = scanner.config.max_items_per_scan,
+            dispatcher_concurrency = dispatcher_config.concurrency,
             "Local resource reclaim shadow runtime config"
         );
 
@@ -563,24 +809,36 @@ impl LocalResourceReclaimShadowActorSystem {
         });
 
         let scanner_actor =
-            LocalResourceReclaimScannerActor::new(scanner.clone(), intent_tx, shutdown_rx1);
+            LocalResourceReclaimScannerActor::new(scanner.clone(), intent_tx.clone(), shutdown_rx1);
         let scanner_handle = Some(tokio::spawn(async move {
             scanner_actor.run().await;
         }));
 
-        let dispatcher_actor =
-            LocalResourceReclaimDispatcherActor::new(worker, intent_rx, shutdown_rx2);
+        let dispatcher_actor = LocalResourceReclaimDispatcherActor::new(
+            worker,
+            intent_rx,
+            shutdown_rx2,
+            dispatcher_config,
+        );
         let dispatcher_handle = Some(tokio::spawn(async move {
             dispatcher_actor.run().await;
         }));
 
-        Ok(Self { shutdown_tx, scanner_handle, dispatcher_handle })
+        Ok(Self { shutdown_tx, intent_tx, scanner_handle, dispatcher_handle })
     }
 
     pub async fn stop(&mut self) {
         info!("Stopping local resource reclaim shadow system");
 
         let _ = self.shutdown_tx.send(());
+
+        let mut registered_tx = local_resource_reclaim_intent_tx()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if registered_tx.as_ref().is_some_and(|tx| tx.same_channel(&self.intent_tx)) {
+            *registered_tx = None;
+        }
+        drop(registered_tx);
 
         if let Some(handle) = self.scanner_handle.take() {
             if let Err(err) = handle.await {
@@ -608,7 +866,11 @@ pub async fn scan_and_process_once(
     ctx: &'static crate::context::Context,
 ) -> Result<(), ServiceError> {
     let api_resource_pool = ctx.api_resource_pool()?;
-    let scanner = LocalResourceReclaimScanner::new(api_resource_pool.clone());
+    let scanner = LocalResourceReclaimScanner::with_transaction_pool_and_config(
+        api_resource_pool.clone(),
+        ctx.api_transaction_pool()?,
+        LocalResourceReclaimScannerConfig::default(),
+    );
     let worker = LocalResourceReclaimWorker::new(ctx);
 
     for intent in scanner.scan_round().await {
@@ -621,12 +883,57 @@ pub async fn scan_and_process_once(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_reclaim_execute_and_recover_share_running_key() {
+        let execute = LocalResourceReclaimIntent::ExecuteLocalUndelegation(
+            "rsc_local_undelegate_C_SAME".to_string(),
+        );
+        let recover = LocalResourceReclaimIntent::RecoverLocalUndelegation(
+            "rsc_local_undelegate_C_SAME".to_string(),
+        );
+        let other = LocalResourceReclaimIntent::ExecuteLocalUndelegation(
+            "rsc_local_undelegate_C_OTHER".to_string(),
+        );
+
+        assert_eq!(execute.resource_trade_no(), recover.resource_trade_no());
+        assert_ne!(execute.resource_trade_no(), other.resource_trade_no());
+    }
     use wallet_database::{
         SqliteContext, entities::api_resource_delegation::NewApiResourceDelegation,
     };
 
     async fn test_ctx() -> &'static crate::context::Context {
         crate::testkit::context::api_trans_test_ctx().await
+    }
+
+    async fn transaction_pool_with_collect(
+        db_root: &str,
+        trade_no: &str,
+        finished: bool,
+    ) -> ApiTransactionDbPool {
+        let pool = SqliteContext::new(db_root, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db")
+            .into_transaction_db_pool()
+            .expect("transaction pool");
+        sqlx::query(
+            r#"
+            INSERT INTO api_collect (
+                uid, name, from_addr, to_addr, value, validate, chain_code,
+                trade_no, trade_type, status, finished_at, created_at
+            ) VALUES (?, 'api_wallet', 'from', 'to', '1', '0', 'tron', ?, 2, ?, ?,
+                strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            "#,
+        )
+        .bind("uid")
+        .bind(trade_no)
+        .bind(if finished { 9_i64 } else { 0_i64 })
+        .bind(finished.then(|| "2026-08-01T10:00:00Z".to_string()))
+        .execute(pool.write_ref())
+        .await
+        .expect("insert collect fact");
+        pool
     }
 
     #[tokio::test]
@@ -747,6 +1054,113 @@ mod tests {
         assert_eq!(persisted.tx_hash, None);
     }
 
+    #[tokio::test]
+    async fn local_undelegation_missing_relationship_is_idempotent_success() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_undelegate(
+                "uid",
+                "rsc_local_undelegate_terminal_validation",
+                "C_LOCAL_UNDELEGATE_TERMINAL",
+                ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert local undelegate");
+
+        LocalResourceReclaimWorker::mark_local_undelegation_already_reclaimed_in_pool(
+            &pool,
+            "rsc_local_undelegate_terminal_validation",
+            &ServiceError::ChainInteract(wallet_chain_interact::Error::RpcNode(
+                "contract validation error: delegated Resource does not exist".to_string(),
+            )),
+        )
+        .await
+        .expect("record idempotent success");
+
+        let got = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_local_undelegate_terminal_validation",
+        )
+        .await
+        .expect("load local undelegate");
+        assert_eq!(got.err_code, None);
+        assert_eq!(got.err_msg, None);
+        assert_eq!(got.result_status, Some(ApiResourceDelegationResultStatus::Success));
+        assert!(got.finished_at.is_some());
+        assert!(
+            got.result_payload
+                .as_deref()
+                .unwrap_or_default()
+                .contains("local_undelegation_already_reclaimed")
+        );
+
+        let scanner = LocalResourceReclaimScanner::with_config(
+            pool,
+            LocalResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+        let intents = scanner.scan_round().await;
+        assert!(!intents.iter().any(|intent| matches!(
+            intent,
+            LocalResourceReclaimIntent::ExecuteLocalUndelegation(trade_no)
+                if trade_no == "rsc_local_undelegate_terminal_validation"
+        )));
+    }
+
+    #[test]
+    fn local_undelegation_insufficient_balance_remains_retryable() {
+        let err = ServiceError::ChainInteract(wallet_chain_interact::Error::RpcNode(
+            "contract validation error: insufficient delegateFrozenBalance".to_string(),
+        ));
+
+        assert!(!LocalResourceReclaimWorker::is_local_undelegation_already_reclaimed_error(&err));
+    }
+
+    #[test]
+    fn local_undelegation_post_broadcast_confirm_delays_cover_short_window() {
+        assert_eq!(
+            LocalResourceReclaimWorker::LOCAL_UNDELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS,
+            [3, 8, 15]
+        );
+    }
+
+    #[tokio::test]
+    async fn local_undelegation_fast_path_enqueues_exact_task() {
+        let (intent_tx, mut intent_rx) = mpsc::channel(1);
+        let previous_tx = {
+            let mut registered_tx = local_resource_reclaim_intent_tx()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            registered_tx.replace(intent_tx)
+        };
+
+        assert!(trigger_local_undelegation_fast_path("rsc_local_undelegate_C_FAST_PATH"));
+        assert!(matches!(
+            intent_rx.try_recv(),
+            Ok(LocalResourceReclaimIntent::ExecuteLocalUndelegation(trade_no))
+                if trade_no == "rsc_local_undelegate_C_FAST_PATH"
+        ));
+
+        *local_resource_reclaim_intent_tx()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = previous_tx;
+    }
+
     #[test]
     fn local_undelegation_treats_transaction_expired_as_rebuildable() {
         let expired = ServiceError::System(SystemError::Internal(
@@ -814,6 +1228,7 @@ mod tests {
             .expect("init api_resource.db")
             .into_api_resource_db_pool()
             .expect("resource pool");
+        let transaction_pool = transaction_pool_with_collect(&db_root, "C_RESTART", true).await;
 
         ApiResourceDelegationRepo::upsert(
             &pool,
@@ -842,8 +1257,9 @@ mod tests {
         .await
         .expect("mark delegate success");
 
-        let scanner = LocalResourceReclaimScanner::with_config(
+        let scanner = LocalResourceReclaimScanner::with_transaction_pool_and_config(
             pool.clone(),
+            transaction_pool,
             LocalResourceReclaimScannerConfig {
                 scan_interval: Duration::from_secs(60),
                 max_items_per_scan: 8,
@@ -865,5 +1281,140 @@ mod tests {
         assert_eq!(undelegate.origin_trade_no.as_deref(), Some("C_RESTART"));
         assert_eq!(undelegate.source, ApiResourceDelegationSource::Local);
         assert_eq!(undelegate.operation_type, ApiResourceDelegationOperationType::Undelegate);
+    }
+
+    #[tokio::test]
+    async fn scanner_does_not_reconcile_before_origin_collect_finishes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
+        let transaction_pool =
+            transaction_pool_with_collect(&db_root, "C_NOT_FINISHED", false).await;
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                "rsc_local_delegate_C_NOT_FINISHED",
+                "C_NOT_FINISHED",
+                ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert local delegate");
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_local_delegate_C_NOT_FINISHED",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("mark delegate success");
+
+        let scanner = LocalResourceReclaimScanner::with_transaction_pool_and_config(
+            pool.clone(),
+            transaction_pool,
+            LocalResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+
+        let intents = scanner.scan_round().await;
+
+        assert!(intents.is_empty());
+        assert!(
+            ApiResourceDelegationRepo::find_by_resource_trade_no(
+                &pool,
+                "rsc_local_undelegate_C_NOT_FINISHED",
+            )
+            .await
+            .expect("query undelegation")
+            .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn local_undelegation_reconciliation_bypasses_full_execute_page() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
+        let transaction_pool = transaction_pool_with_collect(&db_root, "C_NOT_STARVED", true).await;
+
+        for index in 0..20 {
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::local_undelegate(
+                    "uid",
+                    format!("rsc_local_undelegate_old_{index:02}"),
+                    format!("C_OLD_{index:02}"),
+                    ApiTradeType::Collect as i64,
+                    "owner",
+                    "receiver",
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .expect("insert old local undelegate");
+        }
+
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                "rsc_local_delegate_C_NOT_STARVED",
+                "C_NOT_STARVED",
+                ApiTradeType::Collect as i64,
+                "owner",
+                "receiver",
+                "5",
+                "1000",
+            ),
+        )
+        .await
+        .expect("insert local delegate");
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_local_delegate_C_NOT_STARVED",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("mark delegate success");
+
+        let scanner = LocalResourceReclaimScanner::with_transaction_pool_and_config(
+            pool,
+            transaction_pool,
+            LocalResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 20,
+            },
+        );
+        let intents = scanner.scan_round().await;
+
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            LocalResourceReclaimIntent::ExecuteLocalUndelegation(trade_no)
+                if trade_no == "rsc_local_undelegate_C_NOT_STARVED"
+        )));
     }
 }

@@ -99,6 +99,9 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   collect_fresh_broadcast_recover_advancer_dispatches_with_fast_admission
   collect_fresh_broadcast_recover_wakeup_dispatches_without_scanner
 
+  src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  tron_missing_pools_recovery_action_observes_fresh_and_rebroadcasts_expired
+
   src/infrastructure/api_trans/shadow_rpc_policy.rs
   collect_fresh_broadcast_recover_policy_uses_fast_then_generic_admission
   ```
@@ -108,6 +111,10 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Point-to-point retry: an uncertain TRON Recover schedules a delayed
   `try_advance` using the current shared cooldown, so the 3/8/15-second sequence
   has an active wakeup instead of depending on the periodic Scanner cadence.
+- Missing pools: when an immediate TRON Recover cannot find the transaction in
+  either confirmed or pending pools, a fresh order schedules the same
+  point-to-point wakeup; only an order beyond the existing five-minute safety
+  timeout enters invalidation and rebroadcast.
 - Fallback: broadcasts older than 120 seconds retain the generic 60-second
   admission policy.
 - Invariant: direct and periodic advancement cannot overwrite one another with
@@ -1358,3 +1365,15 @@ scanner entrypoints.
   a fresh collect order persists once and emits the expected notification.
 - Move payload-only component tests closer to the receipt payload builder source
   once the source-side test layout is standardized.
+## Completed Fee Cycle Shortage Closure
+
+- Test:
+  `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs`
+  `tron_token_collect_fee_report_does_not_complete_fee_cycle`
+- Invariant: uploading the TRON service-fee request is not evidence that its fee
+  transfer arrived. TRON waits for the backend fee order and `TX_FEE_RES` ACK
+  before BuildTx may resume.
+- Test: `service_fee_report_without_fee_order_ack_is_not_completed`
+- Invariant: `service_fee_uploaded_at` means the fee transfer was requested;
+  only the additional `tx_fee_res_ack_sent_at` fact completes the fee-order
+  handshake.
