@@ -48,7 +48,7 @@ CREATE TABLE api_resource_operation
 CREATE UNIQUE INDEX api_resource_operation_trade_no
     ON api_resource_operation (resource_trade_no);
 CREATE INDEX api_resource_operation_scan
-    ON api_resource_operation (task_source, operation_type, status, next_retry_at);
+    ON api_resource_operation (task_source, operation_type, id);
 CREATE INDEX api_resource_operation_owner
     ON api_resource_operation (owner_address, resource_type);
 CREATE INDEX api_resource_operation_hash_owner
