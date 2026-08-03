@@ -20,24 +20,31 @@ CREATE TABLE api_resource_delegation
     status                       INTEGER     NOT NULL DEFAULT 1, -- 资源任务阶段：1=pending，2=success，3=fail；执行推进仍以事实字段为准
 
     task_ack_sent_at             TIMESTAMP NULL, -- platform 资源任务接收 ACK 已发送时间；local 不使用
+    task_ack_send_count          INTEGER     NOT NULL DEFAULT 0, -- platform 资源任务接收 ACK 发送次数；local 不使用
     building_at                  TIMESTAMP NULL, -- 链上交易构建占位，防止重复构建
+    raw_tx                       TEXT NULL, -- 已签名的原始交易内容；broadcast/recover 必须基于该事实
+    last_broadcast_at            TIMESTAMP NULL, -- 最近一次成功广播时间；不代表链上最终确认
     tx_hash                      TEXT NULL, -- 资源代理/回收链上交易哈希
-    tx_status                    TEXT NULL, -- 链上执行状态视图，如 success / fail / uncertain
+    chain_success_at             TIMESTAMP NULL, -- 链上执行成功事实
+    chain_failed_at              TIMESTAMP NULL, -- 链上执行失败事实
+    transaction_time             TIMESTAMP NULL, -- 链上最终确认时间；必须来自链上查询结果
+    broadcast_uncertain_since_at TIMESTAMP NULL, -- 广播不确定状态起始时间
+    broadcast_uncertain_retry_count INTEGER NOT NULL DEFAULT 0, -- 广播不确定状态重试次数
+    broadcast_uncertain_last_checked_at TIMESTAMP NULL, -- 广播不确定状态最近检查时间
+    broadcast_uncertain_reconciled_at TIMESTAMP NULL, -- 广播不确定状态已收敛时间
+    broadcast_uncertain_rebroadcast_count INTEGER NOT NULL DEFAULT 0, -- 广播不确定状态重播次数
     tx_res_received_at           TIMESTAMP NULL, -- 已接收后端交易结果时间
     tx_exec_receipt_uploaded_at  TIMESTAMP NULL, -- 链上执行回执已上传时间
 
     result_status                INTEGER NULL, -- 后端最终结果或本地最终结果状态：1=success，2=fail
-    result_received_at           TIMESTAMP NULL, -- 已接收并持久化最终结果时间
+    finished_at                  TIMESTAMP NULL, -- 已完成时间；后端最终结果或本地链上终态落库后写入
     result_ack_sent_at           TIMESTAMP NULL, -- platform 最终结果 ACK 已发送时间；local 不使用
+    result_ack_send_count        INTEGER     NOT NULL DEFAULT 0, -- platform 最终结果 ACK 发送次数；local 不使用
     result_payload               TEXT NULL, -- 原始最终结果 payload，便于排障和兼容字段回放
 
     fail_type                    INTEGER NULL, -- 后端 failType 原样落库，不直接面向用户展示
     err_code                     TEXT NULL, -- 后端或 SDK 内部错误码原样落库
     err_msg                      TEXT NULL, -- 后端或 SDK 内部错误信息原样落库
-
-    recover_status               INTEGER NULL, -- 本地回收恢复状态枚举：1=recover_waiting, 2=retry_build, 3=retry_recover
-    next_retry_at                TIMESTAMP NULL, -- 下次恢复/重试时间
-    retry_count                  INTEGER     NOT NULL DEFAULT 0, -- 恢复/重试次数
 
     created_at                   TIMESTAMP   NOT NULL, -- 创建时间
     updated_at                   TIMESTAMP NULL -- 更新时间
@@ -48,6 +55,6 @@ CREATE UNIQUE INDEX api_resource_delegation_trade_no
 CREATE INDEX api_resource_delegation_origin
     ON api_resource_delegation (origin_trade_no, origin_trade_type, source);
 CREATE INDEX api_resource_delegation_scan
-    ON api_resource_delegation (source, operation_type, status, next_retry_at);
+    ON api_resource_delegation (source, operation_type, status, created_at);
 CREATE INDEX api_resource_delegation_owner_receiver
     ON api_resource_delegation (owner_address, receiver_address, resource_type);
