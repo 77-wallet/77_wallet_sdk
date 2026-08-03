@@ -331,6 +331,8 @@ impl ApiWalletService {
             .send_with_ctx(self.ctx)
             .await?;
 
+        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+
         tracing::debug!("cose time: {}", start.elapsed().as_millis());
         Ok(uid)
     }
@@ -727,6 +729,8 @@ impl ApiWalletService {
         tracing::info!("[import_wallet] Backend tasks sent successfully");
         tracing::info!("[import_wallet] Wallet import completed successfully, uid: {}", uid);
 
+        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+
         Ok(uid)
     }
 
@@ -777,6 +781,8 @@ impl ApiWalletService {
         )
         .await?;
 
+        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+
         tracing::info!("bind merchant success");
         Ok(())
     }
@@ -812,6 +818,8 @@ impl ApiWalletService {
         ApiWalletDomain::new(self.ctx)
             .db_save_sn_data(&recharge_wallet.address, Some(&withdrawal_wallet.address), sn)
             .await?;
+
+        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
 
         // let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
 

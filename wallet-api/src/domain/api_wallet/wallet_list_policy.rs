@@ -36,6 +36,10 @@ where
         .await
 }
 
+pub(crate) fn invalidate_api_wallet_list() {
+    API_WALLET_LIST_QUERY.invalidate_key(API_WALLET_LIST_KEY);
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -132,5 +136,26 @@ mod tests {
             .await
             .expect("timeout should return stale list");
         assert!(stale.is_empty());
+    }
+
+    #[tokio::test]
+    async fn api_wallet_list_policy_reloads_after_invalidation() {
+        let first = super::load_api_wallet_list(|| async { Ok(ApiWalletList::new()) })
+            .await
+            .expect("initial list query ok");
+        assert!(first.is_empty());
+
+        super::invalidate_api_wallet_list();
+
+        let reloaded = super::load_api_wallet_list(|| async {
+            Ok(ApiWalletList(vec![crate::response_vo::api_wallet::wallet::ApiWalletItem {
+                recharge_wallet: None,
+                withdraw_wallet: None,
+            }]))
+        })
+        .await
+        .expect("reloaded list query ok");
+
+        assert_eq!(reloaded.len(), 1);
     }
 }

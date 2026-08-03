@@ -580,6 +580,8 @@ impl ApiWalletDomain {
             ApiWalletRepo::update_sn(&pool, &withdrawal_wallet.address, &sn).await?;
         }
 
+        super::wallet_list_policy::invalidate_api_wallet_list();
+
         Ok(())
     }
 

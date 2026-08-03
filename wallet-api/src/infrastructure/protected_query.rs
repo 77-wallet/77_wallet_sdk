@@ -136,6 +136,12 @@ where
         existed
     }
 
+    pub(crate) fn invalidate_key(&self, key: &str) -> bool {
+        let existed = self.cache.remove(key).is_some();
+        self.invalidate_flight(key);
+        existed
+    }
+
     pub(crate) fn invalidate_flight(&self, key: &str) -> bool {
         self.flights.remove(key).is_some()
     }
