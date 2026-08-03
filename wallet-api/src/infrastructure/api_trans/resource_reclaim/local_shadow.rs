@@ -832,13 +832,14 @@ impl LocalResourceReclaimShadowActorSystem {
 
         let _ = self.shutdown_tx.send(());
 
-        let mut registered_tx = local_resource_reclaim_intent_tx()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if registered_tx.as_ref().is_some_and(|tx| tx.same_channel(&self.intent_tx)) {
-            *registered_tx = None;
+        {
+            let mut registered_tx = local_resource_reclaim_intent_tx()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if registered_tx.as_ref().is_some_and(|tx| tx.same_channel(&self.intent_tx)) {
+                *registered_tx = None;
+            }
         }
-        drop(registered_tx);
 
         if let Some(handle) = self.scanner_handle.take() {
             if let Err(err) = handle.await {
