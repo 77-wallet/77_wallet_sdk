@@ -1332,6 +1332,12 @@ impl ApiCollectDao {
             AND (need_service_fee IS NULL OR need_service_fee = false)
             AND (lower(chain_code) <> 'tron' OR resource_gate_released_at IS NOT NULL)
             AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL)
+            AND (
+                status <> 1
+                OR service_fee_uploaded_at IS NULL
+                OR tx_fee_res_ack_sent_at IS NULL
+                OR julianday(updated_at) <= julianday('now', '-30 seconds')
+            )
             AND transaction_time IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL

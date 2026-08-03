@@ -1,4 +1,19 @@
+use chrono::Utc;
+use wallet_database::entities::api_collect::{ApiCollectEntity, ApiCollectStatus};
+
 use crate::domain::api_wallet::trans::shared_mechanism;
+
+const COMPLETED_FEE_BALANCE_RETRY_COOLDOWN_SECS: i64 = 30;
+
+fn completed_fee_balance_retry_is_cooling_down(collect: &ApiCollectEntity) -> bool {
+    collect.status == ApiCollectStatus::InsufficientBalance
+        && collect.service_fee_uploaded_at.is_some()
+        && collect.tx_fee_res_ack_sent_at.is_some()
+        && collect.updated_at.is_some_and(|updated_at| {
+            Utc::now().signed_duration_since(updated_at).num_seconds()
+                < COMPLETED_FEE_BALANCE_RETRY_COOLDOWN_SECS
+        })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CollectStage {
@@ -111,7 +126,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 // 如果只是重开后保留了旧 ack，而当前周期并没有上传过服务费，
                 // 这里就不应该把它当成“必须先等手续费结果”的单子。
                 // TRON 归集还必须先有资源闸门释放事实，才能进入 BuildTx。
-                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND (lower(chain_code) <> 'tron' OR resource_gate_released_at IS NOT NULL) AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND (lower(chain_code) <> 'tron' OR resource_gate_released_at IS NOT NULL) AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND (status <> 1 OR service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NULL OR julianday(updated_at) <= julianday('now', '-30 seconds')) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::NeedTxFeeResAck => {
                 // 只有当前周期已经真的进入服务费上传，才会进入这个等待态。
@@ -165,6 +180,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                         || collect.resource_gate_released_at.is_some())
                     && (collect.service_fee_uploaded_at.is_none()
                         || collect.tx_fee_res_ack_sent_at.is_some())
+                    && !completed_fee_balance_retry_is_cooling_down(collect)
                     && collect.transaction_time.is_none()
                     && collect.finished_at.is_none()
                     && collect.err_code.is_none()
@@ -222,7 +238,10 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::{CollectStage, DefaultStageQueryBuilder, StageQueryBuilder};
+    use super::{
+        COMPLETED_FEE_BALANCE_RETRY_COOLDOWN_SECS, CollectStage, DefaultStageQueryBuilder,
+        StageQueryBuilder,
+    };
     use chrono::Utc;
     use wallet_database::entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
@@ -327,6 +346,7 @@ mod tests {
         assert!(can_build_sql.contains("need_service_fee IS NULL OR need_service_fee = false"));
         assert!(can_build_sql.contains("lower(chain_code) <> 'tron'"));
         assert!(can_build_sql.contains("resource_gate_released_at IS NOT NULL"));
+        assert!(can_build_sql.contains("julianday('now', '-30 seconds')"));
         assert!(can_build_sql.contains("transaction_time IS NULL"));
         assert!(can_build_sql.contains("finished_at IS NULL"));
         assert!(
@@ -365,6 +385,25 @@ mod tests {
         assert!(resource_gate_sql.contains("lower(chain_code) = 'tron'"));
         assert!(resource_gate_sql.contains("resource_gate_released_at IS NULL"));
         assert!(resource_gate_sql.contains("raw_tx IS NULL"));
+    }
+
+    #[test]
+    fn completed_fee_balance_shortage_cools_down_before_build_retry() {
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
+        let mut collect = base_collect();
+        collect.status = ApiCollectStatus::InsufficientBalance;
+        collect.raw_tx = None;
+        collect.need_service_fee = Some(false);
+        collect.service_fee_uploaded_at = Some(Utc::now());
+        collect.tx_fee_res_ack_sent_at = Some(Utc::now());
+        collect.updated_at = Some(Utc::now());
+
+        assert!(!pred(&collect));
+
+        collect.updated_at = Some(
+            Utc::now() - chrono::Duration::seconds(COMPLETED_FEE_BALANCE_RETRY_COOLDOWN_SECS + 1),
+        );
+        assert!(pred(&collect));
     }
 
     #[test]

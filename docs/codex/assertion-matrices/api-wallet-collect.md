@@ -1377,3 +1377,7 @@ scanner entrypoints.
 - Invariant: `service_fee_uploaded_at` means the fee transfer was requested;
   only the additional `tx_fee_res_ack_sent_at` fact completes the fee-order
   handshake.
+- Test: `completed_fee_balance_shortage_cools_down_before_build_retry`
+- Invariant: after a completed fee-order handshake, a still-insufficient TRON
+  balance cannot re-enter BuildTx for 30 seconds. The persisted `updated_at`
+  cooldown keeps scanner and direct advancement restart-safe without a new field.
