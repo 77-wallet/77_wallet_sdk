@@ -1224,6 +1224,7 @@ impl ApiFeeDao {
                 broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND transaction_time IS NULL
         "#;
 
         let res = sqlx::query(sql)
@@ -1350,7 +1351,10 @@ impl ApiFeeDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
-              AND last_broadcast_at IS NOT NULL
+              AND (
+                    last_broadcast_at IS NOT NULL
+                    OR broadcast_uncertain_since_at IS NOT NULL
+                  )
         "#;
 
         let mut query = sqlx::query(sql).bind(trade_no);
@@ -1538,6 +1542,7 @@ impl ApiFeeDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
+              AND (tx_hash IS NULL OR tx_hash = $2)
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -1669,6 +1674,64 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{prefix}_{pid}_{now}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir.to_string_lossy().to_string()
+    }
+
+    #[tokio::test]
+    async fn invalidate_uncertain_fee_raw_tx_for_rebroadcast_preserves_confirmed_rows() {
+        let dir = make_temp_dir("wallet_db_api_fee_uncertain_rebroadcast");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for trade_no in ["F_UNCERTAIN_REBUILD", "F_CONFIRMED_KEEP"] {
+            ApiFeeRepo::upsert_api_fee(
+                &pool, "uid", "n", "from", "to", "0", "1", "tron", None, "TRX", trade_no, 0,
+            )
+            .await
+            .unwrap();
+            sqlx::query(
+                "UPDATE api_fee
+                 SET raw_tx = '{\"tx\":true}',
+                     tx_hash = 'fee_hash',
+                     broadcast_uncertain_since_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+                 WHERE trade_no = ?",
+            )
+            .bind(trade_no)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        }
+        sqlx::query(
+            "UPDATE api_fee
+             SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = 'F_CONFIRMED_KEEP'",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rebuilt = ApiFeeDao::invalidate_raw_tx_for_rebroadcast(
+            pool.as_ref(),
+            "F_UNCERTAIN_REBUILD",
+            None,
+        )
+        .await
+        .unwrap();
+        let preserved =
+            ApiFeeDao::invalidate_raw_tx_for_rebroadcast(pool.as_ref(), "F_CONFIRMED_KEEP", None)
+                .await
+                .unwrap();
+
+        assert_eq!(rebuilt, 1);
+        assert_eq!(preserved, 0);
+        let rebuilt =
+            ApiFeeRepo::get_api_fee_by_trade_no(&pool, "F_UNCERTAIN_REBUILD").await.unwrap();
+        assert!(rebuilt.raw_tx.is_none());
+        assert!(rebuilt.tx_hash.is_none());
+        assert!(rebuilt.broadcast_uncertain_since_at.is_none());
+        let preserved =
+            ApiFeeRepo::get_api_fee_by_trade_no(&pool, "F_CONFIRMED_KEEP").await.unwrap();
+        assert!(preserved.raw_tx.is_some());
+        assert!(preserved.tx_hash.is_some());
     }
 
     #[tokio::test]

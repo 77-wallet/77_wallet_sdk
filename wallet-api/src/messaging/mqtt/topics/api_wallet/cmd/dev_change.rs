@@ -4,6 +4,7 @@ use wallet_database::repositories::api_wallet::{
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
+    context::Context,
     domain::api_wallet::wallet::ApiWalletDomain,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
@@ -20,18 +21,20 @@ pub struct AwmCmdDevChangeMsg {
 impl AwmCmdDevChangeMsg {
     pub(crate) async fn exec(
         &self,
+        ctx: &'static Context,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let pool = ctx.api_wallet_pool()?;
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
 
         if let Some(recharge_wallet) = recharge_wallet {
-            ApiWalletDomain::db_save_sn_data(
-                &recharge_wallet.address,
-                recharge_wallet.binding_address.as_deref(),
-                &self.new_sn,
-            )
-            .await?;
+            ApiWalletDomain::new(ctx)
+                .db_save_sn_data(
+                    &recharge_wallet.address,
+                    recharge_wallet.binding_address.as_deref(),
+                    &self.new_sn,
+                )
+                .await?;
             AddressQueryStateRepo::delete_by_uid(&pool, &self.uid).await?;
             if let Some(binding_address) = recharge_wallet.binding_address.as_deref() {
                 let withdraw_wallet =
@@ -42,12 +45,12 @@ impl AwmCmdDevChangeMsg {
             }
         }
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = ctx.get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
         let data = NotifyEvent::AwmCmdDevChange(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         Ok(())
     }
 }

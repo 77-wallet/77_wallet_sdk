@@ -6,7 +6,9 @@ use crate::{
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
     response_vo::{
-        api_wallet::account::{ApiAccountInfo, QueryApiAccountDerivationPath},
+        api_wallet::account::{
+            ApiAccountInfo, ApiWalletAddressSearchResp, QueryApiAccountDerivationPath,
+        },
         standard_wallet::account::DerivedAddressesList,
     },
     service::api_wallet::account::ApiAccountService,
@@ -150,160 +152,18 @@ impl WalletManager {
             .list_derived_addresses(wallet_address, index, password, all)
             .await
     }
-}
 
-#[cfg(all(test, feature = "integration-tests"))]
-mod test {
-    use crate::{
-        request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
-        test::env::get_manager,
-    };
-
-    use anyhow::Result;
-
-    use wallet_database::entities::api_wallet::ApiWalletType;
-
-    #[tokio::test]
-    async fn test_create_api_account() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
-
-        let wallet_address = "0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24";
-        let wallet_password = "q1111111";
-        let index = vec![5, 6, 7, 8, 9];
-        let name = "666";
-        let is_default_name = true;
-        let api_wallet_type = ApiWalletType::SubAccount;
-
-        let req = CreateApiAccountReq::new(
-            wallet_address,
-            wallet_password,
-            index,
-            name,
-            is_default_name,
-            api_wallet_type,
+    /// 地址搜索：在指定 API 钱包 uid 范围内搜索账户地址
+    pub async fn search_api_wallet_address(
+        &self,
+        uid: &str,
+        keyword: &str,
+    ) -> ReturnType<ApiWalletAddressSearchResp> {
+        tracing::info!(
+            uid = %uid,
+            keyword = %keyword,
+            "WalletManager::search_api_wallet_address"
         );
-        let res = wallet_manager.create_api_account(req).await;
-        tracing::info!("res: {res:?}");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_create_withdrawal_account() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
-
-        let wallet_address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
-        let wallet_password = "[REDACTED:password]";
-        let index = Some(5);
-        let name = "666";
-        let is_default_name = true;
-
-        let req = CreateWithdrawalAccountReq::new(
-            wallet_address,
-            wallet_password,
-            None,
-            index,
-            name,
-            is_default_name,
-        );
-        let res = wallet_manager.create_withdrawal_account(req).await;
-        tracing::info!("res: {res:?}");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_api_account_private_key() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
-        let address = "1BUttKYoVhXZbAogpHmm2Mm7X8Xtrjn6XH";
-        let chain_code = "btc";
-        let password = "[REDACTED:password]";
-
-        let res = wallet_manager.get_api_account_private_key(address, chain_code, password).await;
-        tracing::info!("res: {res:?}");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_address_used() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
-        let chain_code = "tron";
-
-        let res = wallet_manager
-            .address_used(
-                chain_code,
-                1,
-                "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c",
-            )
-            .await;
-        tracing::info!("res: {res:?}");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_api_account_list() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
-        // let chain_code = "tron";
-
-        let res = wallet_manager
-            .list_api_wallet_account(
-                "0x5489c657Be2504D657f1F56AB04abfE3C77ceC34",
-                None,
-                None,
-                1,
-                10,
-            )
-            .await
-            .unwrap();
-        let res = serde_json::to_string(&res).unwrap();
-        tracing::info!("res: {res:?}");
-
-        Ok(())
-    }
-    #[tokio::test]
-    async fn test_physical_delete_api_account() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
-        // let chain_code = "tron";
-
-        wallet_manager.init_api_swap().await?;
-        let res = wallet_manager
-            .physical_delete_api_account(
-                "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304",
-                1,
-                "q1111111",
-            )
-            .await;
-        tracing::info!("res: {res:?}");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_list_api_wallet_derived_addresses() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
-        // let chain_code = "tron";
-
-        let res = wallet_manager
-            .list_api_wallet_derived_addresses(
-                "0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24",
-                1,
-                "q1111111",
-                true,
-            )
-            .await
-            .unwrap();
-        let res = serde_json::to_string(&res).unwrap();
-        tracing::info!("res: {res:?}");
-
-        Ok(())
+        ApiAccountService::new(self.ctx).search_address(uid, keyword).await
     }
 }

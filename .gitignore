@@ -12,11 +12,11 @@ wallet-api/test_data_back/
 data_**
 
 account.toml
-wallet-api/examples/config.toml
+wallet-api/examples/client_config
 example.toml
 wallet.toml
 wallet-api/examples/config.yaml
-wallet-api/tests/transactions/sol_smoke.local.toml
+wallet-api/tests/**/sol_smoke.local.toml
 
 */sdk*
 /.idea
@@ -27,3 +27,4 @@ logs
 wallet-transport-backend/tests/backend_test_config.toml
 PLANS.md
 api-wallet-password-security.md
+*/2.1/*

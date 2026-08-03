@@ -133,6 +133,7 @@ pub struct NonceEngine {
     last_reconcile: DashMap<(String, String), std::time::Instant>,
     /// Worker 启动状态，确保只启动一次
     worker_started: AtomicBool,
+    ctx: &'static crate::context::Context,
 }
 
 /// InflightGuard 确保在任何情况下都能自动移除 inflight 记录
@@ -221,7 +222,7 @@ impl Drop for FreezeGuard {
 }
 
 impl NonceEngine {
-    pub fn new() -> Arc<Self> {
+    pub fn new(ctx: &'static crate::context::Context) -> Arc<Self> {
         let (reconcile_tx, reconcile_rx) = mpsc::unbounded_channel();
 
         let engine = Arc::new(Self {
@@ -231,6 +232,7 @@ impl NonceEngine {
             transfer_gates: DashMap::new(),
             last_reconcile: DashMap::new(),
             worker_started: AtomicBool::new(false),
+            ctx,
         });
 
         // 使用 AtomicBool 确保 worker 只启动一次
@@ -256,12 +258,7 @@ impl NonceEngine {
     }
 
     /// Fast Path: 快速分配nonce
-    pub async fn allocate_nonce(
-        &self,
-        address: &str,
-        chain: &str,
-        pool: &wallet_database::ApiTransactionDbPool,
-    ) -> Result<i32, ServiceError> {
+    pub async fn allocate_nonce(&self, address: &str, chain: &str) -> Result<i32, ServiceError> {
         // 检查地址是否被冻结
         if self.is_frozen(&address, &chain) {
             return Err(ServiceError::Parameter(format!(
@@ -273,17 +270,18 @@ impl NonceEngine {
         // 如果 nonce 记录不存在，需要先 bootstrap（避免从 0 错误起步导致 nonce too low）
         {
             use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-            let exists = ApiNonceRepo::get_api_nonce_optional(pool, address, chain)
+            let pool = self.ctx.api_transaction_pool()?;
+            let exists = ApiNonceRepo::get_api_nonce_optional(&pool, address, chain)
                 .await
                 .map_err(ServiceError::Database)?
                 .is_some();
             if !exists {
-                return self.slow_path_allocate(address, chain, pool).await;
+                return self.slow_path_allocate(address, chain).await;
             }
         }
 
         // 尝试快速路径：直接从数据库获取并递增
-        match self.fast_path_allocate(&address, &chain, pool).await {
+        match self.fast_path_allocate(&address, &chain).await {
             Ok(nonce) => {
                 info!(address = %address, chain = %chain, nonce = %nonce, source = "nonce_engine", "Fast path nonce allocation successful");
                 Ok(nonce)
@@ -291,7 +289,7 @@ impl NonceEngine {
             Err(e) => {
                 // 快速路径失败，走慢速路径
                 info!(address = %address, chain = %chain, error = %e, source = "nonce_engine", "Fast path failed, falling back to slow path");
-                self.slow_path_allocate(&address, &chain, pool).await
+                self.slow_path_allocate(&address, &chain).await
             }
         }
     }
@@ -305,18 +303,15 @@ impl NonceEngine {
     }
 
     /// 快速路径：直接从数据库获取并递增
-    async fn fast_path_allocate(
-        &self,
-        address: &str,
-        chain: &str,
-        pool: &wallet_database::ApiTransactionDbPool,
-    ) -> Result<i32, ServiceError> {
+    async fn fast_path_allocate(&self, address: &str, chain: &str) -> Result<i32, ServiceError> {
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
+
+        let pool = self.ctx.api_transaction_pool()?;
 
         // 尝试获取并递增nonce，只对SQLite busy/locked错误进行重试
         let max_retries = 3;
         for attempt in 0..max_retries {
-            match ApiNonceRepo::allocate_next_nonce(pool, address, chain, 0).await {
+            match ApiNonceRepo::allocate_next_nonce(&pool, address, chain, 0).await {
                 Ok(nonce) => return Ok(nonce),
                 Err(e) => {
                     // 检查是否是SQLite busy/locked错误
@@ -345,23 +340,18 @@ impl NonceEngine {
     }
 
     /// 慢速路径：bootstrap + reconcile
-    async fn slow_path_allocate(
-        &self,
-        address: &str,
-        chain: &str,
-        pool: &wallet_database::ApiTransactionDbPool,
-    ) -> Result<i32, ServiceError> {
+    async fn slow_path_allocate(&self, address: &str, chain: &str) -> Result<i32, ServiceError> {
         use crate::infrastructure::nonce::nonce_bootstrap::get_nonce_bootstrap_service;
 
         // 1. 确保nonce已初始化
         let bootstrap_service = get_nonce_bootstrap_service();
-        bootstrap_service.ensure_nonce_initialized(address, chain).await?;
+        bootstrap_service.ensure_nonce_initialized(self.ctx, address, chain).await?;
 
         // 2. 触发reconcile
         self.trigger_reconcile_with_reason(address, chain, ReconcileReason::SystemStartup, false);
 
         // 3. 再次尝试快速路径
-        self.fast_path_allocate(address, chain, pool).await
+        self.fast_path_allocate(address, chain).await
     }
 
     /// 触发reconcile
@@ -424,6 +414,7 @@ impl NonceEngine {
             info!(address = %address, chain = %chain, reason = ?reason, source = "nonce_engine", "Starting reconcile task");
 
             // 使用catch_unwind保护，防止panic导致业务逻辑异常
+            let ctx = engine.ctx;
             let result = std::panic::AssertUnwindSafe(async {
                 Self::reconcile_address(engine.clone(), &address, &chain).await
             })
@@ -462,14 +453,14 @@ impl NonceEngine {
         }
 
         // 从链上获取 next nonce（pending 语义）
-        let chain_next = ApiTransDomain::nonce(address, chain).await?;
+        let chain_next = ApiTransDomain::nonce(self.ctx, address, chain).await?;
         let chain_next_i64 = i64::try_from(chain_next).map_err(|_| {
             ServiceError::Parameter(format!("chain_next out of range: {}", chain_next))
         })?;
         let target_last = chain_next_i64.saturating_sub(1);
 
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-        let pool = crate::get_context()?.api_transaction_pool()?;
+        let pool = self.ctx.api_transaction_pool()?;
         let old_db_nonce = ApiNonceRepo::get_api_nonce_optional(&pool, address, chain)
             .await
             .map_err(ServiceError::Database)?;
@@ -508,12 +499,12 @@ impl NonceEngine {
         }
 
         // 从链上获取 next nonce（pending 语义）
-        let chain_next = ApiTransDomain::nonce(address, chain).await?;
+        let chain_next = ApiTransDomain::nonce(engine.ctx, address, chain).await?;
         info!(address = %address, chain = %chain, chain_next = %chain_next, source = "nonce_engine", "Got chain nonce for reconcile");
 
         // 获取数据库中的 nonce
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-        let pool = crate::get_context()?.api_transaction_pool()?;
+        let pool = engine.ctx.api_transaction_pool()?;
         let db_nonce = ApiNonceRepo::get_api_nonce_optional(&pool, address, chain)
             .await
             .map_err(ServiceError::Database)?;
@@ -632,13 +623,10 @@ impl NonceEngine {
     }
 
     /// 稳定分页扫描所有 nonce 记录，用于系统级 reconcile
-    pub async fn stable_paginate_scan(
-        &self,
-        pool: &wallet_database::ApiTransactionDbPool,
-        page_size: i32,
-    ) -> Result<(), ServiceError> {
+    pub async fn stable_paginate_scan(&self, page_size: i32) -> Result<(), ServiceError> {
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
 
+        let pool = self.ctx.api_transaction_pool()?;
         let mut cursor: Option<(String, String)> = None;
         let mut processed = 0;
 
@@ -646,7 +634,7 @@ impl NonceEngine {
             // 获取当前页的数据
             let cursor_ref = cursor.as_ref().map(|(addr, chain)| (addr.as_str(), chain.as_str()));
             let records =
-                ApiNonceRepo::get_all_api_nonce_paginated(pool, cursor_ref, page_size).await?;
+                ApiNonceRepo::get_all_api_nonce_paginated(&pool, cursor_ref, page_size).await?;
 
             if records.is_empty() {
                 // 扫描完成
@@ -748,13 +736,13 @@ impl NonceEngine {
         };
 
         let result = async {
+            let pool = self.ctx.api_transaction_pool()?;
             // 从链上获取 next nonce（pending 语义）
-            let chain_next = ApiTransDomain::nonce(address, chain).await?;
+            let chain_next = ApiTransDomain::nonce(self.ctx, address, chain).await?;
             info!(address = %address, chain = %chain, chain_next = %chain_next, source = "nonce_engine", "Got chain nonce for repair");
 
             // DB 存的是 last_used：追平到 (chain_next - 1)
             use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-            let pool = crate::get_context()?.api_transaction_pool()?;
             let chain_next_i64 = i64::try_from(chain_next)
                 .map_err(|_| ServiceError::Parameter(format!("chain_next out of range: {}", chain_next)))?;
             let target_last = chain_next_i64.saturating_sub(1);
@@ -800,16 +788,16 @@ impl NonceEngine {
         };
 
         let result = async {
+            let pool = self.ctx.api_transaction_pool()?;
             // 等待一段时间让链上交易确认
             time::sleep(Duration::from_secs(5)).await;
 
             // 从链上获取 next nonce（pending 语义）
-            let chain_next = ApiTransDomain::nonce(address, chain).await?;
+            let chain_next = ApiTransDomain::nonce(self.ctx, address, chain).await?;
             info!(address = %address, chain = %chain, chain_next = %chain_next, source = "nonce_engine", "Got chain nonce for repair");
 
             // DB 不允许回滚：只在落后时追平到 (chain_next - 1)
             use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-            let pool = crate::get_context()?.api_transaction_pool()?;
             let chain_next_i64 = i64::try_from(chain_next)
                 .map_err(|_| ServiceError::Parameter(format!("chain_next out of range: {}", chain_next)))?;
             let target_last = chain_next_i64.saturating_sub(1);
@@ -828,15 +816,13 @@ impl NonceEngine {
     }
 }
 
-// 全局服务实例
 static NONCE_ENGINE: OnceCell<Arc<NonceEngine>> = OnceCell::new();
 
-pub fn get_nonce_engine() -> Arc<NonceEngine> {
-    NONCE_ENGINE.get_or_init(|| NonceEngine::new()).clone()
-}
-
-pub fn init_nonce_engine() {
-    NONCE_ENGINE.get_or_init(|| NonceEngine::new());
+pub fn get_nonce_engine_with_ctx(
+    ctx: &'static crate::context::Context,
+) -> Result<Arc<NonceEngine>, ServiceError> {
+    ctx.api_transaction_pool()?;
+    NONCE_ENGINE.get_or_try_init(|| Ok::<_, ServiceError>(NonceEngine::new(ctx))).cloned()
 }
 
 #[cfg(test)]

@@ -3,6 +3,7 @@ pub mod audit;
 pub mod chain;
 pub mod coin;
 pub mod msg;
+pub mod resource_delegation;
 pub mod strategy;
 pub mod swap;
 pub mod transaction;

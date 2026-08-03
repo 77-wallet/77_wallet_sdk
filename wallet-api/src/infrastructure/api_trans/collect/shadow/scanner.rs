@@ -503,25 +503,86 @@
 /// - Idempotent: emitting Recover multiple times is allowed
 /// - Safety-net: guarantees eventual fact completion after crash / restart
 /// ============================================================================
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::fmt;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use tokio::sync::Semaphore;
 use tracing::{error, trace, warn};
-use wallet_database::{ApiTransactionDbPool, entities::api_collect::ApiCollectEntity};
-
-use crate::infrastructure::api_trans::{
-    collect::{
-        diagnose::{DiagnoseEventSender, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
-        shadow::{
-            ChainIntent, SideEffectIntent,
-            stage::{COLLECT_ADVANCEMENT_ORDER, CollectStage},
+use wallet_database::{
+    ApiResourceDbPool, ApiTransactionDbPool,
+    entities::{
+        api_collect::ApiCollectEntity,
+        api_resource_delegation::{
+            ApiResourceDelegationOperationType, ApiResourceDelegationSource,
         },
+        api_trade_type::ApiTradeType,
     },
-    shadow_rpc_policy,
+};
+
+use crate::{
+    error::service::ServiceError,
+    infrastructure::api_trans::{
+        collect::{
+            diagnose::{DiagnoseEventSender, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
+            shadow::{
+                ChainIntent, SideEffectIntent,
+                stage::{COLLECT_ADVANCEMENT_ORDER, CollectStage},
+            },
+        },
+        shadow_rpc_policy,
+    },
 };
 
 use super::CollectIntent;
+
+async fn dispatch_account_activation_execute_records(
+    pool: &ApiResourceDbPool,
+    limit: usize,
+    intent_tx: &tokio::sync::mpsc::Sender<CollectIntent>,
+) -> Result<(), ServiceError> {
+    let records = wallet_database::repositories::api_wallet::tron_account_activation::ApiTronAccountActivationRepo::scan_can_execute(
+        pool,
+        limit,
+    )
+    .await?;
+
+    for record in records {
+        intent_tx
+            .send(CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(
+                record.activation_trade_no,
+            )))
+            .await
+            .map_err(|_| ServiceError::Parameter("collect intent channel closed".to_string()))?;
+    }
+
+    Ok(())
+}
+
+async fn dispatch_account_activation_verify_records(
+    pool: &ApiResourceDbPool,
+    limit: usize,
+    intent_tx: &tokio::sync::mpsc::Sender<CollectIntent>,
+) -> Result<(), ServiceError> {
+    let records = wallet_database::repositories::api_wallet::tron_account_activation::ApiTronAccountActivationRepo::scan_can_verify(
+        pool,
+        limit,
+    )
+    .await?;
+
+    for record in records {
+        intent_tx
+            .send(CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(
+                record.activation_trade_no,
+            )))
+            .await
+            .map_err(|_| ServiceError::Parameter("collect intent channel closed".to_string()))?;
+    }
+
+    Ok(())
+}
 
 /// ============================================================================
 ///                            推进点枚举与共用 Predicate 函数
@@ -575,14 +636,17 @@ fn need_result_ack(collect: &ApiCollectEntity) -> bool {
 /// - need_service_fee = true
 /// - service_fee_uploaded_at IS NULL
 /// - err_code IS NULL
+/// - resource_gate_released_at IS NOT NULL（资源闸门已释放）
 ///
 /// ⚠️ 重要说明：
 /// - UploadServiceFee 只在构建阶段的可恢复失败路径触发
 /// - 一旦发生不可逆执行失败（err_code IS NOT NULL），不再允许上传服务费
+/// - 必须等待资源闸门释放后才能上传服务费
 fn need_service_fee_upload(collect: &ApiCollectEntity) -> bool {
     collect.need_service_fee == Some(true)
         && collect.service_fee_uploaded_at.is_none()
         && collect.err_code.is_none()
+        && collect.resource_gate_released_at.is_some()
 }
 
 /// 检查是否需要发送手续费结果确认 ACK
@@ -675,13 +739,300 @@ impl Default for ScannerConfig {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use tokio::sync::mpsc;
+    use wallet_database::{
+        SqliteContext,
+        entities::{
+            api_collect::ApiCollectStatus,
+            api_resource_delegation::{
+                ApiResourceDelegationOperationType, ApiResourceDelegationResultStatus,
+                ApiResourceDelegationSource, NewApiResourceDelegation,
+            },
+            api_resource_gate::ApiResourceGateResult,
+            api_trade_type::ApiTradeType,
+            api_tron_account_activation::NewApiTronAccountActivation,
+        },
+        repositories::api_wallet::{
+            collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+            tron_account_activation::ApiTronAccountActivationRepo,
+        },
+    };
+
+    async fn scanner_test_resource_pool(name: &str) -> wallet_database::ApiResourceDbPool {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.keep().join(name);
+        std::fs::create_dir_all(&dir_path).expect("create scanner test dir");
+        let resource_ctx = SqliteContext::new(&dir_path.to_string_lossy(), Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        resource_ctx.into_api_resource_db_pool().expect("resource pool")
+    }
+
+    #[tokio::test]
+    async fn try_advance_prioritizes_collect_resource_result_ack_before_build() -> anyhow::Result<()>
+    {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let pool = ctx.api_transaction_pool()?;
+        let resource_pool = ctx.api_resource_pool()?;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid_1",
+            "collect",
+            "from_addr",
+            "to_addr",
+            "1",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            "C_pending_rsc_ack",
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE api_collect
+            SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_result = ?
+            WHERE trade_no = ?
+            "#,
+        )
+        .bind(ApiResourceGateResult::PlatformDelegateSuccess.as_i64())
+        .bind("C_pending_rsc_ack")
+        .execute(pool.as_ref())
+        .await?;
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &resource_pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "C_pending_rsc_ack",
+                "C_pending_rsc_ack",
+                ApiTradeType::Collect as i64,
+                "",
+                "",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            Some(r#"{"tradeNo":"C_pending_rsc_ack","status":true}"#),
+        )
+        .await?;
+
+        scanner.try_advance("C_pending_rsc_ack").await;
+
+        let intent = intent_rx.try_recv().expect("resource ACK intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(ref trade_no))
+                if trade_no == "C_pending_rsc_ack"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn collect_scanner_dispatches_broadcasted_local_delegate_recover() -> anyhow::Result<()> {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let resource_pool = ctx.api_resource_pool()?;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
+        let resource_trade_no = "rsc_local_delegate_C_recover_scan";
+
+        ApiResourceDelegationRepo::upsert(
+            &resource_pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid_1",
+                resource_trade_no,
+                "C_recover_scan",
+                ApiTradeType::Collect as i64,
+                "owner_addr",
+                "receiver_addr",
+                "100",
+                "1000",
+            ),
+        )
+        .await?;
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&resource_pool, resource_trade_no).await?,
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &resource_pool,
+                resource_trade_no,
+                "tx_hash_recover_scan",
+                r#"{"raw":"tx"}"#,
+            )
+            .await?,
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_broadcasted(
+                &resource_pool,
+                resource_trade_no,
+                "tx_hash_recover_scan",
+            )
+            .await?,
+            1
+        );
+
+        scanner.scan_can_resource_delegation_recover().await?;
+
+        let mut dispatched = Vec::new();
+        while let Ok(intent) = intent_rx.try_recv() {
+            if let CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) =
+                intent
+            {
+                dispatched.push(trade_no);
+            }
+        }
+
+        assert!(
+            dispatched.iter().any(|trade_no| trade_no == resource_trade_no),
+            "broadcasted local delegate should be dispatched for recover; got {dispatched:?}"
+        );
+
+        let executable =
+            ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+                &resource_pool,
+                ApiTradeType::Collect as i64,
+                ApiResourceDelegationSource::Local,
+                ApiResourceDelegationOperationType::Delegate,
+                100,
+            )
+            .await?;
+        assert!(
+            !executable.iter().any(|row| row.resource_trade_no == resource_trade_no),
+            "broadcasted local delegate should not be treated as pre-broadcast executable"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scan_account_activation_emits_execute_and_verify_intents() -> anyhow::Result<()> {
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let resource_pool = scanner_test_resource_pool("collect_scan_account_activation").await;
+
+        ApiTronAccountActivationRepo::upsert(
+            &resource_pool,
+            NewApiTronAccountActivation::collect(
+                "uid_1",
+                "C_activation_execute",
+                "act_C_activation_execute",
+                "T_payer",
+                "T_inactive_execute",
+            ),
+        )
+        .await?;
+        ApiTronAccountActivationRepo::upsert(
+            &resource_pool,
+            NewApiTronAccountActivation::collect(
+                "uid_1",
+                "C_activation_verify",
+                "act_C_activation_verify",
+                "T_payer",
+                "T_inactive_verify",
+            ),
+        )
+        .await?;
+        assert_eq!(
+            ApiTronAccountActivationRepo::claim_build_slot(
+                &resource_pool,
+                "act_C_activation_verify",
+            )
+            .await?,
+            1
+        );
+        assert_eq!(
+            ApiTronAccountActivationRepo::mark_broadcast_success(
+                &resource_pool,
+                "act_C_activation_verify",
+                "tx_hash_activation_verify",
+                r#"{"raw":"tx"}"#,
+            )
+            .await?,
+            1
+        );
+
+        dispatch_account_activation_execute_records(&resource_pool, 100, &intent_tx).await?;
+        dispatch_account_activation_verify_records(&resource_pool, 100, &intent_tx).await?;
+
+        let mut trade_nos = Vec::new();
+        while let Ok(intent) = intent_rx.try_recv() {
+            if let CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(trade_no)) = intent {
+                trade_nos.push(trade_no);
+            }
+        }
+        trade_nos.sort();
+
+        assert_eq!(
+            trade_nos,
+            vec!["act_C_activation_execute".to_string(), "act_C_activation_verify".to_string(),]
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scan_account_activation_skips_verified_tasks() -> anyhow::Result<()> {
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let resource_pool =
+            scanner_test_resource_pool("collect_scan_account_activation_verified").await;
+
+        ApiTronAccountActivationRepo::upsert(
+            &resource_pool,
+            NewApiTronAccountActivation::collect(
+                "uid_1",
+                "C_activation_verified",
+                "act_C_activation_verified",
+                "T_payer",
+                "T_inactive_verified",
+            ),
+        )
+        .await?;
+        assert_eq!(
+            ApiTronAccountActivationRepo::mark_account_verified(
+                &resource_pool,
+                "act_C_activation_verified",
+            )
+            .await?,
+            1
+        );
+
+        dispatch_account_activation_execute_records(&resource_pool, 100, &intent_tx).await?;
+        dispatch_account_activation_verify_records(&resource_pool, 100, &intent_tx).await?;
+
+        while let Ok(intent) = intent_rx.try_recv() {
+            assert!(
+                !matches!(intent, CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(_))),
+                "verified activation task must not dispatch: {intent:?}"
+            );
+        }
+
+        Ok(())
+    }
+}
+
 /// Shadow Scanner
 ///
 ///
 /// 只生成推进意图，不直接执行状态推进
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct ShadowScanner {
-    pool: ApiTransactionDbPool,
+    ctx: &'static crate::context::Context,
     /// Scanner配置
     pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
@@ -690,14 +1041,20 @@ pub struct ShadowScanner {
     scan_guard: Arc<Semaphore>,
 }
 
+impl fmt::Debug for ShadowScanner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ShadowScanner").finish()
+    }
+}
+
 impl ShadowScanner {
     pub fn new(
-        pool: ApiTransactionDbPool,
+        ctx: &'static crate::context::Context,
         config: ScannerConfig,
         intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
         diagnose_tx: Option<DiagnoseEventSender>,
     ) -> Self {
-        Self { pool, config, intent_tx, diagnose_tx, scan_guard: Arc::new(Semaphore::new(1)) }
+        Self { ctx, config, intent_tx, diagnose_tx, scan_guard: Arc::new(Semaphore::new(1)) }
     }
 
     pub fn with_diagnose_tx(mut self, diagnose_tx: DiagnoseEventSender) -> Self {
@@ -719,10 +1076,35 @@ impl ShadowScanner {
         let start = Instant::now();
         trace!("Starting collect shadow scan round");
 
+        // 资源结果 ACK 是后端允许原单继续推进的门槛。
+        // 如果先扫 BuildTx/UploadServiceFee，可能出现“先申请手续费、后 ACK 资源结果”的乱序。
+        if let Err(error) = self.scan_need_resource_result_ack().await {
+            error!(stage = "need_resource_result_ack", %error, "Collect shadow scan stage failed");
+        }
+
         // 按推进顺序执行扫描，确保与推进顺序完全一致
         for stage in COLLECT_ADVANCEMENT_ORDER {
-            self.scan_stage(*stage).await;
+            if let Err(error) = self.scan_stage(*stage).await {
+                error!(?stage, %error, "Collect shadow scan stage failed");
+            }
         }
+        for (stage, result) in [
+            ("need_resource_task_ack", self.scan_need_resource_task_ack().await),
+            ("can_resource_delegation_execute", self.scan_can_resource_delegation_execute().await),
+            ("can_resource_delegation_recover", self.scan_can_resource_delegation_recover().await),
+            ("can_account_activation_execute", self.scan_can_account_activation_execute().await),
+            ("can_account_activation_verify", self.scan_can_account_activation_verify().await),
+            (
+                "need_resource_tx_exec_receipt_upload",
+                self.scan_need_resource_tx_exec_receipt_upload().await,
+            ),
+        ] {
+            if let Err(error) = result {
+                error!(stage, %error, "Collect shadow scan stage failed");
+            }
+        }
+        // collect shadow 只保留商户本地代理 fallback。
+        // 平台代理由 resource_delegate::platform_shadow 处理，避免主链和资源副链重复消费同一任务。
 
         trace!(elapsed = ?start.elapsed(), "Collect shadow scan round completed");
 
@@ -731,36 +1113,243 @@ impl ShadowScanner {
     }
 
     /// 根据阶段执行扫描
-    async fn scan_stage(&self, stage: CollectStage) {
+    async fn scan_stage(&self, stage: CollectStage) -> Result<(), ServiceError> {
         match stage {
             CollectStage::NeedOrderAck => {
-                self.scan_order_ack_not_sent().await;
+                self.scan_order_ack_not_sent().await?;
+            }
+            CollectStage::NeedResourceGate => {
+                self.scan_need_resource_gate().await?;
             }
             CollectStage::CanBuild => {
-                self.scan_can_build().await;
+                self.scan_can_build().await?;
             }
             CollectStage::NeedTxFeeResAck => {
-                self.scan_confirmed_need_tx_fee_res_ack().await;
+                self.scan_confirmed_need_tx_fee_res_ack().await?;
             }
             CollectStage::CanBroadcast => {
-                self.scan_can_broadcast().await;
+                self.scan_can_broadcast().await?;
             }
             CollectStage::NeedRecover => {
-                self.scan_need_recover().await;
+                self.scan_need_recover().await?;
             }
             CollectStage::NeedTxExecReceiptUpload => {
-                self.scan_need_tx_exec_receipt_upload().await;
+                self.scan_need_tx_exec_receipt_upload().await?;
             }
             CollectStage::NeedResultAck => {
-                self.scan_confirmed_need_result_ack().await;
+                self.scan_confirmed_need_result_ack().await?;
             }
             CollectStage::NeedServiceFeeUpload => {
-                self.scan_confirmed_need_service_fee_upload().await;
+                self.scan_confirmed_need_service_fee_upload().await?;
             }
             CollectStage::FullyBlocked => {
                 // 完全阻塞的阶段不需要扫描
             }
         }
+        Ok(())
+    }
+
+    async fn scan_need_resource_result_ack(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(
+            max_items = %self.config.max_items_per_scan,
+            "Scanning resource result ACK records"
+        );
+
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_result_ack_for_origin_type(
+            &pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
+            self.config.max_items_per_scan,
+        ).await?;
+
+        for record in records {
+            let intent = CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+
+        Ok(())
+    }
+
+    async fn scan_need_resource_task_ack(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(
+            max_items = %self.config.max_items_per_scan,
+            "Scanning resource task ACK records"
+        );
+
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_task_ack_for_origin_type(
+            &pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
+            self.config.max_items_per_scan,
+        ).await?;
+
+        for record in records {
+            let intent = CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+
+        Ok(())
+    }
+
+    async fn scan_can_resource_delegation_execute(&self) -> Result<(), ServiceError> {
+        self.scan_can_local_resource_delegate().await
+    }
+
+    async fn scan_can_resource_delegation_recover(&self) -> Result<(), ServiceError> {
+        self.scan_can_local_resource_delegate_recover().await
+    }
+
+    async fn scan_can_local_resource_delegate(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable local delegate records");
+
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_execute_for_origin_type_source_and_operation(
+            &pool,
+            ApiTradeType::Collect as i64,
+            ApiResourceDelegationSource::Local,
+            ApiResourceDelegationOperationType::Delegate,
+            self.config.max_items_per_scan,
+        ).await?;
+
+        for record in records {
+            let intent = CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+
+        Ok(())
+    }
+
+    async fn scan_can_local_resource_delegate_recover(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning recoverable local delegate records");
+
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
+            &pool,
+            ApiTradeType::Collect as i64,
+            ApiResourceDelegationSource::Local,
+            ApiResourceDelegationOperationType::Delegate,
+            self.config.max_items_per_scan,
+        ).await?;
+
+        for record in records {
+            let intent = CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+
+        Ok(())
+    }
+
+    async fn scan_can_account_activation_execute(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning executable account activation records");
+
+        dispatch_account_activation_execute_records(
+            &pool,
+            self.config.max_items_per_scan,
+            &self.intent_tx,
+        )
+        .await
+    }
+
+    async fn scan_can_account_activation_verify(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning verifiable account activation records");
+
+        dispatch_account_activation_verify_records(
+            &pool,
+            self.config.max_items_per_scan,
+            &self.intent_tx,
+        )
+        .await
+    }
+
+    async fn scan_need_resource_tx_exec_receipt_upload(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        trace!(
+            max_items = %self.config.max_items_per_scan,
+            "Scanning resource tx exec receipt upload records"
+        );
+
+        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_need_tx_exec_receipt_upload_for_origin_type(
+            &pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
+            self.config.max_items_per_scan,
+        ).await?;
+
+        for record in records {
+            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(
+                record.resource_trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+
+        Ok(())
+    }
+
+    /// 扫描“允许构建 raw_tx”的交易
+    async fn scan_need_resource_gate(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning resource gate records");
+
+        let records = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_resource_gate(
+            &pool,
+            self.config.max_items_per_scan,
+        ).await?;
+
+        let mut skipped = 0usize;
+        let mut first_skip: Option<(String, std::time::Duration)> = None;
+
+        for record in records {
+            if let Some((host, remaining)) =
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
+                    self.ctx,
+                    &record.chain_code,
+                )
+                .await
+            {
+                skipped += 1;
+                if first_skip.is_none() {
+                    first_skip = Some((host, remaining));
+                }
+                continue;
+            }
+            let intent = CollectIntent::Chain(ChainIntent::EvalResourceGate(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+
+        if skipped > 0 {
+            if let Some((host, remaining)) = first_skip {
+                warn!(
+                    skipped = skipped,
+                    host = %host,
+                    remaining = ?remaining,
+                    "chain rpc circuit breaker open; skipped some resource gate intents"
+                );
+            } else {
+                warn!(
+                    skipped = skipped,
+                    "chain rpc circuit breaker open; skipped some resource gate intents"
+                );
+            }
+        }
+
+        Ok(())
     }
 
     /// 扫描“允许构建 raw_tx”的交易
@@ -787,20 +1376,18 @@ impl ShadowScanner {
     /// - 是否超时
     ///
     /// SQL must be equivalent to can_build()
-    async fn scan_can_build(&self) {
+    async fn scan_can_build(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
         trace!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
 
         // 查询DB中可构建的记录
-        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_can_build(
-            &self.pool,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan can build records");
-                return;
-            }
-        };
+        let records =
+            wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_can_build(
+                &pool,
+                self.config.max_items_per_scan,
+            )
+            .await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -811,6 +1398,8 @@ impl ShadowScanner {
             let intent = CollectIntent::Chain(ChainIntent::BuildTx(record.trade_no));
             self.dispatch_intent(intent).await;
         }
+
+        Ok(())
     }
 
     /// 扫描“允许广播”的交易
@@ -821,20 +1410,18 @@ impl ShadowScanner {
     /// - finished_at IS NULL
     ///
     /// SQL must be equivalent to can_broadcast()
-    async fn scan_can_broadcast(&self) {
+    async fn scan_can_broadcast(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
         trace!(max_items = %self.config.max_items_per_scan, "Scanning can broadcast records");
 
         // 查询DB中可广播的记录
-        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_can_broadcast(
-            &self.pool,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan can broadcast records");
-                return;
-            }
-        };
+        let records =
+            wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_can_broadcast(
+                &pool,
+                self.config.max_items_per_scan,
+            )
+            .await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -857,7 +1444,8 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
+                    self.ctx,
                     &record.chain_code,
                 )
                 .await
@@ -887,6 +1475,8 @@ impl ShadowScanner {
                 );
             }
         }
+
+        Ok(())
     }
 
     /// 扫描需要发送结果确认 ACK 的交易
@@ -906,20 +1496,16 @@ impl ShadowScanner {
     /// - 生成SendResultAck意图
     ///
     /// SQL must be equivalent to need_result_ack()
-    async fn scan_confirmed_need_result_ack(&self) {
+    async fn scan_confirmed_need_result_ack(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
         trace!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need result ACK records");
 
         // 查询DB中已确认但未发送TxRes ACK的记录
-        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_result_ack(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_result_ack(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan confirmed need result ACK records");
-                return;
-            }
-        };
+        ).await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -931,6 +1517,8 @@ impl ShadowScanner {
                 CollectIntent::SideEffect(SideEffectIntent::SendResultAck(record.trade_no));
             self.dispatch_intent(intent).await;
         }
+
+        Ok(())
     }
 
     /// 扫描需要上传服务费的交易
@@ -939,22 +1527,18 @@ impl ShadowScanner {
     /// - need_service_fee = true
     /// - service_fee_uploaded_at IS NULL
     ///
-    async fn scan_confirmed_need_service_fee_upload(&self) {
+    async fn scan_confirmed_need_service_fee_upload(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
         trace!(
             max_items = %self.config.max_items_per_scan,
             "Scanning confirmed need service fee upload records"
         );
 
-        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_service_fee_upload(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_service_fee_upload(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan confirmed need service fee upload records");
-                return;
-            }
-        };
+        ).await?;
 
         let original_count = records.len();
         trace!(found = %original_count, "Found confirmed need service fee upload records");
@@ -964,6 +1548,8 @@ impl ShadowScanner {
                 CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(record.trade_no));
             self.dispatch_intent(intent).await;
         }
+
+        Ok(())
     }
 
     /// 扫描需要发送手续费结果确认 ACK 的交易
@@ -980,20 +1566,16 @@ impl ShadowScanner {
     /// - 生成SendTxFeeResAck意图
     ///
     /// SQL must be equivalent to need_tx_fee_res_ack()
-    async fn scan_confirmed_need_tx_fee_res_ack(&self) {
+    async fn scan_confirmed_need_tx_fee_res_ack(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
         trace!(max_items = %self.config.max_items_per_scan, "Scanning need tx fee res ack records");
 
         // 查询DB中需要发送手续费结果确认 ACK 的记录
-        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_tx_fee_res_ack(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_tx_fee_res_ack(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan confirmed need tx fee res ack records");
-                return;
-            }
-        };
+        ).await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -1005,6 +1587,8 @@ impl ShadowScanner {
                 CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(record.trade_no));
             self.dispatch_intent(intent).await;
         }
+
+        Ok(())
     }
 
     /// 扫描需要上传交易执行回执的交易
@@ -1018,20 +1602,16 @@ impl ShadowScanner {
     /// - 生成UploadTxExecReceipt意图
     ///
     /// SQL must be equivalent to need_tx_exec_receipt_upload()
-    async fn scan_need_tx_exec_receipt_upload(&self) {
+    async fn scan_need_tx_exec_receipt_upload(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
         trace!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
 
         // 查询DB中需要上传交易执行回执的记录
-        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_tx_exec_receipt_upload(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_tx_exec_receipt_upload(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan need tx exec receipt upload records");
-                return;
-            }
-        };
+        ).await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -1055,6 +1635,8 @@ impl ShadowScanner {
                 CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(record.trade_no));
             self.dispatch_intent(intent).await;
         }
+
+        Ok(())
     }
 
     /// 扫描需要发送订单确认 ACK 的交易
@@ -1071,20 +1653,16 @@ impl ShadowScanner {
     /// ❌ 不依赖 attempted 行为中间态（仅基于推进事实判断）
     ///
     /// SQL must be equivalent to need_order_ack()
-    async fn scan_order_ack_not_sent(&self) {
+    async fn scan_order_ack_not_sent(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
         trace!(max_items = %self.config.max_items_per_scan, "Scanning order ack not sent records");
 
         // 查询DB中需要发送订单确认 ACK 的记录
-        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_order_ack(
-            &self.pool,
+        let records = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_order_ack(
+            &pool,
             self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan order ack not sent records");
-                return;
-            }
-        };
+        ).await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -1096,6 +1674,8 @@ impl ShadowScanner {
             let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(record.trade_no));
             self.dispatch_intent(intent).await;
         }
+
+        Ok(())
     }
 
     /// 扫描需要恢复交易的记录
@@ -1111,20 +1691,18 @@ impl ShadowScanner {
     /// It MUST exist even if try_advance already handles point-to-point wakeup.
     ///
     /// SQL must be equivalent to need_recover()
-    async fn scan_need_recover(&self) {
+    async fn scan_need_recover(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
         trace!(max_items = %self.config.max_items_per_scan, "Scanning need recover records");
 
         // 查询DB中需要恢复的记录
-        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_recover(
-            &self.pool,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan need recover records");
-                return;
-            }
-        };
+        let records =
+            wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_recover(
+                &pool,
+                self.config.max_items_per_scan,
+            )
+            .await?;
 
         // 保存原始记录数
         let original_count = records.len();
@@ -1136,7 +1714,8 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code_with_ctx(
+                    self.ctx,
                     &record.chain_code,
                 )
                 .await
@@ -1145,6 +1724,18 @@ impl ShadowScanner {
                 if first_skip.is_none() {
                     first_skip = Some((host, remaining));
                 }
+                continue;
+            }
+            let recover_key = shadow_rpc_policy::recover_dispatch_key(&record.trade_no);
+            if !shadow_rpc_policy::allow_broadcast_recover_dispatch(
+                &recover_key,
+                record.last_broadcast_at,
+            ) {
+                trace!(
+                    trade_no = %record.trade_no,
+                    cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
+                    "recover_skip_because_cooldown: collect safety scan skipped"
+                );
                 continue;
             }
             let intent = CollectIntent::Chain(ChainIntent::RecoverTx(record.trade_no));
@@ -1166,6 +1757,8 @@ impl ShadowScanner {
                 );
             }
         }
+
+        Ok(())
     }
 
     /// 分发推进意图
@@ -1192,21 +1785,47 @@ impl ShadowScanner {
     /// 3. 找到第一个满足条件的推进点，生成对应意图
     /// 4. 发送意图并返回
     pub async fn try_advance(&self, trade_no: &str) {
+        if let Err(error) = self.try_advance_result(trade_no).await {
+            error!(trade_no = %trade_no, %error, "Collect try_advance failed");
+        }
+    }
+
+    async fn try_advance_result(&self, trade_no: &str) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+
         trace!(trade_no = %trade_no, "Try advancing collect transaction");
 
         // 查询最新的DB状态
-        let collect = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, trade_no).await {
-            Ok(collect) => collect,
-            Err(e) => {
-                error!(trade_no = %trade_no, error = %e, "Failed to get api collect by trade_no");
-                return;
-            }
-        };
+        let collect = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await?;
 
         // 架构级保险丝：冻结或已终止的记录不允许推进
         if collect.finished_at.is_some() {
             trace!(trade_no = %trade_no, "Advance skipped: frozen or finished");
-            return;
+            return Ok(());
+        }
+
+        match self.pending_resource_result_ack_trade_no(trade_no).await {
+            Ok(Some(resource_trade_no)) => {
+                trace!(
+                    trade_no = %trade_no,
+                    resource_trade_no = %resource_trade_no,
+                    "Resource result ACK is pending; advancing ACK before collect main chain"
+                );
+                self.dispatch_intent(CollectIntent::SideEffect(
+                    SideEffectIntent::SendResourceResultAck(resource_trade_no),
+                ))
+                .await;
+                return Ok(());
+            }
+            Ok(None) => {}
+            Err(e) => {
+                error!(
+                    trade_no = %trade_no,
+                    error = %e,
+                    "Failed to check pending collect resource result ACK"
+                );
+                return Ok(());
+            }
         }
 
         // err_code 冻结：只允许 UploadTxExecReceipt
@@ -1223,7 +1842,7 @@ impl ShadowScanner {
                 ));
                 self.dispatch_intent(intent).await;
             }
-            return;
+            return Ok(());
         }
 
         // 按照 COLLECT_ADVANCEMENT_ORDER 顺序检查可推进点
@@ -1241,14 +1860,22 @@ impl ShadowScanner {
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent).await;
-                        return;
+                        return Ok(());
+                    }
+                    CollectStage::NeedResourceGate => {
+                        trace!(trade_no = %trade_no, "Need to eval resource gate");
+                        let intent = CollectIntent::Chain(ChainIntent::EvalResourceGate(
+                            trade_no.to_string(),
+                        ));
+                        self.dispatch_intent(intent).await;
+                        return Ok(());
                     }
                     CollectStage::CanBuild => {
                         trace!(trade_no = %trade_no, "Can build transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
                         self.dispatch_intent(intent).await;
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedTxFeeResAck => {
                         trace!(trade_no = %trade_no, "Need to send tx fee res ACK");
@@ -1256,12 +1883,15 @@ impl ShadowScanner {
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent).await;
-                        return;
+                        return Ok(());
                     }
                     CollectStage::CanBroadcast => {
                         if let Some((host, remaining)) =
-                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code)
-                                .await
+                            shadow_rpc_policy::breaker_open_for_chain_code(
+                                self.ctx,
+                                &collect.chain_code,
+                            )
+                            .await
                         {
                             trace!(
                                 trade_no = %trade_no,
@@ -1282,18 +1912,21 @@ impl ShadowScanner {
                                     "try_advance_skip_because_breaker_open: collect broadcast skipped"
                                 );
                             }
-                            return;
+                            return Ok(());
                         }
                         trace!(trade_no = %trade_no, "Can broadcast transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
                         self.dispatch_intent(intent).await;
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedRecover => {
                         if let Some((host, remaining)) =
-                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code)
-                                .await
+                            shadow_rpc_policy::breaker_open_for_chain_code(
+                                self.ctx,
+                                &collect.chain_code,
+                            )
+                            .await
                         {
                             trace!(
                                 trade_no = %trade_no,
@@ -1314,23 +1947,25 @@ impl ShadowScanner {
                                     "try_advance_skip_because_breaker_open: collect recover skipped"
                                 );
                             }
-                            return;
+                            return Ok(());
                         }
-                        if !shadow_rpc_policy::allow_recover_dispatch(&format!(
-                            "collect:{trade_no}"
-                        )) {
+                        let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
+                        if !shadow_rpc_policy::allow_broadcast_recover_dispatch(
+                            &recover_key,
+                            collect.last_broadcast_at,
+                        ) {
                             trace!(
                                 trade_no = %trade_no,
-                                cooldown = ?shadow_rpc_policy::recover_cooldown(),
+                                cooldown = ?shadow_rpc_policy::recover_dispatch_cooldown(&recover_key),
                                 "recover_skip_because_cooldown: collect recover skipped"
                             );
-                            return;
+                            return Ok(());
                         }
                         trace!(trade_no = %trade_no, "Need to recover transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no.to_string()));
                         self.dispatch_intent(intent).await;
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedTxExecReceiptUpload => {
                         trace!(trade_no = %trade_no, "Need to upload tx exec receipt");
@@ -1338,7 +1973,7 @@ impl ShadowScanner {
                             SideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
                         );
                         self.dispatch_intent(intent).await;
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedResultAck => {
                         trace!(trade_no = %trade_no, "Need to send result ACK");
@@ -1346,7 +1981,7 @@ impl ShadowScanner {
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent).await;
-                        return;
+                        return Ok(());
                     }
                     CollectStage::NeedServiceFeeUpload => {
                         trace!(trade_no = %trade_no, "Need to upload service fee");
@@ -1354,7 +1989,7 @@ impl ShadowScanner {
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent).await;
-                        return;
+                        return Ok(());
                     }
                     CollectStage::FullyBlocked => {
                         continue;
@@ -1373,5 +2008,21 @@ impl ShadowScanner {
             DiagnoseSource::ManualAdvance,
             DiagnoseStage::Unknown,
         );
+        Ok(())
+    }
+
+    async fn pending_resource_result_ack_trade_no(
+        &self,
+        origin_trade_no: &str,
+    ) -> Result<Option<String>, crate::error::service::ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+
+        Ok(wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::find_pending_result_ack_by_origin(
+            &pool,
+            wallet_database::entities::api_trade_type::ApiTradeType::Collect as i64,
+            origin_trade_no,
+        )
+        .await?
+        .map(|row| row.resource_trade_no))
     }
 }

@@ -49,12 +49,31 @@ pub(crate) static WITHDRAW_SHADOW_ENABLED: AtomicBool = AtomicBool::new(false);
 /// 🔒 规则：只有 Confirm（transaction_time != NULL）才是"世界已发生"
 #[derive(Debug, Clone)]
 pub enum WithdrawChainIntent {
+    /// 预估 TRON 提币手续费快照。
+    ///
+    /// 这是审计页展示用的旁路快照：
+    /// - 只在 fee_estimated_at 缺失时尝试写入
+    /// - 不参与 ADVANCEMENT_ORDER
+    /// - 失败后留给下一轮扫描重试，不写 err_code/status
+    EstimateFee(String),
+    /// 评估 TRON 资源闸门。
+    ///
+    /// 这是真实操作步骤：
+    /// - 读取链上资源与本地提币事实
+    /// - 落下评估结果事实（resource_ready / need_platform_delegate）
+    ///
+    /// 注意：
+    /// - `resource_ready` / `need_platform_delegate` 是评估结果状态，不是独立 intent
+    /// - 后续 BuildTx 仍由 scanner 基于事实推进
+    EvalResourceGate(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易
     BroadcastTx(String),
     /// 恢复交易
     RecoverTx(String),
+    /// 执行资源代理任务
+    ExecuteResourceDelegation(String),
 }
 
 /// 副作用轴意图
@@ -75,6 +94,12 @@ pub enum WithdrawSideEffectIntent {
     SendTxResAck(String),
     /// 上传交易执行回执
     UploadTxExecReceipt(String),
+    /// 发送资源任务结果 ACK
+    SendResourceResultAck(String),
+    /// 发送资源任务 ACK
+    SendResourceTaskAck(String),
+    /// 上传资源任务交易执行回执
+    UploadResourceTxExecReceipt(String),
 }
 
 /// 推进意图枚举
@@ -94,12 +119,14 @@ pub use dispatcher::DispatcherConfig;
 pub(crate) use predicate::evaluate_point;
 pub use scanner::{ScannerConfig, ShadowScanner};
 pub(crate) use stage::{ADVANCEMENT_ORDER, AdvancementPoint};
-use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
+pub(crate) use worker::{
+    ShadowWithdrawCommand, ShadowWithdrawWorker, SideEffectCommand as ShadowSideEffectCommand,
+    SideEffectWorker as ShadowSideEffectWorker,
+};
 
 /// Shadow系统初始化
 pub(crate) async fn init(
-    api_withdraw_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static crate::context::Context,
 ) -> Option<actor::WithdrawShadowActorSystem> {
     // 检查开关是否开启
     if !WITHDRAW_SHADOW_ENABLED.load(Ordering::Relaxed) {
@@ -108,7 +135,13 @@ pub(crate) async fn init(
     }
 
     // 初始化Shadow Actor系统
-    let actor_system = actor::WithdrawShadowActorSystem::new(api_withdraw_pool, core_pool);
+    let actor_system = match actor::WithdrawShadowActorSystem::new(ctx) {
+        Ok(actor_system) => actor_system,
+        Err(error) => {
+            tracing::error!(?error, "Withdraw Shadow System failed to initialize");
+            return None;
+        }
+    };
 
     tracing::info!("Withdraw Shadow System initialized and started");
     Some(actor_system)

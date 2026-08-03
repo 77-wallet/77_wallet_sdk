@@ -4,12 +4,18 @@ use std::sync::Arc;
 use wallet_transport_backend::{
     api::BackendApi,
     request::{
-        KeysInitReq,
-        api_wallet::wallet::{
-            AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+        DeviceDeleteReq, KeysInitReq,
+        api_wallet::{
+            address::ExpandAddressCompleteReq,
+            swap::{ApiInitSwapReq, ApiInitSwapResponse},
+            wallet::{
+                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            },
         },
     },
-    response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
+    response_vo::api_wallet::wallet::{
+        AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
+    },
 };
 
 #[async_trait]
@@ -24,10 +30,25 @@ pub trait ApiWalletBackend: Send + Sync {
     ) -> Result<(), ServiceError>;
     async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, ServiceError>;
     async fn query_uid_bind_info(&self, uid: &str) -> Result<QueryUidBindInfoRes, ServiceError>;
+    async fn query_wallet_activation_info(
+        &self,
+        uid: &str,
+    ) -> Result<QueryWalletActivationInfoResp, ServiceError>;
     async fn appid_uid_usage(
         &self,
         req: AppIdUidUsageReq,
     ) -> Result<AppIdUidUsageRes, ServiceError>;
+    async fn expand_address_complete(
+        &self,
+        req: ExpandAddressCompleteReq,
+    ) -> Result<(), ServiceError>;
+    async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), ServiceError>;
+    async fn init_swap(&self, req: &ApiInitSwapReq) -> Result<ApiInitSwapResponse, ServiceError>;
+    async fn device_delete(&self, req: &DeviceDeleteReq) -> Result<Option<()>, ServiceError>;
 }
 
 pub struct RealApiWalletBackend {
@@ -74,10 +95,43 @@ impl ApiWalletBackend for RealApiWalletBackend {
         self.inner.query_uid_bind_info(uid).await.map_err(|e| e.into())
     }
 
+    async fn query_wallet_activation_info(
+        &self,
+        uid: &str,
+    ) -> Result<QueryWalletActivationInfoResp, ServiceError> {
+        self.inner.query_wallet_activation_info(uid).await.map_err(|e| e.into())
+    }
+
     async fn appid_uid_usage(
         &self,
         req: AppIdUidUsageReq,
     ) -> Result<AppIdUidUsageRes, ServiceError> {
         self.inner.appid_uid_usage(req).await.map_err(|e| e.into())
+    }
+
+    async fn expand_address_complete(
+        &self,
+        req: ExpandAddressCompleteReq,
+    ) -> Result<(), ServiceError> {
+        self.inner.expand_address_complete(req).await.map_err(|e| e.into())
+    }
+
+    async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), ServiceError> {
+        self.inner
+            .appid_withdrawal_wallet_change(withdrawal_uid, org_app_id)
+            .await
+            .map_err(|e| e.into())
+    }
+
+    async fn init_swap(&self, req: &ApiInitSwapReq) -> Result<ApiInitSwapResponse, ServiceError> {
+        self.inner.init_swap(req).await.map_err(|e| e.into())
+    }
+
+    async fn device_delete(&self, req: &DeviceDeleteReq) -> Result<Option<()>, ServiceError> {
+        self.inner.device_delete(req).await.map_err(|e| e.into())
     }
 }

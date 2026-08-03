@@ -145,6 +145,9 @@ pub mod endpoint {
         pub const QUERY_ASSET_LIST: &str = "awallet/aw/address/assetList";
         /// api钱包查询代币列表
         pub const API_WALLET_COIN_LIST: &str = "awallet/aw/token/queryByPage";
+
+        /// SDK申请资源委托
+        pub const RESOURCE_DELEGATION_APPLY: &str = "awallet/aw/trans/resourceDl/apply";
     }
 }
 
@@ -154,10 +157,10 @@ pub const BASE_RPC_URL: &str = "apprpc.88ai.fun";
 cfg_if::cfg_if! {
     // 默认使用开发环境 (dev)
     if #[cfg(any(feature = "dev", not(any(feature = "test", feature = "prod"))))] {
-        pub const BASE_URL: &str = "https://walletapi.puke668.top";
+        pub const BASE_URL: &str = "https://walletapi.awsservice.xyz";
     // 测试环境
     } else if #[cfg(feature = "test")] {
-        pub const BASE_URL: &str = "https://test-api.puke668.top";
+        pub const BASE_URL: &str = "https://test-api.awsservice.xyz";
 
     // 生产环境
     } else if #[cfg(feature = "prod")] {

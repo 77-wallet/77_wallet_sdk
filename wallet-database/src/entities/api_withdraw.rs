@@ -1,6 +1,12 @@
 use crate::{
     Error,
-    entities::{api_trade_type::ApiTradeType, asset_token_key::AssetTokenKey},
+    entities::{
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
+        api_trade_type::ApiTradeType,
+        asset_token_key::AssetTokenKey,
+    },
 };
 use serde::Deserializer;
 use std::fmt::Display;
@@ -19,6 +25,12 @@ pub struct WithdrawCreatedFact {
     pub trade_no: String,
     pub trade_type: i64,
     pub status: ApiWithdrawStatus,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PendingWithdrawResourceBudget {
+    pub energy: u64,
+    pub bandwidth: u64,
 }
 
 /// NOTE:
@@ -67,6 +79,9 @@ pub struct ApiWithdrawEntity {
     pub token_addr: AssetTokenKey,
     pub symbol: String,
     pub trade_no: String,
+    pub out_order_id: Option<String>,
+    pub client_id: Option<String>,
+    pub create_time: Option<String>,
     pub trade_type: ApiTradeType,
     pub init_status: ApiWithdrawStatus,
     pub status: ApiWithdrawStatus,
@@ -77,6 +92,9 @@ pub struct ApiWithdrawEntity {
     #[serde(skip_serializing)]
     pub resource_consume: String,
     pub transaction_fee: String,
+    pub estimated_transaction_fee: Option<String>,
+    pub estimated_resource_consume: Option<String>,
+    pub fee_estimated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub block_height: Option<String>,
     pub notes: Option<String>,
@@ -89,48 +107,86 @@ pub struct ApiWithdrawEntity {
     pub err_code: Option<ErrCode>,
     pub err_msg: Option<String>,
 
+    // ===== TRON Resource Gate Facts =====
+    /// 最近一次资源门禁检查时间（仅作为调度事实，不代表门禁已通过）
+    #[serde(skip_serializing)]
+    pub resource_check_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    /// 门禁放行时间（有值表示当前订单已不再阻塞于资源门禁）
+    #[serde(skip_serializing)]
+    pub resource_gate_released_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    /// 最近一次门禁结论（内部数字枚举）
+    #[serde(skip_serializing)]
+    pub resource_gate_result: Option<ApiResourceGateResult>,
+    /// 最近一次门禁阻塞原因（内部数字枚举，仅 blocked 时有意义）
+    #[serde(skip_serializing)]
+    pub resource_block_reason: Option<ApiResourceBlockReason>,
+    /// 资源依赖任务号（平台代打能量等），用于关联资源子流程事实
+    #[serde(skip_serializing)]
+    pub resource_dependency_trade_no: Option<String>,
+    /// 资源依赖类型（内部数字枚举），用于区分依赖来源
+    #[serde(skip_serializing)]
+    pub resource_dependency_type: Option<ApiResourceDependencyType>,
+
     // ===== Tx ACK（交易 ACK 事实）=====
+    #[serde(skip_serializing)]
     pub tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已接收并持久化该交易
 
     // ===== Build / Broadcast Execution Facts =====
+    #[serde(skip_serializing)]
     pub building_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // BuildTx 执行占位
+    #[serde(skip_serializing)]
     pub last_broadcast_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 最近一次 Broadcast 执行占位
+    #[serde(skip_serializing)]
     pub broadcast_uncertain_since_at:
         Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // EVM 广播/恢复不确定态开始时间
+    #[serde(skip_serializing)]
     pub broadcast_uncertain_retry_count: u32, // EVM 广播/恢复不确定态重试计数
+    #[serde(skip_serializing)]
     pub broadcast_uncertain_last_checked_at:
         Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // EVM 广播/恢复不确定态最近检查时间
+    #[serde(skip_serializing)]
     pub broadcast_uncertain_reconciled_at:
         Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // EVM 不确定态超时后 nonce reconcile 执行时间
+    #[serde(skip_serializing)]
     pub broadcast_uncertain_rebroadcast_count: u32, // EVM 不确定态超时后的自动重播次数
 
     // ===== Tx Result ACK（结果确认事实）=====
+    #[serde(skip_serializing)]
     pub tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已将交易结果可靠告知后端
     /// SER TxRes push received timestamp (AWM_ORDER_TRANS_RES)
     /// - Hard gate: TX_RES ack MUST NOT be sent before this fact exists.
+    #[serde(skip_serializing)]
     pub tx_res_received_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
+    #[serde(skip_serializing)]
     pub tx_exec_receipt_uploaded_at:
         Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 已上传交易执行回执
 
     // ===== Terminal Fact =====
+    #[serde(skip_serializing)]
     pub finished_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 链上终态事实
 
     // ===== Audit 事实 =====
     pub audit_passed_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 审核通过事实
     pub audit_rejected_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 审核拒绝事实
-    pub audit_reason: Option<String>, // 审核拒绝原因
+    #[serde(skip_serializing)]
+    pub audit_reason: Option<String>,                         // 审核拒绝原因
 
     // ===== Chain Result 事实 =====
+    #[serde(skip_serializing)]
     pub chain_success_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 链上成功事实
+    #[serde(skip_serializing)]
     pub chain_failed_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 链上失败事实
 
     // ===== Failure Stage 事实 =====
+    #[serde(skip_serializing)]
     pub failure_stage: Option<WithdrawFailureStage>, // 失败阶段
 
     // ===== Meta =====
+    #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+    #[serde(skip_serializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 

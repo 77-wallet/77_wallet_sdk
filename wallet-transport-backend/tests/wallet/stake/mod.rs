@@ -53,3 +53,27 @@ async fn test_vote_list() -> Result<(), wallet_transport_backend::Error> {
 
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "live backend smoke test; run manually with --ignored --nocapture"]
+async fn live_vote_list_print_names() -> Result<(), wallet_transport_backend::Error> {
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?;
+
+    let res = backend_api.vote_list().await?;
+    let missing_name_count = res.node_resp_list.iter().filter(|node| node.name.is_none()).count();
+
+    println!("total_node: {}", res.total_node);
+    println!("total_vote_count: {}", res.total_vote_count);
+    println!("nodes_missing_name: {missing_name_count}");
+    println!("first_nodes:");
+    for (index, node) in res.node_resp_list.iter().take(30).enumerate() {
+        println!(
+            "#{index}: name={:?}, address={}, vote_count={}, url={}, brokerage={}, apr={}",
+            node.name, node.address, node.vote_count, node.url, node.brokerage, node.apr
+        );
+    }
+
+    assert!(!res.node_resp_list.is_empty(), "vote/list returned no nodes");
+
+    Ok(())
+}

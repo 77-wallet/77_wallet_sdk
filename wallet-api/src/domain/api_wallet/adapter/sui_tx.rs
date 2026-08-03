@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -25,10 +26,21 @@ use wallet_utils::unit;
 
 pub(crate) struct SuiTx {
     chain: SuiChain,
+    ctx: &'static Context,
 }
 
 impl SuiTx {
-    pub fn new(
+    #[cfg(test)]
+    pub fn new_for_test(
+        ctx: &'static Context,
+        rpc_url: &str,
+        header_opt: Option<HashMap<String, String>>,
+    ) -> Result<Self, wallet_chain_interact::Error> {
+        Self::new_with_ctx(ctx, rpc_url, header_opt)
+    }
+
+    pub fn new_with_ctx(
+        ctx: &'static Context,
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
@@ -39,7 +51,7 @@ impl SuiTx {
         let provider = Provider::new(rpc);
 
         let sui_chain = SuiChain::new(provider)?;
-        Ok(Self { chain: sui_chain })
+        Ok(Self { chain: sui_chain, ctx })
     }
 }
 
@@ -171,8 +183,10 @@ impl Tx for SuiTx {
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
+        let pool = self.ctx.api_wallet_pool()?;
 
-        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key_with_pool(
+            &self.ctx.core_pool()?,
             currency,
             &req.chain_code,
             main_symbol,

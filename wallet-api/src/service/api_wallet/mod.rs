@@ -4,6 +4,7 @@ pub(crate) mod chain;
 pub(crate) mod coin;
 pub(crate) mod collect;
 pub(crate) mod fee;
+pub(crate) mod resource;
 pub(crate) mod strategy;
 pub(crate) mod transaction;
 pub(crate) mod wallet;

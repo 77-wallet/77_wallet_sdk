@@ -7,6 +7,7 @@ pub mod asset;
 pub mod bill;
 pub mod chain;
 pub mod coin;
+pub mod console_diagnostics;
 pub mod device;
 pub mod exchange_rate;
 pub mod jpush;

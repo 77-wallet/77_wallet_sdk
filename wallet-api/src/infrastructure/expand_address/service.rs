@@ -18,21 +18,23 @@ use crate::{
 pub struct ExpandService;
 
 impl ExpandService {
-    pub(crate) async fn create_account(
+    pub(crate) async fn create_account_with_ctx(
+        ctx: &'static crate::context::Context,
         uid: &str,
         chain: &str,
         to_create: &[i32],
         batch_id: &str,
     ) -> Result<(), ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
         let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
-        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             )),
         )?;
 
-        ApiAccountDomain::create_sub_account(
+        ApiAccountDomain::create_sub_account_with_ctx(
+            ctx,
             &wallet.address,
             uid,
             &unlock_token,
@@ -49,7 +51,8 @@ impl ExpandService {
         Ok(())
     }
 
-    pub(crate) async fn init_account(
+    pub(crate) async fn init_account_with_ctx(
+        ctx: &'static crate::context::Context,
         uid: &str,
         chain: &str,
         to_init: &[i32],
@@ -57,9 +60,8 @@ impl ExpandService {
     ) -> Result<(), ServiceError> {
         const INIT_CHUNK: usize = 40;
 
-        let sn = crate::context::get_context()?.get_sn();
-
-        let pool = crate::context::get_context()?.api_wallet_pool()?;
+        let sn = ctx.get_sn();
+        let pool = ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -71,7 +73,7 @@ impl ExpandService {
                 .await?;
 
         // 获取当前 epoch，所有任务共用同一个 epoch
-        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        let current_epoch = ConfigDomain::get_keys_reset_epoch(&ctx).await?;
 
         // 循环处理每个 chunk
         for chunk in to_init.chunks(INIT_CHUNK) {
@@ -104,10 +106,11 @@ impl ExpandService {
             // 适用于：同步请求场景，调用方会处理重试
             if !chunk_req.address_list.0.is_empty() {
                 let req_clone = chunk_req;
+                let ctx = ctx;
                 crate::infrastructure::expand_init::INIT_POOL
-                    .push(
-                        async move { crate::infrastructure::expand_init::do_init(req_clone).await },
-                    )
+                    .push(async move {
+                        crate::infrastructure::expand_init::do_init_with_ctx(ctx, req_clone).await
+                    })
                     .await;
 
                 tracing::info!(
@@ -121,15 +124,19 @@ impl ExpandService {
         Ok(())
     }
 
-    pub(crate) async fn expand_complete(uid: &str, batch_id: &str) -> Result<(), ServiceError> {
-        let pool = crate::context::get_context()?.api_wallet_pool()?;
+    pub(crate) async fn expand_complete_with_ctx(
+        ctx: &'static crate::context::Context,
+        uid: &str,
+        batch_id: &str,
+    ) -> Result<(), ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
+        let backend = ctx.get_global_backend_api();
         let batch = ExpandBatchRepo::get_batch(&pool, batch_id).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::account::AccountError::ExpandBatchNotFound
                     .into(),
             )),
         )?;
-        let backend = crate::context::get_context()?.get_global_backend_api();
         backend
             .expand_address_complete(ExpandAddressCompleteReq::new(
                 uid,

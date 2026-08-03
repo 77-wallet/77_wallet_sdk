@@ -1,6 +1,8 @@
 use smallvec::SmallVec;
 use wallet_database::entities::api_fee::ApiFeeEntity;
 
+use crate::domain::api_wallet::trans::shared_mechanism;
+
 use super::stage::AdvancementPoint;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,10 +29,6 @@ pub fn evaluate_point(point: AdvancementPoint, fee: &ApiFeeEntity) -> StageEval 
             StageEval { can_advance: false, reasons: SmallVec::new() }
         }
     }
-}
-
-fn is_evm_chain_code(chain_code: &str) -> bool {
-    chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
 }
 
 fn evaluate_need_tx_ack(fee: &ApiFeeEntity) -> StageEval {
@@ -120,10 +118,12 @@ fn evaluate_can_broadcast(fee: &ApiFeeEntity) -> StageEval {
     if fee.err_code.is_some() {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
-    if is_evm_chain_code(&fee.chain_code) && fee.broadcast_uncertain_since_at.is_some() {
+    if shared_mechanism::tracks_broadcast_uncertain_state(&fee.chain_code)
+        && fee.broadcast_uncertain_since_at.is_some()
+    {
         reasons.push(StageReason {
-            code: "evm_broadcast_uncertain_in_progress",
-            message: "EVM tx is in uncertain state; recover owns progression".to_string(),
+            code: "broadcast_uncertain_in_progress",
+            message: "Tx is in uncertain broadcast state; recover owns progression".to_string(),
         });
     }
 
@@ -133,7 +133,8 @@ fn evaluate_can_broadcast(fee: &ApiFeeEntity) -> StageEval {
         && fee.transaction_time.is_none()
         && fee.finished_at.is_none()
         && fee.err_code.is_none()
-        && (!is_evm_chain_code(&fee.chain_code) || fee.broadcast_uncertain_since_at.is_none());
+        && (!shared_mechanism::tracks_broadcast_uncertain_state(&fee.chain_code)
+            || fee.broadcast_uncertain_since_at.is_none());
 
     StageEval { can_advance, reasons }
 }
@@ -166,14 +167,14 @@ fn evaluate_need_recover(fee: &ApiFeeEntity) -> StageEval {
             message: "Tx exec receipt already uploaded".to_string(),
         });
     }
-    if is_evm_chain_code(&fee.chain_code)
+    if shared_mechanism::tracks_broadcast_uncertain_state(&fee.chain_code)
         && fee.raw_tx.is_some()
         && fee.last_broadcast_at.is_none()
         && fee.broadcast_uncertain_since_at.is_none()
     {
         reasons.push(StageReason {
-            code: "evm_broadcast_not_attempted",
-            message: "EVM raw_tx exists but broadcast has not entered uncertain or executed yet"
+            code: "broadcast_not_attempted",
+            message: "Raw tx exists but broadcast has not entered uncertain or executed yet"
                 .to_string(),
         });
     }
@@ -371,6 +372,23 @@ mod tests {
         let eval = evaluate_point(AdvancementPoint::NeedRecover, &f);
         assert!(eval.can_advance);
         assert!(!eval.reasons.iter().any(|r| r.code == "already_broadcasted"));
+    }
+
+    #[test]
+    fn tron_broadcast_uncertain_blocks_broadcast_and_allows_recover() {
+        let mut f = base_fee();
+        f.chain_code = "tron".to_string();
+        f.last_broadcast_at = None;
+        f.broadcast_uncertain_since_at = Some(Utc::now());
+        f.tx_exec_receipt_uploaded_at = None;
+        f.transaction_time = None;
+
+        let broadcast = evaluate_point(AdvancementPoint::CanBroadcast, &f);
+        assert!(!broadcast.can_advance);
+        assert!(broadcast.reasons.iter().any(|r| r.code == "broadcast_uncertain_in_progress"));
+
+        let recover = evaluate_point(AdvancementPoint::NeedRecover, &f);
+        assert!(recover.can_advance);
     }
 
     #[test]

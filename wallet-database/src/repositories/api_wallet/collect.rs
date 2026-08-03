@@ -13,7 +13,13 @@ use crate::{
     ApiTransactionDbPool,
     dao::api_collect::ApiCollectDao,
     entities::{
-        api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
+        api_collect::{
+            ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode,
+            PendingCollectResourceBudget,
+        },
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         asset_token_key::AssetTokenKey,
     },
 };
@@ -50,6 +56,21 @@ impl ApiCollectRepo {
         trade_no: &str,
     ) -> Result<ApiCollectEntity, crate::Error> {
         ApiCollectDao::get_api_collect_by_trade_no(pool.read_ref(), trade_no).await
+    }
+
+    pub async fn find_api_collect_by_trade_no(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<Option<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::find_api_collect_by_trade_no(pool.read_ref(), trade_no).await
+    }
+
+    pub async fn find_by_resource_dependency_trade_no(
+        pool: &ApiTransactionDbPool,
+        dependency_trade_no: &str,
+    ) -> Result<Option<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::find_by_resource_dependency_trade_no(pool.read_ref(), dependency_trade_no)
+            .await
     }
 
     pub async fn get_api_collect_by_trade_no_status(
@@ -127,6 +148,81 @@ impl ApiCollectRepo {
         to_addr: &str,
     ) -> Result<(), crate::Error> {
         ApiCollectDao::update_to_addr(pool.write_ref(), trade_no, to_addr).await
+    }
+
+    pub async fn mark_resource_blocked(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        block_reason: ApiResourceBlockReason,
+        dependency_trade_no: Option<&str>,
+        dependency_type: Option<ApiResourceDependencyType>,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_resource_blocked(
+            pool.write_ref(),
+            trade_no,
+            block_reason,
+            dependency_trade_no,
+            dependency_type,
+        )
+        .await
+    }
+
+    pub async fn mark_resource_released(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_resource_released(pool.write_ref(), trade_no, gate_result).await
+    }
+
+    pub async fn mark_resource_released_with_estimate(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_resource_released_with_estimate(
+            pool.write_ref(),
+            trade_no,
+            gate_result,
+            estimated_resource_consume,
+        )
+        .await
+    }
+
+    pub async fn pending_resource_budget_by_owner(
+        pool: &ApiTransactionDbPool,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+    ) -> Result<PendingCollectResourceBudget, crate::Error> {
+        ApiCollectDao::pending_resource_budget_by_owner(
+            pool.read_ref(),
+            chain_code,
+            from_addr,
+            exclude_trade_no,
+        )
+        .await
+    }
+
+    pub async fn invalidate_resource_ready_for_reeval(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::invalidate_resource_ready_for_reeval(pool.write_ref(), trade_no).await
+    }
+
+    pub async fn clear_account_activation_block_for_reeval(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        activation_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::clear_account_activation_block_for_reeval(
+            pool.write_ref(),
+            trade_no,
+            activation_trade_no,
+        )
+        .await
     }
 
     pub async fn update_api_collect_tx_status_nonce(
@@ -382,6 +478,13 @@ impl ApiCollectRepo {
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_can_build(pool.read_ref(), limit).await
+    }
+
+    pub async fn scan_need_resource_gate(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::scan_need_resource_gate(pool.read_ref(), limit).await
     }
 
     /// 扫描可广播的交易
@@ -1161,9 +1264,21 @@ mod tests {
     use super::ApiCollectRepo;
     use crate::{
         dao::api_collect::ApiCollectDao,
-        entities::api_collect::{ApiCollectStatus, CollectCreatedFact},
+        entities::{
+            api_collect::{ApiCollectStatus, CollectCreatedFact},
+            api_resource_delegation::{
+                ApiResourceDelegationResultStatus, NewApiResourceDelegation,
+            },
+            api_resource_gate::{
+                ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+            },
+            api_trade_type::ApiTradeType,
+        },
         error::Error,
-        repositories::test_helper::setup_api_transaction_pool,
+        repositories::{
+            api_wallet::resource_delegation::ApiResourceDelegationRepo,
+            test_helper::{setup_api_resource_pool, setup_api_transaction_pool},
+        },
     };
 
     #[tokio::test]
@@ -1251,5 +1366,228 @@ mod tests {
                 .unwrap();
         assert_eq!(count, 0);
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn collect_resource_gate_records_block_and_release_facts() {
+        let pool = setup_api_transaction_pool("wallet_db_collect_resource_gate").await;
+        let trade_no = "collect_resource_gate_1";
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "u1",
+            "collect_name",
+            "from",
+            "to",
+            "100",
+            "v",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        ApiCollectRepo::mark_resource_blocked(
+            &pool,
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            Some("resource_trade_1"),
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .unwrap();
+
+        let blocked = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
+        assert!(blocked.resource_check_at.is_some());
+        assert!(blocked.resource_gate_released_at.is_none());
+        assert_eq!(
+            blocked.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedPlatformDelegate)
+        );
+        assert_eq!(blocked.resource_dependency_trade_no.as_deref(), Some("resource_trade_1"));
+        assert_eq!(
+            blocked.resource_dependency_type,
+            Some(ApiResourceDependencyType::PlatformDelegate)
+        );
+
+        ApiCollectRepo::mark_resource_released(
+            &pool,
+            trade_no,
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
+
+        let released = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
+        assert!(released.resource_gate_released_at.is_some());
+        assert_eq!(released.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
+        assert!(released.resource_block_reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn collect_account_activation_clear_requeues_resource_gate() {
+        let pool = setup_api_transaction_pool("wallet_db_collect_activation_recheck").await;
+        let trade_no = "collect_activation_recheck_1";
+        let activation_trade_no = "act_collect_activation_recheck_1";
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "u1",
+            "collect_name",
+            "from",
+            "to",
+            "100",
+            "v",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::mark_resource_blocked(
+            &pool,
+            trade_no,
+            ApiResourceBlockReason::NeedAccountActivation,
+            Some(activation_trade_no),
+            Some(ApiResourceDependencyType::AccountActivation),
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiCollectRepo::clear_account_activation_block_for_reeval(
+            &pool,
+            trade_no,
+            activation_trade_no,
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let collect = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
+        assert!(collect.resource_gate_released_at.is_none());
+        assert!(collect.resource_gate_result.is_none());
+        assert!(collect.resource_block_reason.is_none());
+        assert!(collect.resource_dependency_trade_no.is_none());
+        assert!(collect.resource_dependency_type.is_none());
+
+        let need_resource_gate = ApiCollectRepo::scan_need_resource_gate(&pool, 10).await.unwrap();
+        assert_eq!(need_resource_gate.len(), 1);
+        assert_eq!(need_resource_gate[0].trade_no, trade_no);
+    }
+
+    #[tokio::test]
+    async fn mark_resource_result_ack_sent_and_release_collect_gate_updates_facts_together() {
+        let pool =
+            setup_api_transaction_pool("wallet_db_collect_resource_result_ack_release").await;
+        let resource_pool =
+            setup_api_resource_pool("wallet_db_collect_resource_result_ack_release").await;
+        let trade_no = "collect_resource_result_ack_release_1";
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "u1",
+            "collect_name",
+            "from",
+            "to",
+            "100",
+            "v",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "USDT",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        ApiCollectRepo::mark_resource_blocked(
+            &pool,
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            Some(trade_no),
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .unwrap();
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &resource_pool,
+            NewApiResourceDelegation::platform_delegate(
+                "u1",
+                trade_no,
+                trade_no,
+                ApiTradeType::Collect as i64,
+                "",
+                "to",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Fail,
+            Some(3),
+            Some(r#"{"tradeNo":"collect_resource_result_ack_release_1","status":false}"#),
+        )
+        .await
+        .unwrap();
+
+        let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(&resource_pool, trade_no)
+            .await
+            .unwrap();
+        assert_eq!(ack_rows, 1);
+
+        let release_rows = ApiCollectRepo::mark_resource_released(
+            &pool,
+            trade_no,
+            ApiResourceGateResult::ResourceDelegationFailedBypass,
+        )
+        .await
+        .unwrap();
+        assert_eq!(release_rows, 1);
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, trade_no)
+                .await
+                .unwrap();
+        assert!(resource_task.result_ack_sent_at.is_some());
+
+        let released = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
+        assert!(released.resource_gate_released_at.is_some());
+        assert_eq!(
+            released.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationFailedBypass)
+        );
+        assert!(released.resource_block_reason.is_none());
+
+        let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(&resource_pool, trade_no)
+            .await
+            .unwrap();
+        assert_eq!(ack_rows, 0);
+
+        let still_released =
+            ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
+        assert_eq!(
+            still_released.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationFailedBypass)
+        );
+        assert!(still_released.resource_gate_released_at.is_some());
     }
 }

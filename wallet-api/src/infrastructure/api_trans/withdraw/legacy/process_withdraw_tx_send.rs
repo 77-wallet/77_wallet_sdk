@@ -156,7 +156,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool,
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
@@ -209,8 +209,6 @@ impl AddressLockManager {
 // 2. global semaphore
 #[derive(Clone)]
 struct WithdrawTxWorkerCtx {
-    core_pool: ApiWalletDbPool,
-    api_transaction_pool: ApiTransactionDbPool,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
     processing_trade: Arc<DashSet<String>>,
@@ -245,15 +243,11 @@ pub(super) struct ProcessWithdrawTx {
 impl ProcessWithdrawTx {
     pub(super) fn new(
         ctx: &'static Context,
-        core_pool: ApiWalletDbPool,
-        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessWithdrawTxCommand>,
         report_tx: mpsc::Sender<ProcessWithdrawTxReportCommand>,
     ) -> Self {
         let worker_ctx = WithdrawTxWorkerCtx {
-            core_pool: core_pool.clone(),
-            api_transaction_pool: pool.clone(),
             address_locks: Arc::new(AddressLockManager::new()),
             global_sem: Arc::new(Semaphore::new(32)), // 与 collect 模块保持一致
             processing_trade: Arc::new(DashSet::new()),
@@ -310,27 +304,26 @@ impl ProcessWithdrawTx {
         let trade_no = trade_no.to_string();
 
         tokio::spawn(async move {
-            let req = match ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
-                &ctx.api_transaction_pool,
-                &trade_no,
-                &[ApiWithdrawStatus::AuditPass],
-            )
-            .await
-            {
-                Ok(res) => res,
-                Err(err) => {
-                    tracing::warn!(trade_no=%trade_no, "process withdraw tx not found: {}", err);
-                    return;
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = ctx.ctx.api_transaction_pool()?;
+                let req = ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
+                    &api_transaction_pool,
+                    &trade_no,
+                    &[ApiWithdrawStatus::AuditPass],
+                )
+                .await?;
+                if !ctx.processing_trade.insert(req.trade_no.clone()) {
+                    tracing::warn!(trade_no=%req.trade_no, "withdraw tx already processing, skip");
+                    return Ok(());
                 }
-            };
-            if !ctx.processing_trade.insert(req.trade_no.clone()) {
-                tracing::warn!(trade_no=%req.trade_no, "withdraw tx already processing, skip");
-                return;
-            }
-            let _guard = TradeGuard::new(&req.trade_no, ctx.processing_trade.clone());
+                let _guard = TradeGuard::new(&req.trade_no, ctx.processing_trade.clone());
 
-            if let Err(e) = Self::process_withdraw_single_tx(ctx, req).await {
-                tracing::error!(trade_no=%trade_no, "withdraw_tx:send: 处理单个提币交易失败: {}", e);
+                Self::process_withdraw_single_tx(ctx, req).await?;
+                Ok(())
+            }
+            .await;
+            if let Err(err) = res {
+                tracing::error!(trade_no=%trade_no, "withdraw_tx:send: 处理单个提币交易失败: {}", err);
             }
         });
     }
@@ -350,33 +343,34 @@ impl ProcessWithdrawTx {
 
         tokio::spawn(async move {
             let _batch_guard = permit;
-            let res = ApiWithdrawRepo::list_api_withdraw_with_status(
-                &ctx.api_transaction_pool,
-                vec![ApiWithdrawStatus::AuditPass],
-                0,
-                1000,
-            )
-            .await;
-            let withdraw_txs = match res {
-                Ok(v) => v,
-                Err(err) => {
-                    tracing::warn!("process_withdraw_tx_send 查询待处理提币交易失败: {}", err);
-                    return;
-                }
-            };
-            tracing::info!("withdraw_tx:send: 找到 {} 笔待处理的提币交易", withdraw_txs.len());
-            for req in withdraw_txs {
-                let ctx = ctx.clone();
-                let trade_no = req.trade_no.clone(); // 提前克隆trade_no
-                if !ctx.processing_trade.insert(trade_no.clone()) {
-                    continue;
-                }
-                tokio::spawn(async move {
-                    let _guard = TradeGuard::new(&trade_no, ctx.processing_trade.clone());
-                    if let Err(err) = Self::process_withdraw_single_tx(ctx, req).await {
-                        tracing::error!(trade_no=%trade_no, "withdraw_tx:send: 处理单个提币交易失败: {}", err);
+            let res: Result<(), ServiceError> = async {
+                let api_transaction_pool = ctx.ctx.api_transaction_pool()?;
+                let withdraw_txs = ApiWithdrawRepo::list_api_withdraw_with_status(
+                    &api_transaction_pool,
+                    vec![ApiWithdrawStatus::AuditPass],
+                    0,
+                    1000,
+                )
+                .await?;
+                tracing::info!("withdraw_tx:send: 找到 {} 笔待处理的提币交易", withdraw_txs.len());
+                for req in withdraw_txs {
+                    let ctx = ctx.clone();
+                    let trade_no = req.trade_no.clone(); // 提前克隆trade_no
+                    if !ctx.processing_trade.insert(trade_no.clone()) {
+                        continue;
                     }
-                });
+                    tokio::spawn(async move {
+                        let _guard = TradeGuard::new(&trade_no, ctx.processing_trade.clone());
+                        if let Err(err) = Self::process_withdraw_single_tx(ctx, req).await {
+                            tracing::error!(trade_no=%trade_no, "withdraw_tx:send: 处理单个提币交易失败: {}", err);
+                        }
+                    });
+                }
+                Ok(())
+            }
+            .await;
+            if let Err(err) = res {
+                tracing::warn!("process_withdraw_tx_send 查询待处理提币交易失败: {}", err);
             }
         });
     }
@@ -401,6 +395,7 @@ impl ProcessWithdrawTx {
 
             // 使用通用的交易恢复逻辑
             match ApiTransDomain::process_recovered_tx(
+                &worker_ctx.ctx,
                 &req.chain_code,
                 &req.from_addr,
                 tx_hash,
@@ -431,7 +426,7 @@ impl ProcessWithdrawTx {
         }
 
         // 检查交易摘要
-        if !Self::check_digest(&req).await {
+        if !Self::check_digest(&worker_ctx.ctx, &req).await {
             tracing::error!(trade_no=%req.trade_no, "withdraw_tx:send: 交易摘要验证失败");
             return Self::handle_withdraw_tx_failed(
                 &worker_ctx,
@@ -457,6 +452,7 @@ impl ProcessWithdrawTx {
 
                 // 第一步：构建raw_tx
                 let (tx_hash, raw_tx, fee) = match ApiTransDomain::build_transfer_raw(
+                    &worker_ctx.ctx,
                     transfer_req,
                     None,
                 )
@@ -483,8 +479,9 @@ impl ProcessWithdrawTx {
 
                 // 第二步：将raw_tx、nonce和tx_hash落盘到数据库
                 let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
+                let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
                 let update_res = ApiWithdrawRepo::update_after_build(
-                    &worker_ctx.api_transaction_pool,
+                    &api_transaction_pool,
                     &req.trade_no,
                     &tx_hash,
                     &raw_tx_str,
@@ -507,6 +504,7 @@ impl ProcessWithdrawTx {
 
                 // 第三步：广播交易
                 let tx_resp = ApiTransDomain::broadcast_transfer(
+                    &worker_ctx.ctx,
                     &req.chain_code,
                     raw_tx,
                     Some(tx_hash.as_str()),
@@ -552,9 +550,9 @@ impl ProcessWithdrawTx {
         }
     }
 
-    async fn check_digest(req: &ApiWithdrawEntity) -> bool {
+    async fn check_digest(ctx: &Context, req: &ApiWithdrawEntity) -> bool {
         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 开始验证交易摘要");
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = ctx.get_sn();
         let mut d = Decimal::from_str(req.value.as_str()).unwrap();
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
@@ -566,11 +564,12 @@ impl ProcessWithdrawTx {
     }
 
     async fn get_eth_nonce(
-        pool: &ApiTransactionDbPool,
+        worker_ctx: &WithdrawTxWorkerCtx,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, ServiceError> {
         tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "withdraw_tx:send: 获取以太坊nonce");
+        let pool = worker_ctx.ctx.api_transaction_pool()?;
         match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
             Ok(nonce) => {
                 let next_nonce = nonce + 1;
@@ -579,7 +578,7 @@ impl ProcessWithdrawTx {
             }
             Err(_) => {
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "withdraw_tx:send: 本地缓存未找到nonce，从链上获取");
-                let nonce = ApiTransDomain::nonce(from_addr, chain_code).await?;
+                let nonce = ApiTransDomain::nonce(&worker_ctx.ctx, from_addr, chain_code).await?;
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "withdraw_tx:send: 从链上获取nonce: {}", nonce);
                 Ok(nonce as i64)
             }
@@ -594,8 +593,9 @@ impl ProcessWithdrawTx {
 
         // 获取币种信息
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            worker_ctx.ctx,
             &req.chain_code,
-            req.token_addr.clone().into(),
+            req.token_addr.clone(),
         )
         .await?;
         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
@@ -625,20 +625,10 @@ impl ProcessWithdrawTx {
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
-                Self::get_eth_nonce(
-                    &worker_ctx.api_transaction_pool,
-                    &req.from_addr,
-                    &req.chain_code,
-                )
-                .await?
+                Self::get_eth_nonce(&worker_ctx, &req.from_addr, &req.chain_code).await?
             }
             ChainCode::BnbSmartChain => {
-                Self::get_eth_nonce(
-                    &worker_ctx.api_transaction_pool,
-                    &req.from_addr,
-                    &req.chain_code,
-                )
-                .await?
+                Self::get_eth_nonce(&worker_ctx, &req.from_addr, &req.chain_code).await?
             }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
@@ -660,6 +650,7 @@ impl ProcessWithdrawTx {
         nonce: u64,
     ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 处理交易成功结果");
+        let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
 
         // 发送前端通知
         let data = NotifyEvent::Withdraw(WithdrawFront {
@@ -668,7 +659,7 @@ impl ProcessWithdrawTx {
             to_addr: req.to_addr.to_string(),
             value: req.value.to_string(),
         });
-        _ = FrontendNotifyEvent::new(data).send().await;
+        _ = FrontendNotifyEvent::new(data).send_with_ctx(worker_ctx.ctx).await;
 
         let resource_consume = tx.resource_consume().unwrap_or_else(|_| "".to_string());
         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 交易资源消耗: {}, 手续费: {}", resource_consume, tx.fee);
@@ -679,7 +670,7 @@ impl ProcessWithdrawTx {
         {
             tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 更新以太坊/BSC交易状态，包含nonce");
             ApiWithdrawRepo::update_api_withdraw_tx_status_nonce(
-                &worker_ctx.api_transaction_pool,
+                &api_transaction_pool,
                 &req.from_addr,
                 &req.chain_code,
                 &req.trade_no,
@@ -693,7 +684,7 @@ impl ProcessWithdrawTx {
         } else {
             tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 更新非以太坊/BSC交易状态");
             ApiWithdrawRepo::update_api_withdraw_tx_status(
-                &worker_ctx.api_transaction_pool,
+                &api_transaction_pool,
                 &req.trade_no,
                 req.nonce,
                 &tx.tx_hash,
@@ -743,10 +734,11 @@ impl ProcessWithdrawTx {
             to_addr: req.to_addr.to_string(),
             value: req.value.to_string(),
         });
-        _ = FrontendNotifyEvent::new(data).send().await;
+        _ = FrontendNotifyEvent::new(data).send_with_ctx(worker_ctx.ctx).await;
         // 更新交易状态,发送失败
+        let api_transaction_pool = worker_ctx.ctx.api_transaction_pool()?;
         let res = ApiWithdrawRepo::update_api_withdraw_status_and_err(
-            &worker_ctx.api_transaction_pool,
+            &api_transaction_pool,
             &trade_no,
             ApiWithdrawStatus::SendingTxFailed,
             err_code,

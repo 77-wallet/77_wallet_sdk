@@ -1,16 +1,17 @@
 use crate::{
-    context::Context, domain::api_wallet::trans::withdraw::ApiWithdrawDomain,
-    error::service::ServiceError, request::api_wallet::trans::ApiWithdrawReq,
+    application::api_wallet_withdraw::ApiWithdrawApplication,
+    context::Context,
+    error::service::ServiceError,
+    response_vo::api_wallet::withdraw::{ApiWithdrawOrderDetailVo, ApiWithdrawOrderVo},
 };
 use wallet_database::{
     entities::{
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus,
         asset_token_key::AssetTokenKey,
     },
     pagination::Pagination,
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
-use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
 
 pub struct WithdrawService {
     ctx: &'static Context,
@@ -24,9 +25,11 @@ impl WithdrawService {
     pub async fn list_withdraw_order(
         &self,
         uid: &str,
-    ) -> Result<Vec<ApiWithdrawEntity>, ServiceError> {
+    ) -> Result<Vec<ApiWithdrawOrderVo>, ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.map_err(|e| e.into())
+        let entities =
+            ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.map_err(ServiceError::from)?;
+        Ok(entities.into_iter().map(ApiWithdrawOrderVo::from).collect())
     }
 
     pub async fn page_withdraw_order_with_init_status(
@@ -36,9 +39,9 @@ impl WithdrawService {
         status: Vec<ApiWithdrawStatus>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<ApiWithdrawEntity>, ServiceError> {
+    ) -> Result<Pagination<ApiWithdrawOrderVo>, ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        ApiWithdrawRepo::page_api_withdraw_with_init_status(
+        let pagination = ApiWithdrawRepo::page_api_withdraw_with_init_status(
             &pool,
             uid,
             init_status,
@@ -47,7 +50,14 @@ impl WithdrawService {
             page_size,
         )
         .await
-        .map_err(|e| e.into())
+        .map_err(ServiceError::from)?;
+        let data = pagination.data.into_iter().map(ApiWithdrawOrderVo::from).collect();
+        Ok(Pagination {
+            page: pagination.page,
+            page_size: pagination.page_size,
+            total_count: pagination.total_count,
+            data,
+        })
     }
 
     pub async fn page_withdraw_order(
@@ -56,11 +66,30 @@ impl WithdrawService {
         status: Vec<ApiWithdrawStatus>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<ApiWithdrawEntity>, ServiceError> {
+    ) -> Result<Pagination<ApiWithdrawOrderVo>, ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        ApiWithdrawRepo::page_api_withdraw(&pool, uid, status, page, page_size)
+        let pagination = ApiWithdrawRepo::page_api_withdraw(&pool, uid, status, page, page_size)
             .await
-            .map_err(|e| e.into())
+            .map_err(ServiceError::from)?;
+        let data = pagination.data.into_iter().map(ApiWithdrawOrderVo::from).collect();
+        Ok(Pagination {
+            page: pagination.page,
+            page_size: pagination.page_size,
+            total_count: pagination.total_count,
+            data,
+        })
+    }
+
+    pub async fn detail_withdraw_order(
+        &self,
+        trade_no: &str,
+    ) -> Result<ApiWithdrawOrderDetailVo, ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+        let entity =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .map_err(ServiceError::from)?;
+        Ok(ApiWithdrawOrderDetailVo::from(entity))
     }
 
     pub async fn withdrawal_order(
@@ -77,44 +106,19 @@ impl WithdrawService {
         uid: &str,
         audit: u32,
     ) -> Result<(), ServiceError> {
-        let req = ApiWithdrawReq {
-            from: from.to_string(),
-            to: to.to_string(),
-            value: value.to_string(),
-            validate: validate.to_string(),
-            chain_code: chain_code.to_string(),
-            token_address: token_key,
-            symbol: symbol.to_string(),
-            trade_no: trade_no.to_string(),
-            trade_type,
-            uid: uid.to_string(),
-            audit: audit,
-        };
-        let res = ApiWithdrawDomain::withdraw(&req).await;
-        match res {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                tracing::error!("withdrawal_order failed with {:?}", e);
-                Err(e.into())
-            }
-        }
+        ApiWithdrawApplication::new(self.ctx)
+            .withdrawal_order(
+                from, to, value, validate, chain_code, token_key, symbol, trade_no, trade_type,
+                uid, audit,
+            )
+            .await
     }
 
-    pub async fn sign_withdrawal_order(&self, order_id: &str) -> Result<(), ServiceError> {
-        let backend_api = self.ctx.get_global_backend_api();
-
-        let req = AuditResultReportReq::new(order_id.to_string(), true, "OK");
-        backend_api.report_audit_result(&req).await?;
-
-        ApiWithdrawDomain::sign_withdrawal_order(order_id).await
+    pub async fn sign_withdrawal_order(&self, trade_no: &str) -> Result<(), ServiceError> {
+        ApiWithdrawApplication::new(self.ctx).sign_withdrawal_order(trade_no).await
     }
 
-    pub async fn reject_withdrawal_order(&self, order_id: &str) -> Result<(), ServiceError> {
-        let backend_api = self.ctx.get_global_backend_api();
-
-        let req = AuditResultReportReq::new(order_id.to_string(), false, "user rejected");
-        backend_api.report_audit_result(&req).await?;
-
-        ApiWithdrawDomain::reject_withdrawal_order(order_id).await
+    pub async fn reject_withdrawal_order(&self, trade_no: &str) -> Result<(), ServiceError> {
+        ApiWithdrawApplication::new(self.ctx).reject_withdrawal_order(trade_no).await
     }
 }

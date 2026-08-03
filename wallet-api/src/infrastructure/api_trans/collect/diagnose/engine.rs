@@ -169,6 +169,7 @@ fn calculate_wait_weight(stage: CollectStage, collect: &ApiCollectEntity) -> u8 
 fn get_next_expected_fact(stage: CollectStage) -> &'static str {
     match stage {
         CollectStage::NeedOrderAck => "order_ack_sent_at",
+        CollectStage::NeedResourceGate => "resource_gate_released_at",
         CollectStage::CanBuild => "raw_tx",
         CollectStage::NeedTxFeeResAck => "tx_fee_res_ack_sent_at",
         CollectStage::CanBroadcast => "last_broadcast_at",
@@ -226,6 +227,12 @@ mod tests {
             post_confirm_tx_count: 0,
             err_code: None,
             err_msg: Some("".to_string()),
+            resource_check_at: None,
+            resource_gate_released_at: None,
+            resource_gate_result: None,
+            resource_block_reason: None,
+            resource_dependency_trade_no: None,
+            resource_dependency_type: None,
             order_ack_sent_at: Some(Utc::now()),
             raw_tx: Some("{}".to_string()),
             resource_consume: "0".to_string(),

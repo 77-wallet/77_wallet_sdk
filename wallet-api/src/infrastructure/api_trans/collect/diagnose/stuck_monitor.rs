@@ -43,6 +43,9 @@ pub fn collect_stage_to_diagnose_stage(
         crate::infrastructure::api_trans::collect::shadow::stage::CollectStage::NeedOrderAck => {
             DiagnoseStage::OrderAck
         }
+        crate::infrastructure::api_trans::collect::shadow::stage::CollectStage::NeedResourceGate => {
+            DiagnoseStage::Build
+        }
         crate::infrastructure::api_trans::collect::shadow::stage::CollectStage::CanBuild => {
             DiagnoseStage::Build
         }

@@ -181,8 +181,31 @@
 pub(crate) mod collect;
 pub(crate) mod collect_fee;
 pub(crate) mod diagnose_common;
+pub(crate) mod fast_path;
+pub(crate) mod nonce_recovery_mechanism;
+pub(crate) mod recover_rpc_observability;
+pub(crate) mod resource_ack_type;
+pub(crate) mod resource_amount;
+pub(crate) mod resource_apply_outcome;
+pub(crate) mod resource_authorization;
+pub(crate) mod resource_chain_facts;
+pub(crate) mod resource_delegate;
+pub(crate) mod resource_delegation;
+pub(crate) mod resource_operation;
+pub(crate) mod resource_reclaim;
+pub(crate) mod resource_reservation;
+pub(crate) mod resource_rpc_auth;
+pub(crate) mod rpc_auth_retry_mechanism;
 pub(crate) mod shadow_rpc_policy;
 pub(crate) mod withdraw;
+
+pub async fn maintenance_reclaim_residual_tron_energy(
+    template_resource_trade_no: &str,
+) -> Result<(i64, String), crate::error::service::ServiceError> {
+    let ctx = crate::get_context()?;
+    let worker = resource_reclaim::platform_shadow::PlatformResourceReclaimWorker::new(ctx);
+    worker.maintenance_reclaim_residual_energy(template_resource_trade_no).await
+}
 pub use collect::{
     legacy::AddressLockManager,
     shadow::{ShadowAdvancer, ShadowCollectCommand, ShadowCollectWorker},

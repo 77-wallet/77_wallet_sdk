@@ -1,6 +1,9 @@
+use crate::domain::api_wallet::trans::shared_mechanism;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CollectStage {
     NeedOrderAck,
+    NeedResourceGate,
     CanBuild,
     NeedTxFeeResAck,
     CanBroadcast,
@@ -17,6 +20,7 @@ pub enum CollectStage {
 /// - 诊断逻辑也必须使用此顺序
 pub const COLLECT_ADVANCEMENT_ORDER: &[CollectStage] = &[
     CollectStage::NeedOrderAck,
+    CollectStage::NeedResourceGate,
     CollectStage::CanBuild,
     CollectStage::NeedTxFeeResAck,
     CollectStage::CanBroadcast,
@@ -31,6 +35,7 @@ impl CollectStage {
     pub fn as_str(&self) -> &'static str {
         match self {
             CollectStage::NeedOrderAck => "need_order_ack",
+            CollectStage::NeedResourceGate => "need_resource_gate",
             CollectStage::CanBuild => "can_build",
             CollectStage::NeedTxFeeResAck => "need_tx_fee_res_ack",
             CollectStage::CanBroadcast => "can_broadcast",
@@ -46,6 +51,7 @@ impl CollectStage {
     pub fn base_severity(&self) -> u8 {
         match self {
             CollectStage::NeedOrderAck => 1,
+            CollectStage::NeedResourceGate => 1,
             CollectStage::CanBuild => 0,
             CollectStage::NeedTxFeeResAck => 1,
             CollectStage::CanBroadcast => 0,
@@ -61,6 +67,7 @@ impl CollectStage {
     pub fn wait_threshold_minutes(&self) -> i64 {
         match self {
             CollectStage::NeedOrderAck => 2,
+            CollectStage::NeedResourceGate => 2,
             CollectStage::CanBuild => 5,
             CollectStage::NeedTxFeeResAck => 3,
             CollectStage::CanBroadcast => 5,
@@ -96,11 +103,15 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             CollectStage::NeedOrderAck => {
                 "order_ack_sent_at IS NULL".to_string()
             }
+            CollectStage::NeedResourceGate => {
+                "order_ack_sent_at IS NOT NULL AND lower(chain_code) = 'tron' AND resource_gate_released_at IS NULL AND (resource_block_reason IS NULL OR (resource_block_reason = 2 AND resource_dependency_trade_no IS NULL)) AND raw_tx IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+            }
             CollectStage::CanBuild => {
                 // BuildTx 只看“当前周期是否真的进入过服务费上传”。
                 // 如果只是重开后保留了旧 ack，而当前周期并没有上传过服务费，
                 // 这里就不应该把它当成“必须先等手续费结果”的单子。
-                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+                // TRON 归集还必须先有资源闸门释放事实，才能进入 BuildTx。
+                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND (lower(chain_code) <> 'tron' OR resource_gate_released_at IS NOT NULL) AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::NeedTxFeeResAck => {
                 // 只有当前周期已经真的进入服务费上传，才会进入这个等待态。
@@ -110,7 +121,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             CollectStage::CanBroadcast => {
                 // 广播前同样只关心当前周期是否已经走到服务费上传这一步。
                 // 没有进入过该阶段，就不该被旧的手续费 ACK 事实阻塞。
-                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth','sol') OR broadcast_uncertain_since_at IS NULL)".to_string()
+                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth','sol','tron') OR broadcast_uncertain_since_at IS NULL)".to_string()
             }
             CollectStage::NeedRecover => {
                 "tx_hash IS NOT NULL AND transaction_time IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
@@ -136,11 +147,22 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
     ) -> fn(&wallet_database::entities::api_collect::ApiCollectEntity) -> bool {
         match stage {
             CollectStage::NeedOrderAck => |collect| collect.order_ack_sent_at.is_none(),
+            CollectStage::NeedResourceGate => |collect| {
+                collect.order_ack_sent_at.is_some()
+                    && shared_mechanism::is_tron_chain(&collect.chain_code)
+                    && collect.resource_gate_released_at.is_none()
+                    && collect.raw_tx.is_none()
+                    && collect.transaction_time.is_none()
+                    && collect.finished_at.is_none()
+                    && collect.err_code.is_none()
+            },
             CollectStage::CanBuild => |collect| {
                 // 当前周期没走到服务费上传时，旧 ACK 不应影响构建。
                 collect.order_ack_sent_at.is_some()
                     && collect.raw_tx.is_none()
                     && collect.need_service_fee != Some(true)
+                    && (!shared_mechanism::is_tron_chain(&collect.chain_code)
+                        || collect.resource_gate_released_at.is_some())
                     && (collect.service_fee_uploaded_at.is_none()
                         || collect.tx_fee_res_ack_sent_at.is_some())
                     && collect.transaction_time.is_none()
@@ -159,7 +181,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             },
             CollectStage::CanBroadcast => |collect| {
                 let broadcast_uncertain_in_progress =
-                    matches!(collect.chain_code.as_str(), "bnb" | "eth" | "sol")
+                    matches!(collect.chain_code.as_str(), "bnb" | "eth" | "sol" | "tron")
                         && collect.broadcast_uncertain_since_at.is_some();
                 // 同 BuildTx 一样，广播只看当前周期是否真的进过服务费上传。
                 collect.raw_tx.is_some()
@@ -233,6 +255,12 @@ mod tests {
             post_confirm_tx_count: 0,
             err_code: None,
             err_msg: Some(String::new()),
+            resource_check_at: None,
+            resource_gate_released_at: None,
+            resource_gate_result: None,
+            resource_block_reason: None,
+            resource_dependency_trade_no: None,
+            resource_dependency_type: None,
             order_ack_sent_at: Some(Utc::now()),
             raw_tx: Some("{}".to_string()),
             resource_consume: "0".to_string(),
@@ -297,6 +325,8 @@ mod tests {
         let can_build_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::CanBuild);
         assert!(can_build_sql.contains("service_fee_uploaded_at IS NULL"));
         assert!(can_build_sql.contains("need_service_fee IS NULL OR need_service_fee = false"));
+        assert!(can_build_sql.contains("lower(chain_code) <> 'tron'"));
+        assert!(can_build_sql.contains("resource_gate_released_at IS NOT NULL"));
         assert!(can_build_sql.contains("transaction_time IS NULL"));
         assert!(can_build_sql.contains("finished_at IS NULL"));
         assert!(
@@ -329,6 +359,12 @@ mod tests {
         assert!(!receipt_sql.contains("last_broadcast_at"));
         assert!(receipt_sql.contains("transaction_time IS NOT NULL"));
         assert!(receipt_sql.contains("err_code IS NOT NULL"));
+
+        let resource_gate_sql =
+            DefaultStageQueryBuilder::sql_filter(CollectStage::NeedResourceGate);
+        assert!(resource_gate_sql.contains("lower(chain_code) = 'tron'"));
+        assert!(resource_gate_sql.contains("resource_gate_released_at IS NULL"));
+        assert!(resource_gate_sql.contains("raw_tx IS NULL"));
     }
 
     #[test]
@@ -342,6 +378,7 @@ mod tests {
         ready.raw_tx = None;
         ready.need_service_fee = Some(false);
         ready.service_fee_uploaded_at = Some(Utc::now());
+        ready.tx_fee_res_ack_sent_at = Some(Utc::now());
 
         let mut blocked = base_collect();
         blocked.raw_tx = None;
@@ -353,6 +390,45 @@ mod tests {
         assert!(!pred(&stale));
         assert!(pred(&ready));
         assert!(!pred(&blocked));
+    }
+
+    #[test]
+    fn can_build_requires_resource_gate_for_tron_only() {
+        let mut blocked = base_collect();
+        blocked.chain_code = "tron".to_string();
+        blocked.raw_tx = None;
+        blocked.need_service_fee = Some(false);
+        blocked.resource_gate_released_at = None;
+
+        let mut released = blocked.clone();
+        released.resource_gate_released_at = Some(Utc::now());
+
+        let mut non_tron = blocked.clone();
+        non_tron.chain_code = "sol".to_string();
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
+        assert!(!pred(&blocked));
+        assert!(pred(&released));
+        assert!(pred(&non_tron));
+    }
+
+    #[test]
+    fn need_resource_gate_selects_unreleased_tron_only() {
+        let mut blocked = base_collect();
+        blocked.chain_code = "tron".to_string();
+        blocked.raw_tx = None;
+        blocked.resource_gate_released_at = None;
+
+        let mut released = blocked.clone();
+        released.resource_gate_released_at = Some(Utc::now());
+
+        let mut non_tron = blocked.clone();
+        non_tron.chain_code = "sol".to_string();
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedResourceGate);
+        assert!(pred(&blocked));
+        assert!(!pred(&released));
+        assert!(!pred(&non_tron));
     }
 
     #[test]

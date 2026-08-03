@@ -12,7 +12,7 @@ use std::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::error::service::ServiceError;
+use crate::{context::Context, error::service::ServiceError};
 use sha2::Digest;
 
 pub(crate) use aes_gcm::aead::OsRng;
@@ -141,26 +141,24 @@ impl WalletUnlockSessionCodec {
         Self::fingerprint_bytes(token.as_bytes())
     }
 
+    pub(crate) fn unlock_session_rotation_interval_with_ctx(context: &Context) -> Duration {
+        context.config().unlock_session_rotation_interval()
+    }
+
+    pub(crate) fn unlock_session_rotation_check_interval_with_ctx(context: &Context) -> Duration {
+        context.config().unlock_session_rotation_check_interval()
+    }
+
     pub(crate) fn unlock_session_rotation_interval() -> Duration {
-        crate::context::get_context()
-            .ok()
-            .map(|context| context.config().unlock_session_rotation_interval())
-            .unwrap_or_else(|| {
-                Duration::from_secs(
-                    crate::config::runtime_defaults::unlock_session().rotation_interval_secs,
-                )
-            })
+        Duration::from_secs(
+            crate::config::runtime_defaults::unlock_session().rotation_interval_secs,
+        )
     }
 
     pub(crate) fn unlock_session_rotation_check_interval() -> Duration {
-        crate::context::get_context()
-            .ok()
-            .map(|context| context.config().unlock_session_rotation_check_interval())
-            .unwrap_or_else(|| {
-                Duration::from_secs(
-                    crate::config::runtime_defaults::unlock_session().rotation_check_interval_secs,
-                )
-            })
+        Duration::from_secs(
+            crate::config::runtime_defaults::unlock_session().rotation_check_interval_secs,
+        )
     }
 
     pub(crate) fn generate_unlock_token() -> String {

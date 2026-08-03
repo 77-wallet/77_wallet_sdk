@@ -14,8 +14,8 @@ pub struct SizeRotatingWriter {
 }
 
 impl SizeRotatingWriter {
-    pub const MAX_FILES: usize = 3;
-    pub const MAX_SIZE: u64 = 1024 * 1024 * 7;
+    pub const MAX_FILES: usize = 10;
+    pub const MAX_SIZE: u64 = 1024 * 1024 * 32;
 
     pub fn new(base_path: PathBuf) -> Result<Self, crate::error::system::SystemError> {
         let file = Self::create_file(base_path.clone())?;

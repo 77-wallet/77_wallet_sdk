@@ -1,10 +1,13 @@
 use crate::{
     DbPool,
     entities::{
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         api_trade_type::ApiTradeType,
         api_withdraw::{
-            ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawCreatedFact,
-            WithdrawFailureStage,
+            ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
+            WithdrawCreatedFact, WithdrawFailureStage,
         },
     },
     pagination::Pagination,
@@ -242,6 +245,39 @@ impl ApiWithdrawDao {
         Ok(res)
     }
 
+    pub async fn find_api_withdraw_by_trade_no<'a, E>(
+        exec: E,
+        trade_no: &str,
+        trade_type: ApiTradeType,
+    ) -> Result<Option<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_withdraws WHERE trade_no = ? AND trade_type = ?";
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(trade_no)
+            .bind(trade_type)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn find_by_resource_dependency_trade_no<'a, E>(
+        exec: E,
+        dependency_trade_no: &str,
+    ) -> Result<Option<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_withdraws WHERE resource_dependency_trade_no = ? AND trade_type = ? ORDER BY id ASC LIMIT 1";
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(dependency_trade_no)
+            .bind(ApiTradeType::Withdraw)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn get_api_withdraw_by_trade_no_status<'a, E>(
         exec: E,
         trade_no: &str,
@@ -263,6 +299,300 @@ impl ApiWithdrawDao {
         }
         let res = query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res)
+    }
+
+    pub async fn mark_resource_blocked<'a, E>(
+        exec: E,
+        trade_no: &str,
+        block_reason: ApiResourceBlockReason,
+        dependency_trade_no: Option<&str>,
+        dependency_type: Option<ApiResourceDependencyType>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET resource_check_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = NULL,
+                resource_gate_result = NULL,
+                resource_block_reason = ?2,
+                resource_dependency_trade_no = ?3,
+                resource_dependency_type = ?4,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(block_reason.as_i64())
+            .bind(dependency_trade_no)
+            .bind(dependency_type.map(ApiResourceDependencyType::as_i64))
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_resource_released<'a, E>(
+        exec: E,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET resource_check_at = COALESCE(resource_check_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_released_at = COALESCE(resource_gate_released_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_result = ?2,
+                resource_block_reason = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(gate_result.as_i64())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn scan_need_resource_gate<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE tx_ack_sent_at IS NOT NULL
+              AND audit_passed_at IS NOT NULL
+              AND lower(chain_code) = 'tron'
+              AND resource_gate_released_at IS NULL
+              AND (
+                  resource_block_reason IS NULL
+                  OR (
+                      resource_block_reason = ?
+                      AND resource_dependency_trade_no IS NULL
+                  )
+              )
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND trade_type = ?
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiResourceBlockReason::NeedLocalDelegate.as_i64())
+            .bind(ApiTradeType::Withdraw)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    pub async fn scan_need_fee_estimate<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+              AND fee_estimated_at IS NULL
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    pub async fn scan_withdraw_resource_recovery<'a, E>(
+        exec: E,
+        after_id: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+              AND lower(chain_code) = 'tron'
+              AND status IN (?, ?)
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND transaction_time IS NOT NULL
+              AND (
+                    CASE
+                        WHEN json_valid(resource_consume)
+                            THEN json_type(resource_consume) <> 'object'
+                        ELSE 1
+                    END
+                    OR (
+                        token_addr IS NOT NULL
+                        AND trim(token_addr) <> ''
+                        AND json_valid(resource_consume)
+                        AND COALESCE(
+                            json_extract(resource_consume, '$.bandwidth'),
+                            json_extract(resource_consume, '$.net_used'),
+                            0
+                        ) = 0
+                        AND COALESCE(
+                            json_extract(resource_consume, '$.energy'),
+                            json_extract(resource_consume, '$.energy_used'),
+                            0
+                        ) = 0
+                    )
+              )
+              AND (? IS NULL OR id > ?)
+            ORDER BY id ASC
+            LIMIT ?
+        "#;
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(ApiWithdrawStatus::Success)
+            .bind(ApiWithdrawStatus::ConfirmSuccessReport)
+            .bind(after_id)
+            .bind(after_id)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn update_resource_consume_if_unchanged<'a, E>(
+        exec: E,
+        trade_no: &str,
+        observed: &str,
+        replacement: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let result = sqlx::query(
+            "UPDATE api_withdraws SET resource_consume = ? WHERE trade_no = ? AND resource_consume = ?",
+        )
+        .bind(replacement)
+        .bind(trade_no)
+        .bind(observed)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result.rows_affected())
+    }
+
+    pub async fn pending_resource_budget_by_owner<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+    ) -> Result<PendingWithdrawResourceBudget, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(estimated_resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(estimated_resource_consume, '$.energy'),
+                            json_extract(estimated_resource_consume, '$.energy_used'),
+                            json_extract(estimated_resource_consume, '$.energyUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS energy,
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(estimated_resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(estimated_resource_consume, '$.bandwidth'),
+                            json_extract(estimated_resource_consume, '$.net_used'),
+                            json_extract(estimated_resource_consume, '$.netUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS bandwidth
+            FROM api_withdraws
+            WHERE trade_type = ?
+              AND lower(chain_code) = lower(?)
+              AND from_addr = ?
+              AND trade_no <> ?
+              AND estimated_resource_consume IS NOT NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let row = sqlx::query(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(exclude_trade_no)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        let energy = row.try_get::<i64, _>("energy").unwrap_or_default().max(0) as u64;
+        let bandwidth = row.try_get::<i64, _>("bandwidth").unwrap_or_default().max(0) as u64;
+        Ok(PendingWithdrawResourceBudget { energy, bandwidth })
+    }
+
+    pub async fn pending_resource_orders_by_owner<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+              AND lower(chain_code) = lower(?)
+              AND from_addr = ?
+              AND trade_no <> ?
+              AND estimated_resource_consume IS NOT NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+            ORDER BY created_at ASC, id ASC
+            LIMIT ?
+        "#;
+
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(exclude_trade_no)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     /// Find withdraw candidates for acct_change-driven tx_hash backfill.
@@ -572,6 +902,9 @@ impl ApiWithdrawDao {
                 token_addr,
                 symbol,
                 trade_no,
+                out_order_id,
+                client_id,
+                create_time,
                 trade_type,
                 init_status,
                 status,
@@ -585,7 +918,7 @@ impl ApiWithdrawDao {
                 updated_at)
             VALUES
                 ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                 $11,$12,$13,$14,$15,$16,$17,$18,$19,
+                 $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
                  strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  strftime('%Y-%m-%dT%H:%M:%SZ','now'))
             ON CONFLICT(trade_no) DO UPDATE SET
@@ -603,6 +936,9 @@ impl ApiWithdrawDao {
             .bind(&api_withdraw.token_addr)
             .bind(&api_withdraw.symbol)
             .bind(&api_withdraw.trade_no)
+            .bind(&api_withdraw.out_order_id)
+            .bind(&api_withdraw.client_id)
+            .bind(&api_withdraw.create_time)
             .bind(&api_withdraw.trade_type)
             .bind(&api_withdraw.init_status)
             .bind(&api_withdraw.status)
@@ -697,6 +1033,47 @@ impl ApiWithdrawDao {
             .bind(&status)
             .bind(err_code)
             .bind(err_msg)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_build_failed_if_unfinished<'a, E>(
+        exec: E,
+        trade_no: &str,
+        err_code: ErrCode,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                err_code = $2,
+                err_msg = $3,
+                failure_stage = $4,
+                building_at = NULL,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(err_code)
+            .bind(err_msg)
+            .bind(WithdrawFailureStage::Build)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -884,6 +1261,39 @@ impl ApiWithdrawDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(())
+    }
+
+    pub async fn update_actual_fee<'a, E>(
+        exec: E,
+        trade_no: &str,
+        transaction_fee: Option<&str>,
+        resource_consume: Option<&str>,
+        block_height: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                transaction_fee = CASE WHEN $2 IS NULL THEN transaction_fee ELSE $2 END,
+                resource_consume = CASE WHEN $3 IS NULL THEN resource_consume ELSE $3 END,
+                block_height = CASE WHEN $4 IS NULL THEN block_height ELSE $4 END,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND ($2 IS NOT NULL OR $3 IS NOT NULL OR $4 IS NOT NULL)
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(transaction_fee)
+            .bind(resource_consume)
+            .bind(block_height)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
     }
 
     pub async fn update_post_tx_count<'a, E>(
@@ -1174,6 +1584,13 @@ impl ApiWithdrawDao {
                         AND (chain_failed_at IS NOT NULL OR err_code IS NOT NULL)
                         AND tx_exec_receipt_uploaded_at IS NOT NULL
                     )
+                    OR (
+                        transaction_time IS NOT NULL
+                        AND chain_success_at IS NULL
+                        AND chain_failed_at IS NOT NULL
+                        AND last_broadcast_at IS NULL
+                        AND tx_exec_receipt_uploaded_at IS NULL
+                    )
               )
         "#;
         let res = sqlx::query(sql)
@@ -1290,9 +1707,27 @@ impl ApiWithdrawDao {
         let sql = r#"
             SELECT * FROM api_withdraws 
             WHERE tx_hash IS NOT NULL
-            AND transaction_time IS NULL
-            AND tx_exec_receipt_uploaded_at IS NULL
-            AND finished_at IS NULL
+            AND (
+                (
+                    transaction_time IS NULL
+                    AND tx_exec_receipt_uploaded_at IS NULL
+                    AND finished_at IS NULL
+                )
+                OR (
+                    lower(chain_code) = 'tron'
+                    AND token_addr IS NOT NULL
+                    AND trim(token_addr) <> ''
+                    AND status IN (?, ?)
+                    AND (
+                        trim(resource_consume) = ''
+                        OR NOT json_valid(resource_consume)
+                        OR (
+                            COALESCE(json_extract(resource_consume, '$.bandwidth'), json_extract(resource_consume, '$.net_used'), 0) = 0
+                            AND COALESCE(json_extract(resource_consume, '$.energy'), json_extract(resource_consume, '$.energy_used'), 0) = 0
+                        )
+                    )
+                )
+            )
             AND err_code IS NULL
             AND NOT (
                 chain_code IN ('bnb','eth')
@@ -1305,6 +1740,8 @@ impl ApiWithdrawDao {
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiWithdrawStatus::Success)
+            .bind(ApiWithdrawStatus::ConfirmSuccessReport)
             .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)
@@ -1361,6 +1798,7 @@ impl ApiWithdrawDao {
             -- [FACT REQUIRED]
             -- ✔ tx_ack_sent_at IS NOT NULL   — 后端确认已发送
             -- ✔ audit_passed_at IS NOT NULL  — 审计通过（强顺序屏障）
+            -- ✔ 非 TRON 或 resource_gate_released_at IS NOT NULL
             --
             -- [FACT MUST NOT EXIST]
             -- ✘ raw_tx IS NOT NULL           — 防止重复构建
@@ -1374,6 +1812,7 @@ impl ApiWithdrawDao {
             SELECT * FROM api_withdraws 
             WHERE tx_ack_sent_at IS NOT NULL
             AND audit_passed_at IS NOT NULL
+            AND (lower(chain_code) <> 'tron' OR resource_gate_released_at IS NOT NULL)
             AND raw_tx IS NULL 
             AND transaction_time IS NULL
             AND finished_at IS NULL
@@ -1425,6 +1864,7 @@ impl ApiWithdrawDao {
             SELECT * FROM api_withdraws 
             WHERE raw_tx IS NOT NULL 
             AND last_broadcast_at IS NULL 
+            AND transaction_time IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
             AND tx_ack_sent_at IS NOT NULL
@@ -1794,6 +2234,7 @@ impl ApiWithdrawDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND last_broadcast_at IS NULL
+              AND transaction_time IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -1982,6 +2423,7 @@ impl ApiWithdrawDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
+              AND (tx_hash IS NULL OR tx_hash = $2)
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -2129,6 +2571,8 @@ impl ApiWithdrawDao {
                 audit_reason = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND audit_passed_at IS NULL
+              AND audit_rejected_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -2158,6 +2602,8 @@ impl ApiWithdrawDao {
                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND audit_passed_at IS NULL
+              AND audit_rejected_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -2299,6 +2745,37 @@ impl ApiWithdrawDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
     }
+
+    pub async fn update_fee_estimate<'a, E>(
+        exec: E,
+        trade_no: &str,
+        estimated_transaction_fee: &str,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                estimated_transaction_fee = ?2,
+                estimated_resource_consume = ?3,
+                fee_estimated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+              AND trade_type = ?4
+              AND fee_estimated_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(estimated_transaction_fee)
+            .bind(estimated_resource_consume)
+            .bind(ApiTradeType::Withdraw)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
 }
 
 #[cfg(test)]
@@ -2307,7 +2784,9 @@ mod tests {
     use crate::{
         SqliteContext,
         entities::{
-            api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus,
+            api_resource_gate::ApiResourceGateResult,
+            api_trade_type::ApiTradeType,
+            api_withdraw::{ApiWithdrawStatus, ErrCode, WithdrawFailureStage},
             asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::withdraw::ApiWithdrawRepo,
@@ -2335,6 +2814,9 @@ mod tests {
             AssetTokenKey::Native,
             "TRX",
             trade_no,
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2347,6 +2829,455 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    async fn seed_withdraw_for_fee_estimate(
+        pool: &crate::ApiTransactionDbPool,
+        trade_no: &str,
+        chain_code: &str,
+        trade_type: ApiTradeType,
+    ) {
+        ApiWithdrawRepo::upsert_api_withdraw(
+            pool,
+            "uid_fee_estimate",
+            "withdraw",
+            "FROM_FEE_ESTIMATE",
+            "TO_FEE_ESTIMATE",
+            "8.88",
+            "validate",
+            chain_code,
+            AssetTokenKey::Native,
+            if chain_code.eq_ignore_ascii_case("tron") { "TRX" } else { "ETH" },
+            trade_no,
+            None,
+            None,
+            None,
+            trade_type,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::InitOrder,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn upsert_api_withdraw_persists_order_metadata() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_order_metadata");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_meta",
+            "withdraw",
+            "FROM_META",
+            "TO_META",
+            "12.34",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_ORDER_METADATA",
+            Some("merchant-order-1".to_string()),
+            Some("client-1".to_string()),
+            Some("2026-05-19 10:11:12".to_string()),
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::InitOrder,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_meta",
+            "withdraw",
+            "FROM_META",
+            "TO_META",
+            "12.34",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_ORDER_METADATA",
+            Some("merchant-order-2".to_string()),
+            Some("client-2".to_string()),
+            Some("2026-05-19 13:14:15".to_string()),
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::InitOrder,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_ORDER_METADATA",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(after.out_order_id.as_deref(), Some("merchant-order-1"));
+        assert_eq!(after.client_id.as_deref(), Some("client-1"));
+        assert_eq!(after.create_time.as_deref(), Some("2026-05-19 10:11:12"));
+    }
+
+    #[tokio::test]
+    async fn withdraw_fee_estimate_snapshot_update_is_first_write_wins() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_fee_estimate");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE", "tron", ApiTradeType::Withdraw)
+            .await;
+
+        let affected = ApiWithdrawRepo::update_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE",
+            "0.456",
+            r#"{"bandwidth":10,"energy":20}"#,
+        )
+        .await
+        .unwrap();
+
+        let retry_affected = ApiWithdrawRepo::update_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE",
+            "9.999",
+            r#"{"bandwidth":99,"energy":99}"#,
+        )
+        .await
+        .unwrap();
+
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_FEE_ESTIMATE",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(affected, 1);
+        assert_eq!(retry_affected, 0);
+        assert_eq!(after.estimated_transaction_fee.as_deref(), Some("0.456"));
+        assert_eq!(
+            after.estimated_resource_consume.as_deref(),
+            Some(r#"{"bandwidth":10,"energy":20}"#)
+        );
+        assert!(after.fee_estimated_at.is_some());
+        assert_eq!(after.transaction_fee, "0");
+        assert_eq!(after.resource_consume, "0");
+    }
+
+    #[tokio::test]
+    async fn withdraw_fee_estimate_snapshot_scan_finds_supported_pending_chains() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_fee_estimate_scan");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_PENDING",
+            "TRON",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_ETH", "eth", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_BNB", "bnb", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_SOL", "sol", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_SOLANA",
+            "solana",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_BTC", "btc", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(&pool, "W_FEE_ESTIMATE_SUI", "sui", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_SELF",
+            "tron",
+            ApiTradeType::SelfWithdraw,
+        )
+        .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_EXISTING",
+            "tron",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_RAW_TX",
+            "tron",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+
+        ApiWithdrawRepo::update_fee_estimate(
+            &pool,
+            "W_FEE_ESTIMATE_EXISTING",
+            "0.456",
+            r#"{"bandwidth":10,"energy":20}"#,
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE api_withdraws SET raw_tx = ? WHERE trade_no = ?")
+            .bind("raw")
+            .bind("W_FEE_ESTIMATE_RAW_TX")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let rows = ApiWithdrawRepo::scan_need_fee_estimate(&pool, 100).await.unwrap();
+        let mut trade_nos = rows.into_iter().map(|row| row.trade_no).collect::<Vec<_>>();
+        trade_nos.sort();
+
+        assert_eq!(
+            trade_nos,
+            vec![
+                "W_FEE_ESTIMATE_BNB",
+                "W_FEE_ESTIMATE_BTC",
+                "W_FEE_ESTIMATE_ETH",
+                "W_FEE_ESTIMATE_PENDING",
+                "W_FEE_ESTIMATE_SOL",
+                "W_FEE_ESTIMATE_SOLANA",
+                "W_FEE_ESTIMATE_SUI",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn withdraw_resource_recovery_scans_scalar_success_and_updates_conditionally() {
+        let dir = make_temp_dir("wallet_db_withdraw_resource_recovery");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for trade_no in [
+            "W_RECOVER_SCALAR",
+            "W_RECOVER_JSON",
+            "W_RECOVER_ZERO_TOKEN",
+            "W_RECOVER_ZERO_NATIVE",
+            "W_RECOVER_PENDING",
+        ] {
+            seed_withdraw_for_fee_estimate(&pool, trade_no, "tron", ApiTradeType::Withdraw).await;
+        }
+
+        for (trade_no, status, resource_consume, transaction_time) in [
+            ("W_RECOVER_SCALAR", ApiWithdrawStatus::Success, "70070", Some(chrono::Utc::now())),
+            (
+                "W_RECOVER_JSON",
+                ApiWithdrawStatus::Success,
+                r#"{"net_used":4891,"energy_used":70070}"#,
+                Some(chrono::Utc::now()),
+            ),
+            (
+                "W_RECOVER_ZERO_TOKEN",
+                ApiWithdrawStatus::Success,
+                r#"{"bandwidth":0,"energy":0}"#,
+                Some(chrono::Utc::now()),
+            ),
+            (
+                "W_RECOVER_ZERO_NATIVE",
+                ApiWithdrawStatus::Success,
+                r#"{"bandwidth":0,"energy":0}"#,
+                Some(chrono::Utc::now()),
+            ),
+            ("W_RECOVER_PENDING", ApiWithdrawStatus::SendingTx, "70070", None),
+        ] {
+            sqlx::query(
+                "UPDATE api_withdraws SET status = ?, tx_hash = ?, transaction_time = ?, resource_consume = ? WHERE trade_no = ?",
+            )
+            .bind(status)
+            .bind(format!("HASH_{trade_no}"))
+            .bind(transaction_time)
+            .bind(resource_consume)
+            .bind(trade_no)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        }
+
+        sqlx::query("UPDATE api_withdraws SET token_addr = ? WHERE trade_no = ?")
+            .bind("TTestTokenContract")
+            .bind("W_RECOVER_ZERO_TOKEN")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let candidates =
+            ApiWithdrawRepo::scan_withdraw_resource_recovery(&pool, None, 20).await.unwrap();
+        assert_eq!(
+            candidates.iter().map(|row| row.trade_no.as_str()).collect::<Vec<_>>(),
+            vec!["W_RECOVER_SCALAR", "W_RECOVER_ZERO_TOKEN"]
+        );
+        let next_page =
+            ApiWithdrawRepo::scan_withdraw_resource_recovery(&pool, Some(candidates[1].id), 20)
+                .await
+                .unwrap();
+        assert!(next_page.is_empty());
+
+        let replacement = r#"{"net_used":4891,"energy_used":70070}"#;
+        let affected = ApiWithdrawRepo::update_resource_consume_if_unchanged(
+            &pool,
+            "W_RECOVER_SCALAR",
+            "70070",
+            replacement,
+        )
+        .await
+        .unwrap();
+        let stale_retry = ApiWithdrawRepo::update_resource_consume_if_unchanged(
+            &pool,
+            "W_RECOVER_SCALAR",
+            "70070",
+            r#"{"net_used":1,"energy_used":1}"#,
+        )
+        .await
+        .unwrap();
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_RECOVER_SCALAR",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(affected, 1);
+        assert_eq!(stale_retry, 0);
+        assert_eq!(after.resource_consume, replacement);
+    }
+
+    #[tokio::test]
+    async fn pending_withdraw_resource_budget_sums_unfinished_same_owner_orders() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_pending_resource_budget");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for trade_no in [
+            "W_RESOURCE_CURRENT",
+            "W_RESOURCE_PENDING",
+            "W_RESOURCE_ESTIMATED_ONLY",
+            "W_RESOURCE_FINISHED",
+            "W_RESOURCE_OTHER_OWNER",
+        ] {
+            seed_withdraw_for_fee_estimate(&pool, trade_no, "tron", ApiTradeType::Withdraw).await;
+            ApiWithdrawRepo::update_fee_estimate(
+                &pool,
+                trade_no,
+                "1.23",
+                r#"{"bandwidth":345,"energy":13532}"#,
+            )
+            .await
+            .unwrap();
+        }
+
+        ApiWithdrawRepo::mark_resource_released(
+            &pool,
+            "W_RESOURCE_PENDING",
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
+        ApiWithdrawRepo::mark_resource_released(
+            &pool,
+            "W_RESOURCE_FINISHED",
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE api_withdraws SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE trade_no = ?")
+            .bind("W_RESOURCE_FINISHED")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        sqlx::query("UPDATE api_withdraws SET from_addr = ? WHERE trade_no = ?")
+            .bind("OTHER_OWNER")
+            .bind("W_RESOURCE_OTHER_OWNER")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        ApiWithdrawRepo::mark_resource_released(
+            &pool,
+            "W_RESOURCE_OTHER_OWNER",
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
+
+        let budget = ApiWithdrawRepo::pending_resource_budget_by_owner(
+            &pool,
+            "TRON",
+            "FROM_FEE_ESTIMATE",
+            "W_RESOURCE_CURRENT",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(budget.energy, 27_064);
+        assert_eq!(budget.bandwidth, 690);
+    }
+
+    #[tokio::test]
+    async fn pending_withdraw_resource_budget_counts_estimated_order_before_gate_release() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_pending_resource_estimated_only");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        seed_withdraw_for_fee_estimate(&pool, "W_RESOURCE_CURRENT", "tron", ApiTradeType::Withdraw)
+            .await;
+        seed_withdraw_for_fee_estimate(
+            &pool,
+            "W_RESOURCE_ESTIMATED_ONLY",
+            "tron",
+            ApiTradeType::Withdraw,
+        )
+        .await;
+        ApiWithdrawRepo::update_fee_estimate(
+            &pool,
+            "W_RESOURCE_ESTIMATED_ONLY",
+            "1.23",
+            r#"{"bandwidth":345,"energy":13532}"#,
+        )
+        .await
+        .unwrap();
+
+        let budget = ApiWithdrawRepo::pending_resource_budget_by_owner(
+            &pool,
+            "TRON",
+            "FROM_FEE_ESTIMATE",
+            "W_RESOURCE_CURRENT",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(budget.energy, 13_532);
+        assert_eq!(budget.bandwidth, 345);
     }
 
     #[tokio::test]
@@ -2424,6 +3355,9 @@ mod tests {
             None,
             "s",
             "W_STUCK_1",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2457,6 +3391,9 @@ mod tests {
             None,
             "s",
             "W_STUCK_2",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2490,6 +3427,9 @@ mod tests {
             None,
             "s",
             "W_STUCK_3",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2538,6 +3478,9 @@ mod tests {
             None,
             "s",
             "W_TX_RES_A",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2571,6 +3514,9 @@ mod tests {
             None,
             "s",
             "W_TX_RES_B",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2616,6 +3562,9 @@ mod tests {
             None,
             "s",
             "W_RECOVER_BROADCAST_VISIBLE",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2646,6 +3595,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scan_need_recover_allows_confirmed_tron_token_with_zero_resources() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_confirmed_tron_resource");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            "TToken",
+            "USDT",
+            "W_RECOVER_CONFIRMED_TRON_RESOURCE",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            Some("tx-hash".to_string()),
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Success,
+            r#"{"bandwidth":0,"energy":0}"#,
+            "0.344",
+            Some(chrono::Utc::now()),
+            Some("69342697".to_string()),
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_RECOVER_CONFIRMED_TRON_RESOURCE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiWithdrawDao::scan_need_recover(pool.as_ref(), 100).await.unwrap();
+
+        assert!(records.iter().any(|r| r.trade_no == "W_RECOVER_CONFIRMED_TRON_RESOURCE"));
+    }
+
+    #[tokio::test]
     async fn scan_need_recover_excludes_pre_broadcast_pending_result() {
         let dir = make_temp_dir("wallet_db_api_withdraw_scan_need_recover_pre_broadcast");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
@@ -2663,6 +3661,9 @@ mod tests {
             None,
             "s",
             "W_RECOVER_PRE_BROADCAST",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2709,6 +3710,9 @@ mod tests {
             None,
             "s",
             "W_RECEIPT_TX_TIME",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2759,6 +3763,9 @@ mod tests {
             None,
             "USDT",
             "W_RECEIPT_PENDING_BROADCAST_VISIBLE",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2806,6 +3813,9 @@ mod tests {
             None,
             "USDT",
             "W_RECEIPT_FREEZE_CHAIN_SUCCESS",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2854,6 +3864,9 @@ mod tests {
             None,
             "USDT",
             "W_RECEIPT_FAIL_CHAIN_FAILED_ALLOWED",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2902,6 +3915,9 @@ mod tests {
             Some("WToken".to_string()),
             "USDT",
             "W_ACCT_CHANGE_HASH_BACKFILL_CHAIN_SUCCESS",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -2960,6 +3976,9 @@ mod tests {
             Some("WToken2".to_string()),
             "USDT",
             "W_ACCT_CHANGE_HASH_BACKFILL_SELF_WITHDRAW",
+            None,
+            None,
+            None,
             ApiTradeType::SelfWithdraw,
             0,
             None,
@@ -3017,6 +4036,9 @@ mod tests {
             None,
             "TRX",
             "W_BACKFILL_TX_HASH_OK",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3069,6 +4091,9 @@ mod tests {
             None,
             "TRX",
             "W_BACKFILL_TX_HASH_NEEDS_FACT",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3116,6 +4141,9 @@ mod tests {
             None,
             "TRX",
             "W_BACKFILL_TX_HASH_NO_OVERRIDE",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3168,6 +4196,9 @@ mod tests {
             None,
             "USDC",
             "W_FINISH_GATE",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3213,6 +4244,103 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scan_can_broadcast_blocks_confirmed_withdraw_rows() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_can_broadcast_confirmed");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_CAN_BROADCAST_CONFIRMED_BLOCKED",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 raw_tx = '{\"tx\":true}',
+                 tx_hash = '0xplatform_cancelled_before_broadcast',
+                 transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 chain_failed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_CAN_BROADCAST_CONFIRMED_BLOCKED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_CAN_BROADCAST_PENDING_READY",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 raw_tx = '{\"tx\":true}',
+                 tx_hash = '0xpending_ready',
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_CAN_BROADCAST_PENDING_READY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiWithdrawRepo::scan_can_broadcast(&pool, 10).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(!trade_nos.contains(&"W_CAN_BROADCAST_CONFIRMED_BLOCKED".to_string()));
+        assert!(trade_nos.contains(&"W_CAN_BROADCAST_PENDING_READY".to_string()));
+    }
+
+    #[tokio::test]
     async fn confirm_onchain_transaction_fact_clears_stale_error_fields() {
         let dir = make_temp_dir("wallet_db_api_withdraw_confirm_clears_stale_error");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
@@ -3230,6 +4358,9 @@ mod tests {
             None,
             "USDC",
             "W_CONFIRM_CLEAR_ERR",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3281,6 +4412,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recover_and_late_broadcast_cannot_overwrite_confirmed_fact() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_fact_cas");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_FACT_CAS",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let rows = ApiWithdrawDao::confirm_onchain_transaction_fact_with_recover(
+            pool.as_ref(),
+            "W_FACT_CAS",
+            "hash-first",
+            &now,
+            &now,
+            "0.00001",
+            "0",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let rows = ApiWithdrawDao::confirm_onchain_transaction_fact_with_recover(
+            pool.as_ref(),
+            "W_FACT_CAS",
+            "hash-conflict",
+            &now,
+            &now,
+            "0.00002",
+            "1",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0, "a conflicting recover hash must not overwrite facts");
+
+        let rows =
+            ApiWithdrawDao::mark_broadcast_executed(pool.as_ref(), "W_FACT_CAS").await.unwrap();
+        assert_eq!(rows, 0, "late broadcast must not clear confirmed facts");
+    }
+
+    #[tokio::test]
     async fn bill_lists_filters_by_addr_on_from_or_to() {
         let dir = make_temp_dir("wallet_db_api_withdraw_bill_lists_addr_filter");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
@@ -3298,6 +4495,9 @@ mod tests {
             None,
             "TRX",
             "W_BILL_ADDR_FROM",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3323,6 +4523,9 @@ mod tests {
             None,
             "TRX",
             "W_BILL_ADDR_TO",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3348,6 +4551,9 @@ mod tests {
             None,
             "TRX",
             "W_BILL_ADDR_OTHER",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3403,6 +4609,9 @@ mod tests {
             AssetTokenKey::Native,
             "TRX",
             "W_CAN_BUILD_READY",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3418,7 +4627,8 @@ mod tests {
         sqlx::query(
             "UPDATE api_withdraws
              SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-                 audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+                 audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
              WHERE trade_no = ?",
         )
         .bind("W_CAN_BUILD_READY")
@@ -3438,6 +4648,9 @@ mod tests {
             AssetTokenKey::Native,
             "TRX",
             "W_CAN_BUILD_RECOVERED",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3474,6 +4687,9 @@ mod tests {
             AssetTokenKey::Native,
             "TRX",
             "W_CAN_BUILD_FINISHED",
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -3504,5 +4720,151 @@ mod tests {
         assert!(trade_nos.contains(&"W_CAN_BUILD_READY".to_string()));
         assert!(!trade_nos.contains(&"W_CAN_BUILD_RECOVERED".to_string()));
         assert!(!trade_nos.contains(&"W_CAN_BUILD_FINISHED".to_string()));
+    }
+
+    #[tokio::test]
+    async fn withdraw_build_failure_marks_error_and_blocks_can_build_scan() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_build_failure");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_build_failure",
+            "withdraw",
+            "FROM_BUILD_FAILURE",
+            "TO_BUILD_FAILURE",
+            "5",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_BUILD_FAILURE",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_BUILD_FAILURE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let before = ApiWithdrawDao::scan_can_build(pool.as_ref(), 10).await.unwrap();
+        assert!(before.iter().any(|row| row.trade_no == "W_BUILD_FAILURE"));
+
+        let rows = ApiWithdrawRepo::mark_build_failed_if_unfinished(
+            &pool,
+            "W_BUILD_FAILURE",
+            ErrCode::BalanceInsufficient,
+            "withdraw amount is insufficient",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_BUILD_FAILURE",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        assert_eq!(after.err_code, Some(ErrCode::BalanceInsufficient));
+        assert_eq!(after.failure_stage, Some(WithdrawFailureStage::Build));
+        assert_eq!(after.status, ApiWithdrawStatus::SendingTxFailed);
+        assert!(after.building_at.is_none());
+
+        let scan_after = ApiWithdrawDao::scan_can_build(pool.as_ref(), 10).await.unwrap();
+        assert!(!scan_after.iter().any(|row| row.trade_no == "W_BUILD_FAILURE"));
+
+        let second = ApiWithdrawRepo::mark_build_failed_if_unfinished(
+            &pool,
+            "W_BUILD_FAILURE",
+            ErrCode::BalanceInsufficient,
+            "withdraw amount is insufficient",
+        )
+        .await
+        .unwrap();
+        assert_eq!(second, 0);
+    }
+
+    #[tokio::test]
+    async fn withdraw_build_failure_blocks_resource_gate_scan() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_resource_gate_build_failure");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_resource_gate_failure",
+            "withdraw",
+            "FROM_RESOURCE_GATE_FAILURE",
+            "TO_RESOURCE_GATE_FAILURE",
+            "5",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_RESOURCE_GATE_FAILURE",
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_RESOURCE_GATE_FAILURE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let before = ApiWithdrawDao::scan_need_resource_gate(pool.as_ref(), 10).await.unwrap();
+        assert!(before.iter().any(|row| row.trade_no == "W_RESOURCE_GATE_FAILURE"));
+
+        let rows = ApiWithdrawRepo::mark_build_failed_if_unfinished(
+            &pool,
+            "W_RESOURCE_GATE_FAILURE",
+            ErrCode::BalanceInsufficient,
+            "token balance is insufficient for tron estimate fee",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let scan_after = ApiWithdrawDao::scan_need_resource_gate(pool.as_ref(), 10).await.unwrap();
+        assert!(!scan_after.iter().any(|row| row.trade_no == "W_RESOURCE_GATE_FAILURE"));
     }
 }

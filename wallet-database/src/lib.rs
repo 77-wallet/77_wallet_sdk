@@ -3,7 +3,9 @@ pub use error::{DatabaseError, Error};
 pub mod dao;
 pub mod db;
 pub mod db_pool;
-pub use db_pool::{ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool, DbPool, TaskDbPool};
+pub use db_pool::{
+    ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool, DbPool, TaskDbPool,
+};
 pub mod entities;
 mod init;
 pub use init::SqlitePoolConfig;
@@ -36,6 +38,7 @@ impl SqliteContext {
         let migrator = match db_name {
             "data.db" => crate::init::Migrator::Core,
             "api_transaction.db" => crate::init::Migrator::ApiTransaction,
+            "api_resource.db" => crate::init::Migrator::ApiResource,
             "api_wallet.db" => crate::init::Migrator::ApiWallet,
             "task.db" => crate::init::Migrator::Task,
             _ => {
@@ -76,6 +79,13 @@ impl SqliteContext {
         ))
     }
 
+    pub fn into_api_resource_db_pool(self) -> Result<ApiResourceDbPool, crate::Error> {
+        Ok(ApiResourceDbPool::new_split(
+            self.sqlite_provider.get_read_pool()?,
+            self.sqlite_provider.get_write_pool()?,
+        ))
+    }
+
     pub fn into_api_wallet_db_pool(self) -> Result<ApiWalletDbPool, crate::Error> {
         Ok(ApiWalletDbPool::new_split(
             self.sqlite_provider.get_read_pool()?,
@@ -100,4 +110,25 @@ where
     }
 
     any
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn resource_db_migration_creates_resource_tables() {
+        let dir = crate::repositories::test_helper::make_temp_dir("resource_db_migration");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_resource.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        for table in ["api_resource_delegation", "api_resource_operation"] {
+            let exists: i64 = sqlx::query_scalar(
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = ?",
+            )
+            .bind(table)
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+            assert_eq!(exists, 1, "{table} should be created in api_resource.db");
+        }
+    }
 }

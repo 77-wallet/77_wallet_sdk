@@ -28,10 +28,13 @@ use crate::{
     ApiTransactionDbPool,
     dao::api_withdraw::ApiWithdrawDao,
     entities::{
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
         api_trade_type::ApiTradeType,
         api_withdraw::{
-            ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawCreatedFact,
-            WithdrawFailureStage,
+            ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
+            WithdrawCreatedFact, WithdrawFailureStage,
         },
         asset_token_key::AssetTokenKey,
     },
@@ -102,6 +105,22 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::get_api_withdraw_by_trade_no(pool.read_ref(), trade_no, trade_type).await
     }
 
+    pub async fn find_api_withdraw_by_trade_no(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        trade_type: ApiTradeType,
+    ) -> Result<Option<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::find_api_withdraw_by_trade_no(pool.read_ref(), trade_no, trade_type).await
+    }
+
+    pub async fn find_by_resource_dependency_trade_no(
+        pool: &ApiTransactionDbPool,
+        dependency_trade_no: &str,
+    ) -> Result<Option<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::find_by_resource_dependency_trade_no(pool.read_ref(), dependency_trade_no)
+            .await
+    }
+
     pub async fn get_api_withdraw_by_trade_no_status(
         pool: &ApiTransactionDbPool,
         trade_no: &str,
@@ -109,6 +128,115 @@ impl ApiWithdrawRepo {
     ) -> Result<ApiWithdrawEntity, crate::Error> {
         ApiWithdrawDao::get_api_withdraw_by_trade_no_status(pool.read_ref(), trade_no, vec_status)
             .await
+    }
+
+    pub async fn update_fee_estimate(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        estimated_transaction_fee: &str,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_fee_estimate(
+            pool.read_ref(),
+            trade_no,
+            estimated_transaction_fee,
+            estimated_resource_consume,
+        )
+        .await
+    }
+
+    pub async fn scan_need_fee_estimate(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_fee_estimate(pool.read_ref(), limit).await
+    }
+
+    pub async fn scan_withdraw_resource_recovery(
+        pool: &ApiTransactionDbPool,
+        after_id: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_withdraw_resource_recovery(pool.read_ref(), after_id, limit).await
+    }
+
+    pub async fn update_resource_consume_if_unchanged(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        observed: &str,
+        replacement: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_resource_consume_if_unchanged(
+            pool.write_ref(),
+            trade_no,
+            observed,
+            replacement,
+        )
+        .await
+    }
+
+    pub async fn mark_resource_blocked(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        block_reason: ApiResourceBlockReason,
+        dependency_trade_no: Option<&str>,
+        dependency_type: Option<ApiResourceDependencyType>,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_resource_blocked(
+            pool.write_ref(),
+            trade_no,
+            block_reason,
+            dependency_trade_no,
+            dependency_type,
+        )
+        .await
+    }
+
+    pub async fn mark_resource_released(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_resource_released(pool.write_ref(), trade_no, gate_result).await
+    }
+
+    pub async fn scan_need_resource_gate(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_resource_gate(pool.read_ref(), limit).await
+    }
+
+    pub async fn pending_resource_budget_by_owner(
+        pool: &ApiTransactionDbPool,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+    ) -> Result<PendingWithdrawResourceBudget, crate::Error> {
+        ApiWithdrawDao::pending_resource_budget_by_owner(
+            pool.read_ref(),
+            chain_code,
+            from_addr,
+            exclude_trade_no,
+        )
+        .await
+    }
+
+    pub async fn pending_resource_orders_by_owner(
+        pool: &ApiTransactionDbPool,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::pending_resource_orders_by_owner(
+            pool.read_ref(),
+            chain_code,
+            from_addr,
+            exclude_trade_no,
+            limit,
+        )
+        .await
     }
 
     /// Runtime repair helper: query withdraw candidates from acct_change facts.
@@ -216,6 +344,9 @@ impl ApiWithdrawRepo {
         token_addr: impl Into<AssetTokenKey>,
         symbol: &str,
         trade_no: &str,
+        out_order_id: Option<String>,
+        client_id: Option<String>,
+        create_time: Option<String>,
         trade_type: ApiTradeType,
         nonce: i64,
         tx_hash: Option<String>,
@@ -239,6 +370,9 @@ impl ApiWithdrawRepo {
             token_addr,
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
+            out_order_id,
+            client_id,
+            create_time,
             trade_type,
             init_status,
             status,
@@ -247,6 +381,9 @@ impl ApiWithdrawRepo {
             raw_tx: None,
             resource_consume: resource_consume.to_string(),
             transaction_fee: transaction_fee.to_string(),
+            estimated_transaction_fee: None,
+            estimated_resource_consume: None,
+            fee_estimated_at: None,
             transaction_time,
             block_height,
             notes: None,
@@ -254,6 +391,12 @@ impl ApiWithdrawRepo {
             post_confirm_tx_count: 0,
             err_code: None,
             err_msg: None,
+            resource_check_at: None,
+            resource_gate_released_at: None,
+            resource_gate_result: None,
+            resource_block_reason: None,
+            resource_dependency_trade_no: None,
+            resource_dependency_type: None,
             created_at: Default::default(),
             updated_at: None,
             tx_ack_sent_at: None,
@@ -340,6 +483,27 @@ impl ApiWithdrawRepo {
             transaction_time,
             block_height,
             status,
+        )
+        .await
+    }
+
+    pub async fn update_actual_fee(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        transaction_fee: Option<&str>,
+        resource_consume: Option<&str>,
+        block_height: Option<&str>,
+    ) -> Result<u64, crate::Error> {
+        if transaction_fee.is_none() && resource_consume.is_none() && block_height.is_none() {
+            return Ok(0);
+        }
+
+        ApiWithdrawDao::update_actual_fee(
+            pool.write_ref(),
+            trade_no,
+            transaction_fee,
+            resource_consume,
+            block_height,
         )
         .await
     }
@@ -997,6 +1161,27 @@ impl ApiWithdrawRepo {
             .await
     }
 
+    pub async fn mark_build_failed_if_unfinished(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        err_code: ErrCode,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiWithdrawDao::mark_build_failed_if_unfinished(
+            pool.write_ref(),
+            trade_no,
+            err_code,
+            err_msg,
+        )
+        .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
     /// 重新计算并更新交易状态
     ///
     /// ⚠️ Repo 写事实铁律
@@ -1178,7 +1363,8 @@ impl ApiWithdrawRepo {
             ApiWithdrawStatus::InitOrder => 0, // Pre-Flow
             ApiWithdrawStatus::Init
             | ApiWithdrawStatus::AuditPass
-            | ApiWithdrawStatus::SendingTx => 1, // Flow
+            | ApiWithdrawStatus::SendingTx
+            | ApiWithdrawStatus::SendingTxReport => 1, // Flow / legacy tx-report uploaded
             ApiWithdrawStatus::Success
             | ApiWithdrawStatus::Failure
             | ApiWithdrawStatus::AuditReject
@@ -1186,13 +1372,6 @@ impl ApiWithdrawRepo {
             ApiWithdrawStatus::SendingTxFailedReport
             | ApiWithdrawStatus::ConfirmFailureReport
             | ApiWithdrawStatus::ConfirmSuccessReport => 3, // Report
-            #[cfg(debug_assertions)]
-            _ => unreachable!("Unknown ApiWithdrawStatus: {:?}", status),
-            #[cfg(not(debug_assertions))]
-            _ => {
-                tracing::error!(status = ?status, "Unknown ApiWithdrawStatus detected in layer function");
-                u8::MAX
-            }
         };
 
         // 确保所有合法 layer < MAX_KNOWN_LAYER
@@ -1210,6 +1389,9 @@ impl ApiWithdrawRepo {
     /// 用于层内保护
     fn rank(status: ApiWithdrawStatus) -> u8 {
         match status {
+            // SendingTxReport is a legacy narrative status before final chain result.
+            // Keep it from falling back to weaker flow states, but allow result/report progress.
+            ApiWithdrawStatus::SendingTxReport => 1,
             // Result 层
             ApiWithdrawStatus::Failure => 1,
             ApiWithdrawStatus::AuditReject => 1, // AuditReject 与 Failure 同 rank，由 derive 负责语义
@@ -1450,12 +1632,51 @@ mod tests {
     use crate::{
         dao::api_withdraw::ApiWithdrawDao,
         entities::{
+            api_resource_delegation::{
+                ApiResourceDelegationResultStatus, NewApiResourceDelegation,
+            },
+            api_resource_gate::{
+                ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+            },
             api_trade_type::ApiTradeType,
             api_withdraw::{ApiWithdrawStatus, WithdrawCreatedFact},
         },
         error::Error,
-        repositories::test_helper::setup_api_transaction_pool,
+        repositories::{
+            api_wallet::resource_delegation::ApiResourceDelegationRepo,
+            test_helper::{setup_api_resource_pool, setup_api_transaction_pool},
+        },
     };
+
+    async fn seed_audit_withdraw(pool: &crate::ApiTransactionDbPool, trade_no: &str) {
+        ApiWithdrawRepo::upsert_api_withdraw(
+            pool,
+            "uid_audit",
+            "withdraw",
+            "FROM_AUDIT",
+            "TO_AUDIT",
+            "20",
+            "validate",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "TRX",
+            trade_no,
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
 
     #[tokio::test]
     async fn withdraw_repo_upsert_and_get_success() {
@@ -1477,6 +1698,9 @@ mod tests {
             None,
             "ETH",
             trade_no,
+            None,
+            None,
+            None,
             ApiTradeType::Withdraw,
             0,
             None,
@@ -1504,6 +1728,135 @@ mod tests {
         let rows = ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].trade_no, trade_no);
+    }
+
+    #[tokio::test]
+    async fn withdraw_audit_decision_is_first_write_wins() {
+        let pool = setup_api_transaction_pool("wallet_db_withdraw_audit_first_write").await;
+
+        let pass_trade_no = "withdraw_audit_pass_first";
+        seed_audit_withdraw(&pool, pass_trade_no).await;
+
+        let rows = ApiWithdrawRepo::set_audit_passed(&pool, pass_trade_no).await.unwrap();
+        assert_eq!(rows, 1);
+
+        let passed = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            pass_trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        let audit_passed_at = passed.audit_passed_at;
+        assert!(audit_passed_at.is_some());
+        assert!(passed.audit_rejected_at.is_none());
+        assert!(passed.audit_reason.is_none());
+        assert_eq!(passed.status, ApiWithdrawStatus::AuditPass);
+
+        let repeat_rows = ApiWithdrawRepo::set_audit_passed(&pool, pass_trade_no).await.unwrap();
+        assert_eq!(repeat_rows, 0);
+
+        let reject_after_pass_rows =
+            ApiWithdrawRepo::set_audit_rejected(&pool, pass_trade_no, "late reject").await.unwrap();
+        assert_eq!(reject_after_pass_rows, 0);
+
+        let after_pass_conflict = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            pass_trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        assert_eq!(after_pass_conflict.audit_passed_at, audit_passed_at);
+        assert!(after_pass_conflict.audit_rejected_at.is_none());
+        assert!(after_pass_conflict.audit_reason.is_none());
+        assert_eq!(after_pass_conflict.status, ApiWithdrawStatus::AuditPass);
+
+        let reject_trade_no = "withdraw_audit_reject_first";
+        seed_audit_withdraw(&pool, reject_trade_no).await;
+
+        let rows = ApiWithdrawRepo::set_audit_rejected(&pool, reject_trade_no, "risk reject")
+            .await
+            .unwrap();
+        assert_eq!(rows, 1);
+
+        let rejected = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            reject_trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        let audit_rejected_at = rejected.audit_rejected_at;
+        assert!(rejected.audit_passed_at.is_none());
+        assert!(audit_rejected_at.is_some());
+        assert_eq!(rejected.audit_reason.as_deref(), Some("risk reject"));
+        assert_eq!(rejected.status, ApiWithdrawStatus::AuditReject);
+
+        let repeat_reject_rows =
+            ApiWithdrawRepo::set_audit_rejected(&pool, reject_trade_no, "new reason")
+                .await
+                .unwrap();
+        assert_eq!(repeat_reject_rows, 0);
+
+        let pass_after_reject_rows =
+            ApiWithdrawRepo::set_audit_passed(&pool, reject_trade_no).await.unwrap();
+        assert_eq!(pass_after_reject_rows, 0);
+
+        let after_reject_conflict = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            reject_trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        assert!(after_reject_conflict.audit_passed_at.is_none());
+        assert_eq!(after_reject_conflict.audit_rejected_at, audit_rejected_at);
+        assert_eq!(after_reject_conflict.audit_reason.as_deref(), Some("risk reject"));
+        assert_eq!(after_reject_conflict.status, ApiWithdrawStatus::AuditReject);
+    }
+
+    #[tokio::test]
+    async fn withdraw_actual_fee_updates_only_backend_present_fields() {
+        let pool = setup_api_transaction_pool("wallet_db_withdraw_actual_fee").await;
+        let trade_no = "withdraw_actual_fee_update";
+        seed_audit_withdraw(&pool, trade_no).await;
+
+        let rows = ApiWithdrawRepo::update_actual_fee(
+            &pool,
+            trade_no,
+            Some("1.23"),
+            Some(r#"{"bandwidth":345,"energy":678}"#),
+            Some("12345678"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let updated =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert_eq!(updated.transaction_fee, "1.23");
+        assert_eq!(updated.resource_consume, r#"{"bandwidth":345,"energy":678}"#);
+        assert_eq!(updated.block_height.as_deref(), Some("12345678"));
+
+        let rows = ApiWithdrawRepo::update_actual_fee(&pool, trade_no, Some("2.00"), None, None)
+            .await
+            .unwrap();
+        assert_eq!(rows, 1);
+
+        let partial =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert_eq!(partial.transaction_fee, "2.00");
+        assert_eq!(partial.resource_consume, r#"{"bandwidth":345,"energy":678}"#);
+        assert_eq!(partial.block_height.as_deref(), Some("12345678"));
+
+        let rows =
+            ApiWithdrawRepo::update_actual_fee(&pool, trade_no, None, None, None).await.unwrap();
+        assert_eq!(rows, 0);
     }
 
     #[tokio::test]
@@ -1549,5 +1902,192 @@ mod tests {
 
         let rows = ApiWithdrawRepo::list_api_withdraw(&pool, "uid_wd_rb_1").await.unwrap();
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn withdraw_resource_gate_records_block_and_release_facts() {
+        let pool = setup_api_transaction_pool("wallet_db_withdraw_resource_gate").await;
+        let trade_no = "withdraw_resource_gate_1";
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "withdraw",
+            "from",
+            "to",
+            "20",
+            "v",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "TRX",
+            trade_no,
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::mark_resource_blocked(
+            &pool,
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            Some("resource_trade_2"),
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .unwrap();
+
+        let blocked =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert!(blocked.resource_check_at.is_some());
+        assert!(blocked.resource_gate_released_at.is_none());
+        assert_eq!(
+            blocked.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedPlatformDelegate)
+        );
+        assert_eq!(blocked.resource_dependency_trade_no.as_deref(), Some("resource_trade_2"));
+        assert_eq!(
+            blocked.resource_dependency_type,
+            Some(ApiResourceDependencyType::PlatformDelegate)
+        );
+
+        ApiWithdrawRepo::mark_resource_released(
+            &pool,
+            trade_no,
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .unwrap();
+
+        let released =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert!(released.resource_gate_released_at.is_some());
+        assert_eq!(released.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
+        assert!(released.resource_block_reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn mark_resource_result_ack_sent_and_release_gate_updates_facts_together() {
+        let pool =
+            setup_api_transaction_pool("wallet_db_withdraw_resource_result_ack_release").await;
+        let resource_pool =
+            setup_api_resource_pool("wallet_db_withdraw_resource_result_ack_release").await;
+        let trade_no = "withdraw_resource_result_ack_release_1";
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "withdraw",
+            "from",
+            "to",
+            "20",
+            "v",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "USDT",
+            trade_no,
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::mark_resource_blocked(
+            &pool,
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            Some(trade_no),
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .unwrap();
+
+        ApiResourceDelegationRepo::upsert_original_order_result_fact(
+            &resource_pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid",
+                trade_no,
+                trade_no,
+                ApiTradeType::Withdraw as i64,
+                "",
+                "to",
+                "0",
+            ),
+            ApiResourceDelegationResultStatus::Fail,
+            Some(3),
+            Some(r#"{"tradeNo":"withdraw_resource_result_ack_release_1","status":false}"#),
+        )
+        .await
+        .unwrap();
+
+        let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(&resource_pool, trade_no)
+            .await
+            .unwrap();
+        assert_eq!(ack_rows, 1);
+
+        let release_rows = ApiWithdrawRepo::mark_resource_released(
+            &pool,
+            trade_no,
+            ApiResourceGateResult::ResourceDelegationFailedBypass,
+        )
+        .await
+        .unwrap();
+        assert_eq!(release_rows, 1);
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, trade_no)
+                .await
+                .unwrap();
+        assert!(resource_task.result_ack_sent_at.is_some());
+
+        let released =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert!(released.resource_gate_released_at.is_some());
+        assert_eq!(
+            released.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationFailedBypass)
+        );
+        assert!(released.resource_block_reason.is_none());
+
+        let ack_rows = ApiResourceDelegationRepo::mark_result_ack_sent(&resource_pool, trade_no)
+            .await
+            .unwrap();
+        assert_eq!(ack_rows, 0);
+
+        let still_released =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert_eq!(
+            still_released.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationFailedBypass)
+        );
+        assert!(still_released.resource_gate_released_at.is_some());
     }
 }

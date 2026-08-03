@@ -1,6 +1,7 @@
 #![allow(deprecated)]
 
 use crate::{
+    context::Context,
     error::{
         business::{
             BusinessError,
@@ -20,8 +21,56 @@ use wallet_database::{
 
 pub struct ApiFeeDomain {}
 
+fn fee_confirmation_status_matches(
+    current: ApiFeeStatus,
+    expected: ApiFeeStatus,
+    has_transaction_time: bool,
+) -> bool {
+    if has_transaction_time {
+        return true;
+    }
+    match expected {
+        ApiFeeStatus::Success => {
+            matches!(current, ApiFeeStatus::Success | ApiFeeStatus::ConfirmSuccessReport)
+        }
+        ApiFeeStatus::Failure => {
+            matches!(current, ApiFeeStatus::Failure | ApiFeeStatus::ConfirmFailureReport)
+        }
+        _ => current == expected,
+    }
+}
+
+async fn verify_fee_confirmation_after_zero_update(
+    pool: &wallet_database::ApiTransactionDbPool,
+    trade_no: &str,
+    expected: ApiFeeStatus,
+) -> Result<(), ServiceError> {
+    let refreshed = ApiFeeRepo::get_api_fee_by_trade_no(pool, trade_no).await?;
+    if fee_confirmation_status_matches(
+        refreshed.status,
+        expected,
+        refreshed.transaction_time.is_some(),
+    ) {
+        tracing::info!(
+            trade_no = %trade_no,
+            persisted_status = %refreshed.status,
+            expected_status = %expected,
+            has_transaction_time = %refreshed.transaction_time.is_some(),
+            "Fee confirmation was already persisted or advanced concurrently"
+        );
+        return Ok(());
+    }
+
+    Err(crate::error::system::SystemError::Internal(format!(
+        "fee confirmation status mismatch: trade_no={trade_no}, expected={expected}, persisted={}",
+        refreshed.status
+    ))
+    .into())
+}
+
 impl ApiFeeDomain {
-    pub(crate) async fn transfer_fee(
+    pub(crate) async fn transfer_fee_with_ctx(
+        ctx: &'static Context,
         req: &ApiTransferFeeReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = Instant::now();
@@ -39,7 +88,6 @@ impl ApiFeeDomain {
         );
 
         // 获取数据库连接
-        let ctx = crate::context::CONTEXT.get().unwrap();
         let core_pool = ctx.api_wallet_pool()?;
         let api_transaction_pool = ctx.api_transaction_pool()?;
 
@@ -84,7 +132,7 @@ impl ApiFeeDomain {
                 to_addr: req.to.to_string(),
                 value: req.value.to_string(),
             });
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
             tracing::info!(trade_no=%req.trade_no, "前端通知发送成功, 耗时: {:?}", notify_time.elapsed());
         } else {
             tracing::warn!(trade_no=%req.trade_no, "fee tx found, 交易记录已存在");
@@ -95,9 +143,7 @@ impl ApiFeeDomain {
         // 交易执行完全由事实驱动，而不是命令式触发
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_fee_tx_handle().get_shadow_system()
             {
@@ -113,14 +159,16 @@ impl ApiFeeDomain {
         Ok(())
     }
 
-    pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+    pub async fn confirm_tx(
+        ctx: &'static Context,
+        trade_no: &str,
+        status: bool,
+    ) -> Result<(), ServiceError> {
+        let pool = ctx.api_transaction_pool()?;
         Self::confirm_tx_in_pool(&pool, trade_no, status).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_fee_tx_handle().get_shadow_system()
             {
@@ -247,12 +295,51 @@ impl ApiFeeDomain {
         .await?;
         tracing::info!(trade_no=%trade_no, "更新交易状态, 影响行数: {}, 耗时: {:?}", rows_affected, update_time.elapsed());
 
-        if rows_affected != 1 {
-            tracing::error!(trade_no=%trade_no, "更新手续费交易状态失败，影响行数不符合预期");
-            // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+        if rows_affected == 0 {
+            verify_fee_confirmation_after_zero_update(pool, trade_no, next_status).await?;
         }
 
         tracing::info!(trade_no=%trade_no, "手续费交易确认完成, 总耗时: {:?}", start_time.elapsed());
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fee_confirmation_status_matches;
+    use wallet_database::entities::api_fee::ApiFeeStatus;
+
+    #[test]
+    fn fee_confirmation_status_accepts_concurrent_result_and_terminal_states() {
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::Success,
+            ApiFeeStatus::Success,
+            false
+        ));
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::ConfirmSuccessReport,
+            ApiFeeStatus::Success,
+            false
+        ));
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::Failure,
+            ApiFeeStatus::Failure,
+            false
+        ));
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::ConfirmFailureReport,
+            ApiFeeStatus::Failure,
+            false
+        ));
+        assert!(fee_confirmation_status_matches(
+            ApiFeeStatus::SendingTx,
+            ApiFeeStatus::Success,
+            true
+        ));
+        assert!(!fee_confirmation_status_matches(
+            ApiFeeStatus::SendingTxReport,
+            ApiFeeStatus::Success,
+            false
+        ));
     }
 }

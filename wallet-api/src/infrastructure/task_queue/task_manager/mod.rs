@@ -22,8 +22,29 @@ use wallet_utils::{RetryableError as _, error::RetryPolicy};
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
 
-#[derive(Debug, Clone)]
+fn is_rpc_service_unavailable(error: &ServiceError) -> bool {
+    crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(error)
+        .is_service_unavailable()
+}
+
+fn next_retry_delay_ms(
+    current_delay_ms: u64,
+    is_rpc_503: bool,
+    is_rate_limit: bool,
+    is_retryable: bool,
+) -> u64 {
+    if is_rpc_503 || is_rate_limit {
+        current_delay_ms.saturating_mul(2).min(60_000)
+    } else if is_retryable {
+        current_delay_ms.saturating_add(1_000).min(30_000)
+    } else {
+        current_delay_ms.saturating_mul(2).min(120_000)
+    }
+}
+
+#[derive(Clone)]
 pub struct TaskManager {
+    ctx: &'static crate::context::Context,
     running_tasks: RunningTasks,
     // task_sender: crate::manager::TaskSender,
     pub(crate) notify: Arc<tokio::sync::Notify>,
@@ -32,11 +53,12 @@ pub struct TaskManager {
 
 impl TaskManager {
     /// 创建一个新的 TaskManager 实例
-    pub fn new(notify: Arc<tokio::sync::Notify>) -> Self {
+    pub fn new(ctx: &'static crate::context::Context, notify: Arc<tokio::sync::Notify>) -> Self {
         let running_tasks: RunningTasks = Arc::new(DashSet::new());
-        let dispatcher = Dispatcher::new(Arc::clone(&running_tasks));
+        let dispatcher = Dispatcher::new(ctx, Arc::clone(&running_tasks));
         // let task_sender = dispatcher.task_dispatcher(Arc::clone(&running_tasks));
         Self {
+            ctx,
             running_tasks,
             // task_sender,
             notify,
@@ -48,11 +70,12 @@ impl TaskManager {
     pub async fn start_task_check(&self) -> Result<(), ServiceError> {
         let running_tasks = Arc::clone(&self.running_tasks);
 
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = self.ctx.task_pool()?;
         TaskQueueRepo::delete_tasks_with_request_body_like(&pool, SEND_MSG_CONFIRM).await?;
+        let ctx = self.ctx;
 
         tokio::spawn(async move {
-            Self::task_check(running_tasks).await;
+            Self::task_check(ctx, running_tasks).await;
         });
         Ok(())
     }
@@ -63,19 +86,22 @@ impl TaskManager {
     }
 
     /// 任务检查函数
-    async fn task_check(running_tasks: RunningTasks) {
+    async fn task_check(ctx: &'static crate::context::Context, running_tasks: RunningTasks) {
         // 在 TaskManager 的方法中启动
         tracing::info!("task check start");
-        if let Err(e) = Self::check_handle(&running_tasks).await {
+        if let Err(e) = Self::check_handle(ctx, &running_tasks).await {
             tracing::error!("task check error: {}", e);
         }
         tracing::info!("task check end");
     }
 
     /// 检查并发送任务的处理函数
-    async fn check_handle(running_tasks: &RunningTasks) -> Result<(), ServiceError> {
-        let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+    async fn check_handle(
+        ctx: &'static crate::context::Context,
+        running_tasks: &RunningTasks,
+    ) -> Result<(), ServiceError> {
+        let handles = ctx.get_handles_arc().await?;
+        let pool = ctx.task_pool()?;
         let manager = handles.get_global_task_manager();
 
         TaskQueueRepo::delete_old(&pool, 15).await?;
@@ -112,7 +138,11 @@ impl TaskManager {
         Ok(())
     }
 
-    async fn process_single_task(task: TaskQueueEntity, running_tasks: RunningTasks) {
+    async fn process_single_task(
+        ctx: &'static crate::context::Context,
+        task: TaskQueueEntity,
+        running_tasks: RunningTasks,
+    ) {
         let task_id = task.id.clone();
 
         let mut retry_count = 0;
@@ -133,7 +163,7 @@ impl TaskManager {
             //     break;
             // }
 
-            match Self::handle_task(&task).await {
+            match Self::handle_task(ctx, &task).await {
                 Ok(()) => break, // 成功
                 Err(e) => {
                     tracing::error!(?task, "[task_process] error: {}", e);
@@ -145,6 +175,7 @@ impl TaskManager {
                             wallet_transport_backend::error::Error::ApiBackend(code, _)
                         ) if *code == 429
                     );
+                    let is_rpc_503 = is_rpc_service_unavailable(&e);
 
                     if is_retryable {
                         // 如果是可重试错误，则重试
@@ -155,21 +186,18 @@ impl TaskManager {
                         );
                     } else {
                         // 否则，记录错误并增加重试次数
-                        if let Err(e) = Self::increase_retry_times(&task.id, retry_count).await {
+                        if let Err(e) = Self::increase_retry_times(ctx, &task.id, retry_count).await
+                        {
                             tracing::error!("[process_single_task] error: {}", e);
                         }
                     }
 
-                    if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
-                        if let Err(err) =
-                            TaskQueueRepo::task_failed(&pool, &task_id, &e.to_string()).await
-                        {
-                            tracing::warn!(
-                                task_id = %task_id,
-                                error = %err,
-                                "failed to mark task as failed"
-                            );
-                        }
+                    if let Err(err) = Self::mark_task_failed(ctx, &task_id, &e.to_string()).await {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %err,
+                            "failed to mark task as failed"
+                        );
                     }
 
                     if retry_count >= 10 {
@@ -178,18 +206,19 @@ impl TaskManager {
                             task_id,
                             retry_count
                         );
-                        if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
-                            if let Err(err) = TaskQueueRepo::task_hang_up(&pool, &task_id).await {
-                                tracing::warn!(
-                                    task_id = %task_id,
-                                    error = %err,
-                                    "failed to mark task as hang up"
-                                );
-                            }
+                        if let Err(err) = Self::hang_up_task(ctx, &task_id).await {
+                            tracing::warn!(
+                                task_id = %task_id,
+                                error = %err,
+                                "failed to mark task as hang up"
+                            );
+                        } else {
                             tracing::warn!("[process_single_task] task {} hang up", task_id);
                         }
 
-                        if let Err(e) = Self::upload_task_error_info(&task, &e.to_string()).await {
+                        if let Err(e) =
+                            Self::upload_task_error_info(ctx, &task, &e.to_string()).await
+                        {
                             tracing::error!(
                                 "[process_single_task] upload_task_error_info error: {}",
                                 e
@@ -200,15 +229,15 @@ impl TaskManager {
                     }
 
                     // 根据错误类型调整延迟策略
-                    if is_rate_limit {
-                        // 限流错误使用指数退避，每次延迟时间翻倍
-                        delay = std::cmp::min(delay * 2, 60_000); // 最大延迟设为60秒
+                    if is_rpc_503 || is_rate_limit {
+                        // RPC 503 和限流都使用指数退避，避免恢复时多个任务同时重试。
+                        delay = next_retry_delay_ms(delay, is_rpc_503, is_rate_limit, is_retryable);
                     } else if is_retryable {
                         // 其他可重试错误使用线性退避，每次增加1秒
-                        delay = std::cmp::min(delay + 1000, 30_000); // 最大延迟设为30秒
+                        delay = next_retry_delay_ms(delay, false, false, true);
                     } else {
                         // 不可重试错误继续使用原来的指数退避策略
-                        delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为120秒
+                        delay = next_retry_delay_ms(delay, false, false, false);
                     }
 
                     let jitter = std::time::Duration::from_millis(
@@ -218,7 +247,7 @@ impl TaskManager {
                     retry_count += 1;
 
                     tracing::debug!(
-                        "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}, is_rate_limit: {is_rate_limit}, is_retryable: {is_retryable}"
+                        "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}, is_rpc_503: {is_rpc_503}, is_rate_limit: {is_rate_limit}, is_retryable: {is_retryable}"
                     );
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
@@ -234,12 +263,13 @@ impl TaskManager {
     }
 
     async fn upload_task_error_info(
+        ctx: &'static crate::context::Context,
         task_entity: &TaskQueueEntity,
         error_info: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
-        let sn = crate::context::get_context()?.get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let pool = ctx.core_pool()?;
+        let sn = ctx.get_sn().to_string();
+        let Some(device) = DeviceRepo::get_device_info(pool, &sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -247,7 +277,7 @@ impl TaskManager {
         };
 
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
-        let app_version = ConfigDomain::get_app_version().await?;
+        let app_version = ConfigDomain::get_app_version(ctx).await?;
 
         let req = ClientTaskLogUploadReq::new(
             &device.sn,
@@ -260,12 +290,12 @@ impl TaskManager {
             error_info,
         );
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = ctx.get_global_backend_api();
         backend_api.client_task_log_upload(req).await?;
 
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
         if task.get_type() == TaskType::Mqtt {
-            let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
+            let handles = ctx.get_handles_arc().await?;
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
             tracing::info!(
                 "upload task error info mqtt submit unconfirmed msg collector: {}",
@@ -277,10 +307,11 @@ impl TaskManager {
     }
 
     async fn increase_retry_times(
+        ctx: &'static crate::context::Context,
         task_id: &str,
         retry_count: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = ctx.task_pool()?;
 
         if retry_count > 0 {
             TaskQueueRepo::increase_retry_times(&pool, task_id).await?;
@@ -289,10 +320,30 @@ impl TaskManager {
         Ok(())
     }
 
+    async fn mark_task_failed(
+        ctx: &'static crate::context::Context,
+        task_id: &str,
+        error: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.task_pool()?;
+        TaskQueueRepo::task_failed(&pool, task_id, error).await?;
+        Ok(())
+    }
+
+    async fn hang_up_task(
+        ctx: &'static crate::context::Context,
+        task_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.task_pool()?;
+        TaskQueueRepo::task_hang_up(&pool, task_id).await?;
+        Ok(())
+    }
+
     async fn handle_task(
+        ctx: &'static crate::context::Context,
         task_entity: &TaskQueueEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+        let pool = ctx.task_pool()?;
 
         let id = task_entity.id.clone();
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
@@ -300,17 +351,40 @@ impl TaskManager {
 
         TaskQueueRepo::task_running(&pool, &id).await?;
 
-        task.execute(&id).await?;
+        task.execute(&id, ctx).await?;
 
         TaskQueueRepo::task_done(&pool, &id).await?;
 
         if task_type == TaskType::Mqtt {
-            let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
+            let handles = ctx.get_handles_arc().await?;
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
             tracing::info!("handle task mqtt submit unconfirmed msg collector: {}", id);
             unconfirmed_msg_collector.submit(vec![id])?;
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_rpc_service_unavailable, next_retry_delay_ms};
+    use crate::error::{service::ServiceError, system::SystemError};
+
+    #[test]
+    fn rpc_503_uses_bounded_exponential_backoff() {
+        assert!(is_rpc_service_unavailable(&ServiceError::System(SystemError::Internal(
+            "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
+                .to_string(),
+        ))));
+        assert_eq!(next_retry_delay_ms(200, true, false, true), 400);
+        assert_eq!(next_retry_delay_ms(30_000, true, false, true), 60_000);
+        assert_eq!(next_retry_delay_ms(60_000, true, false, true), 60_000);
+    }
+
+    #[test]
+    fn non_503_retryable_backoff_keeps_linear_curve() {
+        assert_eq!(next_retry_delay_ms(200, false, false, true), 1_200);
+        assert_eq!(next_retry_delay_ms(29_500, false, false, true), 30_000);
     }
 }

@@ -192,6 +192,9 @@ mod tests {
             raw_tx: None,
             resource_consume: "0".to_string(),
             transaction_fee: "0".to_string(),
+            estimated_transaction_fee: None,
+            estimated_resource_consume: None,
+            fee_estimated_at: None,
             transaction_time: None,
             block_height: None,
             notes: None,
@@ -199,6 +202,12 @@ mod tests {
             post_confirm_tx_count: 0,
             err_code: None,
             err_msg: None,
+            resource_check_at: None,
+            resource_gate_released_at: None,
+            resource_gate_result: None,
+            resource_block_reason: None,
+            resource_dependency_trade_no: None,
+            resource_dependency_type: None,
             tx_ack_sent_at: None,
             audit_passed_at: None,
             audit_rejected_at: None,
@@ -219,6 +228,9 @@ mod tests {
             failure_stage: None,
             created_at: chrono::Utc::now() - chrono::Duration::minutes(30),
             updated_at: Some(chrono::Utc::now()),
+            out_order_id: None,
+            client_id: None,
+            create_time: None,
         }
     }
 

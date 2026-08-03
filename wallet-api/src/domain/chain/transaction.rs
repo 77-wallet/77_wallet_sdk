@@ -1,5 +1,6 @@
 use super::adapter::TransactionAdapter;
 use crate::{
+    context::Context,
     domain::{bill::BillDomain, coin::CoinDomain},
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
@@ -44,11 +45,12 @@ pub struct ChainTransDomain;
 
 impl ChainTransDomain {
     pub async fn assets(
+        ctx: &'static Context,
         chain_code: &str,
         from: &str,
         token_key: AssetTokenKey,
     ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
 
         let assets_id = AssetsId {
             address: from.to_string(),
@@ -65,10 +67,11 @@ impl ChainTransDomain {
     }
 
     pub async fn account(
+        ctx: &'static Context,
         chain_code: &str,
         address: &str,
     ) -> Result<AccountEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
         let account = AccountRepo::detail_by_address_and_chain_code(pool, address, chain_code)
             .await?
             .ok_or(crate::error::business::BusinessError::Account(
@@ -78,13 +81,14 @@ impl ChainTransDomain {
     }
 
     pub async fn update_balance(
+        ctx: &'static Context,
         address: &str,
         chain_code: &str,
         refresh_symbol: &str,
         token_key: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
 
         let assets_id = AssetsId {
             address: address.to_string(),
@@ -103,7 +107,7 @@ impl ChainTransDomain {
                     .map_err(crate::error::service::ServiceError::Database)?;
 
                 // 上报后端修改余额
-                let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+                let backend = ctx.get_global_backend_api();
                 let rs =
                     backend.wallet_assets_refresh_bal(address, chain_code, refresh_symbol).await;
                 if let Err(e) = rs {
@@ -116,19 +120,21 @@ impl ChainTransDomain {
     }
 
     pub async fn main_coin(
+        ctx: &'static Context,
         chain_code: &str,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
         let coin = CoinRepo::main_coin(chain_code, &pool).await?;
         Ok(coin)
     }
 
     // btc 验证是否存在未确认的交易
     async fn check_ongoing_bill(
+        ctx: &'static Context,
         from: &str,
         chain_code: &str,
     ) -> Result<bool, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
 
         if chain_code == chain_code::BTC {
             let res = BillRepo::on_going_bill(chain_code::BTC, from, &pool).await?;
@@ -140,19 +146,21 @@ impl ChainTransDomain {
 
     /// transfer
     pub async fn transfer(
+        ctx: &'static Context,
         mut params: transaction::TransferReq,
         bill_kind: BillKind,
         adapter: &TransactionAdapter,
         private_key: ChainPrivateKey,
     ) -> Result<String, crate::error::service::ServiceError> {
         //  check ongoing tx
-        if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
+        if Self::check_ongoing_bill(ctx, &params.base.from, &params.base.chain_code).await? {
             return Err(crate::error::business::BusinessError::Bill(
                 crate::error::business::bill::BillError::ExistsUnConfirmationTx,
             ))?;
         };
 
-        let coin = CoinDomain::get_coin_by_token_key(
+        let coin = CoinDomain::get_coin_by_token_key_with_ctx(
+            ctx,
             &params.base.chain_code,
             params.base.token_address.clone(),
         )
@@ -161,7 +169,7 @@ impl ChainTransDomain {
         params.base.with_token(coin.token_address.clone());
         params.base.with_decimals(coin.decimals);
         tracing::info!("transfer params = {:?}", params);
-        let resp = adapter.transfer(&params, private_key).await?;
+        let resp = adapter.transfer(ctx, &params, private_key).await?;
 
         let mut new_bill: NewBillEntity = BillRepo::try_build_bill_from(&params)?;
         new_bill.tx_kind = bill_kind;
@@ -171,7 +179,7 @@ impl ChainTransDomain {
 
         // 如果使用了权限，上报给后端
         if let Some(signer) = params.signer {
-            let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+            let pool = ctx.core_pool()?;
             let permission = PermissionRepo::permission_with_user(
                 &pool,
                 &params.base.from,
@@ -200,15 +208,16 @@ impl ChainTransDomain {
                 endpoint::UPLOAD_PERMISSION_TRANS,
                 &params,
             )?);
-            Tasks::new().push(task).send().await?;
+            Tasks::new().push(task).send_with_ctx(ctx).await?;
 
             new_bill.signer = users;
         }
 
-        BillDomain::create_bill(new_bill).await?;
+        let core_pool = ctx.core_pool()?;
+        BillDomain::create_bill(&core_pool, new_bill).await?;
 
         if let Some(request_id) = params.base.request_resource_id {
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let backend = ctx.get_global_backend_api();
             backend.delegate_complete(&request_id).await?;
         }
 
@@ -445,6 +454,7 @@ impl ChainTransDomain {
 
     // 如果传入了signer 则使用signer的私钥
     pub async fn get_key(
+        ctx: &'static Context,
         from: &str,
         chain_code: &str,
         password: &str,
@@ -454,8 +464,9 @@ impl ChainTransDomain {
         let address =
             if let Some(signer) = signer { signer.address.clone() } else { from.to_string() };
 
-        let key = crate::domain::account::open_subpk_with_password(chain_code, &address, password)
-            .await?;
+        let key =
+            crate::domain::account::open_subpk_with_password(ctx, chain_code, &address, password)
+                .await?;
 
         Ok(key)
     }

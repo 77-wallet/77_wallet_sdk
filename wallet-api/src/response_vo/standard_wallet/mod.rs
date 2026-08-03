@@ -5,6 +5,7 @@ pub mod app;
 pub mod assets;
 pub mod chain;
 pub mod coin;
+pub mod diagnostics;
 pub mod multisig_account;
 pub mod multisig_transaction;
 pub mod permission;

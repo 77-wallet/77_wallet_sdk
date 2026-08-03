@@ -23,8 +23,7 @@ use super::FeeIntent;
 /// 用于 trade_no + intent_type 级别的互斥执行
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
-    BuildTx(String),
-    BroadcastTx(String),
+    TxMutation(String),
     RecoverTx(String),
     SendTxAck(String),
     SendTxResAck(String),
@@ -36,10 +35,10 @@ impl RunningKey {
     pub fn from_intent(intent: &FeeIntent) -> Self {
         match intent {
             FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no)) => {
-                RunningKey::BuildTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => {
-                RunningKey::BroadcastTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => {
                 RunningKey::RecoverTx(trade_no.clone())
@@ -63,40 +62,20 @@ mod tests {
     use crate::infrastructure::api_trans::collect_fee::shadow::{FeeChainIntent, FeeIntent};
 
     #[test]
-    fn broadcast_and_recover_use_different_running_keys() {
-        let trade_no = "F_KEY";
-        let broadcast = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BroadcastTx(
-            trade_no.to_string(),
-        )));
-        let recover = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::RecoverTx(
-            trade_no.to_string(),
-        )));
-        assert_ne!(broadcast, recover);
-    }
-
-    #[test]
-    fn build_and_chain_use_different_running_keys() {
+    fn build_and_broadcast_share_mutation_key_but_recover_is_independent() {
         let trade_no = "F_KEY";
         let build = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BuildTx(
             trade_no.to_string(),
         )));
-        let chain = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BroadcastTx(
-            trade_no.to_string(),
-        )));
-        assert_ne!(build, chain);
-    }
-
-    #[test]
-    fn broadcast_and_recover_use_different_chain_keys_even_with_same_trade_no() {
-        let trade_no = "F_KEY";
         let broadcast = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BroadcastTx(
             trade_no.to_string(),
         )));
         let recover = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::RecoverTx(
             trade_no.to_string(),
         )));
-
-        assert!(matches!(broadcast, RunningKey::BroadcastTx(_)));
+        assert_eq!(build, broadcast);
+        assert_ne!(broadcast, recover);
+        assert!(matches!(build, RunningKey::TxMutation(_)));
         assert!(matches!(recover, RunningKey::RecoverTx(_)));
     }
 }

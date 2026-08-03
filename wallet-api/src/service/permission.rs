@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         self,
         account::open_subpk_with_password,
@@ -38,13 +39,14 @@ use wallet_transport_backend::api::wallet::permission::PermissionAcceptReq;
 use wallet_types::constant::chain_code;
 
 pub struct PermissionService {
+    ctx: &'static Context,
     chain: TronChain,
 }
 
 impl PermissionService {
-    pub async fn new() -> Result<Self, crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
-        Ok(Self { chain })
+    pub async fn new(ctx: &'static Context) -> Result<Self, crate::error::service::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
+        Ok(Self { ctx, chain })
     }
 
     // 标记使用地址簿里面的名字
@@ -74,7 +76,7 @@ impl PermissionService {
             BillKind::UpdatePermission,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         // 手续拦截
         let resp = args.build_raw_transaction(&self.chain.provider).await?;
@@ -99,9 +101,9 @@ impl PermissionService {
             BillKind::UpdatePermission,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
-        let key = open_subpk_with_password(chain_code::TRON, from, password).await?;
+        let key = open_subpk_with_password(self.ctx, chain_code::TRON, from, password).await?;
         let hash = self.chain.exec_transaction_v1(resp, key).await?;
 
         let transaction_fee = consumer.transaction_fee();
@@ -118,7 +120,8 @@ impl PermissionService {
             transaction_fee,
             None::<String>,
         );
-        domain::bill::BillDomain::create_bill(entity).await?;
+        let pool = self.ctx.core_pool()?;
+        domain::bill::BillDomain::create_bill(&pool, entity).await?;
 
         Ok(hash)
     }
@@ -131,6 +134,7 @@ impl PermissionService {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
         let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            self.ctx,
             currency,
             "tron",
             "TRX",
@@ -154,7 +158,7 @@ impl PermissionService {
         &self,
         params: PermissionAcceptReq,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         Ok(backend.permission_accept(params).await?)
     }
 }
@@ -186,7 +190,7 @@ impl PermissionService {
             actives,
         };
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         self.mark_address_book_name(&pool, &mut result.owner.keys).await?;
 
@@ -202,7 +206,7 @@ impl PermissionService {
         &self,
         grantor_addr: String,
     ) -> Result<Vec<ManagerPermissionResp>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
 
         let permissions =
             PermissionRepo::all_permission_with_user(&core_pool, &grantor_addr).await?;
@@ -392,7 +396,7 @@ impl PermissionService {
         expiration: i64,
         password: String,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let bill_kind = BillKind::UpdatePermission;
 
         let account = MultisigDomain::account_by_address(&req.grantor_addr, true, &pool).await?;
@@ -431,6 +435,7 @@ impl PermissionService {
         );
 
         let res = MultisigQueueDomain::tron_sign_and_create_queue(
+            self.ctx,
             &mut queue,
             &account,
             password,
@@ -442,8 +447,14 @@ impl PermissionService {
         backend_params.back_user = new_users.into_iter().collect();
         backend_params.multi_sign_id = res.id.clone();
 
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, Some(backend_params), None)
-            .await?;
+        MultisigQueueDomain::upload_queue_backend(
+            self.ctx,
+            res.id,
+            &pool,
+            Some(backend_params),
+            None,
+        )
+        .await?;
 
         Ok(resp.tx_hash)
     }

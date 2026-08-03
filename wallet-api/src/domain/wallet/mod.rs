@@ -5,7 +5,9 @@ use wallet_types::chain::{
     chain::ChainCode,
 };
 
-use crate::{application::wallet::WalletApplication, error::service::ServiceError};
+use crate::{
+    application::wallet::WalletApplication, context::Context, error::service::ServiceError,
+};
 
 const DEFAULT_SALT: &str = "salt";
 
@@ -42,20 +44,27 @@ impl WalletDomain {
         }
     }
 
-    pub(crate) async fn validate_password(password: &str) -> Result<(), ServiceError> {
-        WalletApplication::validate_password(password).await
+    pub(crate) async fn validate_password_with_context(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<(), ServiceError> {
+        WalletApplication::validate_password(ctx, password).await
     }
 
-    pub(crate) async fn upgrade_algorithm(password: &str) -> Result<(), ServiceError> {
-        WalletApplication::upgrade_algorithm(password).await
+    pub(crate) async fn upgrade_algorithm_with_context(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<(), ServiceError> {
+        WalletApplication::upgrade_algorithm(ctx, password).await
     }
 
     pub(crate) async fn get_seed(
+        ctx: &'static Context,
         dirs: &crate::dirs::Dirs,
         wallet_address: &str,
         wallet_password: &str,
     ) -> Result<Vec<u8>, ServiceError> {
-        WalletApplication::get_seed(dirs, wallet_address, wallet_password).await
+        WalletApplication::get_seed(ctx, dirs, wallet_address, wallet_password).await
     }
 
     pub(crate) async fn restart_existing_wallet(
@@ -66,11 +75,17 @@ impl WalletDomain {
         WalletApplication::restart_existing_wallet(core_pool, address).await
     }
 
-    pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, ServiceError> {
-        WalletApplication::check_api_wallet_exist(address).await
+    pub(crate) async fn check_api_wallet_exist_with_context(
+        ctx: &'static Context,
+        address: &str,
+    ) -> Result<bool, ServiceError> {
+        WalletApplication::check_api_wallet_exist(ctx, address).await
     }
 
-    pub(crate) async fn generate_password_proof(password: &str) -> Result<String, ServiceError> {
-        WalletApplication::generate_password_proof(password).await
+    pub(crate) async fn generate_password_proof(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<String, ServiceError> {
+        WalletApplication::generate_password_proof(ctx, password).await
     }
 }

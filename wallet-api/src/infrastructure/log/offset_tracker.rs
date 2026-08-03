@@ -44,7 +44,29 @@ impl OffsetTracker {
             let _ = f.read_to_string(&mut contents).await;
             if let Ok(tracker) = serde_json::from_str::<Self>(&contents) {
                 self.offset = tracker.offset;
+                self.uid = tracker.uid;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OffsetTracker;
+
+    #[tokio::test]
+    async fn load_restores_offset_and_uid() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("offset.json");
+
+        let mut tracker = OffsetTracker::new(path.clone()).await;
+        tracker.set_offset(42);
+        tracker.set_uid("log-file-uid".to_string());
+        tracker.save().await;
+
+        let loaded = OffsetTracker::new(path).await;
+
+        assert_eq!(loaded.get_offset(), 42);
+        assert_eq!(loaded.get_uid(), "log-file-uid");
     }
 }

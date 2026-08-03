@@ -1,6 +1,7 @@
 #![allow(deprecated)]
 
 use crate::{
+    context::Context,
     messaging::notify::{FrontendNotifyEvent, api_wallet::CollectFront, event::NotifyEvent},
     request::api_wallet::trans::ApiCollectReq,
 };
@@ -21,8 +22,56 @@ fn is_row_not_found_db_error(err: &wallet_database::Error) -> bool {
     )
 }
 
+fn collect_confirmation_status_matches(
+    current: ApiCollectStatus,
+    expected: ApiCollectStatus,
+    has_transaction_time: bool,
+) -> bool {
+    if has_transaction_time {
+        return true;
+    }
+    match expected {
+        ApiCollectStatus::Success => {
+            matches!(current, ApiCollectStatus::Success | ApiCollectStatus::ConfirmSuccessReport)
+        }
+        ApiCollectStatus::Failure => {
+            matches!(current, ApiCollectStatus::Failure | ApiCollectStatus::ConfirmFailureReport)
+        }
+        _ => current == expected,
+    }
+}
+
+async fn verify_collect_confirmation_after_zero_update(
+    pool: &wallet_database::ApiTransactionDbPool,
+    trade_no: &str,
+    expected: ApiCollectStatus,
+) -> Result<(), crate::error::service::ServiceError> {
+    let refreshed = ApiCollectRepo::get_api_collect_by_trade_no(pool, trade_no).await?;
+    if collect_confirmation_status_matches(
+        refreshed.status,
+        expected,
+        refreshed.transaction_time.is_some(),
+    ) {
+        tracing::info!(
+            trade_no = %trade_no,
+            persisted_status = %refreshed.status,
+            expected_status = %expected,
+            has_transaction_time = %refreshed.transaction_time.is_some(),
+            "Collect confirmation was already persisted or advanced concurrently"
+        );
+        return Ok(());
+    }
+
+    Err(crate::error::system::SystemError::Internal(format!(
+        "collect confirmation status mismatch: trade_no={trade_no}, expected={expected}, persisted={}",
+        refreshed.status
+    ))
+    .into())
+}
+
 impl ApiCollectDomain {
-    pub(crate) async fn collect_v2(
+    pub(crate) async fn collect_v2_with_ctx(
+        ctx: &'static Context,
         req: &ApiCollectReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = Instant::now();
@@ -39,7 +88,6 @@ impl ApiCollectDomain {
             start_time
         );
 
-        let ctx = crate::context::CONTEXT.get().unwrap();
         let api_wallet_pool = ctx.api_wallet_pool()?;
         let api_transaction_pool = ctx.api_transaction_pool()?;
 
@@ -101,7 +149,7 @@ impl ApiCollectDomain {
         });
         tracing::info!(trade_no=%req.trade_no, "发送前端通知");
         let notify_time = Instant::now();
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
         tracing::info!(trade_no=%req.trade_no, "前端通知发送成功, 耗时: {:?}", notify_time.elapsed());
 
         // 注意：在 v2 架构下，不再需要显式提交交易
@@ -109,9 +157,7 @@ impl ApiCollectDomain {
         // 交易执行完全由事实驱动，而不是命令式触发
 
         // 3. 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_collect_tx_handle().get_shadow_system()
             {
@@ -130,11 +176,14 @@ impl ApiCollectDomain {
     /// recover 的语义：
     /// 修复“手续费不足”这一事实，使交易重新具备构建条件
     /// 不做任何状态回滚，不保证一定继续推进
-    pub async fn recover(trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn recover(
+        ctx: &Context,
+        trade_no: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = Instant::now();
         tracing::info!(trade_no=%trade_no, "开始恢复归集交易");
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let pool = ctx.api_transaction_pool()?;
 
         // 1. 解除事实阻断（核心）
         tracing::info!(trade_no=%trade_no, "清除服务费需求标记");
@@ -143,9 +192,7 @@ impl ApiCollectDomain {
         tracing::info!(trade_no=%trade_no, "服务费需求标记清除成功, 耗时: {:?}", clear_time.elapsed());
 
         // 2. 快速触发 Shadow
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_collect_tx_handle().get_shadow_system()
             {
@@ -166,17 +213,16 @@ impl ApiCollectDomain {
     }
 
     pub async fn confirm_tx(
+        ctx: &Context,
         trade_no: &str,
         status: bool,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        let pool = ctx.api_transaction_pool()?;
         Self::confirm_tx_in_pool(&pool, trade_no, status, fail_type).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
+        if let Some(handles) = ctx.get_global_handles().await.upgrade() {
             if let Some(shadow_system) =
                 handles.get_global_processed_collect_tx_handle().get_shadow_system()
             {
@@ -301,12 +347,13 @@ impl ApiCollectDomain {
                 ApiCollectStatus::Success,
             )
             .await?;
-            if rows_affected != 1 {
-                tracing::error!(
-                    trade_no = trade_no,
-                    "api_collect_next_status returned unexpected rows_affected"
-                );
-                // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+            if rows_affected == 0 {
+                verify_collect_confirmation_after_zero_update(
+                    pool,
+                    trade_no,
+                    ApiCollectStatus::Success,
+                )
+                .await?;
             }
         } else {
             if tx.status == ApiCollectStatus::Failure
@@ -327,15 +374,24 @@ impl ApiCollectDomain {
                     "confirm transfer fee failed insufficient balance",
                 )
                 .await?;
-                if rows_affected != 1 {
-                    tracing::error!(
-                        trade_no = trade_no,
-                        "api_collect_next_status returned unexpected rows_affected: {}",
-                        rows_affected
-                    );
-                    // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+                if rows_affected == 0 {
+                    verify_collect_confirmation_after_zero_update(
+                        pool,
+                        trade_no,
+                        ApiCollectStatus::Failure,
+                    )
+                    .await?;
                 }
                 tracing::info!(trade_no=%trade_no, "交易状态更新成功");
+
+                let finished_rows = ApiCollectRepo::mark_chain_finished(pool, trade_no).await?;
+                if finished_rows != 1 {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        rows_affected = finished_rows,
+                        "pre-broadcast collect failure did not mark lifecycle finished"
+                    );
+                }
             } else {
                 tracing::info!(trade_no=%trade_no, "更新交易状态为失败");
                 let rows_affected = ApiCollectRepo::update_api_collect_next_status(
@@ -345,13 +401,13 @@ impl ApiCollectDomain {
                     ApiCollectStatus::Failure,
                 )
                 .await?;
-                if rows_affected != 1 {
-                    tracing::error!(
-                        trade_no = trade_no,
-                        "api_collect_next_status returned unexpected rows_affected: {}",
-                        rows_affected
-                    );
-                    // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+                if rows_affected == 0 {
+                    verify_collect_confirmation_after_zero_update(
+                        pool,
+                        trade_no,
+                        ApiCollectStatus::Failure,
+                    )
+                    .await?;
                 }
                 tracing::info!(trade_no=%trade_no, "交易状态更新成功");
             }
@@ -363,9 +419,12 @@ impl ApiCollectDomain {
     }
 }
 
+impl ApiCollectDomain {}
+
 #[cfg(test)]
 mod tests {
-    use super::is_row_not_found_db_error;
+    use super::{collect_confirmation_status_matches, is_row_not_found_db_error};
+    use wallet_database::entities::api_collect::ApiCollectStatus;
 
     #[test]
     fn collect_row_not_found_guard() {
@@ -376,5 +435,39 @@ mod tests {
 
         let other = wallet_database::Error::Database(wallet_database::DatabaseError::QueryFailed);
         assert!(!is_row_not_found_db_error(&other));
+    }
+
+    #[test]
+    fn collect_confirmation_status_accepts_concurrent_result_and_terminal_states() {
+        assert!(collect_confirmation_status_matches(
+            ApiCollectStatus::Success,
+            ApiCollectStatus::Success,
+            false
+        ));
+        assert!(collect_confirmation_status_matches(
+            ApiCollectStatus::ConfirmSuccessReport,
+            ApiCollectStatus::Success,
+            false
+        ));
+        assert!(collect_confirmation_status_matches(
+            ApiCollectStatus::Failure,
+            ApiCollectStatus::Failure,
+            false
+        ));
+        assert!(collect_confirmation_status_matches(
+            ApiCollectStatus::ConfirmFailureReport,
+            ApiCollectStatus::Failure,
+            false
+        ));
+        assert!(collect_confirmation_status_matches(
+            ApiCollectStatus::SendingTx,
+            ApiCollectStatus::Success,
+            true
+        ));
+        assert!(!collect_confirmation_status_matches(
+            ApiCollectStatus::SendingTxReport,
+            ApiCollectStatus::Success,
+            false
+        ));
     }
 }

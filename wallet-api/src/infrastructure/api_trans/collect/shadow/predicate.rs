@@ -1,5 +1,9 @@
 use smallvec::SmallVec;
-use wallet_database::entities::api_collect::ApiCollectEntity;
+use wallet_database::entities::{
+    api_collect::ApiCollectEntity, api_resource_gate::ApiResourceBlockReason,
+};
+
+use crate::domain::api_wallet::trans::shared_mechanism;
 
 use super::stage::CollectStage;
 
@@ -21,6 +25,7 @@ pub struct StageEval {
 pub fn evaluate_stage(stage: CollectStage, collect: &ApiCollectEntity) -> StageEval {
     match stage {
         CollectStage::NeedOrderAck => evaluate_need_order_ack(collect),
+        CollectStage::NeedResourceGate => evaluate_need_resource_gate(collect),
         CollectStage::CanBuild => evaluate_can_build(collect),
         CollectStage::NeedTxFeeResAck => evaluate_need_tx_fee_res_ack(collect),
         CollectStage::CanBroadcast => evaluate_can_broadcast(collect),
@@ -32,8 +37,86 @@ pub fn evaluate_stage(stage: CollectStage, collect: &ApiCollectEntity) -> StageE
     }
 }
 
-fn is_evm_chain_code(chain_code: &str) -> bool {
-    chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
+fn collect_resource_gate_released_for_build(collect: &ApiCollectEntity) -> bool {
+    !shared_mechanism::is_tron_chain(&collect.chain_code)
+        || collect.resource_gate_released_at.is_some()
+}
+
+fn evaluate_need_resource_gate(collect: &ApiCollectEntity) -> StageEval {
+    let mut reasons = SmallVec::new();
+
+    if collect.order_ack_sent_at.is_none() {
+        reasons.push(StageReason {
+            code: "order_ack_not_sent",
+            message: "Order ACK not sent yet".to_string(),
+        });
+    }
+
+    if !shared_mechanism::is_tron_chain(&collect.chain_code) {
+        reasons.push(StageReason {
+            code: "not_tron",
+            message: "Resource gate is only required for TRON collect".to_string(),
+        });
+    }
+
+    if collect.resource_gate_released_at.is_some() {
+        reasons.push(StageReason {
+            code: "resource_gate_released",
+            message: "Resource gate already released".to_string(),
+        });
+    }
+
+    if collect.resource_block_reason == Some(ApiResourceBlockReason::NeedPlatformDelegate) {
+        reasons.push(StageReason {
+            code: "waiting_platform_delegate_result",
+            message: "Waiting for platform delegation result".to_string(),
+        });
+    }
+
+    if collect.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)
+        && collect.resource_dependency_trade_no.is_some()
+    {
+        reasons.push(StageReason {
+            code: "waiting_local_delegate_task",
+            message: "Waiting for local delegation task".to_string(),
+        });
+    }
+
+    if collect.raw_tx.is_some() {
+        reasons.push(StageReason {
+            code: "raw_tx_exists",
+            message: "Raw tx already exists".to_string(),
+        });
+    }
+
+    if collect.err_code.is_some() {
+        reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
+    }
+
+    if collect.transaction_time.is_some() {
+        reasons.push(StageReason {
+            code: "transaction_time_exists",
+            message: "Transaction already committed".to_string(),
+        });
+    }
+
+    if collect.finished_at.is_some() {
+        reasons
+            .push(StageReason { code: "finished", message: "Order already finished".to_string() });
+    }
+
+    let can_advance = collect.order_ack_sent_at.is_some()
+        && shared_mechanism::is_tron_chain(&collect.chain_code)
+        && collect.resource_gate_released_at.is_none()
+        && (collect.resource_block_reason.is_none()
+            || (collect.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)
+                && collect.resource_dependency_trade_no.is_none()))
+        && collect.raw_tx.is_none()
+        && collect.err_code.is_none()
+        && collect.transaction_time.is_none()
+        && collect.finished_at.is_none();
+
+    StageEval { can_advance, reasons }
 }
 
 /// 当前周期是否已经真正进入过“服务费上传”阶段。
@@ -101,6 +184,7 @@ fn evaluate_need_order_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
 /// - raw_tx IS NULL
 /// - need_service_fee != true
+/// - TRON 订单必须先有 resource_gate_released_at
 /// - 如果曾经需要过服务费补充，则必须先完成 TxFeeResAck
 /// - transaction_time IS NULL
 /// - finished_at IS NULL
@@ -125,6 +209,13 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason {
             code: "need_service_fee",
             message: "Need service fee".to_string(),
+        });
+    }
+
+    if !collect_resource_gate_released_for_build(collect) {
+        reasons.push(StageReason {
+            code: "resource_gate_not_released",
+            message: "TRON resource gate has not been released yet".to_string(),
         });
     }
 
@@ -157,6 +248,7 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
     let can_advance = collect.order_ack_sent_at.is_some()
         && collect.raw_tx.is_none()
         && collect.need_service_fee != Some(true)
+        && collect_resource_gate_released_for_build(collect)
         && fee_res_ack_required_for_progress(collect)
         && collect.err_code.is_none()
         && collect.transaction_time.is_none()
@@ -248,8 +340,9 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - 当前周期已经进入服务费上传的交易：必须先完成 TxFeeResAck，才能广播
 fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
-    let evm_uncertain_in_progress =
-        is_evm_chain_code(&collect.chain_code) && collect.broadcast_uncertain_since_at.is_some();
+    let broadcast_uncertain_in_progress =
+        shared_mechanism::tracks_broadcast_uncertain_state(&collect.chain_code)
+            && collect.broadcast_uncertain_since_at.is_some();
 
     if collect.raw_tx.is_none() {
         reasons.push(StageReason {
@@ -281,10 +374,10 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
         });
     }
 
-    if evm_uncertain_in_progress {
+    if broadcast_uncertain_in_progress {
         reasons.push(StageReason {
-            code: "evm_broadcast_uncertain_in_progress",
-            message: "EVM tx is in uncertain state; recover owns progression".to_string(),
+            code: "broadcast_uncertain_in_progress",
+            message: "Tx is in uncertain broadcast state; recover owns progression".to_string(),
         });
     }
 
@@ -294,7 +387,7 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
         && fee_res_ack_required_for_progress(collect)
-        && !evm_uncertain_in_progress;
+        && !broadcast_uncertain_in_progress;
     // let can_advance = false;
     // tracing::info!(
     //     trade_no = %collect.trade_no,
@@ -323,10 +416,11 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
 /// - 只看不可逆事实是否缺失，不做时间推断
 fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
-    let evm_pre_broadcast_pending = is_evm_chain_code(&collect.chain_code)
-        && collect.raw_tx.is_some()
-        && collect.last_broadcast_at.is_none()
-        && collect.broadcast_uncertain_since_at.is_none();
+    let broadcast_not_attempted =
+        shared_mechanism::tracks_broadcast_uncertain_state(&collect.chain_code)
+            && collect.raw_tx.is_some()
+            && collect.last_broadcast_at.is_none()
+            && collect.broadcast_uncertain_since_at.is_none();
 
     if collect.tx_hash.is_none() {
         reasons.push(StageReason {
@@ -365,10 +459,11 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
-    if evm_pre_broadcast_pending {
+    if broadcast_not_attempted {
         reasons.push(StageReason {
-            code: "evm_broadcast_not_attempted",
-            message: "EVM raw_tx exists but broadcast has not been attempted yet".to_string(),
+            code: "broadcast_not_attempted",
+            message: "Raw tx exists but broadcast has not entered uncertain or executed yet"
+                .to_string(),
         });
     }
 
@@ -377,7 +472,7 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
         && collect.tx_exec_receipt_uploaded_at.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
-        && !evm_pre_broadcast_pending;
+        && !broadcast_not_attempted;
 
     StageEval { can_advance, reasons }
 }
@@ -513,6 +608,7 @@ fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
         && collect.service_fee_uploaded_at.is_none()
         && collect.err_code.is_none()
         && collect.finished_at.is_none()
+        && collect.resource_gate_released_at.is_some()
     {
         reasons.push(StageReason {
             code: "ready_for_service_fee_upload",
@@ -523,7 +619,8 @@ fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
     let can_advance = collect.need_service_fee == Some(true)
         && collect.service_fee_uploaded_at.is_none()
         && collect.err_code.is_none()
-        && collect.finished_at.is_none();
+        && collect.finished_at.is_none()
+        && collect.resource_gate_released_at.is_some();
 
     StageEval { can_advance, reasons }
 }
@@ -580,6 +677,12 @@ mod tests {
             post_confirm_tx_count: 0,
             err_code: None,
             err_msg: Some("".to_string()),
+            resource_check_at: None,
+            resource_gate_released_at: Some(Utc::now()),
+            resource_gate_result: None,
+            resource_block_reason: None,
+            resource_dependency_trade_no: None,
+            resource_dependency_type: None,
             order_ack_sent_at: Some(Utc::now()),
             raw_tx: Some("{}".to_string()),
             resource_consume: "0".to_string(),
@@ -626,6 +729,106 @@ mod tests {
         );
         assert!(!finished_eval.can_advance);
         assert!(finished_eval.reasons.iter().any(|reason| reason.code == "finished"));
+    }
+
+    #[test]
+    fn can_build_blocks_tron_until_resource_gate_is_released() {
+        let mut blocked = base_collect();
+        blocked.raw_tx = None;
+        blocked.need_service_fee = Some(false);
+        blocked.chain_code = "tron".to_string();
+        blocked.resource_gate_released_at = None;
+
+        let blocked_eval = evaluate_stage(CollectStage::CanBuild, &blocked);
+        assert!(!blocked_eval.can_advance);
+        assert!(
+            blocked_eval.reasons.iter().any(|reason| reason.code == "resource_gate_not_released")
+        );
+
+        let mut released = blocked.clone();
+        released.resource_gate_released_at = Some(Utc::now());
+        let released_eval = evaluate_stage(CollectStage::CanBuild, &released);
+        assert!(released_eval.can_advance);
+    }
+
+    #[test]
+    fn can_build_blocks_tron_when_service_fee_is_required() {
+        let mut blocked = base_collect();
+        blocked.raw_tx = None;
+        blocked.need_service_fee = Some(true);
+        blocked.chain_code = "tron".to_string();
+        blocked.resource_gate_released_at = Some(Utc::now());
+
+        let blocked_eval = evaluate_stage(CollectStage::CanBuild, &blocked);
+        assert!(!blocked_eval.can_advance);
+        assert!(blocked_eval.reasons.iter().any(|reason| reason.code == "need_service_fee"));
+    }
+
+    #[test]
+    fn need_resource_gate_advances_for_unreleased_tron_only() {
+        let mut blocked = base_collect();
+        blocked.raw_tx = None;
+        blocked.chain_code = "tron".to_string();
+        blocked.resource_gate_released_at = None;
+
+        let blocked_eval = evaluate_stage(CollectStage::NeedResourceGate, &blocked);
+        assert!(blocked_eval.can_advance);
+
+        let mut released = blocked.clone();
+        released.resource_gate_released_at = Some(Utc::now());
+        let released_eval = evaluate_stage(CollectStage::NeedResourceGate, &released);
+        assert!(!released_eval.can_advance);
+        assert!(released_eval.reasons.iter().any(|reason| reason.code == "resource_gate_released"));
+
+        let mut non_tron = blocked.clone();
+        non_tron.chain_code = "sol".to_string();
+        let non_tron_eval = evaluate_stage(CollectStage::NeedResourceGate, &non_tron);
+        assert!(!non_tron_eval.can_advance);
+    }
+
+    #[test]
+    fn need_resource_gate_waits_when_resource_dependency_is_in_progress() {
+        let mut waiting_platform = base_collect();
+        waiting_platform.raw_tx = None;
+        waiting_platform.chain_code = "tron".to_string();
+        waiting_platform.resource_gate_released_at = None;
+        waiting_platform.resource_block_reason = Some(ApiResourceBlockReason::NeedPlatformDelegate);
+        waiting_platform.resource_dependency_trade_no = Some("DL_1".to_string());
+
+        let platform_eval = evaluate_stage(CollectStage::NeedResourceGate, &waiting_platform);
+        assert!(!platform_eval.can_advance);
+        assert!(
+            platform_eval
+                .reasons
+                .iter()
+                .any(|reason| reason.code == "waiting_platform_delegate_result")
+        );
+
+        let mut waiting_local = waiting_platform.clone();
+        waiting_local.resource_block_reason = Some(ApiResourceBlockReason::NeedLocalDelegate);
+        waiting_local.resource_dependency_trade_no = Some("rsc_local_delegate_C".to_string());
+        let local_eval = evaluate_stage(CollectStage::NeedResourceGate, &waiting_local);
+        assert!(!local_eval.can_advance);
+        assert!(
+            local_eval.reasons.iter().any(|reason| reason.code == "waiting_local_delegate_task")
+        );
+
+        let mut needs_local_task = waiting_local.clone();
+        needs_local_task.resource_dependency_trade_no = None;
+        let retry_eval = evaluate_stage(CollectStage::NeedResourceGate, &needs_local_task);
+        assert!(retry_eval.can_advance);
+    }
+
+    #[test]
+    fn can_build_keeps_non_tron_resource_gate_optional() {
+        let mut ready = base_collect();
+        ready.raw_tx = None;
+        ready.need_service_fee = Some(false);
+        ready.chain_code = "sol".to_string();
+        ready.resource_gate_released_at = None;
+
+        let eval = evaluate_stage(CollectStage::CanBuild, &ready);
+        assert!(eval.can_advance);
     }
 
     #[test]
@@ -746,11 +949,11 @@ mod tests {
         assert!(eval.reasons.iter().any(|r| r.code == "error"));
     }
 
-    // --- CanBroadcast: EVM uncertain ---
+    // --- CanBroadcast: broadcast uncertain ---
 
     #[test]
-    fn can_broadcast_blocks_evm_uncertain_state() {
-        for chain in ["eth", "bnb"] {
+    fn can_broadcast_blocks_tracked_uncertain_state() {
+        for chain in ["tron", "eth", "bnb", "sol"] {
             let mut c = base_collect();
             c.chain_code = chain.to_string();
             c.broadcast_uncertain_since_at = Some(Utc::now());
@@ -759,44 +962,46 @@ mod tests {
             let eval = evaluate_stage(CollectStage::CanBroadcast, &c);
             assert!(!eval.can_advance, "{chain}: should block on uncertain state");
             assert!(
-                eval.reasons.iter().any(|r| r.code == "evm_broadcast_uncertain_in_progress"),
-                "{chain}: expected reason code evm_broadcast_uncertain_in_progress"
+                eval.reasons.iter().any(|r| r.code == "broadcast_uncertain_in_progress"),
+                "{chain}: expected reason code broadcast_uncertain_in_progress"
             );
         }
     }
 
     #[test]
-    fn can_broadcast_non_evm_not_blocked_by_uncertain_field() {
+    fn can_broadcast_untracked_chain_not_blocked_by_uncertain_field() {
         let mut c = base_collect();
-        c.chain_code = "tron".to_string();
+        c.chain_code = "unknown".to_string();
         c.broadcast_uncertain_since_at = Some(Utc::now());
         c.tx_exec_receipt_uploaded_at = None;
 
         let eval = evaluate_stage(CollectStage::CanBroadcast, &c);
-        // tron is not an EVM chain; the uncertain field alone must not block it
         assert!(eval.can_advance);
     }
 
-    // --- NeedRecover: EVM pre-broadcast guard ---
+    // --- NeedRecover: pre-broadcast guard ---
 
     #[test]
-    fn need_recover_blocks_evm_before_broadcast_attempted() {
+    fn need_recover_blocks_tracked_chain_before_broadcast_attempted() {
         let mut c = base_collect();
-        c.chain_code = "eth".to_string();
+        c.chain_code = "tron".to_string();
         c.raw_tx = Some("{}".to_string());
         c.last_broadcast_at = None;
         c.broadcast_uncertain_since_at = None;
         c.tx_exec_receipt_uploaded_at = None;
 
         let eval = evaluate_stage(CollectStage::NeedRecover, &c);
-        assert!(!eval.can_advance, "EVM with raw_tx but no broadcast yet should not recover");
-        assert!(eval.reasons.iter().any(|r| r.code == "evm_broadcast_not_attempted"));
+        assert!(
+            !eval.can_advance,
+            "tracked chain with raw_tx but no broadcast yet should not recover"
+        );
+        assert!(eval.reasons.iter().any(|r| r.code == "broadcast_not_attempted"));
     }
 
     #[test]
-    fn need_recover_allows_evm_after_broadcast_uncertain() {
+    fn need_recover_allows_tracked_chain_after_broadcast_uncertain() {
         let mut c = base_collect();
-        c.chain_code = "eth".to_string();
+        c.chain_code = "tron".to_string();
         c.raw_tx = Some("{}".to_string());
         c.broadcast_uncertain_since_at = Some(Utc::now());
         c.last_broadcast_at = None;

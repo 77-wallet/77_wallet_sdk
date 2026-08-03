@@ -29,6 +29,8 @@ pub(crate) enum EventType {
     AwmCmdFeeRes,
     #[serde(rename = "7")]
     AwmCmdDevChange,
+    #[serde(rename = "8")]
+    AwmCmdRscRes,
     // AddressUse,
 }
 
@@ -36,7 +38,8 @@ pub(crate) enum EventType {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ApiMqttStruct {
     pub(crate) event_no: String,
-    /// 1交易事件 / 2 交易最终结果 / 3 地址扩容 / 4平台解绑/ 5 激活钱包 / 6 交易手续费结果 / 7 设备变更
+    /// 1交易事件 / 2交易最终结果 / 3地址扩容 / 4平台解绑 / 5激活钱包
+    /// / 6交易手续费结果 / 7设备变更 / 8资源结果
     pub(crate) event_type: EventType,
     pub(crate) data: serde_json::Value,
     pub(crate) time: u64,
@@ -55,6 +58,8 @@ impl TaskTrait for ApiMqttStruct {
             EventType::AwmCmdFeeRes => TaskName::Known(KnownTaskName::AwmCmdFeeRes),
             EventType::AwmCmdActive => TaskName::Known(KnownTaskName::AwmCmdActive),
             EventType::AwmCmdDevChange => TaskName::Known(KnownTaskName::AwmCmdDevChange),
+            // 资源结果复用交易结果任务队列通道，实际业务分流由 tradeType 完成。
+            EventType::AwmCmdRscRes => TaskName::Known(KnownTaskName::AwmOrderTransRes),
         }
     }
 
@@ -66,42 +71,51 @@ impl TaskTrait for ApiMqttStruct {
         Ok(Some(wallet_utils::serde_func::serde_to_string(self)?))
     }
 
-    async fn execute(&self, id: &str) -> Result<(), ServiceError> {
+    async fn execute(
+        &self,
+        id: &str,
+        ctx: &'static crate::context::Context,
+    ) -> Result<(), ServiceError> {
         match &self.event_type {
             EventType::AwmOrderTrans => {
                 let data: AwmOrderTransMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmOrderTransRes => {
                 let data: AwmOrderTransResMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
+            }
+            EventType::AwmCmdRscRes => {
+                let data: AwmOrderTransResMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                data.exec_resource_result(ctx, id).await?
             }
             EventType::AwmCmdAddrExpand => {
                 let data: AwmCmdAddrExpandMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmCmdUidUnbind => {
                 let data: AwmCmdUidUnbindMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmCmdFeeRes => {
                 let data: AwmCmdFeeResMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmCmdActive => {
                 let data: AwmCmdActiveMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
             EventType::AwmCmdDevChange => {
                 let data: AwmCmdDevChangeMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                data.exec(id).await?
+                data.exec(ctx, id).await?
             }
         }
 
@@ -110,5 +124,26 @@ impl TaskTrait for ApiMqttStruct {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ApiMqttStruct, EventType};
+    use crate::infrastructure::task_queue::task::TaskTrait;
+    use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
+
+    #[test]
+    fn awm_cmd_rsc_res_event_type_uses_resource_result_route() {
+        let payload = r#"{
+            "eventNo":"2056995714306813952",
+            "eventType":"8",
+            "data":{"tradeNo":"C2056937784291237888","tradeType":"5","status":true,"failType":0,"uid":"uid"},
+            "time":1779260970
+        }"#;
+
+        let api_mqtt: ApiMqttStruct = serde_json::from_str(payload).unwrap();
+        assert!(matches!(api_mqtt.event_type, EventType::AwmCmdRscRes));
+        assert!(matches!(api_mqtt.get_name(), TaskName::Known(KnownTaskName::AwmOrderTransRes)));
     }
 }

@@ -63,15 +63,18 @@ use wallet_utils::{
 };
 
 pub struct SwapServer {
+    ctx: &'static crate::context::Context,
     pub client: SwapClient,
 }
 
 impl SwapServer {
-    pub fn new() -> Result<Self, crate::error::service::ServiceError> {
-        let url = crate::context::CONTEXT.get().unwrap().get_aggregate_api();
+    pub fn new(
+        ctx: &'static crate::context::Context,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let url = ctx.get_aggregate_api();
         let swap_client = SwapClient::new(&url);
 
-        Ok(Self { client: swap_client? })
+        Ok(Self { ctx, client: swap_client? })
     }
 }
 
@@ -82,9 +85,9 @@ impl SwapServer {
         token_in: String,
     ) -> Result<DefaultQuoteResp, crate::error::service::ServiceError> {
         let code = ChainCode::try_from(chain_code.as_str())?;
-        let token_addr = CoinDomain::get_stable_coin(code).await?;
+        let token_addr = CoinDomain::get_stable_coin_with_ctx(self.ctx, code).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let stable_coin = CoinRepo::coin_by_chain_token_key(
             &chain_code,
@@ -141,6 +144,7 @@ impl SwapServer {
     ) -> Result<(BalanceStr, BalanceStr), crate::error::service::ServiceError> {
         // 查询两次后端
         let bal_in = TokenCurrencyGetter::get_bal_by_backend(
+            self.ctx,
             &req.chain_code,
             &req.token_in.token_addr,
             &req.amount_in,
@@ -149,6 +153,7 @@ impl SwapServer {
         .await?;
 
         let bal_out = TokenCurrencyGetter::get_bal_by_backend(
+            self.ctx,
             &req.chain_code,
             &req.token_out.token_addr,
             &format_to_string(amount_out, req.token_out.decimals as u8)?,
@@ -213,14 +218,16 @@ impl SwapServer {
             ApiQuoteResp::new_with_default_slippage(&req, vec![dex_route_list], bal_in, bal_out);
         res.set_amount_out(amount_out, req.token_out.decimals);
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let assets = self
             .token0_assets(&core_pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
             .await?;
 
         if self.check_bal(&req.amount_in, &assets.balance)? {
-            let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+            let adapter =
+                ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
+                    .await?;
             let main_coin = CoinRepo::main_coin(&req.chain_code, &core_pool).await?;
 
             let (consumer, content) = match tx_type {
@@ -232,7 +239,7 @@ impl SwapServer {
                         amount: req.amount_in.clone(),
                         chain_code: req.chain_code.clone(),
                     };
-                    adapter.withdraw_fee(params, &main_coin).await?
+                    adapter.withdraw_fee(self.ctx, params, &main_coin).await?
                 }
                 SwapInnerType::Deposit => {
                     tracing::warn!("deposit");
@@ -242,7 +249,7 @@ impl SwapServer {
                         amount: req.amount_in.clone(),
                         chain_code: req.chain_code.clone(),
                     };
-                    adapter.deposit_fee(params, &main_coin).await?
+                    adapter.deposit_fee(self.ctx, params, &main_coin).await?
                 }
                 SwapInnerType::Swap => {
                     return Err(crate::error::service::ServiceError::Parameter(
@@ -342,7 +349,7 @@ impl SwapServer {
         }
 
         // 判断余额是否足 进行模拟
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let assets = self
             .token0_assets(&core_pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
@@ -358,7 +365,7 @@ impl SwapServer {
         fee_setting: &SolFeeSetting,
         resp: &mut ApiQuoteResp,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let main_coin = CoinRepo::main_coin(&resp.chain_code, &core_pool).await?;
 
@@ -370,6 +377,7 @@ impl SwapServer {
         };
 
         let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            self.ctx,
             &currency,
             &resp.chain_code,
             &main_coin.symbol,
@@ -415,7 +423,9 @@ impl SwapServer {
             bal_out,
         );
 
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
+                .await?;
 
         // sol 单独获取手续费
         let sol_fee = if req.is_sol() {
@@ -485,7 +495,7 @@ impl SwapServer {
         res: &mut ApiQuoteResp,
         adapter: &TransactionAdapter,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let main_coin = CoinRepo::main_coin(&req.chain_code, &core_pool).await?;
 
@@ -504,8 +514,17 @@ impl SwapServer {
 
         let instance = time::Instant::now();
         // 模拟报价(consumer 资源的消耗，，content 费用的具体内容)
-        let (amount_out, consumer, content) =
-            adapter.swap_quote(req, quote_resp, &main_coin.symbol, instructions).await?;
+        let backend_api = self.ctx.get_global_backend_api();
+        let (amount_out, consumer, content) = adapter
+            .swap_quote_with_ctx(
+                self.ctx,
+                req,
+                quote_resp,
+                &main_coin.symbol,
+                instructions,
+                backend_api.as_ref(),
+            )
+            .await?;
 
         // 最终模拟交易能够获取多少 amount_out
         res.set_amount_out(amount_out, req.token_out.decimals);
@@ -534,12 +553,13 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::Swap,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
         let key =
-            ChainTransDomain::get_key(&req.recipient, &req.chain_code, &password, &None).await?;
+            ChainTransDomain::get_key(self.ctx, &req.recipient, &req.chain_code, &password, &None)
+                .await?;
 
         // 查询余额是否足够
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let token_in = AssetsRepo::get_by_addr_token(
             &core_pool,
@@ -570,8 +590,10 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::Swap,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
+                .await?;
 
         let chain_code = ChainCode::try_from(req.chain_code.as_str())?;
         let swap_inner_type =
@@ -644,6 +666,7 @@ impl SwapServer {
         .await?;
         if out_assets.is_none() {
             AssetsDomain::swap_sync_assets(
+                self.ctx,
                 token_out,
                 req.recipient.clone(),
                 req.chain_code.clone(),
@@ -656,7 +679,8 @@ impl SwapServer {
         new_bill.hash = resp.tx_hash.clone();
         new_bill.resource_consume = resp.resource_consume()?;
         new_bill.transaction_fee = resp.fee;
-        BillDomain::create_bill(new_bill).await?;
+        let pool = self.ctx.core_pool()?;
+        BillDomain::create_bill(&pool, new_bill).await?;
 
         Ok(resp.tx_hash)
     }
@@ -665,7 +689,7 @@ impl SwapServer {
         &self,
         req: SwapTokenListReq,
     ) -> Result<Pagination<SwapTokenInfo>, crate::error::service::ServiceError> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let chain_code = (!req.chain_code.is_empty()).then(|| req.chain_code.clone());
 
         let chain_codes = chain_code.into_iter().collect::<Vec<_>>();
@@ -728,7 +752,7 @@ impl SwapServer {
             resp.data.push(token_info);
         }
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = self.ctx.get_global_backend_api();
         let tokens = backend_api.token_query_price(&req).await?.list;
         for token in tokens {
             CoinRepo::update_price_unit1(
@@ -746,8 +770,8 @@ impl SwapServer {
     }
 
     pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::error::service::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let version = ConfigDomain::get_app_version().await?.app_version;
+        let backend_api = self.ctx.get_global_backend_api();
+        let version = ConfigDomain::get_app_version(self.ctx).await?.app_version;
         let result = backend_api.support_chain_list_v2(version).await?;
 
         Ok(result.support_chain)
@@ -758,7 +782,9 @@ impl SwapServer {
         req: ApproveReq,
         is_cancel: bool,
     ) -> Result<EstimateFeeResp, crate::error::service::ServiceError> {
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
+                .await?;
 
         let (value, tx_kind) = if is_cancel {
             (alloy::primitives::U256::ZERO, BillKind::UnApprove)
@@ -766,7 +792,7 @@ impl SwapServer {
             (alloy::primitives::U256::MAX, BillKind::Approve)
         };
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let main_coin = CoinRepo::main_coin(&req.chain_code, &core_pool).await?;
 
@@ -788,7 +814,7 @@ impl SwapServer {
             ));
         }
 
-        let fee = adapter.approve_fee(&req, value, &main_coin.symbol).await?;
+        let fee = adapter.approve_fee(self.ctx, &req, value, &main_coin.symbol).await?;
 
         let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code.clone(), fee);
         Ok(fee_resp)
@@ -800,7 +826,7 @@ impl SwapServer {
         password: String,
     ) -> Result<String, crate::error::service::ServiceError> {
         // get coin
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let coin = CoinRepo::coin_by_chain_token_key(
             &req.chain_code,
@@ -814,9 +840,11 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::Approve,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
+                .await?;
 
         // 本地数据库中是否有授权的交易
         let last_bill = BillRepo::last_approve_bill(
@@ -867,19 +895,20 @@ impl SwapServer {
         }
 
         let private_key =
-            ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
+            ChainTransDomain::get_key(self.ctx, &req.from, &req.chain_code, &password, &None)
+                .await?;
 
         // 广播交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
             wallet_database::entities::bill::BillKind::Approve,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         let value = req.get_value(coin.decimals)?;
         let resp = adapter.approve(&req, private_key, value).await?;
 
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let account =
             AccountRepo::account_with_wallet(&req.from, &req.chain_code, core_pool).await?;
 
@@ -895,7 +924,8 @@ impl SwapServer {
             &resp.tx_hash.clone(),
             req.get_approve_type(),
         );
-        TaskQueueDomain::send_or_to_queue(backend_req, SWAP_APPROVE_SAVE).await?;
+        TaskQueueDomain::send_or_to_queue_with_ctx(self.ctx, backend_req, SWAP_APPROVE_SAVE)
+            .await?;
 
         // 写入本地交易
         let mut new_bill: NewBillEntity = BillRepo::build_bill_from(req);
@@ -903,7 +933,8 @@ impl SwapServer {
         new_bill.symbol = coin.symbol;
         new_bill.resource_consume = resp.resource_consume()?;
         new_bill.transaction_fee = resp.fee;
-        BillDomain::create_bill(new_bill).await?;
+        let pool = self.ctx.core_pool()?;
+        BillDomain::create_bill(&pool, new_bill).await?;
 
         Ok(resp.tx_hash)
     }
@@ -915,12 +946,12 @@ impl SwapServer {
     ) -> Result<Vec<ApproveList>, crate::error::service::ServiceError> {
         let index_map = AccountIndexMap::from_account_id(account_id)?;
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = self.ctx.get_global_backend_api();
         let resp = backend.approve_list(uid, index_map.input_index).await?;
 
         let mut res = vec![];
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let mut used_ids = vec![];
         for item in resp.list.into_iter() {
@@ -965,7 +996,9 @@ impl SwapServer {
             }
         }
 
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&item.chain_code).await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &item.chain_code)
+                .await?;
         let allowance =
             adapter.allowance(&item.owner_address, &item.token_addr, &item.spender).await?;
 
@@ -998,13 +1031,16 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::UnApprove,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         let private_key =
-            ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+            ChainTransDomain::get_key(self.ctx, &req.from, &req.chain_code, &password, &None)
+                .await?;
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &req.chain_code)
+                .await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
         let coin = CoinRepo::coin_by_chain_token_key(
             &req.chain_code,
@@ -1035,7 +1071,7 @@ impl SwapServer {
             wallet_database::entities::bill::BillKind::Approve,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
         let value = alloy::primitives::U256::ZERO;
         let resp = adapter.approve(&req, private_key, value).await?;
 
@@ -1045,7 +1081,7 @@ impl SwapServer {
             owner_address: req.from.clone(),
             tx_hash: resp.tx_hash.clone(),
         };
-        TaskQueueDomain::send_or_to_queue(backend, SWAP_APPROVE_CANCEL).await?;
+        TaskQueueDomain::send_or_to_queue_with_ctx(self.ctx, backend, SWAP_APPROVE_CANCEL).await?;
         // 写入本地交易
         let mut new_bill: NewBillEntity = BillRepo::build_bill_from(req);
         new_bill.hash = resp.tx_hash.clone();
@@ -1053,7 +1089,8 @@ impl SwapServer {
         new_bill.tx_kind = wallet_database::entities::bill::BillKind::UnApprove;
         new_bill.resource_consume = resp.resource_consume()?;
         new_bill.transaction_fee = resp.fee;
-        BillDomain::create_bill(new_bill).await?;
+        let pool = self.ctx.core_pool()?;
+        BillDomain::create_bill(&pool, new_bill).await?;
 
         Ok(resp.tx_hash)
     }

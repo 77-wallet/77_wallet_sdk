@@ -1,15 +1,26 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
-use crate::infrastructure::task_queue::{
-    backend::{BackendApiTask, BackendApiTaskData},
-    task::Tasks,
+use crate::{
+    context::Context,
+    domain,
+    infrastructure::{
+        runtime::time::with_timeout,
+        task_queue::{
+            backend::{BackendApiTask, BackendApiTaskData},
+            task::Tasks,
+        },
+    },
 };
 use wallet_database::{
     CoreDbPool,
-    entities::node::NodeCreateVo,
+    entities::node::{NodeCreateVo, NodeEntity},
     repositories::{chain::ChainRepo, node::NodeRepo},
 };
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
+
+const NODE_DYNAMIC_DATA_TIMEOUT: Duration = Duration::from_secs(2);
+const NODE_DYNAMIC_DATA_UNAVAILABLE_DELAY: u64 = 0;
+const NODE_DYNAMIC_DATA_UNAVAILABLE_BLOCK_HEIGHT: i64 = -1;
 
 pub struct NodeDomain;
 
@@ -37,16 +48,91 @@ impl NodeDomain {
     }
 
     pub fn get_env_network_name() -> String {
-        if let Ok(ctx) = crate::context::get_context() {
-            return ctx.chain_network().as_str().to_owned();
-        }
-
         let mut env = "mainnet".to_owned();
         #[cfg(any(feature = "test", feature = "dev"))]
         {
             env = "testnet".to_owned();
         }
         env
+    }
+
+    pub(crate) async fn probe_dynamic_data_with_timeout(
+        ctx: &'static Context,
+        chain_code: &str,
+        node: &NodeEntity,
+    ) -> Result<
+        crate::response_vo::standard_wallet::chain::NodeDynData,
+        crate::error::service::ServiceError,
+    > {
+        let chain_instance =
+            domain::chain::adapter::ChainAdapterFactory::get_node_transaction_adapter_with_ctx(
+                &ctx,
+                chain_code,
+                &node.rpc_url,
+                &node.network,
+            )
+            .await?;
+
+        let start = std::time::Instant::now();
+        let block_height = match with_timeout(NODE_DYNAMIC_DATA_TIMEOUT, chain_instance.block_num())
+            .await
+        {
+            Ok(Ok(height)) => height as i64,
+            Ok(Err(err)) => {
+                tracing::warn!(node_id = %node.node_id, error = %err, "node dynamic probe failed");
+                NODE_DYNAMIC_DATA_UNAVAILABLE_BLOCK_HEIGHT
+            }
+            Err(_) => {
+                tracing::warn!(node_id = %node.node_id, "node dynamic probe timed out");
+                NODE_DYNAMIC_DATA_UNAVAILABLE_BLOCK_HEIGHT
+            }
+        };
+        let delay = if block_height == NODE_DYNAMIC_DATA_UNAVAILABLE_BLOCK_HEIGHT {
+            NODE_DYNAMIC_DATA_UNAVAILABLE_DELAY
+        } else {
+            (start.elapsed().as_millis() / 2) as u64
+        };
+
+        Ok(Self::build_dynamic_data(chain_code, node, delay, block_height))
+    }
+
+    pub(crate) async fn probe_dynamic_data(
+        ctx: &'static Context,
+        chain_code: &str,
+        node: &NodeEntity,
+    ) -> Result<
+        crate::response_vo::standard_wallet::chain::NodeDynData,
+        crate::error::service::ServiceError,
+    > {
+        let chain_instance =
+            domain::chain::adapter::ChainAdapterFactory::get_node_transaction_adapter_with_ctx(
+                &ctx,
+                chain_code,
+                &node.rpc_url,
+                &node.network,
+            )
+            .await?;
+
+        let start = std::time::Instant::now();
+        let block_height = chain_instance.block_num().await.ok().map(|h| h as i64).unwrap_or(-1);
+        let delay = (start.elapsed().as_millis() / 2) as u64;
+
+        Ok(Self::build_dynamic_data(chain_code, node, delay, block_height))
+    }
+
+    pub(crate) fn build_dynamic_data(
+        chain_code: &str,
+        node: &NodeEntity,
+        delay: u64,
+        block_height: i64,
+    ) -> crate::response_vo::standard_wallet::chain::NodeDynData {
+        crate::response_vo::standard_wallet::chain::NodeDynData {
+            chain_code: chain_code.to_string(),
+            node_id: node.node_id.clone(),
+            name: node.name.clone(),
+            delay,
+            block_height,
+        }
     }
 
     pub(crate) async fn upsert_chain_rpc(
@@ -115,7 +201,6 @@ impl NodeDomain {
     //         &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
     //     )?;
     //
-    //     let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
     //
     //     let backend_chains = backend_api
     //         .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
@@ -126,8 +211,10 @@ impl NodeDomain {
     //     Ok(backend_chains)
     // }
 
-    pub(crate) async fn init_sync_nodes() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+    pub(crate) async fn init_sync_nodes_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = ctx.core_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes: Vec<_> =
             local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
@@ -138,17 +225,19 @@ impl NodeDomain {
                 wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
                 &ChainRpcListReq::new(chain_codes),
             )?;
-            Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
+            Tasks::new().push(BackendApiTask::BackendApi(req)).send_with_ctx(ctx).await?;
         }
 
         Ok(())
     }
 
-    pub async fn init_load_default_nodes() -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_load_default_nodes_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let profile = crate::config::Config::active_feature_profile();
         let node_lists = Self::default_node_lists_for_feature(profile)?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = ctx.core_pool()?;
         tracing::info!(
             "initializing default nodes profile={}, visible_networks={:?}",
             profile,
@@ -188,6 +277,54 @@ impl NodeDomain {
         )
         .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        NODE_DYNAMIC_DATA_UNAVAILABLE_BLOCK_HEIGHT, NODE_DYNAMIC_DATA_UNAVAILABLE_DELAY, NodeDomain,
+    };
+    use wallet_database::entities::node::NodeEntity;
+
+    fn test_node() -> NodeEntity {
+        NodeEntity {
+            node_id: "node-a".to_string(),
+            name: "Node A".to_string(),
+            chain_code: "tron".to_string(),
+            rpc_url: "https://rpc.test".to_string(),
+            ws_url: "https://rpc.test".to_string(),
+            http_url: String::new(),
+            network: "mainnet".to_string(),
+            status: 1,
+            is_local: 0,
+            created_at: sqlx::types::chrono::Utc::now(),
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn node_dynamic_data_preserves_node_identity() {
+        let data = NodeDomain::build_dynamic_data("tron", &test_node(), 15, 128);
+
+        assert_eq!(data.chain_code, "tron");
+        assert_eq!(data.node_id, "node-a");
+        assert_eq!(data.name, "Node A");
+        assert_eq!(data.delay, 15);
+        assert_eq!(data.block_height, 128);
+    }
+
+    #[test]
+    fn node_dynamic_data_uses_existing_unavailable_sentinel() {
+        let data = NodeDomain::build_dynamic_data(
+            "tron",
+            &test_node(),
+            NODE_DYNAMIC_DATA_UNAVAILABLE_DELAY,
+            NODE_DYNAMIC_DATA_UNAVAILABLE_BLOCK_HEIGHT,
+        );
+
+        assert_eq!(data.delay, 0);
+        assert_eq!(data.block_height, -1);
     }
 }
 

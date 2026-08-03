@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::api_wallet::wallet::ApiWalletDomain,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
@@ -14,12 +15,13 @@ pub struct AwmCmdUidUnbindMsg {
 impl AwmCmdUidUnbindMsg {
     pub(crate) async fn exec(
         &self,
+        ctx: &'static Context,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let Self { uid } = self;
-        ApiWalletDomain::unbind_uid(uid).await?;
+        ApiWalletDomain::new(ctx).unbind_uid(uid).await?;
         let data = NotifyEvent::AwmCmdUidUnbind(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
 
         Ok(())
     }

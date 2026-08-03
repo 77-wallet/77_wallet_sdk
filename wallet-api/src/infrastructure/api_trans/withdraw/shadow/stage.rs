@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AdvancementPoint {
     NeedTxAck,
+    NeedResourceGate,
     CanBuild,
     CanBroadcast,
     NeedRecover,
@@ -14,6 +15,7 @@ pub enum AdvancementPoint {
 /// - try_advance 必须使用此常量，确保行为一致性
 pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
     AdvancementPoint::NeedTxAck,
+    AdvancementPoint::NeedResourceGate,
     AdvancementPoint::CanBuild,
     AdvancementPoint::CanBroadcast,
     AdvancementPoint::NeedRecover,
@@ -25,6 +27,7 @@ impl AdvancementPoint {
     pub fn base_severity(&self) -> u8 {
         match self {
             AdvancementPoint::NeedTxAck => 1,
+            AdvancementPoint::NeedResourceGate => 1,
             AdvancementPoint::CanBuild => 0,
             AdvancementPoint::CanBroadcast => 0,
             AdvancementPoint::NeedRecover => 2,
@@ -37,6 +40,7 @@ impl AdvancementPoint {
     pub fn wait_threshold_minutes(&self) -> i64 {
         match self {
             AdvancementPoint::NeedTxAck => 2,
+            AdvancementPoint::NeedResourceGate => 2,
             AdvancementPoint::CanBuild => 5,
             AdvancementPoint::CanBroadcast => 5,
             AdvancementPoint::NeedRecover => 10,
@@ -49,6 +53,7 @@ impl AdvancementPoint {
     pub fn next_expected_fact(&self) -> &'static str {
         match self {
             AdvancementPoint::NeedTxAck => "tx_ack_sent_at",
+            AdvancementPoint::NeedResourceGate => "resource_gate_released_at",
             AdvancementPoint::CanBuild => "raw_tx",
             AdvancementPoint::CanBroadcast => "last_broadcast_at",
             AdvancementPoint::NeedRecover => "transaction_time",

@@ -92,6 +92,7 @@ pub struct Context {
     core_db: Arc<wallet_database::SqliteContext>, // data.db
     api_wallet_db: Arc<wallet_database::SqliteContext>, // api_wallet.db
     api_transaction_db: Arc<wallet_database::SqliteContext>, // api_transaction.db
+    api_resource_db: Arc<wallet_database::SqliteContext>, // api_resource.db
     task_db: Arc<wallet_database::SqliteContext>, // task.db
     oss_client: Arc<wallet_oss::oss_client::OssClient>,
     frontend_notify: Arc<RwLock<FrontendNotifySender>>,
@@ -108,6 +109,19 @@ pub struct Context {
     background_task_pool: Arc<BackgroundTaskPool>,
 }
 
+fn active_backend_urls(config: &crate::config::Config) -> (String, String) {
+    if cfg!(feature = "prod") {
+        (config.backend_api.prod_url.clone(), config.aggregate_api.prod_url.clone())
+    } else if cfg!(feature = "dev") {
+        (config.backend_api.dev_url.clone(), config.aggregate_api.dev_url.clone())
+    } else if cfg!(feature = "test") {
+        (config.backend_api.test_url.clone(), config.aggregate_api.test_url.clone())
+    } else {
+        let offline_url = "http://127.0.0.1:9".to_string();
+        (offline_url.clone(), offline_url)
+    }
+}
+
 impl Context {
     async fn new(
         sn: &str,
@@ -121,26 +135,14 @@ impl Context {
         let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
         let api_wallet_db = SqliteContext::new(db_path, Some("api_wallet.db")).await?;
         let api_transaction_db = SqliteContext::new(db_path, Some("api_transaction.db")).await?;
+        let api_resource_db = SqliteContext::new(db_path, Some("api_resource.db")).await?;
         let task_db = SqliteContext::new(db_path, Some("task.db")).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
         tracing::info!(" ======================================  client id: {}", client_id);
 
         let chain_network = crate::config::Config::feature_chain_network();
-
-        #[cfg(feature = "dev")]
-        let api_url = config.backend_api.dev_url.clone();
-        #[cfg(feature = "test")]
-        let api_url = config.backend_api.test_url.clone();
-        #[cfg(feature = "prod")]
-        let api_url = config.backend_api.prod_url.clone();
-
-        #[cfg(feature = "dev")]
-        let aggregate_api = config.aggregate_api.dev_url.clone();
-        #[cfg(feature = "test")]
-        let aggregate_api = config.aggregate_api.test_url.clone();
-        #[cfg(feature = "prod")]
-        let aggregate_api = config.aggregate_api.prod_url.clone();
+        let (api_url, aggregate_api) = active_backend_urls(&config);
 
         tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
         tracing::info!(
@@ -155,7 +157,7 @@ impl Context {
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let backend_api = Arc::new(wallet_transport_backend::api::BackendApi::new(
-            Some(api_url.to_string()),
+            Some(api_url.clone()),
             Some(headers_opt),
             aes_cbc_cryptor,
         )?);
@@ -174,6 +176,7 @@ impl Context {
             core_db,
             api_wallet_db,
             api_transaction_db,
+            api_resource_db,
             task_db,
         )
         .await
@@ -191,26 +194,14 @@ impl Context {
         let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
         let api_wallet_db = SqliteContext::new(db_path, Some("api_wallet.db")).await?;
         let api_transaction_db = SqliteContext::new(db_path, Some("api_transaction.db")).await?;
+        let api_resource_db = SqliteContext::new(db_path, Some("api_resource.db")).await?;
         let task_db = SqliteContext::new(db_path, Some("task.db")).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
         tracing::info!(" ======================================  client id: {}", client_id);
 
         let chain_network = crate::config::Config::feature_chain_network();
-
-        #[cfg(feature = "dev")]
-        let api_url = config.backend_api.dev_url.clone();
-        #[cfg(feature = "test")]
-        let api_url = config.backend_api.test_url.clone();
-        #[cfg(feature = "prod")]
-        let api_url = config.backend_api.prod_url.clone();
-
-        #[cfg(feature = "dev")]
-        let aggregate_api = config.aggregate_api.dev_url.clone();
-        #[cfg(feature = "test")]
-        let aggregate_api = config.aggregate_api.test_url.clone();
-        #[cfg(feature = "prod")]
-        let aggregate_api = config.aggregate_api.prod_url.clone();
+        let (api_url, aggregate_api) = active_backend_urls(&config);
 
         tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
         tracing::info!(
@@ -225,7 +216,7 @@ impl Context {
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let backend_api = Arc::new(wallet_transport_backend::api::BackendApi::new(
-            Some(api_url.to_string()),
+            Some(api_url.clone()),
             Some(headers_opt),
             aes_cbc_cryptor,
         )?);
@@ -243,6 +234,7 @@ impl Context {
             core_db,
             api_wallet_db,
             api_transaction_db,
+            api_resource_db,
             task_db,
         )
         .await
@@ -261,6 +253,7 @@ impl Context {
         core_db: SqliteContext,
         api_wallet_db: SqliteContext,
         api_transaction_db: SqliteContext,
+        api_resource_db: SqliteContext,
         task_db: SqliteContext,
     ) -> Result<Context, crate::error::service::ServiceError> {
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
@@ -288,6 +281,7 @@ impl Context {
             core_db: Arc::new(core_db),
             api_wallet_db: Arc::new(api_wallet_db),
             api_transaction_db: Arc::new(api_transaction_db),
+            api_resource_db: Arc::new(api_resource_db),
             task_db: Arc::new(task_db),
             frontend_notify,
             oss_client: Arc::new(oss_client),
@@ -388,6 +382,10 @@ impl Context {
         &self.api_transaction_db
     }
 
+    pub(crate) fn api_resource_db(&self) -> &SqliteContext {
+        &self.api_resource_db
+    }
+
     pub(crate) fn api_funds_db(&self) -> &SqliteContext {
         self.api_transaction_db()
     }
@@ -415,6 +413,13 @@ impl Context {
     ) -> Result<wallet_database::ApiTransactionDbPool, crate::error::service::ServiceError> {
         let pool = self.api_transaction_db.get_pool()?;
         Ok(wallet_database::ApiTransactionDbPool::new(pool))
+    }
+
+    pub(crate) fn api_resource_pool(
+        &self,
+    ) -> Result<wallet_database::ApiResourceDbPool, crate::error::service::ServiceError> {
+        let pool = self.api_resource_db.get_pool()?;
+        Ok(wallet_database::ApiResourceDbPool::new(pool))
     }
 
     pub(crate) fn task_db(&self) -> &SqliteContext {

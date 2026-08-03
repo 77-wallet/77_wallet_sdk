@@ -26,7 +26,7 @@ impl StrategyService {
         backend_api.save_collect_strategy(&req).await?;
 
         // 2. 保存到本地数据库
-        StrategyDomain::save_local_collect_strategy(uid, &req).await?;
+        StrategyDomain::save_local_collect_strategy(self.ctx, uid, &req).await?;
 
         Ok(())
     }
@@ -36,7 +36,7 @@ impl StrategyService {
         uid: &str,
     ) -> Result<CollectionStrategyResp, crate::error::service::ServiceError> {
         // 使用本地优先的策略查询逻辑
-        let strategy = StrategyDomain::query_collect_strategy(uid).await?;
+        let strategy = StrategyDomain::query_collect_strategy_with_ctx(self.ctx, uid).await?;
 
         Ok(strategy)
     }
@@ -54,7 +54,7 @@ impl StrategyService {
         backend_api.save_withdrawal_strategy(&req).await?;
 
         // 2. 保存到本地数据库
-        StrategyDomain::save_local_withdraw_strategy(uid, &req).await?;
+        StrategyDomain::save_local_withdraw_strategy(self.ctx, uid, &req).await?;
 
         Ok(())
     }
@@ -64,7 +64,7 @@ impl StrategyService {
         uid: &str,
     ) -> Result<WithdrawStrategyResp, crate::error::service::ServiceError> {
         // 使用本地优先的策略查询逻辑
-        let strategy = StrategyDomain::query_withdraw_strategy(uid).await?;
+        let strategy = StrategyDomain::query_withdraw_strategy_with_ctx(self.ctx, uid).await?;
 
         Ok(strategy)
     }

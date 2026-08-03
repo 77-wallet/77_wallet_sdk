@@ -22,26 +22,69 @@ use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 /// 用于 trade_no + intent_type 级别的互斥执行
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
-    BuildTx(String),
-    BroadcastTx(String),
+    EstimateFee(String),
+    EvalResourceGate(String),
+    TxMutation(String),
     RecoverTx(String),
+    ExecuteResourceDelegation(String),
     SendTxAck(String),
     SendTxResAck(String),
     UploadTxExecReceipt(String),
+    SendResourceResultAck(String),
+    SendResourceTaskAck(String),
+    UploadResourceTxExecReceipt(String),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum DispatcherLane {
+    Chain,
+    ResourceGate,
+    SideEffect,
+}
+
+impl DispatcherLane {
+    fn for_intent(intent: &WithdrawIntent) -> Self {
+        match intent {
+            WithdrawIntent::SideEffect(_) => Self::SideEffect,
+            WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(_)) => Self::ResourceGate,
+            WithdrawIntent::Chain(_) => Self::Chain,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Chain => "chain",
+            Self::ResourceGate => "resource_gate",
+            Self::SideEffect => "side_effect",
+        }
+    }
+
+    fn uses_dispatcher_permit(self) -> bool {
+        self != Self::ResourceGate
+    }
 }
 
 impl RunningKey {
     /// 从 WithdrawIntent 生成对应的 RunningKey
     pub fn from_intent(intent: &WithdrawIntent) -> Self {
         match intent {
+            WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(trade_no)) => {
+                RunningKey::EstimateFee(trade_no.clone())
+            }
+            WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no)) => {
+                RunningKey::EvalResourceGate(trade_no.clone())
+            }
             WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
-                RunningKey::BuildTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no)) => {
-                RunningKey::BroadcastTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no)) => {
                 RunningKey::RecoverTx(trade_no.clone())
+            }
+            WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(trade_no)) => {
+                RunningKey::ExecuteResourceDelegation(trade_no.clone())
             }
             WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no)) => {
                 RunningKey::SendTxAck(trade_no.clone())
@@ -52,51 +95,90 @@ impl RunningKey {
             WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(trade_no)) => {
                 RunningKey::UploadTxExecReceipt(trade_no.clone())
             }
+            WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceResultAck(
+                trade_no,
+            )) => RunningKey::SendResourceResultAck(trade_no.clone()),
+            WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceTaskAck(trade_no)) => {
+                RunningKey::SendResourceTaskAck(trade_no.clone())
+            }
+            WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadResourceTxExecReceipt(
+                trade_no,
+            )) => RunningKey::UploadResourceTxExecReceipt(trade_no.clone()),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::RunningKey;
+    use std::sync::Arc;
+
+    use dashmap::{DashMap, DashSet};
+
+    use super::{DispatcherConfig, DispatcherLane, RunningGuard, RunningKey};
     use crate::infrastructure::api_trans::withdraw::shadow::{WithdrawChainIntent, WithdrawIntent};
 
     #[test]
-    fn broadcast_and_recover_use_different_running_keys() {
-        let trade_no = "W_KEY";
-        let broadcast = RunningKey::from_intent(&WithdrawIntent::Chain(
-            WithdrawChainIntent::BroadcastTx(trade_no.to_string()),
-        ));
-        let recover = RunningKey::from_intent(&WithdrawIntent::Chain(
-            WithdrawChainIntent::RecoverTx(trade_no.to_string()),
-        ));
-        assert_ne!(broadcast, recover);
-    }
-
-    #[test]
-    fn build_and_chain_use_different_running_keys() {
+    fn build_and_broadcast_share_mutation_key_but_recover_is_independent() {
         let trade_no = "W_KEY";
         let build = RunningKey::from_intent(&WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(
             trade_no.to_string(),
         )));
-        let chain = RunningKey::from_intent(&WithdrawIntent::Chain(
-            WithdrawChainIntent::BroadcastTx(trade_no.to_string()),
-        ));
-        assert_ne!(build, chain);
-    }
-
-    #[test]
-    fn broadcast_and_recover_use_different_chain_keys_even_with_same_trade_no() {
-        let trade_no = "W_KEY";
         let broadcast = RunningKey::from_intent(&WithdrawIntent::Chain(
             WithdrawChainIntent::BroadcastTx(trade_no.to_string()),
         ));
         let recover = RunningKey::from_intent(&WithdrawIntent::Chain(
             WithdrawChainIntent::RecoverTx(trade_no.to_string()),
         ));
-
-        assert!(matches!(broadcast, RunningKey::BroadcastTx(_)));
+        assert_eq!(build, broadcast);
+        assert_ne!(broadcast, recover);
+        assert!(matches!(build, RunningKey::TxMutation(_)));
         assert!(matches!(recover, RunningKey::RecoverTx(_)));
+    }
+
+    #[test]
+    fn resource_gate_defers_shared_permit_to_chain_first_worker() {
+        let resource_gate =
+            WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate("W_RESOURCE".to_string()));
+        let broadcast =
+            WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx("W_BROADCAST".to_string()));
+        let recover =
+            WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx("W_RECOVER".to_string()));
+
+        assert_eq!(DispatcherLane::for_intent(&resource_gate), DispatcherLane::ResourceGate);
+        assert!(!DispatcherLane::for_intent(&resource_gate).uses_dispatcher_permit());
+        assert_eq!(DispatcherLane::for_intent(&broadcast), DispatcherLane::Chain);
+        assert!(DispatcherLane::for_intent(&broadcast).uses_dispatcher_permit());
+        assert_eq!(DispatcherLane::for_intent(&recover), DispatcherLane::Chain);
+        assert!(DispatcherLane::for_intent(&recover).uses_dispatcher_permit());
+    }
+
+    #[test]
+    fn withdraw_dispatcher_outer_admission_includes_resource_gate_lane_capacity() {
+        let config = DispatcherConfig {
+            chain_semaphore_size: 24,
+            side_effect_semaphore_size: 12,
+            db_check_timeout: std::time::Duration::from_secs(5),
+        };
+
+        assert_eq!(config.outer_admission_size(), 40);
+    }
+
+    #[test]
+    fn queued_intent_is_not_watchdog_tracked_until_execution_starts() {
+        let key = RunningKey::EvalResourceGate("W_QUEUED".to_string());
+        let running = Arc::new(DashSet::new());
+        let running_times = Arc::new(DashMap::new());
+
+        running.insert(key.clone());
+        assert!(running.contains(&key));
+        assert!(!running_times.contains_key(&key));
+
+        let guard = RunningGuard::start(key.clone(), running.clone(), running_times.clone());
+        assert!(running_times.contains_key(&key));
+
+        drop(guard);
+        assert!(!running.contains(&key));
+        assert!(!running_times.contains_key(&key));
     }
 }
 
@@ -109,13 +191,14 @@ pub struct RunningGuard {
 }
 
 impl RunningGuard {
-    /// 创建一个新的 RunningGuard
-    /// 注意：调用者需要确保 key 已经被插入到 running_set 中
-    pub fn new(
+    /// 开始执行并创建 RunningGuard。
+    /// 调用者需要先将 key 插入 running_set；watchdog 从这里开始计时。
+    pub fn start(
         key: RunningKey,
         running_set: Arc<DashSet<RunningKey>>,
         running_times: Arc<DashMap<RunningKey, Instant>>,
     ) -> Self {
+        running_times.insert(key.clone(), Instant::now());
         Self { key, running_set, running_times }
     }
 }
@@ -155,6 +238,14 @@ impl Default for DispatcherConfig {
             side_effect_semaphore_size,
             db_check_timeout: Duration::from_secs(5), // 5秒
         }
+    }
+}
+
+impl DispatcherConfig {
+    pub(crate) fn outer_admission_size(&self) -> usize {
+        self.chain_semaphore_size
+            .saturating_add(shadow_rpc_policy::shared_resource_gate_concurrency())
+            .saturating_add(self.side_effect_semaphore_size)
     }
 }
 
@@ -237,17 +328,15 @@ impl ShadowDispatcher {
             return Ok(());
         }
 
-        // 3. 记录任务开始时间
-        self.running_times.insert(running_key.clone(), Instant::now());
-
-        // 4. 克隆需要的字段，用于 spawn 的任务中
+        // 3. 克隆需要的字段，用于 spawn 的任务中
         let running = self.running.clone();
         let running_times = self.running_times.clone();
-        let is_side_effect_intent = matches!(&intent, WithdrawIntent::SideEffect(_));
-        let semaphore = if is_side_effect_intent {
-            self.side_effect_semaphore.clone()
-        } else {
-            self.chain_semaphore.clone()
+        let lane = DispatcherLane::for_intent(&intent);
+        debug_assert_eq!(lane.uses_dispatcher_permit(), lane != DispatcherLane::ResourceGate);
+        let semaphore = match lane {
+            DispatcherLane::Chain => Some(self.chain_semaphore.clone()),
+            DispatcherLane::ResourceGate => None,
+            DispatcherLane::SideEffect => Some(self.side_effect_semaphore.clone()),
         };
         let shadow_worker = self.shadow_worker.clone();
         let side_effect_worker = self.side_effect_worker.clone();
@@ -256,30 +345,54 @@ impl ShadowDispatcher {
         tokio::spawn(async move {
             // 获取信号量许可
             let start = std::time::Instant::now();
-            let _permit = match semaphore.acquire_owned().await {
-                Ok(p) => {
+            let _permit = match semaphore {
+                Some(semaphore) => match semaphore.acquire_owned().await {
+                    Ok(p) => {
+                        let acquire_duration = start.elapsed();
+                        info!(
+                            key = ?running_key,
+                            duration = ?acquire_duration,
+                            dispatcher_lane = lane.as_str(),
+                            "Acquired dispatcher semaphore permit"
+                        );
+                        Some(p)
+                    }
+                    Err(_) => {
+                        running.remove(&running_key);
+                        running_times.remove(&running_key);
+                        return;
+                    }
+                },
+                None => {
                     let acquire_duration = start.elapsed();
                     info!(
                         key = ?running_key,
                         duration = ?acquire_duration,
-                        side_effect = is_side_effect_intent,
-                        "Acquired dispatcher semaphore permit"
+                        dispatcher_lane = lane.as_str(),
+                        "Withdraw resource gate deferred to chain-first worker admission"
                     );
-                    p
-                }
-                Err(_) => {
-                    // 信号量已关闭，释放 running 标记并返回
-                    running.remove(&running_key);
-                    running_times.remove(&running_key);
-                    return;
+                    None
                 }
             };
 
+            // 先克隆一个 key 用于错误日志
+            let running_key_for_log = running_key.clone();
+
             // 创建 RunningGuard，确保无论如何都会释放 running 标记
-            let _guard = RunningGuard::new(running_key, running, running_times);
+            let _guard = RunningGuard::start(running_key, running, running_times);
 
             // 路由 Intent 到正确的 Worker
             if let Err(e) = match intent {
+                WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending EstimateFee command to Shadow Worker");
+                    shadow_worker.handle(ShadowWithdrawCommand::EstimateFee(trade_no.clone())).await
+                }
+                WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending EvalResourceGate command to Shadow Worker");
+                    shadow_worker
+                        .handle(ShadowWithdrawCommand::EvalResourceGate(trade_no.clone()))
+                        .await
+                }
                 WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
                     info!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
                     shadow_worker.handle(ShadowWithdrawCommand::BuildTx(trade_no.clone())).await
@@ -291,6 +404,12 @@ impl ShadowDispatcher {
                 WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no)) => {
                     info!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
                     shadow_worker.handle(ShadowWithdrawCommand::Recover(trade_no.clone())).await
+                }
+                WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending ExecuteResourceDelegation command to Shadow Worker");
+                    shadow_worker
+                        .handle(ShadowWithdrawCommand::ExecuteResourceDelegation(trade_no.clone()))
+                        .await
                 }
                 WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no)) => {
                     info!(trade_no = %trade_no, "Sending SendTxAck command to SideEffect Worker");
@@ -310,8 +429,32 @@ impl ShadowDispatcher {
                         .handle(SideEffectCommand::UploadTxExecReceipt(trade_no.clone()))
                         .await
                 }
+                WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceResultAck(
+                    trade_no,
+                )) => {
+                    info!(trade_no = %trade_no, "Sending SendResourceResultAck command to SideEffect Worker");
+                    side_effect_worker
+                        .handle(SideEffectCommand::SendResourceResultAck(trade_no.clone()))
+                        .await
+                }
+                WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendResourceTaskAck(
+                    trade_no,
+                )) => {
+                    info!(trade_no = %trade_no, "Sending SendResourceTaskAck command to SideEffect Worker");
+                    side_effect_worker
+                        .handle(SideEffectCommand::SendResourceTaskAck(trade_no.clone()))
+                        .await
+                }
+                WithdrawIntent::SideEffect(
+                    WithdrawSideEffectIntent::UploadResourceTxExecReceipt(trade_no),
+                ) => {
+                    info!(trade_no = %trade_no, "Sending UploadResourceTxExecReceipt command to SideEffect Worker");
+                    side_effect_worker
+                        .handle(SideEffectCommand::UploadResourceTxExecReceipt(trade_no.clone()))
+                        .await
+                }
             } {
-                error!(error = ?e, "Worker execution failed");
+                error!(error = ?e, key = ?running_key_for_log, "Worker execution failed");
             }
         });
 

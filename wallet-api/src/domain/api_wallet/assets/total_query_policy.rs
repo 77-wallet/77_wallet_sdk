@@ -1,31 +1,19 @@
-use dashmap::DashMap;
-use once_cell::sync::Lazy;
-use std::{future::Future, time::Instant};
+use std::future::Future;
 use tokio::time::Duration;
 
-use crate::{config::runtime_defaults, response_vo::standard_wallet::account::BalanceInfo};
+use crate::{
+    config::runtime_defaults, infrastructure::api_wallet_total_assets_cache,
+    response_vo::standard_wallet::account::BalanceInfo,
+};
 
-use super::{ApiAccountRepo, ApiAssetsDomain, singleflight};
-
-#[derive(Clone)]
-struct CachedWalletTotalAssets {
-    // 保存最近一次成功聚合结果，用于短 TTL 命中和失败时 stale 返回。
-    value: BalanceInfo,
-    updated_at: Instant,
-}
-
-// 与锁分开存放，避免锁生命周期影响缓存命中。
-static WALLET_TOTAL_ASSETS_CACHE: Lazy<DashMap<String, CachedWalletTotalAssets>> =
-    Lazy::new(DashMap::new);
+use super::{ApiAccountRepo, ApiAssetsDomain};
 
 pub(super) fn wallet_total_assets_v3_lock_key(
     wallet_address: &str,
     account_id: Option<u32>,
     chain_code: Option<&str>,
 ) -> String {
-    let account_part = account_id.map(|v| v.to_string()).unwrap_or_else(|| "none".to_string());
-    let chain_part = chain_code.unwrap_or("none");
-    format!("wallet={wallet_address};account_id={account_part};chain_code={chain_part}")
+    api_wallet_total_assets_cache::wallet_total_assets_key(wallet_address, account_id, chain_code)
 }
 
 fn wallet_total_assets_query_key(
@@ -38,36 +26,12 @@ fn wallet_total_assets_query_key(
     wallet_total_assets_v3_lock_key(wallet_part, account_id, chain_code)
 }
 
-fn get_cached_wallet_total_assets(key: &str, max_age: Duration) -> Option<BalanceInfo> {
-    // 仅在 age 窗口内返回，调用侧可分别传 fresh TTL 或 stale TTL。
-    WALLET_TOTAL_ASSETS_CACHE.get(key).and_then(|entry| {
-        if entry.updated_at.elapsed() <= max_age { Some(entry.value.clone()) } else { None }
-    })
-}
-
-fn set_cached_wallet_total_assets(key: &str, value: &BalanceInfo) {
-    WALLET_TOTAL_ASSETS_CACHE.insert(
-        key.to_string(),
-        CachedWalletTotalAssets { value: value.clone(), updated_at: Instant::now() },
-    );
-}
-
 pub(super) fn invalidate_wallet_total_assets_cache(wallet_address: &str) -> usize {
-    let keys: Vec<String> = WALLET_TOTAL_ASSETS_CACHE
-        .iter()
-        .filter(|entry| {
-            let key = entry.key();
-            key.starts_with(&format!("wallet={wallet_address};"))
-        })
-        .map(|entry| entry.key().clone())
-        .collect();
+    let defaults = runtime_defaults::api_assets();
+    let keys =
+        api_wallet_total_assets_cache::mark_wallet_stale(wallet_address, defaults.total_cache_ttl);
 
     let removed_count = keys.len();
-    for key in keys {
-        WALLET_TOTAL_ASSETS_CACHE.remove(&key);
-        super::singleflight::invalidate_balance_info(&key);
-    }
-
     if removed_count > 0 {
         tracing::info!(
             wallet_address = %wallet_address,
@@ -77,6 +41,13 @@ pub(super) fn invalidate_wallet_total_assets_cache(wallet_address: &str) -> usiz
     }
 
     removed_count
+}
+
+pub(super) fn schedule_wallet_total_assets_refresh(
+    ctx: &'static crate::context::Context,
+    wallet_address: String,
+) -> bool {
+    api_wallet_total_assets_cache::schedule_refresh(ctx, wallet_address)
 }
 
 fn is_db_pool_timeout_error(err: &str) -> bool {
@@ -95,7 +66,7 @@ fn log_db_pool_timeout_metric(err: &str) {
 }
 
 // 同 key 聚合请求的统一入口：
-// 先命中新鲜缓存，再通过 singleflight 合并并发查询；查询失败时直接向上返回。
+// 先命中新鲜缓存，再通过 protected query 合并并发查询；瞬时超时返回陈旧缓存。
 async fn load_total_assets_with_cache<F, Fut>(
     cache_key: &str,
     fresh_ttl: Duration,
@@ -105,54 +76,21 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<BalanceInfo, crate::error::service::ServiceError>>,
 {
-    if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
-        tracing::debug!(
-            metric = "api_assets_cache_hit",
-            cache_key = %cache_key,
-            cache_type = "fresh",
-            "wallet assets cache hit"
-        );
-        return Ok(cached);
-    }
-
-    let wait_start = Instant::now();
-    let result = singleflight::call_balance_info(cache_key, || async move {
-        if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
-            tracing::debug!(
-                metric = "api_assets_dedup_hit",
-                cache_key = %cache_key,
-                "wallet assets dedup hit"
-            );
-            return Ok(cached);
-        }
-
-        match query_fn().await.map_err(|e| e.to_string()) {
-            Ok(balance) => {
-                set_cached_wallet_total_assets(cache_key, &balance);
-                Ok(balance)
-            }
+    api_wallet_total_assets_cache::load(cache_key, fresh_ttl, || async move {
+        match query_fn().await {
+            Ok(balance) => Ok(balance),
             Err(err) => {
                 log_db_pool_timeout_metric(&err.to_string());
                 Err(err)
             }
         }
     })
-    .await;
-    let wait_elapsed_ms = wait_start.elapsed().as_millis();
-    if wait_elapsed_ms > 0 {
-        tracing::debug!(
-            metric = "api_assets_singleflight_wait_ms",
-            cache_key = %cache_key,
-            wait_elapsed_ms,
-            "wallet assets single-flight wait finished"
-        );
-    }
-
-    result.map_err(crate::error::service::ServiceError::Parameter)
+    .await
 }
 
 impl ApiAssetsDomain {
     pub async fn get_api_wallet_assets(
+        ctx: &'static Context,
         wallet_address: Option<&str>,
         account_id: Option<u32>,
         chain_code: Option<&str>,
@@ -168,7 +106,7 @@ impl ApiAssetsDomain {
 
         load_total_assets_with_cache(&cache_key, fresh_ttl, || async move {
             if let Some(wallet_address) = wallet_address {
-                let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+            let pool = ctx.api_wallet_pool()?;
                 let count_start = std::time::Instant::now();
                 let address_count = ApiAccountRepo::count_by_wallet_address(
                     &pool,
@@ -198,7 +136,12 @@ impl ApiAssetsDomain {
                         path = "v2",
                         "wallet total assets using v2 path"
                     );
-                    return Self::get_api_wallet_assets_v2(Some(wallet_address), account_id, chain_code)
+                    return Self::get_api_wallet_assets_v2(
+                        ctx,
+                        Some(wallet_address),
+                        account_id,
+                        chain_code,
+                    )
                         .await;
                 }
 
@@ -212,6 +155,7 @@ impl ApiAssetsDomain {
                     "wallet total assets using v3 path"
                 );
                 match Self::get_api_wallet_assets_v3_unlocked(
+                    ctx,
                     wallet_address,
                     account_id,
                     chain_code,
@@ -239,7 +183,12 @@ impl ApiAssetsDomain {
                                 cache_key = %cache_key_for_query,
                                 "get_api_wallet_assets: v3 failed, fallback to v2 (enabled)"
                             );
-                            Self::get_api_wallet_assets_v2(Some(wallet_address), account_id, chain_code)
+                            Self::get_api_wallet_assets_v2(
+                                ctx,
+                                Some(wallet_address),
+                                account_id,
+                                chain_code,
+                            )
                                 .await
                         } else {
                             // 默认禁止回退 v2：避免在高压场景回到重 SQL 路径，造成二次放大。
@@ -255,7 +204,7 @@ impl ApiAssetsDomain {
                     }
                 }
             } else {
-                Self::get_api_wallet_assets_v2(None, account_id, chain_code).await
+                Self::get_api_wallet_assets_v2(ctx, None, account_id, chain_code).await
             }
         })
         .await
@@ -274,7 +223,10 @@ mod tests {
 
     use tokio::time::{Duration, sleep};
 
-    use crate::{error::service::ServiceError, response_vo::standard_wallet::account::BalanceInfo};
+    use crate::{
+        error::service::ServiceError, infrastructure::api_wallet_total_assets_cache,
+        response_vo::standard_wallet::account::BalanceInfo,
+    };
 
     use super::load_total_assets_with_cache;
 
@@ -325,11 +277,50 @@ mod tests {
         .await
         .expect_err("should propagate failure");
 
-        assert!(matches!(err, ServiceError::Parameter(_)));
+        assert!(matches!(err, ServiceError::Timeout));
     }
 
     #[tokio::test]
-    async fn invalidate_wallet_total_assets_cache_clears_matching_entry() {
+    async fn total_assets_query_preserves_parameter_failure() {
+        let key = unique_key("assets-parameter-fail");
+
+        let err = load_total_assets_with_cache(&key, Duration::from_millis(0), || async {
+            Err(ServiceError::Parameter("invalid wallet address".to_string()))
+        })
+        .await
+        .expect_err("should propagate failure");
+
+        assert!(matches!(err, ServiceError::Parameter(msg) if msg == "invalid wallet address"));
+    }
+
+    #[tokio::test]
+    async fn total_assets_query_returns_stale_cache_on_timeout() {
+        let key = unique_key("assets-stale-timeout");
+        let first = load_total_assets_with_cache(&key, Duration::from_secs(60), || async {
+            Ok(BalanceInfo {
+                amount: 7.0,
+                currency: "USD".to_string(),
+                unit_price: None,
+                fiat_value: Some(7.0),
+            })
+        })
+        .await
+        .expect("initial query ok");
+        assert_eq!(first.amount, 7.0);
+
+        api_wallet_total_assets_cache::mark_key_stale(&key, Duration::from_secs(3600));
+
+        let stale = load_total_assets_with_cache(&key, Duration::from_millis(0), || async {
+            Err(ServiceError::Timeout)
+        })
+        .await
+        .expect("timeout should return stale cache without age limit");
+
+        assert_eq!(stale.amount, 7.0);
+    }
+
+    #[tokio::test]
+    async fn invalidate_wallet_total_assets_cache_marks_matching_entry_stale() {
         let key1 = super::wallet_total_assets_v3_lock_key("0xabc", Some(7), Some("ETH"));
         let key2 = super::wallet_total_assets_v3_lock_key("0xabc", None, None);
         let hit_count = Arc::new(AtomicUsize::new(0));
@@ -369,7 +360,7 @@ mod tests {
         let removed = super::invalidate_wallet_total_assets_cache("0xabc");
         assert_eq!(removed, 2);
 
-        let _ = load_total_assets_with_cache(&key1, Duration::from_secs(60), {
+        let _ = load_total_assets_with_cache(&key1, Duration::from_millis(1), {
             let hit_count = hit_count.clone();
             move || async move {
                 hit_count.fetch_add(1, Ordering::SeqCst);
@@ -387,3 +378,4 @@ mod tests {
         assert_eq!(hit_count.load(Ordering::SeqCst), 3);
     }
 }
+use crate::context::Context;

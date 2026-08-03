@@ -9,14 +9,14 @@ impl WalletManager {
         ws_url: &str,
         http_url: Option<String>,
     ) -> ReturnType<String> {
-        NodeService::new().add_node(name, chain_code, rpc_url, ws_url, http_url).await
+        NodeService::new(self.ctx).add_node(name, chain_code, rpc_url, ws_url, http_url).await
     }
 
     pub async fn get_node_list(
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::standard_wallet::chain::NodeListRes>> {
-        NodeService::new().get_node_list(chain_code).await
+        NodeService::new(self.ctx).get_node_list(chain_code).await
     }
 
     // 区块链网络速率/快慢接口
@@ -24,13 +24,21 @@ impl WalletManager {
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::standard_wallet::chain::NodeDynData>> {
-        NodeService::new().get_node_dynamic_data(chain_code).await
+        NodeService::new(self.ctx).get_node_dynamic_data(chain_code).await
+    }
+
+    pub async fn get_node_dynamic_data_by_id(
+        &self,
+        chain_code: &str,
+        node_id: &str,
+    ) -> ReturnType<crate::response_vo::standard_wallet::chain::NodeDynData> {
+        NodeService::new(self.ctx).get_node_dynamic_data_by_id(chain_code, node_id).await
     }
 }
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod tests {
-    use crate::test::env::get_manager;
+    use crate::testkit::env::get_manager;
     use anyhow::Result;
 
     #[tokio::test]

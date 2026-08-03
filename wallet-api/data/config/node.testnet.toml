@@ -2,7 +2,7 @@
 [nodes.tron]
 [[nodes.tron.nodes]]
 node_name = "Nileex"
-rpc_url = "https://api.nileex.io"
+rpc_url = "https://nile.trongrid.io"
 http_url = ""
 network = "testnet"
 active = true

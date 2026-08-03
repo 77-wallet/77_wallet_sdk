@@ -1,4 +1,7 @@
-use std::{collections::HashSet, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Instant,
+};
 
 use once_cell::sync::Lazy;
 use tokio::sync::Semaphore;
@@ -25,6 +28,7 @@ static ASSET_UPSERT_SEMAPHORE: Lazy<Semaphore> =
     Lazy::new(|| Semaphore::new(read_asset_upsert_max_concurrent()));
 
 pub(crate) async fn query_and_upsert_assets(
+    ctx: &'static crate::context::Context,
     api_pool: &ApiWalletDbPool,
     backend: &BackendApi,
     req: &AssetListReq,
@@ -33,11 +37,10 @@ pub(crate) async fn query_and_upsert_assets(
     let default_coins_list = ApiCoinRepo::coin_list(api_pool).await?;
 
     let mut all_assets: Vec<ApiCreateAssetsVo> = Vec::new();
-    let mut unique_addresses: HashSet<String> = HashSet::new();
+    let mut refresh_plan: HashMap<AssetTokenKey, HashSet<String>> = HashMap::new();
 
     for asset in list.0 {
         for address in asset.address_list {
-            unique_addresses.insert(address.address.clone());
             for token in address.token_infos {
                 if let Some(coin) = default_coins_list.iter().find(|coin| {
                     coin.chain_code == req.chain_code
@@ -62,6 +65,11 @@ pub(crate) async fn query_and_upsert_assets(
                     .with_balance(&balance_str);
 
                     all_assets.push(assets);
+                    record_asset_refresh(
+                        &mut refresh_plan,
+                        &address.address,
+                        AssetTokenKey::from_raw(Some(token.token_address.as_str())),
+                    );
                 }
             }
         }
@@ -86,22 +94,58 @@ pub(crate) async fn query_and_upsert_assets(
     }
 
     // Best-effort: notify inner event to trigger further sync/calculation pipeline.
-    let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+    let handles = ctx.get_global_handles().await;
     if let Some(handles) = handles.upgrade() {
         let inner_event_handle = handles.get_global_inner_event_handle();
-        let addr_list: Vec<String> = unique_addresses.into_iter().collect();
-        let data = crate::infrastructure::inner_event::SyncAssetsData::new_with_token_key(
-            addr_list,
-            req.chain_code.clone(),
-            AssetTokenKey::Native,
-        )
-        .with_priority(crate::infrastructure::inner_event::SyncPriority::Low);
-        if let Err(e) = inner_event_handle
-            .send(crate::infrastructure::inner_event::InnerEvent::ApiWalletSyncAssets(data))
-        {
-            tracing::error!("发送资产同步事件失败: error={}", e);
+        for (token_key, addresses) in refresh_plan {
+            let data = crate::infrastructure::inner_event::SyncAssetsData::new_with_token_key(
+                addresses.into_iter().collect(),
+                req.chain_code.clone(),
+                token_key,
+            )
+            .with_priority(crate::infrastructure::inner_event::SyncPriority::Low);
+            if let Err(e) = inner_event_handle
+                .send(crate::infrastructure::inner_event::InnerEvent::ApiWalletSyncAssets(data))
+            {
+                tracing::error!("发送资产同步事件失败: error={}", e);
+            }
         }
     }
 
     Ok(())
+}
+
+fn record_asset_refresh(
+    refresh_plan: &mut HashMap<AssetTokenKey, HashSet<String>>,
+    address: &str,
+    token_key: AssetTokenKey,
+) {
+    refresh_plan.entry(token_key).or_default().insert(address.to_string());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_asset_query_dispatches_updated_token_events() {
+        let address = "TMgMcdSzdBJgGV3quNCdeBRjBFSZ2jf5eY";
+        let jst = AssetTokenKey::from_raw(Some("TCFLL5dx5ZJdKnWuesXxi1VPwjLVmWZZy9"));
+        let usdt = AssetTokenKey::from_raw(Some("TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj"));
+
+        let mut refresh_plan = HashMap::new();
+
+        record_asset_refresh(&mut refresh_plan, address, jst.clone());
+        record_asset_refresh(&mut refresh_plan, address, jst.clone());
+        record_asset_refresh(&mut refresh_plan, "TSecondAddress", usdt.clone());
+
+        assert_eq!(refresh_plan.len(), 2);
+        assert_eq!(refresh_plan.get(&jst).expect("jst token refresh").len(), 1);
+        assert!(
+            refresh_plan.get(&jst).expect("jst token refresh").contains(address),
+            "JST backend asset update must schedule a JST refresh, not only native TRX"
+        );
+        assert!(refresh_plan.get(&usdt).expect("usdt token refresh").contains("TSecondAddress"));
+        assert!(!refresh_plan.contains_key(&AssetTokenKey::Native));
+    }
 }

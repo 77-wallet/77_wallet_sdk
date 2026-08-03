@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         self,
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
@@ -69,13 +70,14 @@ struct TempBuildTransaction {
 }
 
 pub struct StackService {
+    ctx: &'static Context,
     chain: TronChain,
 }
 
 impl StackService {
-    pub async fn new() -> Result<Self, crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
-        Ok(Self { chain })
+    pub async fn new(ctx: &'static Context) -> Result<Self, crate::error::service::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
+        Ok(Self { ctx, chain })
     }
 
     // 获取私钥
@@ -86,7 +88,7 @@ impl StackService {
         password: &str,
     ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::error::service::ServiceError>
     {
-        ChainTransDomain::get_key(from, chain_code::TRON, password, signer).await
+        ChainTransDomain::get_key(self.ctx, from, chain_code::TRON, password, signer).await
     }
 
     async fn process_transaction<T, E>(
@@ -108,7 +110,7 @@ impl StackService {
             bill_kind,
             Process::Building,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         let key = self.get_key(from, signer, password).await?;
 
@@ -131,7 +133,7 @@ impl StackService {
             bill_kind,
             Process::Broadcast,
         ));
-        FrontendNotifyEvent::new(data).send().await?;
+        FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
         let hash = self.chain.exec_transaction_v1(resp, key).await?;
 
@@ -153,7 +155,7 @@ impl StackService {
 
         // if use permission upload backend
         if let Some(signer) = signer {
-            let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+            let pool = self.ctx.core_pool()?;
             let permission = PermissionRepo::permission_with_user(
                 &pool,
                 from,
@@ -184,12 +186,13 @@ impl StackService {
                     endpoint::UPLOAD_PERMISSION_TRANS,
                     &params,
                 )?))
-                .send()
+                .send_with_ctx(self.ctx)
                 .await;
             entity.signer = users;
         }
 
-        domain::bill::BillDomain::create_bill(entity).await?;
+        let pool = self.ctx.core_pool()?;
+        domain::bill::BillDomain::create_bill(&pool, entity).await?;
 
         Ok(hash)
     }
@@ -211,7 +214,7 @@ impl StackService {
                 (i + 1) as i64,
                 Process::Building,
             ));
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
             let res = item.build_raw_transaction(&self.chain.provider).await?;
 
@@ -258,7 +261,7 @@ impl StackService {
                 (i + 1) as i64,
                 Process::Broadcast,
             ));
-            FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send_with_ctx(self.ctx).await?;
 
             let result = self.chain.exec_transaction_v1(item.raw_data, key.clone()).await;
             match result {
@@ -284,7 +287,8 @@ impl StackService {
                         transaction_fee,
                         Some(extra),
                     );
-                    domain::bill::BillDomain::create_bill(entity).await?;
+                    let pool = self.ctx.core_pool()?;
+                    domain::bill::BillDomain::create_bill(&pool, entity).await?;
 
                     let ra = BatchRes { address: item.to.clone(), status: true };
                     exec_res.push(ra);
@@ -588,6 +592,7 @@ impl StackService {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
         let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            self.ctx,
             currency,
             "tron",
             "TRX",
@@ -649,7 +654,7 @@ impl StackService {
         let account = self.chain.account_info(owner).await?;
         let resource = self.chain.account_resource(owner).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         let mut res = vec![];
 
@@ -861,7 +866,7 @@ impl StackService {
         &self,
         owner: &str,
     ) -> Result<AccountResource, crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         let resource = chain.account_resource(owner).await?;
         let account = chain.account_info(owner).await?;
@@ -908,6 +913,7 @@ impl StackService {
 
         // 当前的币价
         let token_price = TokenCurrencyGetter::get_currency_by_token_key(
+            self.ctx,
             currency,
             chain_code::TRON,
             "TRX",
@@ -963,7 +969,7 @@ impl StackService {
         resource_type: String,
         is_multisig: Option<bool>,
     ) -> Result<resp::ResourceResp, crate::error::service::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
         let res = chain.provider.can_delegate_resource(account.as_str(), resource_type).await?;
@@ -1067,7 +1073,7 @@ impl StackService {
         resource_type: ops::stake::ResourceType,
         now: i64,
     ) -> Result<Option<i64>, crate::error::service::ServiceError> {
-        let mut res = StakeDomain::get_delegate_info(from, to, &self.chain).await?;
+        let mut res = StakeDomain::get_delegate_info(self.ctx, from, to, &self.chain).await?;
 
         let time = match resource_type {
             ops::stake::ResourceType::BANDWIDTH => {
@@ -1261,7 +1267,7 @@ impl StackService {
         page_size: i64,
     ) -> Result<Pagination<DelegateListResp>, crate::error::service::ServiceError> {
         // 查询所有的代理
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         let delegate_other = chain.provider.delegate_others_list(owner_address).await?;
 
@@ -1307,7 +1313,7 @@ impl StackService {
         page_size: i64,
     ) -> Result<Pagination<DelegateListResp>, crate::error::service::ServiceError> {
         // 查询所有的代理
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         let delegate_other = chain.provider.delegate_others_list(to).await?;
 
@@ -1337,7 +1343,7 @@ impl StackService {
         &self,
         address: String,
     ) -> Result<SystemEnergyResp, crate::error::service::ServiceError> {
-        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backhand = self.ctx.get_global_backend_api();
         let req = serde_json::json!({
             "address": address
         });
@@ -1352,14 +1358,14 @@ impl StackService {
         account: String,
         energy: i64,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backhand = self.ctx.get_global_backend_api();
 
         // 验证后端的配置(是否开启了能量的补偿)
         if !backhand.delegate_is_open().await? {
             return Err(BusinessError::Stake(StakeError::SwitchClose))?;
         }
 
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(&self.ctx).await?;
 
         // request resource
         let res = backhand.delegate_order(&account, energy).await?;
@@ -1401,7 +1407,7 @@ impl StackService {
         // 所有的超级节点列表
         // let chain = self.chain.get_provider();
         // let mut res = StakeDomain::vote_list(chain).await?;
-        let mut res = StakeDomain::vote_list_from_backend().await?;
+        let mut res = StakeDomain::vote_list_from_backend(self.ctx).await?;
         if let Some(owner_address) = owner_address {
             let account_info = self.chain.account_info(owner_address).await?;
             // 投票人投票列表
@@ -1424,7 +1430,7 @@ impl StackService {
     ) -> Result<resp::VoterInfoResp, crate::error::service::ServiceError> {
         // let chain = self.chain.get_provider();
         // let vote_list = StakeDomain::vote_list(chain).await?;
-        let vote_list = StakeDomain::vote_list_from_backend().await?;
+        let vote_list = StakeDomain::vote_list_from_backend(self.ctx).await?;
         let reward = self.chain.get_provider().get_reward(owner).await?;
 
         let account_info = self.chain.account_info(owner).await?;
@@ -1464,7 +1470,7 @@ impl StackService {
     ) -> Result<Option<resp::Witness>, crate::error::service::ServiceError> {
         // let chain = self.chain.get_provider();
         // let list = StakeDomain::vote_list(chain).await?.data;
-        let list = StakeDomain::vote_list_from_backend().await?.data;
+        let list = StakeDomain::vote_list_from_backend(self.ctx).await?.data;
         // 获取最大投票数的witness
         let mut max_apr = 0.0f64;
         let mut max_witness = None;
@@ -1580,7 +1586,7 @@ impl StackService {
         password: String,
         signer: Signer,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let to = args.get_to();
 
@@ -1616,7 +1622,8 @@ impl StackService {
         queue.permission_id = p.permission.id.clone();
 
         // 对多签队列进行签名
-        MultisigQueueDomain::batch_sign_with_permission(&mut queue, &password, &p, &pool).await?;
+        MultisigQueueDomain::batch_sign_with_permission(self.ctx, &mut queue, &password, &p, &pool)
+            .await?;
 
         queue.compute_status(p.permission.threshold as i32);
 
@@ -1625,7 +1632,7 @@ impl StackService {
         let opt = PermissionData { opt_address: signer.address.clone(), users: p.users() };
 
         // 上报后端
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, Some(opt)).await?;
+        MultisigQueueDomain::upload_queue_backend(self.ctx, res.id, &pool, None, Some(opt)).await?;
 
         Ok(rs.tx_hash)
     }
@@ -1639,7 +1646,7 @@ impl StackService {
         expiration: i64,
         password: String,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let to = args.get_to();
 
         let account = MultisigDomain::account_by_address(&address, true, &pool).await?;
@@ -1661,6 +1668,7 @@ impl StackService {
         );
 
         let res = MultisigQueueDomain::tron_sign_and_create_queue(
+            self.ctx,
             &mut queue,
             &account,
             password,
@@ -1668,7 +1676,7 @@ impl StackService {
         )
         .await?;
 
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, None).await?;
+        MultisigQueueDomain::upload_queue_backend(self.ctx, res.id, &pool, None, None).await?;
         Ok(resp.tx_hash)
     }
 }

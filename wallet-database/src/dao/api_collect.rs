@@ -1,6 +1,14 @@
 use crate::{
     DbPool,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
+    entities::{
+        api_collect::{
+            ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode,
+            PendingCollectResourceBudget,
+        },
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
+    },
     pagination::Pagination,
 };
 use sqlx::{Executor, Row, Sqlite};
@@ -90,6 +98,36 @@ impl ApiCollectDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res)
+    }
+
+    pub async fn find_api_collect_by_trade_no<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<Option<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_collect WHERE trade_no = ?";
+        sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(trade_no)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn find_by_resource_dependency_trade_no<'a, E>(
+        exec: E,
+        dependency_trade_no: &str,
+    ) -> Result<Option<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_collect WHERE resource_dependency_trade_no = ? ORDER BY id ASC LIMIT 1";
+        sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(dependency_trade_no)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn get_api_collect_by_trade_no_status<'a, E>(
@@ -305,6 +343,228 @@ impl ApiCollectDao {
 
         tracing::info!(xx=%res.rows_affected(), "collect api update to_addr");
         Ok(())
+    }
+
+    pub async fn mark_resource_blocked<'a, E>(
+        exec: E,
+        trade_no: &str,
+        block_reason: ApiResourceBlockReason,
+        dependency_trade_no: Option<&str>,
+        dependency_type: Option<ApiResourceDependencyType>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET resource_check_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = NULL,
+                resource_gate_result = NULL,
+                resource_block_reason = ?2,
+                resource_dependency_trade_no = ?3,
+                resource_dependency_type = ?4,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+              AND resource_gate_released_at IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(block_reason.as_i64())
+            .bind(dependency_trade_no)
+            .bind(dependency_type.map(ApiResourceDependencyType::as_i64))
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_resource_released<'a, E>(
+        exec: E,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET resource_check_at = COALESCE(resource_check_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_released_at = COALESCE(resource_gate_released_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_result = ?2,
+                resource_block_reason = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(gate_result.as_i64())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_resource_released_with_estimate<'a, E>(
+        exec: E,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET resource_check_at = COALESCE(resource_check_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_released_at = COALESCE(resource_gate_released_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_result = ?2,
+                resource_block_reason = NULL,
+                resource_consume = ?3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(gate_result.as_i64())
+            .bind(estimated_resource_consume)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn pending_resource_budget_by_owner<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+    ) -> Result<PendingCollectResourceBudget, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(resource_consume, '$.energy'),
+                            json_extract(resource_consume, '$.energy_used'),
+                            json_extract(resource_consume, '$.energyUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS energy,
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(resource_consume, '$.bandwidth'),
+                            json_extract(resource_consume, '$.net_used'),
+                            json_extract(resource_consume, '$.netUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS bandwidth
+            FROM api_collect
+            WHERE lower(chain_code) = lower(?)
+              AND from_addr = ?
+              AND trade_no <> ?
+              AND resource_gate_released_at IS NOT NULL
+              AND resource_gate_result = ?
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let row = sqlx::query(sql)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(exclude_trade_no)
+            .bind(ApiResourceGateResult::ResourceReady.as_i64())
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        let energy = row.try_get::<i64, _>("energy").unwrap_or_default().max(0) as u64;
+        let bandwidth = row.try_get::<i64, _>("bandwidth").unwrap_or_default().max(0) as u64;
+        Ok(PendingCollectResourceBudget { energy, bandwidth })
+    }
+
+    pub async fn invalidate_resource_ready_for_reeval<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET resource_gate_released_at = NULL,
+                resource_gate_result = NULL,
+                resource_block_reason = NULL,
+                resource_dependency_trade_no = NULL,
+                resource_dependency_type = NULL,
+                resource_consume = '0',
+                building_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+              AND resource_gate_result = ?2
+              AND raw_tx IS NULL
+              AND tx_hash IS NULL
+              AND last_broadcast_at IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(ApiResourceGateResult::ResourceReady.as_i64())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn clear_account_activation_block_for_reeval<'a, E>(
+        exec: E,
+        trade_no: &str,
+        activation_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET resource_block_reason = NULL,
+                resource_dependency_trade_no = NULL,
+                resource_dependency_type = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+              AND resource_block_reason = ?
+              AND resource_dependency_trade_no = ?
+              AND resource_dependency_type = ?
+              AND resource_gate_released_at IS NULL
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(ApiResourceBlockReason::NeedAccountActivation.as_i64())
+            .bind(activation_trade_no)
+            .bind(ApiResourceDependencyType::AccountActivation.as_i64())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
     }
 
     /// 更新交易状态和nonce
@@ -649,6 +909,7 @@ impl ApiCollectDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
+              AND (tx_hash IS NULL OR tx_hash = $2)
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -1069,6 +1330,7 @@ impl ApiCollectDao {
             WHERE order_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
             AND (need_service_fee IS NULL OR need_service_fee = false)
+            AND (lower(chain_code) <> 'tron' OR resource_gate_released_at IS NOT NULL)
             AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL)
             AND transaction_time IS NULL
             AND finished_at IS NULL
@@ -1077,6 +1339,41 @@ impl ApiCollectDao {
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    pub async fn scan_need_resource_gate<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_collect
+            WHERE order_ack_sent_at IS NOT NULL
+            AND lower(chain_code) = 'tron'
+            AND resource_gate_released_at IS NULL
+            AND (
+                resource_block_reason IS NULL
+                OR (
+                    resource_block_reason = ?
+                    AND resource_dependency_trade_no IS NULL
+                )
+            )
+            AND raw_tx IS NULL
+            AND transaction_time IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(ApiResourceBlockReason::NeedLocalDelegate.as_i64())
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -1169,6 +1466,7 @@ impl ApiCollectDao {
             WHERE need_service_fee = true
             AND service_fee_uploaded_at IS NULL
             AND err_code IS NULL
+            AND resource_gate_released_at IS NOT NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -1399,7 +1697,10 @@ impl ApiCollectDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
-              AND last_broadcast_at IS NOT NULL
+              AND (
+                  last_broadcast_at IS NOT NULL
+                  OR broadcast_uncertain_since_at IS NOT NULL
+              )
         "#;
 
         let mut query = sqlx::query(sql).bind(trade_no);
@@ -1797,6 +2098,7 @@ impl ApiCollectDao {
     ///
     /// ⚠️ 调用约束：
     /// - 仅允许在链上事实已确认的前提下调用（transaction_time IS NOT NULL）
+    /// - 或后端已确认预广播失败，且本地已有终止错误事实
     /// - 仅允许调用一次（finished_at IS NULL）
     /// - 任何 ACK / upload / retry / worker 都不得写 finished_at
     /// - 只有“链终态确认模块”能调用此方法
@@ -1821,7 +2123,16 @@ impl ApiCollectDao {
                     OR (
                         transaction_time IS NULL
                         AND err_code IS NOT NULL
-                        AND tx_exec_receipt_uploaded_at IS NOT NULL
+                        AND (
+                            tx_exec_receipt_uploaded_at IS NOT NULL
+                            OR (
+                                last_broadcast_at IS NULL
+                                AND (
+                                    tx_hash IS NULL
+                                    OR trim(tx_hash) = ''
+                                )
+                            )
+                        )
                     )
               )
         "#;
@@ -1857,6 +2168,7 @@ impl ApiCollectDao {
                 broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND transaction_time IS NULL
         "#;
 
         let res = sqlx::query(sql)
@@ -2242,7 +2554,13 @@ impl ApiCollectDao {
 mod tests {
     use super::ApiCollectDao;
     use crate::{
-        SqliteContext, entities::api_collect::ApiCollectStatus,
+        SqliteContext,
+        entities::{
+            api_collect::ApiCollectStatus,
+            api_resource_gate::{
+                ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+            },
+        },
         repositories::api_wallet::collect::ApiCollectRepo,
     };
 
@@ -2253,6 +2571,75 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{prefix}_{pid}_{now}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir.to_string_lossy().to_string()
+    }
+
+    #[tokio::test]
+    async fn late_resource_block_cannot_overwrite_released_collect_gate() {
+        let dir = make_temp_dir("wallet_db_api_collect_late_resource_block");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+        let trade_no = "C_LATE_RESOURCE_BLOCK";
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "5",
+            "digest",
+            "tron",
+            None,
+            "USDT",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            ApiCollectDao::mark_resource_blocked(
+                pool.as_ref(),
+                trade_no,
+                ApiResourceBlockReason::NeedPlatformDelegate,
+                None,
+                Some(ApiResourceDependencyType::PlatformDelegate),
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiCollectDao::mark_resource_released(
+                pool.as_ref(),
+                trade_no,
+                ApiResourceGateResult::PlatformDelegateSuccess,
+            )
+            .await
+            .unwrap(),
+            1
+        );
+
+        let late_rows = ApiCollectDao::mark_resource_blocked(
+            pool.as_ref(),
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            None,
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .unwrap();
+        let persisted =
+            ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), trade_no).await.unwrap();
+
+        assert_eq!(late_rows, 0);
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(
+            persisted.resource_gate_result,
+            Some(ApiResourceGateResult::PlatformDelegateSuccess)
+        );
+        assert!(persisted.resource_block_reason.is_none());
     }
 
     #[tokio::test]
@@ -2701,6 +3088,216 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scan_can_build_requires_resource_gate_for_tron_only() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_can_build_resource_gate");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "s",
+            "C_CAN_BUILD_TRON_BLOCKED",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_TRON_BLOCKED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "s",
+            "C_CAN_BUILD_TRON_RELEASED",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false,
+                 resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_TRON_RELEASED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "sol",
+            None,
+            "s",
+            "C_CAN_BUILD_SOL_READY",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_SOL_READY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiCollectDao::scan_can_build(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(!trade_nos.contains(&"C_CAN_BUILD_TRON_BLOCKED".to_string()));
+        assert!(trade_nos.contains(&"C_CAN_BUILD_TRON_RELEASED".to_string()));
+        assert!(trade_nos.contains(&"C_CAN_BUILD_SOL_READY".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_need_resource_gate_selects_unreleased_tron_only() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_resource_gate");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for (trade_no, chain_code) in [
+            ("C_RESOURCE_GATE_TRON_READY", "tron"),
+            ("C_RESOURCE_GATE_TRON_RELEASED", "tron"),
+            ("C_RESOURCE_GATE_WAIT_PLATFORM", "tron"),
+            ("C_RESOURCE_GATE_WAIT_LOCAL", "tron"),
+            ("C_RESOURCE_GATE_NEED_LOCAL_TASK", "tron"),
+            ("C_RESOURCE_GATE_SOL", "sol"),
+        ] {
+            ApiCollectRepo::upsert_api_collect(
+                &pool,
+                "uid",
+                "n",
+                "from",
+                "to",
+                "0",
+                "v",
+                chain_code,
+                None,
+                "s",
+                trade_no,
+                2,
+                ApiCollectStatus::Init,
+                0,
+            )
+            .await
+            .unwrap();
+            sqlx::query(
+                "UPDATE api_collect
+                 SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+                 WHERE trade_no = ?",
+            )
+            .bind(trade_no)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        }
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_RESOURCE_GATE_TRON_RELEASED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET resource_block_reason = ?,
+                 resource_dependency_trade_no = ?,
+                 resource_dependency_type = ?
+             WHERE trade_no = ?",
+        )
+        .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
+        .bind("DL_COLLECT_1")
+        .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
+        .bind("C_RESOURCE_GATE_WAIT_PLATFORM")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET resource_block_reason = ?,
+                 resource_dependency_trade_no = ?,
+                 resource_dependency_type = ?
+             WHERE trade_no = ?",
+        )
+        .bind(ApiResourceBlockReason::NeedLocalDelegate.as_i64())
+        .bind("rsc_local_delegate_collect")
+        .bind(ApiResourceDependencyType::LocalDelegate.as_i64())
+        .bind("C_RESOURCE_GATE_WAIT_LOCAL")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET resource_block_reason = ?,
+                 resource_dependency_trade_no = NULL,
+                 resource_dependency_type = ?
+             WHERE trade_no = ?",
+        )
+        .bind(ApiResourceBlockReason::NeedLocalDelegate.as_i64())
+        .bind(ApiResourceDependencyType::LocalDelegate.as_i64())
+        .bind("C_RESOURCE_GATE_NEED_LOCAL_TASK")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiCollectDao::scan_need_resource_gate(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"C_RESOURCE_GATE_TRON_READY".to_string()));
+        assert!(trade_nos.contains(&"C_RESOURCE_GATE_NEED_LOCAL_TASK".to_string()));
+        assert!(!trade_nos.contains(&"C_RESOURCE_GATE_TRON_RELEASED".to_string()));
+        assert!(!trade_nos.contains(&"C_RESOURCE_GATE_WAIT_PLATFORM".to_string()));
+        assert!(!trade_nos.contains(&"C_RESOURCE_GATE_WAIT_LOCAL".to_string()));
+        assert!(!trade_nos.contains(&"C_RESOURCE_GATE_SOL".to_string()));
+    }
+
+    #[tokio::test]
     async fn update_building_at_claims_slot_once() {
         let dir = make_temp_dir("wallet_db_api_collect_update_building_at");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
@@ -3101,6 +3698,92 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mark_chain_finished_allows_pre_broadcast_failure_only() {
+        let dir = make_temp_dir("wallet_db_api_collect_finish_pre_broadcast_fail");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for trade_no in [
+            "C_FINISH_NO_FACT",
+            "C_FINISH_PRE_BROADCAST_FAIL",
+            "C_FINISH_BROADCAST_FAIL_WITHOUT_RECEIPT",
+        ] {
+            ApiCollectRepo::upsert_api_collect(
+                &pool,
+                "uid",
+                "n",
+                "from",
+                "to",
+                "0",
+                "v",
+                "tron",
+                None,
+                "USDT",
+                trade_no,
+                2,
+                ApiCollectStatus::Init,
+                0,
+            )
+            .await
+            .unwrap();
+        }
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET err_code = 6002,
+                 err_msg = 'confirm transfer fee failed insufficient balance'
+             WHERE trade_no = ?",
+        )
+        .bind("C_FINISH_PRE_BROADCAST_FAIL")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET err_code = 6099,
+                 tx_hash = '0xbroadcasted',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_FINISH_BROADCAST_FAIL_WITHOUT_RECEIPT")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let no_fact_rows =
+            ApiCollectDao::mark_chain_finished(pool.as_ref(), "C_FINISH_NO_FACT").await.unwrap();
+        assert_eq!(no_fact_rows, 0);
+
+        let pre_broadcast_rows =
+            ApiCollectDao::mark_chain_finished(pool.as_ref(), "C_FINISH_PRE_BROADCAST_FAIL")
+                .await
+                .unwrap();
+        assert_eq!(pre_broadcast_rows, 1);
+
+        let broadcast_without_receipt_rows = ApiCollectDao::mark_chain_finished(
+            pool.as_ref(),
+            "C_FINISH_BROADCAST_FAIL_WITHOUT_RECEIPT",
+        )
+        .await
+        .unwrap();
+        assert_eq!(broadcast_without_receipt_rows, 0);
+
+        let rec = ApiCollectDao::get_api_collect_by_trade_no(
+            pool.as_ref(),
+            "C_FINISH_PRE_BROADCAST_FAIL",
+        )
+        .await
+        .unwrap();
+        assert!(rec.finished_at.is_some());
+        assert!(rec.tx_exec_receipt_uploaded_at.is_none());
+
+        let receipt_candidates =
+            ApiCollectDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(!receipt_candidates.iter().any(|r| r.trade_no == "C_FINISH_PRE_BROADCAST_FAIL"));
+    }
+
+    #[tokio::test]
     async fn invalidate_raw_tx_need_service_fee_resets_service_fee_cycle_facts() {
         let dir = make_temp_dir("wallet_db_api_collect_invalidate_resets_fee_cycle");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
@@ -3285,6 +3968,71 @@ mod tests {
         assert!(rec.broadcast_uncertain_last_checked_at.is_none());
         assert!(rec.broadcast_uncertain_reconciled_at.is_none());
         assert_eq!(rec.broadcast_uncertain_rebroadcast_count, 0);
+    }
+
+    #[tokio::test]
+    async fn invalidate_raw_tx_for_rebroadcast_accepts_uncertain_without_last_broadcast() {
+        let dir = make_temp_dir("wallet_db_api_collect_invalidate_uncertain_rebroadcast");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "C_INV_UNCERTAIN_REBROADCAST",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET raw_tx = 'raw',
+                 tx_hash = 'hash',
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 last_broadcast_at = NULL,
+                 broadcast_uncertain_since_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 broadcast_uncertain_retry_count = 7,
+                 broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_INV_UNCERTAIN_REBROADCAST")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectDao::invalidate_raw_tx_for_rebroadcast(
+            pool.as_ref(),
+            "C_INV_UNCERTAIN_REBROADCAST",
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let rec = ApiCollectDao::get_api_collect_by_trade_no(
+            pool.as_ref(),
+            "C_INV_UNCERTAIN_REBROADCAST",
+        )
+        .await
+        .unwrap();
+        assert!(rec.raw_tx.is_none());
+        assert!(rec.tx_hash.is_none());
+        assert!(rec.building_at.is_none());
+        assert!(rec.last_broadcast_at.is_none());
+        assert!(rec.broadcast_uncertain_since_at.is_none());
+        assert_eq!(rec.broadcast_uncertain_retry_count, 0);
+        assert!(rec.broadcast_uncertain_last_checked_at.is_none());
     }
 
     #[tokio::test]

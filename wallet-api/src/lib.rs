@@ -18,8 +18,11 @@ mod clippy_config {
     fn _clippy_config() {}
 }
 pub mod api;
+#[cfg(feature = "api-wallet-console")]
+pub mod api_wallet_console;
 pub mod app_state;
 pub mod application;
+pub mod batch_transfer;
 pub mod config;
 pub(crate) mod default_data;
 pub mod domain;
@@ -27,6 +30,8 @@ pub mod error;
 pub mod infrastructure;
 
 mod context;
+#[cfg(any(test, feature = "integration-tests"))]
+pub use context::Context;
 #[cfg(any(test, feature = "integration-tests"))]
 pub use context::api_wallet_backend::ApiWalletBackend;
 pub use context::get_context;
@@ -38,9 +43,7 @@ pub mod messaging;
 pub mod request;
 pub mod response_vo;
 pub mod service;
-pub mod test;
-#[cfg(any(test, feature = "integration-tests"))]
-pub mod test_support;
+pub mod testkit;
 
 pub mod handles;
 pub mod xlog;

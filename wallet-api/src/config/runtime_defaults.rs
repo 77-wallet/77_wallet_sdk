@@ -31,6 +31,12 @@ pub struct RecoveryDefaults {
     pub background_task_pool_max_concurrent: usize,
     // 恢复 worker 每轮认领量上限，降低单轮突发压力。
     pub asset_query_max_claims_per_round: usize,
+    // 账变触发的持久化余额同步每轮认领量上限。
+    pub api_asset_sync_max_claims_per_round: usize,
+    // 已完成的 API 资产同步状态保留时长，避免 dirty-state 表无限增长。
+    pub api_asset_sync_done_retention_secs: u64,
+    // 已完成的 API 资产同步状态最大保留条数，作为时间保留之外的硬上限。
+    pub api_asset_sync_done_max_rows: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -63,7 +69,13 @@ pub const fn task_queue() -> TaskQueueDefaults {
 }
 
 pub const fn recovery() -> RecoveryDefaults {
-    RecoveryDefaults { background_task_pool_max_concurrent: 6, asset_query_max_claims_per_round: 8 }
+    RecoveryDefaults {
+        background_task_pool_max_concurrent: 6,
+        asset_query_max_claims_per_round: 8,
+        api_asset_sync_max_claims_per_round: 16,
+        api_asset_sync_done_retention_secs: 24 * 60 * 60,
+        api_asset_sync_done_max_rows: 50_000,
+    }
 }
 
 pub const fn unlock_session() -> UnlockSessionDefaults {

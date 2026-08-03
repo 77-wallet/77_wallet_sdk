@@ -25,7 +25,7 @@ pub type ReturnType<T> = Result<T, crate::error::service::ServiceError>;
 mod test {
     use anyhow::Result;
 
-    use crate::test::env::get_manager;
+    use crate::testkit::env::get_manager;
 
     #[tokio::test]
     async fn test_process_jpush_message() -> Result<()> {

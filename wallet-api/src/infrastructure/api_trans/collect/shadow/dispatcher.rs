@@ -5,7 +5,7 @@ use std::{
 };
 
 use dashmap::{DashMap, DashSet};
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::{debug, error, info, warn};
 use wallet_database::ApiTransactionDbPool;
 
@@ -23,28 +23,82 @@ use super::CollectIntent;
 /// 用于 trade_no + intent_type 级别的互斥执行
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
-    BuildTx(String),
-    BroadcastTx(String),
+    EvalResourceGate(String),
+    TxMutation(String),
     RecoverTx(String),
+    ExecuteLocalResourceDelegation(String),
+    ExecuteAccountActivation(String),
     SendOrderAck(String),
     SendResultAck(String),
     UploadServiceFee(String),
     UploadTxExecReceipt(String),
     SendTxFeeResAck(String),
+    SendResourceResultAck(String),
+    SendResourceTaskAck(String),
+    UploadResourceTxExecReceipt(String),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum DispatcherLane {
+    Chain,
+    ResourceGate,
+    SideEffect,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum PermitAcquireError {
+    Closed,
+}
+
+async fn acquire_dispatch_permit(
+    semaphore: Arc<Semaphore>,
+) -> Result<OwnedSemaphorePermit, PermitAcquireError> {
+    semaphore.acquire_owned().await.map_err(|_| PermitAcquireError::Closed)
+}
+
+impl DispatcherLane {
+    fn for_intent(intent: &CollectIntent) -> Self {
+        match intent {
+            CollectIntent::SideEffect(_) => Self::SideEffect,
+            CollectIntent::Chain(ChainIntent::EvalResourceGate(_)) => Self::ResourceGate,
+            CollectIntent::Chain(_) => Self::Chain,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Chain => "chain",
+            Self::ResourceGate => "resource_gate",
+            Self::SideEffect => "side_effect",
+        }
+    }
+
+    fn uses_dispatcher_permit(self) -> bool {
+        self != Self::ResourceGate
+    }
 }
 
 impl RunningKey {
     /// 从 CollectIntent 生成对应的 RunningKey
     pub fn from_intent(intent: &CollectIntent) -> Self {
         match intent {
+            CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => {
+                RunningKey::EvalResourceGate(trade_no.clone())
+            }
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
-                RunningKey::BuildTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => {
-                RunningKey::BroadcastTx(trade_no.clone())
+                RunningKey::TxMutation(trade_no.clone())
             }
             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
                 RunningKey::RecoverTx(trade_no.clone())
+            }
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) => {
+                RunningKey::ExecuteLocalResourceDelegation(trade_no.clone())
+            }
+            CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(trade_no)) => {
+                RunningKey::ExecuteAccountActivation(trade_no.clone())
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                 RunningKey::SendOrderAck(trade_no.clone())
@@ -61,51 +115,69 @@ impl RunningKey {
             CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(trade_no)) => {
                 RunningKey::SendTxFeeResAck(trade_no.clone())
             }
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => {
+                RunningKey::SendResourceResultAck(trade_no.clone())
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(trade_no)) => {
+                RunningKey::SendResourceTaskAck(trade_no.clone())
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(trade_no)) => {
+                RunningKey::UploadResourceTxExecReceipt(trade_no.clone())
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::RunningKey;
+    use super::{DispatcherLane, RunningKey};
     use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     #[test]
-    fn broadcast_and_recover_use_different_running_keys() {
-        let trade_no = "C_KEY";
-        let broadcast = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BroadcastTx(
-            trade_no.to_string(),
-        )));
-        let recover = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::RecoverTx(
-            trade_no.to_string(),
-        )));
-        assert_ne!(broadcast, recover);
-    }
-
-    #[test]
-    fn build_and_chain_use_different_running_keys() {
+    fn build_and_broadcast_share_mutation_key_but_recover_is_independent() {
         let trade_no = "C_KEY";
         let build = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BuildTx(
             trade_no.to_string(),
         )));
-        let chain = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BroadcastTx(
-            trade_no.to_string(),
-        )));
-        assert_ne!(build, chain);
-    }
-
-    #[test]
-    fn broadcast_and_recover_use_different_chain_keys_even_with_same_trade_no() {
-        let trade_no = "C_KEY";
         let broadcast = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BroadcastTx(
             trade_no.to_string(),
         )));
         let recover = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::RecoverTx(
             trade_no.to_string(),
         )));
-
-        assert!(matches!(broadcast, RunningKey::BroadcastTx(_)));
+        assert_eq!(build, broadcast);
+        assert_ne!(broadcast, recover);
+        assert!(matches!(build, RunningKey::TxMutation(_)));
         assert!(matches!(recover, RunningKey::RecoverTx(_)));
+    }
+
+    #[test]
+    fn resource_delegation_execution_uses_distinct_running_key() {
+        let resource_trade_no = "RSC_EXEC_KEY";
+        let resource_exec = RunningKey::from_intent(&CollectIntent::Chain(
+            ChainIntent::ExecuteLocalResourceDelegation(resource_trade_no.to_string()),
+        ));
+        let collect_build = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BuildTx(
+            resource_trade_no.to_string(),
+        )));
+
+        assert!(matches!(resource_exec, RunningKey::ExecuteLocalResourceDelegation(_)));
+        assert_ne!(resource_exec, collect_build);
+    }
+
+    #[test]
+    fn resource_gate_defers_shared_permit_to_chain_first_worker() {
+        let resource_gate =
+            CollectIntent::Chain(ChainIntent::EvalResourceGate("C_RESOURCE".to_string()));
+        let broadcast = CollectIntent::Chain(ChainIntent::BroadcastTx("C_BROADCAST".to_string()));
+        let recover = CollectIntent::Chain(ChainIntent::RecoverTx("C_RECOVER".to_string()));
+
+        assert_eq!(DispatcherLane::for_intent(&resource_gate), DispatcherLane::ResourceGate);
+        assert!(!DispatcherLane::for_intent(&resource_gate).uses_dispatcher_permit());
+        assert_eq!(DispatcherLane::for_intent(&broadcast), DispatcherLane::Chain);
+        assert!(DispatcherLane::for_intent(&broadcast).uses_dispatcher_permit());
+        assert_eq!(DispatcherLane::for_intent(&recover), DispatcherLane::Chain);
+        assert!(DispatcherLane::for_intent(&recover).uses_dispatcher_permit());
     }
 }
 
@@ -122,6 +194,14 @@ struct DispatchTrace {
 impl DispatchTrace {
     fn from_intent(intent: &CollectIntent, key: RunningKey) -> Self {
         match intent {
+            CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => Self {
+                worker: "ShadowCollectWorker",
+                command: "EvalResourceGate",
+                phase: "resource_gate",
+                trade_no: trade_no.clone(),
+                key,
+                side_effect: false,
+            },
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => Self {
                 worker: "ShadowCollectWorker",
                 command: "BuildTx",
@@ -142,6 +222,22 @@ impl DispatchTrace {
                 worker: "ShadowCollectWorker",
                 command: "RecoverTx",
                 phase: "recover",
+                trade_no: trade_no.clone(),
+                key,
+                side_effect: false,
+            },
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) => Self {
+                worker: "ShadowCollectWorker",
+                command: "ExecuteLocalResourceDelegation",
+                phase: "resource_delegation",
+                trade_no: trade_no.clone(),
+                key,
+                side_effect: false,
+            },
+            CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(trade_no)) => Self {
+                worker: "ShadowCollectWorker",
+                command: "ExecuteAccountActivation",
+                phase: "account_activation",
                 trade_no: trade_no.clone(),
                 key,
                 side_effect: false,
@@ -186,6 +282,32 @@ impl DispatchTrace {
                 key,
                 side_effect: true,
             },
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => Self {
+                worker: "SideEffectWorker",
+                command: "SendResourceResultAck",
+                phase: "side_effect",
+                trade_no: trade_no.clone(),
+                key,
+                side_effect: true,
+            },
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(trade_no)) => Self {
+                worker: "SideEffectWorker",
+                command: "SendResourceTaskAck",
+                phase: "side_effect",
+                trade_no: trade_no.clone(),
+                key,
+                side_effect: true,
+            },
+            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(trade_no)) => {
+                Self {
+                    worker: "SideEffectWorker",
+                    command: "UploadResourceTxExecReceipt",
+                    phase: "side_effect",
+                    trade_no: trade_no.clone(),
+                    key,
+                    side_effect: true,
+                }
+            }
         }
     }
 }
@@ -195,6 +317,7 @@ impl DispatchTrace {
 pub struct RunningGuard {
     key: RunningKey,
     running_set: Arc<DashSet<RunningKey>>,
+    queued_times: Arc<DashMap<RunningKey, Instant>>,
     running_times: Arc<DashMap<RunningKey, Instant>>,
 }
 
@@ -204,9 +327,10 @@ impl RunningGuard {
     pub fn new(
         key: RunningKey,
         running_set: Arc<DashSet<RunningKey>>,
+        queued_times: Arc<DashMap<RunningKey, Instant>>,
         running_times: Arc<DashMap<RunningKey, Instant>>,
     ) -> Self {
-        Self { key, running_set, running_times }
+        Self { key, running_set, queued_times, running_times }
     }
 }
 
@@ -214,6 +338,7 @@ impl Drop for RunningGuard {
     fn drop(&mut self) {
         // 无论执行结果如何，都会释放 running 标记
         self.running_set.remove(&self.key);
+        self.queued_times.remove(&self.key);
         self.running_times.remove(&self.key);
         debug!(key = ?self.key, "Released running guard");
     }
@@ -233,7 +358,7 @@ pub struct DispatcherConfig {
 impl Default for DispatcherConfig {
     fn default() -> Self {
         let chain_semaphore_size =
-            shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_DISPATCHER_CONCURRENCY", 8, 2, 64);
+            shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_DISPATCHER_CONCURRENCY", 12, 2, 64);
         let side_effect_semaphore_size =
             shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_SIDE_EFFECT_CONCURRENCY", 4, 1, 32);
         Self {
@@ -256,7 +381,9 @@ pub(crate) struct ShadowDispatcher {
     config: DispatcherConfig,
     /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
     running: Arc<DashSet<RunningKey>>,
-    /// 运行中任务的开始时间，用于 Watchdog Scanner
+    /// 等待 dispatcher admission 的开始时间，用于排队诊断
+    queued_times: Arc<DashMap<RunningKey, Instant>>,
+    /// Worker 执行开始时间，用于 Watchdog Scanner
     running_times: Arc<DashMap<RunningKey, Instant>>,
     /// 链路任务并发控制信号量
     chain_semaphore: Arc<Semaphore>,
@@ -277,6 +404,10 @@ impl ShadowDispatcher {
         side_effect_worker: Arc<SideEffectWorker>,
     ) -> Result<(), crate::error::service::ServiceError> {
         match intent {
+            CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => {
+                debug!(trade_no = %trade_no, "Sending EvalResourceGate command to Shadow Worker");
+                shadow_worker.handle(ShadowCollectCommand::EvalResourceGate(trade_no.clone())).await
+            }
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
                 shadow_worker.handle(ShadowCollectCommand::BuildTx(trade_no.clone())).await
@@ -288,6 +419,18 @@ impl ShadowDispatcher {
             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
                 shadow_worker.handle(ShadowCollectCommand::Recover(trade_no.clone())).await
+            }
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(trade_no)) => {
+                debug!(trade_no = %trade_no, "Sending ExecuteLocalResourceDelegation command to Shadow Worker");
+                shadow_worker
+                    .handle(ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no.clone()))
+                    .await
+            }
+            CollectIntent::Chain(ChainIntent::ExecuteAccountActivation(trade_no)) => {
+                debug!(trade_no = %trade_no, "Sending ExecuteAccountActivation command to Shadow Worker");
+                shadow_worker
+                    .handle(ShadowCollectCommand::ExecuteAccountActivation(trade_no.clone()))
+                    .await
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending SendOrderAck command to SideEffect Worker");
@@ -315,6 +458,24 @@ impl ShadowDispatcher {
                     .handle(SideEffectCommand::SendTxFeeResAck(trade_no.clone()))
                     .await
             }
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => {
+                info!(trade_no = %trade_no, "Sending SendResourceResultAck command to SideEffect Worker");
+                side_effect_worker
+                    .handle(SideEffectCommand::SendResourceResultAck(trade_no.clone()))
+                    .await
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceTaskAck(trade_no)) => {
+                info!(trade_no = %trade_no, "Sending SendResourceTaskAck command to SideEffect Worker");
+                side_effect_worker
+                    .handle(SideEffectCommand::SendResourceTaskAck(trade_no.clone()))
+                    .await
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadResourceTxExecReceipt(trade_no)) => {
+                info!(trade_no = %trade_no, "Sending UploadResourceTxExecReceipt command to SideEffect Worker");
+                side_effect_worker
+                    .handle(SideEffectCommand::UploadResourceTxExecReceipt(trade_no.clone()))
+                    .await
+            }
         }
     }
 
@@ -331,6 +492,7 @@ impl ShadowDispatcher {
             pool,
             config,
             running: Arc::new(DashSet::new()),
+            queued_times: Arc::new(DashMap::new()),
             running_times: Arc::new(DashMap::new()),
             chain_semaphore: Arc::new(Semaphore::new(chain_semaphore_size)),
             side_effect_semaphore: Arc::new(Semaphore::new(side_effect_semaphore_size)),
@@ -370,49 +532,97 @@ impl ShadowDispatcher {
             return Ok(());
         }
 
-        // 3. 记录任务开始时间
-        self.running_times.insert(running_key.clone(), Instant::now());
+        // 3. 记录排队开始时间。running key 仍提前插入，用于抑制排队期间的重复 intent。
+        self.queued_times.insert(running_key.clone(), Instant::now());
 
         // 4. 克隆需要的字段，用于 spawn 的任务中
         let trace = DispatchTrace::from_intent(&intent, running_key.clone());
         let running = self.running.clone();
+        let queued_times = self.queued_times.clone();
         let running_times = self.running_times.clone();
-        let semaphore = if trace.side_effect {
-            self.side_effect_semaphore.clone()
-        } else {
-            self.chain_semaphore.clone()
+        let lane = DispatcherLane::for_intent(&intent);
+        debug_assert_eq!(lane.uses_dispatcher_permit(), lane != DispatcherLane::ResourceGate);
+        let semaphore = match lane {
+            DispatcherLane::Chain => Some(self.chain_semaphore.clone()),
+            DispatcherLane::ResourceGate => None,
+            DispatcherLane::SideEffect => Some(self.side_effect_semaphore.clone()),
         };
         let shadow_worker = self.shadow_worker.clone();
         let side_effect_worker = self.side_effect_worker.clone();
 
         // 4. Spawn 任务执行，实现并发
         tokio::spawn(async move {
+            // Install the guard before waiting so queue timeout/cancellation
+            // always makes the intent eligible for a later scanner retry.
+            let _guard = RunningGuard::new(
+                running_key.clone(),
+                running,
+                queued_times,
+                running_times.clone(),
+            );
+
             // 获取信号量许可
             let start = std::time::Instant::now();
-            let _permit = match semaphore.acquire_owned().await {
-                Ok(p) => {
+            let _permit = match semaphore {
+                Some(semaphore) => match acquire_dispatch_permit(semaphore).await {
+                    Ok(p) => {
+                        let acquire_duration = start.elapsed();
+                        info!(
+                            key = ?running_key,
+                            trade_no = %trace.trade_no,
+                            command = trace.command,
+                            dispatcher_lane = lane.as_str(),
+                            queue_wait_ms = acquire_duration.as_millis(),
+                            "Acquired dispatcher semaphore permit"
+                        );
+                        Some(p)
+                    }
+                    Err(reason) => {
+                        warn!(
+                            key = ?running_key,
+                            trade_no = %trace.trade_no,
+                            command = trace.command,
+                            dispatcher_lane = lane.as_str(),
+                            queue_wait_ms = start.elapsed().as_millis(),
+                            reason = ?reason,
+                            "Dispatcher semaphore closed; intent will be retried"
+                        );
+                        return;
+                    }
+                },
+                None => {
                     let acquire_duration = start.elapsed();
-                    debug!(
-                        key = ?running_key,
-                        duration = ?acquire_duration,
-                        side_effect = trace.side_effect,
-                        "Acquired dispatcher semaphore permit"
+                    info!(
+                        phase = trace.phase,
+                        worker = trace.worker,
+                        command = trace.command,
+                        trade_no = %trace.trade_no,
+                        key = ?trace.key,
+                        dispatcher_lane = lane.as_str(),
+                        queue_wait_ms = acquire_duration.as_millis(),
+                        "Collect resource gate deferred to chain-first worker admission"
                     );
-                    p
-                }
-                Err(_) => {
-                    // 信号量已关闭，释放 running 标记并返回
-                    running.remove(&running_key);
-                    running_times.remove(&running_key);
-                    return;
+                    None
                 }
             };
 
-            // 创建 RunningGuard，确保无论如何都会释放 running 标记
-            let _guard = RunningGuard::new(running_key.clone(), running, running_times);
-
             // 路由 Intent 到正确的 Worker
-            if let Err(e) = Self::execute_intent(intent, shadow_worker, side_effect_worker).await {
+            let execute_start = std::time::Instant::now();
+            running_times.insert(running_key.clone(), execute_start);
+            let result = Self::execute_intent(intent, shadow_worker, side_effect_worker).await;
+            if lane == DispatcherLane::ResourceGate {
+                info!(
+                    phase = trace.phase,
+                    worker = trace.worker,
+                    command = trace.command,
+                    trade_no = %trace.trade_no,
+                    key = ?trace.key,
+                    dispatcher_lane = lane.as_str(),
+                    execution_ms = execute_start.elapsed().as_millis(),
+                    "Collect resource gate dispatcher execution finished"
+                );
+            }
+            if let Err(e) = result {
                 error!(
                     phase = trace.phase,
                     worker = trace.worker,
@@ -434,6 +644,28 @@ impl ShadowDispatcher {
     /// 定期检查长时间运行的任务
     pub(crate) async fn watchdog_scan(&self) {
         let now = Instant::now();
+
+        // 排队耗时单独观察，避免把 dispatcher admission 等待误判为 worker 卡住。
+        for entry in self.queued_times.iter() {
+            let (key, queued_at) = entry.pair();
+            if self.running_times.contains_key(key) {
+                continue;
+            }
+
+            let duration = now.duration_since(*queued_at);
+            match duration.as_secs() {
+                60..=119 => {
+                    warn!(key = ?key, duration = ?duration, "Watchdog: Dispatcher queue waiting for more than 60 seconds");
+                }
+                120..=179 => {
+                    error!(key = ?key, duration = ?duration, "Watchdog: Dispatcher queue waiting for more than 120 seconds");
+                }
+                180.. => {
+                    error!(key = ?key, duration = ?duration, "Watchdog: Dispatcher queue stuck >180s — check dispatcher concurrency");
+                }
+                _ => {}
+            }
+        }
 
         // 遍历所有运行中的任务
         for entry in self.running_times.iter() {

@@ -5,22 +5,42 @@
 // - Broadcast success MUST only update last_broadcast_at
 // - transaction_time is an irreversible on-chain confirmation fact
 // - Only Scanner / Shadow Recovery may write transaction_time
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use tracing::{error, info, warn};
+use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool,
+    ApiResourceDbPool, ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
-        api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
+        api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode, PendingCollectResourceBudget},
+        api_resource_delegation::{
+            ApiResourceDelegationEntity, ApiResourceDelegationOperationType,
+            ApiResourceDelegationResultStatus, ApiResourceDelegationSource,
+            NewApiResourceDelegation,
+        },
+        api_resource_gate::{
+            ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+        },
+        api_resource_type::ApiResourceType,
+        api_tron_account_activation::{
+            ApiTronAccountActivationEntity, ApiTronAccountActivationRecoverStatus,
+            NewApiTronAccountActivation,
+        },
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
-        account::ApiAccountRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
+        account::ApiAccountRepo, collect::ApiCollectRepo,
+        resource_delegation::ApiResourceDelegationRepo,
+        tron_account_activation::ApiTronAccountActivationRepo, wallet::ApiWalletRepo,
     },
 };
-use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
+use wallet_transport_backend::request::api_wallet::{
+    resource_delegation::{ResourceApplyReq, ResourceType},
+    strategy::ChainConfig,
+    transaction::TransType,
+};
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{RetryableError as _, conversion, unit};
 
@@ -28,19 +48,25 @@ use wallet_utils::{RetryableError as _, conversion, unit};
 use crate::{
     domain::api_wallet::wallet::ApiWalletDomain,
     error::{business::api_wallet::trans::TransError, system::SystemError},
-    infrastructure::nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
+    infrastructure::nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     request::api_wallet::trans::ApiTransferReq,
-    response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
+    response_vo::{
+        CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails,
+        api_wallet::transaction::ApiWalletResourceConsume,
+    },
 };
 
 use crate::{
     domain::{
         api_wallet::{
-            adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory,
-            chain::ApiChainTransDomain, coin::ApiCoinDomain, strategy::StrategyDomain,
-            trans::ApiTransDomain,
+            adapter::tx::RawTx,
+            adapter_factory::ApiChainAdapterFactory,
+            chain::ApiChainTransDomain,
+            coin::ApiCoinDomain,
+            strategy::StrategyDomain,
+            trans::{ApiTransDomain, broadcast_mechanism, shared_mechanism},
         },
-        chain::adapter::sol_tx::SYSTEM_ACCOUNT_RENT,
+        chain::adapter::{ChainAdapterFactory, sol_tx::SYSTEM_ACCOUNT_RENT},
     },
     error::{
         business::{
@@ -50,7 +76,19 @@ use crate::{
         },
         service::ServiceError,
     },
-    infrastructure::api_trans::collect::legacy::AddressLockManager,
+    infrastructure::api_trans::{
+        collect::legacy::AddressLockManager,
+        nonce_recovery_mechanism,
+        resource_amount::energy_shortfall_to_apply_amounts,
+        resource_apply_outcome::PlatformApplyOutcome,
+        resource_delegation::{
+            resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
+        },
+        resource_reservation::{
+            ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
+        },
+        resource_rpc_auth, shadow_rpc_policy,
+    },
     request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
 };
 
@@ -58,12 +96,52 @@ use crate::{
 /// 只表达："对某个 trade_no 执行某个确定动作"
 #[derive(Debug)]
 pub enum ShadowCollectCommand {
+    /// 评估资源闸门
+    EvalResourceGate(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易
     Broadcast(String),
     /// 恢复交易
     Recover(String),
+    /// 执行平台代理资源代理任务，trade_no 是资源任务号
+    ExecuteLocalResourceDelegation(String),
+    /// 执行 TRON 账户激活任务，trade_no 是激活任务号
+    ExecuteAccountActivation(String),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResourceGateSnapshot {
+    /// BuildTx 前当前归集交易需要的能量
+    required_energy: u64,
+    /// BuildTx 前当前归集交易需要的带宽
+    required_bandwidth: u64,
+    /// 子账户当前可直接使用的能量
+    available_energy: i64,
+    /// 子账户当前可直接使用的带宽
+    available_bandwidth: i64,
+    /// 当前链上每 1 TRX 可换算的 Energy，用于本地代理时把 energy 缺口换算为 TRX 数量
+    energy_price: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResourceDelegationBlockPath {
+    PlatformFallback,
+    LocalFallback,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResourceGateNextStep {
+    Release,
+    BlockOnAccountActivation,
+    BlockOnPlatform,
+    BlockOnLocal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TronMissingPoolsRecoveryAction {
+    ObserveWithPointToPointRetry,
+    Rebroadcast,
 }
 
 /// Shadow Worker
@@ -101,17 +179,17 @@ pub enum ShadowCollectCommand {
 use crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer;
 
 pub struct ShadowCollectWorker {
-    /// 数据库连接池
-    collect_pool: ApiTransactionDbPool,
-    core_pool: ApiWalletDbPool,
+    ctx: &'static crate::context::Context,
     /// 地址锁管理器，保护地址级并发
     address_locks: Arc<AddressLockManager>,
     /// ShadowAdvancer 引用，用于统一推进执行
     advancer: Arc<ShadowAdvancer>,
+    resource_reservations: WithdrawResourceReservationManager,
 }
 
 impl ShadowCollectWorker {
-    const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
+    const LOCAL_DELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS: [u64; 3] = [3, 8, 15];
+
     const TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
@@ -119,25 +197,16 @@ impl ShadowCollectWorker {
     const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
     const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
     const BUILD_SLOT_STALE_SECS: i64 = 30;
-    const BUILD_503_RETRY_WINDOW_SECS: i64 = 3 * 60;
-
-    fn is_evm_chain_code(chain_code: &str) -> bool {
-        chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
-    }
-
-    fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
-        Self::is_evm_chain_code(chain_code) || chain_code.eq_ignore_ascii_case("sol")
-    }
 
     fn should_spend_all_native_collect(chain_code: &str, token_key: &AssetTokenKey) -> bool {
-        chain_code.eq_ignore_ascii_case("sol") && token_key.is_native()
+        shared_mechanism::is_sol_chain(chain_code) && token_key.is_native()
     }
 
     fn sol_token_collect_sender_rent_reserve(
         chain_code: &str,
         token_key: &AssetTokenKey,
     ) -> Result<Decimal, ServiceError> {
-        if chain_code.eq_ignore_ascii_case("sol") && token_key.is_contract() {
+        if shared_mechanism::is_sol_chain(chain_code) && token_key.is_contract() {
             return Ok(conversion::decimal_from_str(&SYSTEM_ACCOUNT_RENT.to_string())?);
         }
 
@@ -158,130 +227,103 @@ impl ShadowCollectWorker {
         Ok(balance < value)
     }
 
-    fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
-        match retry_count {
-            0..=3 => 0,
-            4..=6 => Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
-            _ => Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
-        }
+    fn tron_token_collect_resource_gate_covers_native_fee(req: &ApiCollectEntity) -> bool {
+        shared_mechanism::is_tron_chain(&req.chain_code)
+            && req.token_addr.is_contract()
+            && req.resource_gate_released_at.is_some()
+            && matches!(
+                req.resource_gate_result,
+                Some(ApiResourceGateResult::ResourceDelegationSuccess)
+            )
     }
 
-    fn should_force_align_prebuild_nonce_gap(chain_nonce: u64, local_nonce: u64) -> bool {
-        local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
+    fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
+        shared_mechanism::broadcast_uncertain_backoff_secs(
+            retry_count,
+            Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
+            Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
+        )
     }
 
     fn broadcast_uncertain_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
-        req.broadcast_uncertain_since_at
-            .map(|since| now.signed_duration_since(since).num_seconds().max(0))
+        shared_mechanism::broadcast_uncertain_elapsed_secs(req.broadcast_uncertain_since_at, now)
     }
 
     fn should_auto_fail_broadcast_uncertain(req: &ApiCollectEntity, now: DateTime<Utc>) -> bool {
-        Self::broadcast_uncertain_elapsed_secs(req, now)
-            .is_some_and(|elapsed| elapsed >= Self::EVM_UNCERTAIN_TIMEOUT_SECS)
+        shared_mechanism::is_broadcast_uncertain_timed_out(
+            req.broadcast_uncertain_since_at,
+            Self::EVM_UNCERTAIN_TIMEOUT_SECS,
+            now,
+        )
     }
 
     fn should_throttle_evm_uncertain_recover(req: &ApiCollectEntity, now: DateTime<Utc>) -> bool {
-        let Some(since) = req.broadcast_uncertain_since_at else {
-            return false;
-        };
-        let elapsed = now.signed_duration_since(since).num_seconds();
-        if elapsed >= Self::EVM_UNCERTAIN_TIMEOUT_SECS {
-            return false;
-        }
-        let Some(last_checked) = req.broadcast_uncertain_last_checked_at else {
-            return false;
-        };
-        let wait_secs = Self::evm_uncertain_backoff_secs(req.broadcast_uncertain_retry_count);
-        if wait_secs <= 0 {
-            return false;
-        }
-        now.signed_duration_since(last_checked).num_seconds() < wait_secs
+        shared_mechanism::should_throttle_broadcast_uncertain_recover(
+            req.broadcast_uncertain_since_at,
+            req.broadcast_uncertain_last_checked_at,
+            req.broadcast_uncertain_retry_count,
+            Self::EVM_UNCERTAIN_TIMEOUT_SECS,
+            Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
+            Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
+            now,
+        )
     }
 
     fn is_stale_build_slot(building_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
-        let Some(building_at) = building_at else {
-            return false;
-        };
-
-        now.signed_duration_since(building_at).num_seconds() >= Self::BUILD_SLOT_STALE_SECS
+        shared_mechanism::is_stale_slot(building_at, Self::BUILD_SLOT_STALE_SECS, now)
     }
 
-    fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
-        let RawTx::Tron(raw, ..) = raw_tx else { return None };
-        let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
-        v.get("expiration").and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
-    }
-
-    fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
-        if !chain_code.eq_ignore_ascii_case("tron") {
-            return false;
-        }
-        let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
-            Ok(raw_tx) => raw_tx,
-            Err(_) => return false,
-        };
-        let Some(exp_ms) = Self::tron_raw_expiration_ms(&raw_tx) else {
-            return false;
-        };
-        let now_ms = Utc::now().timestamp_millis();
-        exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
-    }
-
-    fn should_nudge_advance_after_recover_skip(req: &ApiCollectEntity) -> bool {
-        req.transaction_time.is_some()
-    }
-
-    fn is_collect_build_503_error(err: &ServiceError) -> bool {
-        err.to_string().contains("code=503")
-    }
-
-    fn build_503_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
-        req.updated_at.map(|updated_at| now.signed_duration_since(updated_at).num_seconds().max(0))
-    }
-
-    fn should_terminal_fail_collect_build_503(
+    fn should_retry_collect_build_service_unavailable(
         req: &ApiCollectEntity,
         err: &ServiceError,
-        now: DateTime<Utc>,
     ) -> bool {
-        if !Self::is_collect_build_503_error(err) {
-            return false;
-        }
-
-        if Self::build_503_elapsed_secs(req, now)
-            .is_some_and(|elapsed| elapsed >= Self::BUILD_503_RETRY_WINDOW_SECS)
-        {
-            return true;
-        }
-
-        false
+        req.raw_tx.is_none()
+            && req.tx_hash.is_none()
+            && crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(err)
+                .is_service_unavailable()
     }
 
-    fn normalized_tx_hash<'a>(req: &'a ApiCollectEntity) -> Option<&'a str> {
-        req.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    fn tron_collect_required_budget(
+        required_energy: u64,
+        _required_bandwidth: u64,
+    ) -> ResourceBudget {
+        // The collect resource gate only owns Energy delegation. Bandwidth
+        // shortage is paid/bypassed by the existing collect main flow, so it
+        // must not trigger `/resourceDl/apply` for an Energy task.
+        ResourceBudget::new(required_energy, 0)
     }
 
-    fn validate_recovered_tx_hash(
-        trade_no: &str,
-        existing_tx_hash: Option<&str>,
-        recovered_tx_hash: &str,
-    ) -> Result<(), ServiceError> {
-        if let Some(existing_tx_hash) = existing_tx_hash {
-            if recovered_tx_hash != existing_tx_hash {
-                error!(
-                    trade_no = %trade_no,
-                    existing_tx_hash = %existing_tx_hash,
-                    recover_tx_hash = %recovered_tx_hash,
-                    source = "shadow_worker_v2",
-                    "tx_hash mismatch during recover - fact integrity violated"
-                );
-                return Err(ServiceError::System(SystemError::Internal(
-                    "recover tx_hash mismatch".to_string(),
-                )));
-            }
-        }
+    fn tron_fee_estimate_resource_json(
+        energy: u64,
+        bandwidth: u64,
+    ) -> Result<String, ServiceError> {
+        ApiWalletResourceConsume::new(bandwidth, energy).to_json_string()
+    }
 
-        Ok(())
+    fn effective_resource_after_pending_collects(
+        available_energy: i64,
+        available_bandwidth: i64,
+        pending_budget: PendingCollectResourceBudget,
+    ) -> ResourceBudget {
+        let effective_energy =
+            available_energy.saturating_sub(pending_budget.energy.min(i64::MAX as u64) as i64);
+        let effective_bandwidth = available_bandwidth
+            .saturating_sub(pending_budget.bandwidth.min(i64::MAX as u64) as i64);
+        ResourceBudget::new(effective_energy.max(0) as u64, effective_bandwidth.max(0) as u64)
+    }
+
+    fn collect_local_delegate_trade_no(origin_trade_no: &str) -> String {
+        // 本地代理是 SDK 自己执行的 fallback 任务，所以需要确定性任务号；
+        // 否则 collect 每次重新评估时都会重复创建本地代理任务。
+        format!("rsc_local_delegate_{}", origin_trade_no)
+    }
+
+    fn resource_shortfall(required: u64, available: i64) -> u64 {
+        required.saturating_sub(available.max(0) as u64)
+    }
+
+    fn collect_delegation_energy_amount(required_energy: u64) -> u64 {
+        required_energy.max(1)
     }
 
     fn is_insufficient_fee_balance_error(err: &ServiceError) -> bool {
@@ -293,11 +335,45 @@ impl ShadowCollectWorker {
         )
     }
 
+    fn should_open_fee_cycle_for_tron_resource_ready(
+        req: &ApiCollectEntity,
+        err: &ServiceError,
+    ) -> bool {
+        Self::is_tron_resource_ready_candidate(req) && Self::is_insufficient_fee_balance_error(err)
+    }
+
+    fn should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
+        req: &ApiCollectEntity,
+        err: &ServiceError,
+    ) -> bool {
+        shared_mechanism::is_tron_chain(&req.chain_code)
+            && req.token_addr.is_contract()
+            && req.raw_tx.is_none()
+            && req.resource_gate_released_at.is_some()
+            && req.resource_gate_result == Some(ApiResourceGateResult::PlatformDelegateSuccess)
+            && Self::is_insufficient_fee_balance_error(err)
+    }
+
+    fn should_precheck_collect_amount_before_resource_gate(req: &ApiCollectEntity) -> bool {
+        shared_mechanism::is_tron_chain(&req.chain_code)
+            && req.raw_tx.is_none()
+            && req.transaction_time.is_none()
+            && req.finished_at.is_none()
+            && req.err_code.is_none()
+            && req.resource_gate_released_at.is_none()
+    }
+
+    fn is_tron_resource_ready_candidate(req: &ApiCollectEntity) -> bool {
+        shared_mechanism::is_tron_chain(&req.chain_code)
+            && req.token_addr.is_contract()
+            && req.resource_gate_result == Some(ApiResourceGateResult::ResourceReady)
+    }
+
     fn should_reopen_fee_cycle_for_solana_token_collect(
         req: &ApiCollectEntity,
         err: &ServiceError,
     ) -> bool {
-        req.chain_code.eq_ignore_ascii_case("sol")
+        shared_mechanism::is_sol_chain(&req.chain_code)
             && req.token_addr.is_contract()
             && Self::is_solana_rent_exempt_reserve_balance_error(req, err)
     }
@@ -307,22 +383,26 @@ impl ShadowCollectWorker {
         err: &ServiceError,
     ) -> bool {
         Self::should_reopen_fee_cycle_for_solana_token_collect(req, err)
-            && req.service_fee_uploaded_at.is_some()
+            && Self::service_fee_cycle_completed(req)
+    }
+
+    fn service_fee_cycle_completed(req: &ApiCollectEntity) -> bool {
+        req.service_fee_uploaded_at.is_some() && req.tx_fee_res_ack_sent_at.is_some()
     }
 
     fn should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
         req: &ApiCollectEntity,
     ) -> bool {
-        req.chain_code.eq_ignore_ascii_case("sol")
+        shared_mechanism::is_sol_chain(&req.chain_code)
             && req.token_addr.is_contract()
-            && req.service_fee_uploaded_at.is_some()
+            && Self::service_fee_cycle_completed(req)
     }
 
     fn is_solana_rent_exempt_reserve_balance_error(
         req: &ApiCollectEntity,
         err: &ServiceError,
     ) -> bool {
-        if !req.chain_code.eq_ignore_ascii_case("sol") {
+        if !shared_mechanism::is_sol_chain(&req.chain_code) {
             return false;
         }
 
@@ -340,19 +420,36 @@ impl ShadowCollectWorker {
         }
     }
 
-    fn is_tron_missing_confirmed_and_pending_error(err: &ServiceError) -> bool {
-        err.to_string().contains("tron tx missing from confirmed and pending pools")
+    fn is_collect_amount_insufficient_error(err: &ServiceError) -> bool {
+        match err {
+            ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance(detail),
+            )) => detail
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("collect amount is insufficient")),
+            _ => false,
+        }
     }
 
     fn should_rebroadcast_tron_missing_confirmed_and_pending(req: &ApiCollectEntity) -> bool {
-        if !req.chain_code.eq_ignore_ascii_case("tron") {
-            return false;
+        shared_mechanism::should_retry_after_tron_missing_confirmed_and_pending(
+            &req.chain_code,
+            req.last_broadcast_at,
+            req.broadcast_uncertain_since_at,
+            Self::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS,
+            Utc::now(),
+        )
+    }
+
+    fn tron_missing_pools_recovery_action(
+        req: &ApiCollectEntity,
+    ) -> TronMissingPoolsRecoveryAction {
+        if Self::should_rebroadcast_tron_missing_confirmed_and_pending(req) {
+            TronMissingPoolsRecoveryAction::Rebroadcast
+        } else {
+            TronMissingPoolsRecoveryAction::ObserveWithPointToPointRetry
         }
-        let Some(last_broadcast_at) = req.last_broadcast_at else {
-            return false;
-        };
-        Utc::now().signed_duration_since(last_broadcast_at).num_seconds()
-            >= Self::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS
     }
 
     fn apply_exec_to_addr(req: &mut ApiCollectEntity, exec_to_addr: &str) -> bool {
@@ -363,32 +460,1377 @@ impl ShadowCollectWorker {
         true
     }
 
+    fn collect_account_activation_trade_no(origin_trade_no: &str) -> String {
+        format!("act_{origin_trade_no}")
+    }
+
+    fn resource_snapshot_needs_account_activation(snapshot: &ResourceGateSnapshot) -> bool {
+        snapshot.required_energy > snapshot.available_energy.max(0) as u64
+            && snapshot.energy_price <= 0.0
+    }
+
     /// 创建新的 Shadow Collect Worker
     pub fn new(
-        pool: ApiTransactionDbPool,
-        core_pool: ApiWalletDbPool,
+        ctx: &'static crate::context::Context,
         address_locks: Arc<AddressLockManager>,
         advancer: Arc<ShadowAdvancer>,
     ) -> Self {
-        Self { collect_pool: pool, core_pool, address_locks, advancer }
+        Self { ctx, address_locks, advancer, resource_reservations: Default::default() }
     }
 
     /// 处理单个 Command
     pub async fn handle(&self, cmd: ShadowCollectCommand) -> Result<(), ServiceError> {
         // 提取 trade_no 用于日志
         let trade_no = match &cmd {
+            ShadowCollectCommand::EvalResourceGate(trade_no) => trade_no,
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
             ShadowCollectCommand::Recover(trade_no) => trade_no,
+            ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no) => trade_no,
+            ShadowCollectCommand::ExecuteAccountActivation(trade_no) => trade_no,
         };
 
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
 
         match cmd {
+            ShadowCollectCommand::EvalResourceGate(trade_no) => {
+                self.process_resource_gate(trade_no).await
+            }
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
             ShadowCollectCommand::Recover(trade_no) => self.process_recover(trade_no).await,
+            ShadowCollectCommand::ExecuteLocalResourceDelegation(trade_no) => {
+                let result = self.process_local_resource_delegation_execute(trade_no.clone()).await;
+                self.handle_local_resource_delegation_failure_if_needed(&trade_no, result).await
+            }
+            ShadowCollectCommand::ExecuteAccountActivation(trade_no) => {
+                self.process_account_activation(trade_no).await
+            }
         }
+    }
+
+    async fn process_account_activation(
+        &self,
+        activation_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        let Some(task) = ApiTronAccountActivationRepo::find_by_activation_trade_no(
+            &self.ctx.api_resource_pool()?,
+            &activation_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?
+        else {
+            warn!(
+                activation_trade_no = %activation_trade_no,
+                source = "shadow_worker_v2",
+                "Account activation task not found"
+            );
+            return Ok(());
+        };
+
+        if task.account_verified_at.is_some() {
+            return Ok(());
+        }
+        if task.tx_hash.is_some() {
+            return self.recover_or_verify_account_activation(task).await;
+        }
+
+        if let Err(err) = self.execute_account_activation(task.clone()).await {
+            let next_retry_at = (Utc::now()
+                + chrono::Duration::seconds(resource_delegation_retry_wait_secs(task.retry_count)))
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            ApiTronAccountActivationRepo::mark_retry_wait(
+                &self.ctx.api_resource_pool()?,
+                &task.activation_trade_no,
+                Some("activation_execute_failed"),
+                Some(&err.to_string()),
+                ApiTronAccountActivationRecoverStatus::RetryBuild,
+                &next_retry_at,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+            warn!(
+                activation_trade_no = %task.activation_trade_no,
+                error = %err,
+                next_retry_at = %next_retry_at,
+                source = "shadow_worker_v2",
+                "Account activation execution failed; scheduled retry"
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn schedule_account_activation_retry(
+        &self,
+        task: &ApiTronAccountActivationEntity,
+        err_code: &'static str,
+        err_msg: &str,
+        recover_status: ApiTronAccountActivationRecoverStatus,
+    ) -> Result<(), ServiceError> {
+        let next_retry_at = (Utc::now()
+            + chrono::Duration::seconds(resource_delegation_retry_wait_secs(task.retry_count)))
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        ApiTronAccountActivationRepo::mark_retry_wait(
+            &self.ctx.api_resource_pool()?,
+            &task.activation_trade_no,
+            Some(err_code),
+            Some(err_msg),
+            recover_status,
+            &next_retry_at,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        Ok(())
+    }
+
+    async fn execute_account_activation(
+        &self,
+        task: ApiTronAccountActivationEntity,
+    ) -> Result<(), ServiceError> {
+        let claimed = ApiTronAccountActivationRepo::claim_build_slot(
+            &self.ctx.api_resource_pool()?,
+            &task.activation_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if claimed == 0 {
+            info!(
+                activation_trade_no = %task.activation_trade_no,
+                source = "shadow_worker_v2",
+                "Account activation task already claimed or no longer executable"
+            );
+            return Ok(());
+        }
+
+        let handles = self.ctx.get_handles_arc().await?;
+        let private_key_manager = handles.get_global_private_key_manager();
+        let private_key =
+            private_key_manager.get_private_key(&task.payer_address, &task.chain_code).await?;
+        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
+
+        let mut params = ApiBaseTransferReq::new(
+            &task.payer_address,
+            &task.target_address,
+            &task.amount,
+            &task.chain_code,
+        );
+        params.with_token(AssetTokenKey::Native, 6, "TRX");
+        let transfer_req = ApiTransferReq { base: params, password: unlock_token, nonce: 0 };
+        let Some((tx_hash, raw_tx, _fee)) =
+            crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+                self.ctx,
+                &task.chain_code,
+                &task.activation_trade_no,
+                "account_activation_build",
+                "shadow_worker_v2",
+                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(&task.activation_trade_no)
+                    .chain_code(&task.chain_code)
+                    .source("shadow_worker_v2")
+                    .op("account_activation_build"),
+                crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
+                    &self.ctx,
+                    transfer_req,
+                    Some(private_key),
+                ),
+            )
+            .await?
+        else {
+            self.schedule_account_activation_retry(
+                &task,
+                "activation_build_skipped",
+                "account activation build skipped by RPC guard",
+                ApiTronAccountActivationRecoverStatus::RetryBuild,
+            )
+            .await?;
+            return Ok(());
+        };
+
+        let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
+        let tx_resp = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+            self.ctx,
+            &task.chain_code,
+            &task.activation_trade_no,
+            "account_activation_broadcast",
+            "shadow_worker_v2",
+            crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                .trade_no(&task.activation_trade_no)
+                .tx_hash(&tx_hash)
+                .chain_code(&task.chain_code)
+                .source("shadow_worker_v2")
+                .op("account_activation_broadcast"),
+            crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
+                &self.ctx,
+                &task.chain_code,
+                raw_tx,
+                Some(&tx_hash),
+            ),
+        )
+        .await?
+        .flatten();
+
+        let Some(resp) = tx_resp else {
+            self.schedule_account_activation_retry(
+                &task,
+                "activation_broadcast_uncertain",
+                "account activation broadcast returned no committed response",
+                ApiTronAccountActivationRecoverStatus::RetryBuild,
+            )
+            .await?;
+            return Ok(());
+        };
+
+        ApiTronAccountActivationRepo::mark_broadcast_success(
+            &self.ctx.api_resource_pool()?,
+            &task.activation_trade_no,
+            &resp.tx_hash,
+            &raw_tx_str,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            activation_trade_no = %task.activation_trade_no,
+            tx_hash = %resp.tx_hash,
+            target_address = %task.target_address,
+            source = "shadow_worker_v2",
+            "Account activation broadcast committed"
+        );
+        self.advancer.try_advance(&task.origin_trade_no).await;
+
+        Ok(())
+    }
+
+    async fn verify_account_activation(
+        &self,
+        task: ApiTronAccountActivationEntity,
+    ) -> Result<(), ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter_with_ctx(self.ctx).await?;
+        let account = chain.account_info(&task.target_address).await?;
+        if account.address.is_empty() {
+            info!(
+                activation_trade_no = %task.activation_trade_no,
+                target_address = %task.target_address,
+                source = "shadow_worker_v2",
+                "Account activation not visible on chain yet"
+            );
+            return Ok(());
+        }
+
+        let rows = ApiTronAccountActivationRepo::mark_account_verified(
+            &self.ctx.api_resource_pool()?,
+            &task.activation_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if rows == 0 {
+            return Ok(());
+        }
+
+        if let Some(collect) = ApiCollectRepo::find_by_resource_dependency_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            &task.activation_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?
+        {
+            let rows = ApiCollectRepo::clear_account_activation_block_for_reeval(
+                &self.ctx.api_transaction_pool()?,
+                &collect.trade_no,
+                &task.activation_trade_no,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+            if rows > 0 {
+                self.advancer.try_advance(&collect.trade_no).await;
+            }
+        }
+
+        info!(
+            activation_trade_no = %task.activation_trade_no,
+            target_address = %task.target_address,
+            source = "shadow_worker_v2",
+            "Account activation verified and collect resource gate requeued"
+        );
+
+        Ok(())
+    }
+
+    async fn recover_or_verify_account_activation(
+        &self,
+        task: ApiTronAccountActivationEntity,
+    ) -> Result<(), ServiceError> {
+        if task.chain_success_at.is_some() {
+            return self.verify_account_activation(task).await;
+        }
+
+        let Some(tx_hash) = task.tx_hash.as_deref().filter(|s| !s.trim().is_empty()) else {
+            return Ok(());
+        };
+
+        match crate::domain::api_wallet::trans::ApiTransDomain::process_recovered_tx(
+            &self.ctx,
+            &task.chain_code,
+            &task.payer_address,
+            tx_hash,
+            0,
+            "0",
+        )
+        .await
+        {
+            Ok(Some(_resp)) => {
+                ApiTronAccountActivationRepo::mark_chain_success(
+                    &self.ctx.api_resource_pool()?,
+                    &task.activation_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                let refreshed = ApiTronAccountActivationRepo::find_by_activation_trade_no(
+                    &self.ctx.api_resource_pool()?,
+                    &task.activation_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?
+                .unwrap_or(task);
+                self.verify_account_activation(refreshed).await
+            }
+            Ok(None) => {
+                self.schedule_account_activation_retry(
+                    &task,
+                    "activation_recover_uncertain",
+                    "account activation recover returned no final result",
+                    ApiTronAccountActivationRecoverStatus::RetryRecover,
+                )
+                .await
+            }
+            Err(err) if Self::is_recovered_tx_terminal_chain_failure(&err) => {
+                let next_retry_at = (Utc::now()
+                    + chrono::Duration::seconds(resource_delegation_retry_wait_secs(
+                        task.retry_count,
+                    )))
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                ApiTronAccountActivationRepo::mark_chain_failed_retry(
+                    &self.ctx.api_resource_pool()?,
+                    &task.activation_trade_no,
+                    Some("activation_chain_failed"),
+                    Some(&err.to_string()),
+                    ApiTronAccountActivationRecoverStatus::RetryBuild,
+                    &next_retry_at,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                warn!(
+                    activation_trade_no = %task.activation_trade_no,
+                    tx_hash = %tx_hash,
+                    error = %err,
+                    next_retry_at = %next_retry_at,
+                    source = "shadow_worker_v2",
+                    "Account activation tx failed on chain; scheduled rebuild retry"
+                );
+                Ok(())
+            }
+            Err(err) => {
+                self.schedule_account_activation_retry(
+                    &task,
+                    "activation_recover_error",
+                    &err.to_string(),
+                    ApiTronAccountActivationRecoverStatus::RetryRecover,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn handle_local_resource_delegation_failure_if_needed(
+        &self,
+        resource_trade_no: &str,
+        result: Result<(), ServiceError>,
+    ) -> Result<(), ServiceError> {
+        let Err(err) = result else {
+            return Ok(());
+        };
+
+        if err.is_transient_db_pool_timeout() {
+            self.schedule_local_resource_delegation_rebuild_retry(resource_trade_no, &err).await?;
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Resource delegation hit local DB pool timeout, scheduled retry instead of reporting failure"
+            );
+            return Ok(());
+        }
+
+        match err.retry_policy() {
+            wallet_utils::RetryPolicy::Never => {
+                warn!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %err,
+                    source = "shadow_worker_v2",
+                    "Resource delegation execution failed permanently"
+                );
+                if self.mark_local_resource_delegation_failed(resource_trade_no, &err).await? {
+                    self.release_collect_gate_after_local_delegation_failure(resource_trade_no)
+                        .await?;
+                }
+                Ok(())
+            }
+            wallet_utils::RetryPolicy::Delay => {
+                self.schedule_local_resource_delegation_rebuild_retry(resource_trade_no, &err)
+                    .await?;
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %err,
+                    source = "shadow_worker_v2",
+                    "Resource delegation terminal step failed, will retry later"
+                );
+                Ok(())
+            }
+        }
+    }
+
+    async fn schedule_local_resource_delegation_rebuild_retry(
+        &self,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        Self::schedule_local_resource_delegation_rebuild_retry_in_pool(
+            &self.ctx.api_resource_pool()?,
+            resource_trade_no,
+            err,
+        )
+        .await
+    }
+
+    async fn schedule_local_resource_delegation_rebuild_retry_in_pool(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(pool, resource_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        let affected = ApiResourceDelegationRepo::reset_for_rebuild(pool, resource_trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+        info!(
+            resource_trade_no = %resource_trade_no,
+            origin_trade_no = ?task.origin_trade_no,
+            affected = %affected,
+            error = %err,
+            source = "shadow_worker_v2",
+            "Resource delegation reset for rebuild"
+        );
+
+        Ok(())
+    }
+
+    async fn process_local_resource_delegation_execute(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        use crate::infrastructure::api_trans::resource_delegate::local_execution::{
+            LocalDelegateExecutionOutcome, execute_local_delegate_step,
+        };
+
+        let outcome = execute_local_delegate_step(
+            self.ctx,
+            &self.ctx.api_resource_pool()?,
+            &resource_trade_no,
+            "collect_resource_delegation",
+        )
+        .await?;
+        match outcome {
+            LocalDelegateExecutionOutcome::Skipped => {}
+            LocalDelegateExecutionOutcome::Broadcasted { tx_hash } => {
+                info!(
+                    resource_trade_no,
+                    tx_hash = %tx_hash,
+                    source = "shadow_worker_v2",
+                    "Resource delegation broadcast fact committed"
+                );
+                self.schedule_local_delegation_post_broadcast_confirms(
+                    &resource_trade_no,
+                    &tx_hash,
+                );
+            }
+            LocalDelegateExecutionOutcome::RecoveredSuccess(refreshed) => {
+                self.release_collect_gate_after_local_delegation_success(&refreshed).await?;
+            }
+            LocalDelegateExecutionOutcome::RecoveryUncertain { rebroadcasted, origin_trade_no } => {
+                if rebroadcasted {
+                    if let Some(origin_trade_no) = origin_trade_no.as_deref() {
+                        self.advancer.try_advance(origin_trade_no).await;
+                    }
+                }
+            }
+            LocalDelegateExecutionOutcome::RecoveredFailure(failed) => {
+                self.release_collect_gate_after_local_delegation_failure(&failed.resource_trade_no)
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn schedule_local_delegation_post_broadcast_confirms(
+        &self,
+        resource_trade_no: &str,
+        tx_hash: &str,
+    ) {
+        for delay_secs in Self::LOCAL_DELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS {
+            let advancer = self.advancer.clone();
+            let resource_trade_no = resource_trade_no.to_string();
+            let tx_hash = tx_hash.to_string();
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                delay_secs = delay_secs,
+                source = "shadow_worker_v2",
+                "Scheduled local delegation post-broadcast confirmation"
+            );
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    tx_hash = %tx_hash,
+                    delay_secs = delay_secs,
+                    source = "shadow_worker_v2",
+                    "Triggering local delegation post-broadcast confirmation"
+                );
+                advancer.trigger_local_delegation_fast_path(&resource_trade_no);
+            });
+        }
+    }
+
+    async fn mark_local_resource_delegation_failed(
+        &self,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<bool, ServiceError> {
+        if err.is_transient_db_pool_timeout() {
+            warn!(
+                resource_trade_no = %resource_trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Skip marking resource delegation failed: local DB pool timeout is retryable infrastructure noise"
+            );
+            return Ok(false);
+        }
+
+        // 统一失败 fact 映射，保持与其他 resource delegation 统一上报约定。
+        let (err_code, err_msg) = resource_delegation_failure_fact(err);
+        let payload = format!("local_delegation_terminal_failure:{err_msg}");
+        let affected = ApiResourceDelegationRepo::mark_failed_with_result_if_unfinished(
+            &self.ctx.api_resource_pool()?,
+            resource_trade_no,
+            None,
+            &err_code,
+            &err_msg,
+            &payload,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if affected == 0 {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                err_code = %err_code,
+                err_msg = %err_msg,
+                source = "shadow_worker_v2",
+                "Resource delegation failure fact already committed or no longer eligible"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                err_code = %err_code,
+                err_msg = %err_msg,
+                source = "shadow_worker_v2",
+                "Resource delegation failure fact committed"
+            );
+        }
+
+        if affected > 0 {
+            return Ok(true);
+        }
+
+        let persisted = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_resource_pool()?,
+            resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        Ok(persisted.result_status == Some(ApiResourceDelegationResultStatus::Fail)
+            && persisted.finished_at.is_some())
+    }
+
+    /// 执行资源闸门检查，入参是原归集订单号，不是资源任务号。
+    ///
+    /// 边界说明：
+    /// - 这里的“评估资源闸门”是一个真实操作步骤
+    /// - `resource_ready` / `need_platform_delegate` 只是这一步落下的结果事实
+    /// - worker 负责提交事实，不负责继续调度；后续推进由 scanner/advancer 基于事实完成
+    async fn process_resource_gate(&self, origin_trade_no: String) -> Result<(), ServiceError> {
+        info!(origin_trade_no = %origin_trade_no, source = "shadow_worker_v2", "Processing resource gate command");
+
+        if let Err(err) = self.process_resource_gate_inner(&origin_trade_no).await {
+            error!(origin_trade_no = %origin_trade_no, error = %err, source = "shadow_worker_v2", "Resource gate check failed");
+            return Err(err);
+        }
+
+        Ok(())
+    }
+
+    async fn process_resource_gate_inner(&self, origin_trade_no: &str) -> Result<(), ServiceError> {
+        let req = self.get_collect_entity(origin_trade_no).await?;
+
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
+            return Ok(());
+        }
+
+        if Self::resource_gate_already_resolved(&req) {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Resource gate already resolved or collect is no longer eligible"
+            );
+            return Ok(());
+        }
+
+        if Self::should_precheck_collect_amount_before_resource_gate(&req)
+            && !self.check_collect_amount(&req).await?
+        {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Collect amount insufficient before resource gate; marking collect failed without delegation"
+            );
+            self.mark_collect_amount_insufficient(&req).await?;
+            return Ok(());
+        }
+
+        let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
+        let Some(snapshot) = self
+            .eval_collect_resource_gate_snapshot_guarded(&req, &exec_to_addr, origin_trade_no)
+            .await?
+        else {
+            return Ok(());
+        };
+
+        // 资源顺序只处理到“允许回到旧 collect 主链”为止：
+        // 自身资源 -> 平台代理 -> 本地代理 fallback -> release gate。
+        // release 之后，主币不足 / 补币 / 原失败收口仍走上一版已经稳定的旧闭环。
+        let (next_step, effective_snapshot) = self
+            .decide_collect_resource_gate_next_step(&req, snapshot.clone(), origin_trade_no)
+            .await?;
+        self.apply_collect_resource_gate_next_step(
+            next_step,
+            origin_trade_no,
+            &req,
+            &exec_to_addr,
+            effective_snapshot,
+        )
+        .await?;
+
+        info!(
+            origin_trade_no,
+            required_energy = %snapshot.required_energy,
+            available_energy = %snapshot.available_energy,
+            required_bandwidth = %snapshot.required_bandwidth,
+            available_bandwidth = %snapshot.available_bandwidth,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate evaluated"
+        );
+
+        Ok(())
+    }
+
+    fn resource_gate_already_resolved(req: &ApiCollectEntity) -> bool {
+        req.resource_gate_released_at.is_some()
+            || req.raw_tx.is_some()
+            || req.transaction_time.is_some()
+            || req.finished_at.is_some()
+            || req.err_code.is_some()
+    }
+
+    async fn process_release_resource_gate(
+        &self,
+        origin_trade_no: String,
+        snapshot: Option<ResourceGateSnapshot>,
+    ) -> Result<(), ServiceError> {
+        let req = self.get_collect_entity(&origin_trade_no).await?;
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
+            return Ok(());
+        }
+        if req.resource_gate_released_at.is_some() {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Resource gate already released"
+            );
+            return Ok(());
+        }
+        if req.raw_tx.is_some()
+            || req.transaction_time.is_some()
+            || req.finished_at.is_some()
+            || req.err_code.is_some()
+        {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Skip release resource gate: collect no longer eligible"
+            );
+            return Ok(());
+        }
+
+        // The resource gate is a pre-BuildTx fact. Releasing it only records
+        // that the collect order may enter the existing BuildTx flow; raw_tx
+        // and tx_hash are still produced by the normal build path.
+        let rows = if let Some(snapshot) = snapshot {
+            let estimated_resource_consume = Self::tron_fee_estimate_resource_json(
+                snapshot.required_energy,
+                snapshot.required_bandwidth,
+            )?;
+            ApiCollectRepo::mark_resource_released_with_estimate(
+                &self.ctx.api_transaction_pool()?,
+                &origin_trade_no,
+                ApiResourceGateResult::ResourceReady,
+                &estimated_resource_consume,
+            )
+            .await
+        } else {
+            ApiCollectRepo::mark_resource_released(
+                &self.ctx.api_transaction_pool()?,
+                &origin_trade_no,
+                ApiResourceGateResult::ResourceReady,
+            )
+            .await
+        }
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            origin_trade_no = %origin_trade_no,
+            rows = %rows,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate released"
+        );
+        self.advancer.try_advance(&origin_trade_no).await;
+        Ok(())
+    }
+
+    async fn process_block_on_platform_delegation(
+        &self,
+        origin_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        let req = self.get_collect_entity(&origin_trade_no).await?;
+        if !shared_mechanism::is_tron_chain(&req.chain_code) {
+            return Ok(());
+        }
+        if Self::resource_gate_already_resolved(&req) {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Skip block on platform delegation: resource gate already resolved"
+            );
+            return Ok(());
+        }
+
+        let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
+        let fee_details = self
+            .eval_collect_resource_gate_snapshot_guarded(&req, &exec_to_addr, &origin_trade_no)
+            .await?;
+        let Some(snapshot) = fee_details else {
+            return Ok(());
+        };
+
+        self.commit_platform_delegation_block(
+            &origin_trade_no,
+            &req,
+            &exec_to_addr,
+            snapshot.required_energy,
+            snapshot.required_bandwidth,
+            snapshot.available_energy,
+            snapshot.available_bandwidth,
+            snapshot.energy_price,
+        )
+        .await
+    }
+
+    async fn eval_collect_resource_gate_snapshot_guarded(
+        &self,
+        req: &ApiCollectEntity,
+        exec_to_addr: &str,
+        origin_trade_no: &str,
+    ) -> Result<Option<ResourceGateSnapshot>, ServiceError> {
+        crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+            self.ctx,
+            &req.chain_code,
+            origin_trade_no,
+            "resource_gate",
+            "shadow_worker_v2",
+            crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                .trade_no(origin_trade_no)
+                .chain_code(&req.chain_code)
+                .exec_to_addr(exec_to_addr)
+                .source("shadow_worker_v2")
+                .op("resource_gate"),
+            self.eval_collect_resource_gate_snapshot(req, exec_to_addr),
+        )
+        .await
+    }
+
+    async fn eval_collect_resource_gate_snapshot(
+        &self,
+        req: &ApiCollectEntity,
+        exec_to_addr: &str,
+    ) -> Result<ResourceGateSnapshot, ServiceError> {
+        let resource_gate_semaphore =
+            crate::infrastructure::api_trans::shadow_rpc_policy::shared_resource_gate_semaphore();
+        let wait_started = std::time::Instant::now();
+        info!(
+            origin_trade_no = %req.trade_no,
+            available_permits = resource_gate_semaphore.available_permits(),
+            source = "shadow_worker_v2",
+            "Collect resource gate worker wait started after chain RPC admission"
+        );
+        let _resource_gate_permit = resource_gate_semaphore
+            .acquire_owned()
+            .await
+            .map_err(|_| ServiceError::Parameter("shared resource gate semaphore closed".into()))?;
+        info!(
+            origin_trade_no = %req.trade_no,
+            queue_wait_ms = wait_started.elapsed().as_millis(),
+            source = "shadow_worker_v2",
+            "Collect resource gate worker permit acquired"
+        );
+
+        let ctx = self.ctx;
+        // 这里只做“评估快照”：
+        // - 估算如果现在 BuildTx，需要多少资源
+        // - 读取子账户当前链上资源余额
+        // 不在这里决定走平台代理还是本地代理，也不直接写 blocked/released 事实。
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
+        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
+            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?;
+            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+        } else {
+            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
+        };
+
+        let fee_details = self
+            .estimate_tron_fee_details(
+                &req.from_addr,
+                exec_to_addr,
+                &req.value,
+                &token_symbol,
+                &main_coin.symbol,
+                token_key,
+                token_decimals,
+            )
+            .await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
+                .await?;
+        let resource = adapter.account_resource(&req.from_addr).await?;
+
+        Ok(ResourceGateSnapshot {
+            required_energy: fee_details.energy,
+            required_bandwidth: fee_details.bandwidth,
+            available_energy: resource.available_energy(),
+            available_bandwidth: resource.available_bandwidth(),
+            energy_price: resource.energy_price(),
+        })
+    }
+
+    async fn decide_collect_resource_gate_next_step(
+        &self,
+        req: &ApiCollectEntity,
+        mut snapshot: ResourceGateSnapshot,
+        origin_trade_no: &str,
+    ) -> Result<(ResourceGateNextStep, ResourceGateSnapshot), ServiceError> {
+        let pending_budget = ApiCollectRepo::pending_resource_budget_by_owner(
+            &self.ctx.api_transaction_pool()?,
+            &req.chain_code,
+            &req.from_addr,
+            origin_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let required = Self::tron_collect_required_budget(
+            snapshot.required_energy,
+            snapshot.required_bandwidth,
+        );
+        let available = Self::effective_resource_after_pending_collects(
+            snapshot.available_energy,
+            snapshot.available_bandwidth,
+            pending_budget,
+        );
+        let decision = self.resource_reservations.reserve_if_available(
+            &req.from_addr,
+            origin_trade_no.to_string(),
+            required,
+            available,
+        );
+
+        if let ResourceReservationDecision::Reserved { effective_available, reserved } = decision {
+            info!(
+                origin_trade_no,
+                required_energy = %snapshot.required_energy,
+                available_energy = %snapshot.available_energy,
+                pending_energy = %pending_budget.energy,
+                reserved_energy = %reserved.energy,
+                effective_energy = %effective_available.energy,
+                source = "shadow_worker_v2",
+                "TRON collect resource gate reserved address-level ResourceReady budget"
+            );
+            snapshot.available_energy = effective_available.energy.min(i64::MAX as u64) as i64;
+            snapshot.available_bandwidth =
+                effective_available.bandwidth.min(i64::MAX as u64) as i64;
+            return Ok((ResourceGateNextStep::Release, snapshot));
+        }
+
+        let ResourceReservationDecision::NeedMore(shortfall) = decision else {
+            unreachable!("reserved decision returned early")
+        };
+        snapshot.available_energy =
+            shortfall.effective_available.energy.min(i64::MAX as u64) as i64;
+        snapshot.available_bandwidth =
+            shortfall.effective_available.bandwidth.min(i64::MAX as u64) as i64;
+
+        if Self::resource_snapshot_needs_account_activation(&snapshot) {
+            return Ok((ResourceGateNextStep::BlockOnAccountActivation, snapshot));
+        }
+
+        let delegations = ApiResourceDelegationRepo::list_by_origin_trade_no(
+            &self.ctx.api_resource_pool()?,
+            origin_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let next_step = match Self::decide_collect_resource_block_path(req, &delegations) {
+            ResourceDelegationBlockPath::LocalFallback => ResourceGateNextStep::BlockOnLocal,
+            ResourceDelegationBlockPath::PlatformFallback => ResourceGateNextStep::BlockOnPlatform,
+        };
+
+        Ok((next_step, snapshot))
+    }
+
+    /// Main collect resource-gate skeleton:
+    /// 1. evaluate current resource snapshot
+    /// 2. decide the next step from facts
+    /// 3. commit only the facts for that one step
+    async fn apply_collect_resource_gate_next_step(
+        &self,
+        next_step: ResourceGateNextStep,
+        origin_trade_no: &str,
+        req: &ApiCollectEntity,
+        exec_to_addr: &str,
+        snapshot: ResourceGateSnapshot,
+    ) -> Result<(), ServiceError> {
+        match next_step {
+            ResourceGateNextStep::Release => {
+                self.process_release_resource_gate(origin_trade_no.to_string(), Some(snapshot))
+                    .await
+            }
+            ResourceGateNextStep::BlockOnAccountActivation => {
+                self.commit_account_activation_block(
+                    origin_trade_no,
+                    req,
+                    exec_to_addr,
+                    snapshot.required_energy,
+                    snapshot.available_energy,
+                    snapshot.energy_price,
+                )
+                .await
+            }
+            ResourceGateNextStep::BlockOnPlatform => {
+                self.commit_platform_delegation_block(
+                    origin_trade_no,
+                    req,
+                    exec_to_addr,
+                    snapshot.required_energy,
+                    snapshot.required_bandwidth,
+                    snapshot.available_energy,
+                    snapshot.available_bandwidth,
+                    snapshot.energy_price,
+                )
+                .await
+            }
+            ResourceGateNextStep::BlockOnLocal => {
+                self.commit_local_delegation_block(
+                    origin_trade_no,
+                    req,
+                    exec_to_addr,
+                    snapshot.required_energy,
+                    snapshot.available_energy,
+                    snapshot.energy_price,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn commit_account_activation_block(
+        &self,
+        origin_trade_no: &str,
+        req: &ApiCollectEntity,
+        payer_address: &str,
+        required_energy: u64,
+        available_energy: i64,
+        energy_price: f64,
+    ) -> Result<(), ServiceError> {
+        Self::commit_account_activation_block_in_pools(
+            &self.ctx.api_transaction_pool()?,
+            &self.ctx.api_resource_pool()?,
+            origin_trade_no,
+            req,
+            payer_address,
+            required_energy,
+            available_energy,
+            energy_price,
+        )
+        .await
+    }
+
+    async fn commit_account_activation_block_in_pools(
+        transaction_pool: &ApiTransactionDbPool,
+        resource_pool: &ApiResourceDbPool,
+        origin_trade_no: &str,
+        req: &ApiCollectEntity,
+        payer_address: &str,
+        required_energy: u64,
+        available_energy: i64,
+        energy_price: f64,
+    ) -> Result<(), ServiceError> {
+        let activation_trade_no = Self::collect_account_activation_trade_no(origin_trade_no);
+        ApiTronAccountActivationRepo::upsert(
+            resource_pool,
+            NewApiTronAccountActivation::collect(
+                req.uid.clone(),
+                origin_trade_no.to_string(),
+                activation_trade_no.clone(),
+                payer_address.to_string(),
+                req.from_addr.clone(),
+            ),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        let rows = ApiCollectRepo::mark_resource_blocked(
+            transaction_pool,
+            origin_trade_no,
+            ApiResourceBlockReason::NeedAccountActivation,
+            Some(&activation_trade_no),
+            Some(ApiResourceDependencyType::AccountActivation),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        warn!(
+            origin_trade_no = %origin_trade_no,
+            rows = %rows,
+            activation_trade_no = %activation_trade_no,
+            payer_address = %payer_address,
+            inactive_address = %req.from_addr,
+            required_energy = %required_energy,
+            available_energy = %available_energy,
+            energy_price = %energy_price,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate blocked by inactive account"
+        );
+        Ok(())
+    }
+
+    fn decide_collect_resource_block_path(
+        req: &ApiCollectEntity,
+        delegations: &[ApiResourceDelegationEntity],
+    ) -> ResourceDelegationBlockPath {
+        // 文档顺序要求：
+        // 子账户自身能量 -> 平台资源代理 -> 出款地址本地代理 -> 后续主链
+        //
+        // 所以只要平台代理已经失败，或者本地 fallback 已经存在，
+        // 下一次 EvalResourceGate 就必须把 blocked 事实切到 local_delegate。
+        let has_local_fallback = delegations.iter().any(|delegation| {
+            delegation.source == ApiResourceDelegationSource::Local
+                && delegation.operation_type == ApiResourceDelegationOperationType::Delegate
+        });
+        let platform_failed = delegations.iter().any(|delegation| {
+            delegation.source == ApiResourceDelegationSource::Platform
+                && delegation.operation_type == ApiResourceDelegationOperationType::Delegate
+                && (delegation.err_code.is_some() || delegation.chain_failed_at.is_some())
+        });
+
+        if req.resource_block_reason == Some(ApiResourceBlockReason::NeedLocalDelegate)
+            || has_local_fallback
+            || platform_failed
+        {
+            ResourceDelegationBlockPath::LocalFallback
+        } else {
+            ResourceDelegationBlockPath::PlatformFallback
+        }
+    }
+
+    async fn commit_platform_delegation_block(
+        &self,
+        origin_trade_no: &str,
+        req: &ApiCollectEntity,
+        exec_to_addr: &str,
+        required_energy: u64,
+        required_bandwidth: u64,
+        available_energy: i64,
+        available_bandwidth: i64,
+        energy_price: f64,
+    ) -> Result<(), ServiceError> {
+        let amount = Self::collect_delegation_energy_amount(required_energy).to_string();
+        let resource_trade_no = match self
+            .apply_platform_resource_delegation(
+                &req.uid,
+                origin_trade_no,
+                &req.chain_code,
+                &req.from_addr,
+                &amount,
+            )
+            .await?
+        {
+            PlatformApplyOutcome::AcceptedWithResourceTradeNo(resource_trade_no) => {
+                Some(resource_trade_no)
+            }
+            PlatformApplyOutcome::AcceptedWithOriginalTradeNo => None,
+            PlatformApplyOutcome::Rejected => {
+                return self
+                    .commit_local_delegation_block(
+                        origin_trade_no,
+                        req,
+                        &exec_to_addr,
+                        required_energy,
+                        available_energy,
+                        energy_price,
+                    )
+                    .await;
+            }
+        };
+
+        // 商户侧只记录“原单正在等待平台代理结果”这个事实。
+        // 真正的平台代理订单由平台钱包接收并执行，不在商户钱包本地创建任务行。
+        let rows = ApiCollectRepo::mark_resource_blocked(
+            &self.ctx.api_transaction_pool()?,
+            origin_trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            resource_trade_no.as_deref(),
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            origin_trade_no = %origin_trade_no,
+            rows = %rows,
+            required_energy = %required_energy,
+            available_energy = %available_energy,
+            required_bandwidth = %required_bandwidth,
+            available_bandwidth = %available_bandwidth,
+            resource_trade_no = ?resource_trade_no,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate blocked"
+        );
+
+        Ok(())
+    }
+
+    async fn apply_platform_resource_delegation(
+        &self,
+        uid: &str,
+        origin_trade_no: &str,
+        chain_code: &str,
+        receiver_address: &str,
+        amount: &str,
+    ) -> Result<PlatformApplyOutcome, ServiceError> {
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, chain_code).await?;
+        let resource = adapter.account_resource(receiver_address).await?;
+        let amounts = energy_shortfall_to_apply_amounts(amount, resource.energy_price())?;
+
+        let wallet = ApiWalletRepo::find_by_uid(&self.ctx.api_wallet_pool()?, uid)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+        let app_id = wallet.as_ref().and_then(|w| w.app_id.as_deref()).unwrap_or(uid);
+        let org_id = wallet.as_ref().and_then(|w| w.merchant_id.as_deref()).unwrap_or(uid);
+
+        let req = ResourceApplyReq::new(
+            origin_trade_no,
+            app_id,
+            org_id,
+            Some(chain_code),
+            amounts.native_token_amount,
+            Some(amounts.resource_amount),
+            ResourceType::Energy,
+            receiver_address,
+            TransType::Col,
+        );
+
+        tracing::info!(
+            origin_trade_no = %origin_trade_no,
+            req = ?req,
+            source = "shadow_worker_v2",
+            "Platform resource delegation apply request"
+        );
+        let backend_api = self.ctx.get_global_backend_api();
+        let apply_started_at = std::time::Instant::now();
+        let resp = backend_api.apply_resource_delegation(&req).await?;
+        let apply_elapsed_ms = apply_started_at.elapsed().as_millis();
+
+        if resp.is_success() {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                resource_trade_no = ?resp.dl_trade_no,
+                apply_elapsed_ms,
+                source = "shadow_worker_v2",
+                "Platform resource delegation apply succeeded"
+            );
+            Ok(PlatformApplyOutcome::from_backend_response(true, resp.dl_trade_no))
+        } else {
+            warn!(
+                origin_trade_no = %origin_trade_no,
+                apply_elapsed_ms,
+                source = "shadow_worker_v2",
+                "Platform resource delegation apply rejected, will try alternative paths"
+            );
+            Ok(PlatformApplyOutcome::Rejected)
+        }
+    }
+
+    async fn commit_local_delegation_block(
+        &self,
+        origin_trade_no: &str,
+        req: &ApiCollectEntity,
+        exec_to_addr: &str,
+        required_energy: u64,
+        available_energy: i64,
+        energy_price: f64,
+    ) -> Result<(), ServiceError> {
+        // local delegation 的 owner 是出款地址，receiver 是当前待归集子地址。
+        // 这里写下的是“本地代理 fallback 已成为当前依赖”的事实，
+        // 不是说本地代理已经执行成功。
+        //
+        // 一旦 local delegation 到终态，collect 只会被放回旧主链入口，
+        // 不会在资源链里继续承接主币/补币逻辑。
+        let resource_trade_no = Self::collect_local_delegate_trade_no(origin_trade_no);
+        let amount = Self::collect_delegation_energy_amount(required_energy).to_string();
+        let native_amount = energy_shortfall_to_apply_amounts(&amount, energy_price)?
+            .native_token_amount
+            .to_string();
+        let delegation = NewApiResourceDelegation::local_delegate(
+            req.uid.clone(),
+            resource_trade_no.clone(),
+            req.trade_no.clone(),
+            i64::from(req.trade_type),
+            exec_to_addr.to_string(),
+            req.from_addr.clone(),
+            native_amount,
+            amount,
+        );
+        ApiResourceDelegationRepo::upsert(&self.ctx.api_resource_pool()?, delegation)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        let rows = ApiCollectRepo::mark_resource_blocked(
+            &self.ctx.api_transaction_pool()?,
+            origin_trade_no,
+            ApiResourceBlockReason::NeedLocalDelegate,
+            Some(&resource_trade_no),
+            Some(ApiResourceDependencyType::LocalDelegate),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        info!(
+            origin_trade_no = %origin_trade_no,
+            rows = %rows,
+            resource_trade_no = %resource_trade_no,
+            owner_address = %exec_to_addr,
+            receiver_address = %req.from_addr,
+            source = "shadow_worker_v2",
+            "TRON collect resource gate switched to local delegation fallback"
+        );
+        self.advancer.trigger_local_delegation_fast_path(&resource_trade_no);
+        Ok(())
+    }
+
+    async fn release_collect_gate_after_local_delegation_success(
+        &self,
+        delegation: &ApiResourceDelegationEntity,
+    ) -> Result<(), ServiceError> {
+        if delegation.source != ApiResourceDelegationSource::Local
+            || delegation.operation_type != ApiResourceDelegationOperationType::Delegate
+        {
+            return Ok(());
+        }
+        let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
+            return Ok(());
+        };
+        self.release_collect_gate_after_local_delegation(
+            origin_trade_no,
+            ApiResourceGateResult::LocalDelegationSuccess,
+        )
+        .await
+    }
+
+    async fn release_collect_gate_after_local_delegation_failure(
+        &self,
+        resource_trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &self.ctx.api_resource_pool()?,
+            resource_trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if delegation.source != ApiResourceDelegationSource::Local {
+            return Ok(());
+        }
+        if delegation.operation_type != ApiResourceDelegationOperationType::Delegate {
+            return Ok(());
+        }
+        if delegation.result_status != Some(ApiResourceDelegationResultStatus::Fail)
+            || delegation.finished_at.is_none()
+        {
+            return Ok(());
+        }
+        let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
+            return Ok(());
+        };
+        self.release_collect_gate_after_local_delegation(
+            origin_trade_no,
+            ApiResourceGateResult::LocalDelegationFailedBypass,
+        )
+        .await
+    }
+
+    async fn release_collect_gate_after_local_delegation(
+        &self,
+        origin_trade_no: &str,
+        gate_result: ApiResourceGateResult,
+    ) -> Result<(), ServiceError> {
+        // local delegation 到达终态后，collect 不再卡在资源 gate。
+        // 后面是否还会因为主币不足、服务费不足而停下，交回原有 BuildTx/fee 流程判断。
+        let affected = ApiCollectRepo::mark_resource_released(
+            &self.ctx.api_transaction_pool()?,
+            origin_trade_no,
+            gate_result,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                ?gate_result,
+                source = "shadow_worker_v2",
+                "Collect gate already released after local delegation"
+            );
+        }
+        self.advancer.try_advance(origin_trade_no).await;
+        Ok(())
     }
 
     /// 执行 Recover Command - 外层wrapper，确保所有错误都被捕获
@@ -398,6 +1840,16 @@ impl ShadowCollectWorker {
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_recover_inner(&trade_no).await {
             error!(trade_no = %trade_no, error = %err, source = "shadow_worker_v2", "Recover inner failed, handling error");
+            if Self::is_recovered_tx_terminal_chain_failure(&err) {
+                info!(
+                    trade_no = %trade_no,
+                    error = %err,
+                    source = "shadow_worker_v2",
+                    "Recovered tx has confirmed on-chain failure; marking collect failed"
+                );
+                self.handle_collect_tx_failed(&trade_no, err).await?;
+                return Ok(());
+            }
             // 注意：recover 失败不写失败事实
             // recover 失败 = 不知道链上发生了什么，而不是"交易失败"
             // 因此不调用 handle_collect_tx_failed，让 Scanner 在下一次扫描时重新尝试
@@ -429,7 +1881,7 @@ impl ShadowCollectWorker {
                 return Ok(());
             }
 
-            if Self::is_evm_chain_code(&fresh_req.chain_code)
+            if shared_mechanism::tracks_broadcast_uncertain_state(&fresh_req.chain_code)
                 && fresh_req.raw_tx.is_some()
                 && fresh_req.last_broadcast_at.is_none()
                 && fresh_req.broadcast_uncertain_since_at.is_none()
@@ -441,7 +1893,7 @@ impl ShadowCollectWorker {
                     tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
                     nonce = fresh_req.nonce,
                     source = "shadow_worker_v2",
-                    "Skip Recover: EVM raw_tx exists but not in uncertain state; broadcast should proceed"
+                    "Skip Recover: raw_tx exists but not in uncertain state; broadcast should proceed"
                 );
                 return Ok(());
             }
@@ -450,7 +1902,7 @@ impl ShadowCollectWorker {
         };
         // 🔓 锁在这里已经释放
 
-        if Self::is_evm_chain_code(&req.chain_code) {
+        if shared_mechanism::is_evm_chain(&req.chain_code) {
             let now = Utc::now();
             if Self::should_throttle_evm_uncertain_recover(&req, now) {
                 let elapsed = Self::broadcast_uncertain_elapsed_secs(&req, now).unwrap_or_default();
@@ -461,6 +1913,8 @@ impl ShadowCollectWorker {
                     .map(|ts| now.signed_duration_since(ts).num_seconds().max(0))
                     .unwrap_or_default();
                 info!(
+                    observability_event = "shadow_recover_skipped",
+                    reason = "evm_uncertain_backoff",
                     trade_no = %req.trade_no,
                     tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
                     nonce = req.nonce,
@@ -475,16 +1929,27 @@ impl ShadowCollectWorker {
             }
         }
 
-        // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit");
-        }
-
-        // 执行恢复交易
-        let recover_result = self.recover_tx(&req).await;
+        // 执行恢复交易。raw wrapper 只处理外层 RPC guard/timeout，保留 recover 内层 Result。
+        let recover_result =
+            match crate::infrastructure::chain_rpc_guard::run_guarded_raw_with_ctx_and_log(
+                self.ctx,
+                &req.chain_code,
+                trade_no,
+                "recover",
+                "shadow_worker_v2",
+                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(trade_no)
+                    .tx_hash(req.tx_hash.as_deref().unwrap_or_default())
+                    .chain_code(&req.chain_code)
+                    .source("shadow_worker_v2")
+                    .op("recover"),
+                self.recover_tx(&req),
+            )
+            .await?
+            {
+                Some(result) => result,
+                None => return Ok(()),
+            };
         match recover_result {
             Ok(Some(tx_resp)) => {
                 info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_worker_v2", "Transaction recover successful");
@@ -498,16 +1963,16 @@ impl ShadowCollectWorker {
                     // 🔒 必须锁内重新读取，确保基于最新状态做决策
                     let fresh_req = self.get_collect_entity(trade_no).await?;
 
-                    let existing_tx_hash = Self::normalized_tx_hash(&fresh_req);
+                    let existing_tx_hash =
+                        shared_mechanism::normalized_tx_hash(fresh_req.tx_hash.as_deref());
 
                     // 事实校验：如果链上确认已经落库，补齐缺失的 tx_hash 后直接推进后续阶段
                     if fresh_req.transaction_time.is_some() {
-                        let mut should_nudge =
-                            Self::should_nudge_advance_after_recover_skip(&fresh_req);
+                        let mut should_nudge = true;
 
                         if existing_tx_hash.is_none() {
                             let rows_affected = ApiCollectRepo::backfill_tx_hash_if_missing(
-                                &self.collect_pool,
+                                &self.ctx.api_transaction_pool()?,
                                 &fresh_req.trade_no,
                                 &tx_resp.tx_hash,
                                 "shadow_worker_v2",
@@ -542,10 +2007,11 @@ impl ShadowCollectWorker {
                     }
 
                     // 🔒 事实保护：检查 tx_hash 一致性，防止事实被覆盖
-                    Self::validate_recovered_tx_hash(
+                    shared_mechanism::validate_recovered_tx_hash(
                         &fresh_req.trade_no,
                         existing_tx_hash,
                         &tx_resp.tx_hash,
+                        "shadow_worker_v2",
                     )?;
 
                     // 使用链上时间设置 transaction_time
@@ -574,7 +2040,7 @@ impl ShadowCollectWorker {
 
                     let rows_affected =
                         ApiCollectRepo::confirm_onchain_transaction_fact_with_recover(
-                            &self.collect_pool,
+                            &self.ctx.api_transaction_pool()?,
                             &fresh_req.trade_no,
                             &tx_resp.tx_hash,
                             &transaction_time,
@@ -601,9 +2067,13 @@ impl ShadowCollectWorker {
             }
             Ok(None) => {
                 if let Some(raw_tx_json) = req.raw_tx.as_deref() {
-                    if req.last_broadcast_at.is_none()
-                        && Self::should_invalidate_expired_tron_raw(&req.chain_code, raw_tx_json)
-                    {
+                    if shared_mechanism::should_invalidate_expired_tron_raw_for_recover(
+                        &req.chain_code,
+                        raw_tx_json,
+                        req.last_broadcast_at.is_some(),
+                        req.tx_hash.as_deref().is_some_and(|tx_hash| !tx_hash.trim().is_empty()),
+                        Utc::now().timestamp_millis(),
+                    ) {
                         warn!(
                             trade_no = %req.trade_no,
                             tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
@@ -617,7 +2087,7 @@ impl ShadowCollectWorker {
                             "Using rebuild-only invalidation path for expired raw_tx (will NOT set need_service_fee)"
                         );
                         let rows = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
-                            &self.collect_pool,
+                            &self.ctx.api_transaction_pool()?,
                             &req.trade_no,
                             None,
                         )
@@ -631,7 +2101,10 @@ impl ShadowCollectWorker {
                 }
 
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recover result is uncertain");
-                if !Self::tracks_broadcast_uncertain_state(&req.chain_code) {
+                if shared_mechanism::is_tron_chain(&req.chain_code) {
+                    self.advancer.schedule_recover_retry(trade_no);
+                }
+                if !shared_mechanism::tracks_broadcast_uncertain_state(&req.chain_code) {
                     // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
                     // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
                     self.advancer.try_advance(trade_no).await;
@@ -639,10 +2112,12 @@ impl ShadowCollectWorker {
                 }
 
                 let now = Utc::now();
-                let rows_affected =
-                    ApiCollectRepo::mark_broadcast_uncertain_attempt(&self.collect_pool, trade_no)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected = ApiCollectRepo::mark_broadcast_uncertain_attempt(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_collect_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -664,7 +2139,21 @@ impl ShadowCollectWorker {
                     return Ok(());
                 }
 
-                if !Self::is_evm_chain_code(&refreshed.chain_code) {
+                if !shared_mechanism::is_evm_chain(&refreshed.chain_code)
+                    && !shared_mechanism::is_sol_chain(&refreshed.chain_code)
+                {
+                    warn!(
+                        trade_no = %refreshed.trade_no,
+                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                        uncertain_duration_sec = elapsed_secs,
+                        chain_code = %refreshed.chain_code,
+                        source = "shadow_worker_v2",
+                        "Broadcast uncertain timeout reached for non-EVM chain; keep observing"
+                    );
+                    return Ok(());
+                }
+
+                if shared_mechanism::is_sol_chain(&refreshed.chain_code) {
                     warn!(
                         trade_no = %refreshed.trade_no,
                         tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
@@ -674,7 +2163,7 @@ impl ShadowCollectWorker {
                     );
 
                     let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         &refreshed.trade_no,
                         ApiCollectStatus::SendingTxFailed,
                         Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE,
@@ -705,9 +2194,13 @@ impl ShadowCollectWorker {
                         "EVM uncertain timeout reached; running nonce reconcile"
                     );
 
-                    let nonce_engine = get_nonce_engine();
-                    let chain_nonce =
-                        ApiTransDomain::nonce(&refreshed.from_addr, &refreshed.chain_code).await?;
+                    let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
+                    let chain_nonce = ApiTransDomain::nonce(
+                        &self.ctx,
+                        &refreshed.from_addr,
+                        &refreshed.chain_code,
+                    )
+                    .await?;
                     chain_nonce_for_log = Some(chain_nonce);
 
                     if chain_nonce < local_nonce_for_log {
@@ -740,7 +2233,7 @@ impl ShadowCollectWorker {
                         reconcile_reason_label = "generic_uncertain";
                     }
                     let _ = ApiCollectRepo::mark_broadcast_uncertain_reconciled(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         &refreshed.trade_no,
                     )
                     .await
@@ -762,7 +2255,7 @@ impl ShadowCollectWorker {
                         "EVM uncertain reconcile decision"
                     );
                     let rows = ApiCollectRepo::invalidate_raw_tx_for_rebroadcast(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         &refreshed.trade_no,
                         None,
                     )
@@ -770,7 +2263,7 @@ impl ShadowCollectWorker {
                     .map_err(|e| ServiceError::Database(e.into()))?;
                     if rows > 0 {
                         let _ = ApiCollectRepo::mark_broadcast_uncertain_rebroadcast_attempted(
-                            &self.collect_pool,
+                            &self.ctx.api_transaction_pool()?,
                             &refreshed.trade_no,
                         )
                         .await
@@ -792,7 +2285,7 @@ impl ShadowCollectWorker {
                 );
 
                 let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     &refreshed.trade_no,
                     ApiCollectStatus::SendingTxFailed,
                     Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE,
@@ -807,15 +2300,24 @@ impl ShadowCollectWorker {
                     self.advancer.try_advance(&refreshed.trade_no).await;
                 }
             }
-            Err(err) if Self::is_tron_missing_confirmed_and_pending_error(&err) => {
-                if !Self::should_rebroadcast_tron_missing_confirmed_and_pending(&req) {
-                    info!(
-                        trade_no = %trade_no,
-                        tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
-                        source = "shadow_worker_v2",
-                        "Tron tx missing from confirmed and pending pools; keep observing before rebroadcast"
-                    );
-                    return Ok(());
+            Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
+                match Self::tron_missing_pools_recovery_action(&req) {
+                    TronMissingPoolsRecoveryAction::ObserveWithPointToPointRetry => {
+                        let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
+                        let retry_delay =
+                            shadow_rpc_policy::recover_dispatch_cooldown(&recover_key);
+                        info!(
+                            observability_event = "tron_collect_missing_pools_recover_retry_scheduled",
+                            trade_no = %trade_no,
+                            tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                            retry_delay_ms = retry_delay.as_millis(),
+                            source = "shadow_worker_v2",
+                            "Tron tx missing from confirmed and pending pools; scheduling point-to-point observation"
+                        );
+                        self.advancer.schedule_recover_retry(trade_no);
+                        return Ok(());
+                    }
+                    TronMissingPoolsRecoveryAction::Rebroadcast => {}
                 }
 
                 warn!(
@@ -825,7 +2327,7 @@ impl ShadowCollectWorker {
                     "Tron tx missing from confirmed and pending pools beyond timeout; rebroadcasting"
                 );
                 let rows = ApiCollectRepo::invalidate_raw_tx_for_rebroadcast(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     &req.trade_no,
                     None,
                 )
@@ -885,11 +2387,12 @@ impl ShadowCollectWorker {
         // 4. 先占位建单槽位，防止同一 trade_no 在构建期间被重复推进
         // building_at 只作为短期 in-flight 保护，不参与最终事实判断。
         let build_slot_rows =
-            ApiCollectRepo::update_building_at(&self.collect_pool, trade_no).await?;
+            ApiCollectRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no).await?;
         if build_slot_rows == 0 {
             if self.reclaim_stale_build_slot(trade_no, req.building_at).await? {
                 let reclaimed_build_slot_rows =
-                    ApiCollectRepo::update_building_at(&self.collect_pool, trade_no).await?;
+                    ApiCollectRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no)
+                        .await?;
                 if reclaimed_build_slot_rows > 0 {
                     info!(
                         trade_no = %trade_no,
@@ -929,7 +2432,7 @@ impl ShadowCollectWorker {
 
         if updated_to_addr {
             ApiCollectRepo::update_api_collect_to_addr(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 &req.trade_no,
                 &exec_to_addr,
             )
@@ -1036,9 +2539,10 @@ impl ShadowCollectWorker {
         // 🔓 锁在这里已经释放
 
         // ====== phase 1.5: 锁外 · EVM nonce-gap 前置纠偏（单次最多一次） ======
-        if Self::is_evm_chain_code(&req.chain_code) {
-            let chain_nonce = ApiTransDomain::nonce(&req.from_addr, &req.chain_code).await?;
-            if Self::should_force_align_prebuild_nonce_gap(chain_nonce, nonce) {
+        if shared_mechanism::is_evm_chain(&req.chain_code) {
+            let chain_nonce =
+                ApiTransDomain::nonce(&self.ctx, &req.from_addr, &req.chain_code).await?;
+            if shared_mechanism::should_force_align_nonce_gap(chain_nonce, nonce) {
                 let old_nonce = nonce;
                 let gap = old_nonce.saturating_sub(chain_nonce);
                 warn!(
@@ -1052,7 +2556,7 @@ impl ShadowCollectWorker {
                     "EVM pre-build nonce-gap detected; forcing local nonce to chain nonce"
                 );
 
-                let nonce_engine = get_nonce_engine();
+                let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
                 let _ = nonce_engine
                     .force_align_to_chain_next_nonce(
                         &req.from_addr,
@@ -1090,15 +2594,8 @@ impl ShadowCollectWorker {
         }
 
         // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit");
-        }
-
         // 通过Context获取Handles实例，然后获取私钥管理器
-        let handles = crate::context::get_context()?.get_handles_arc().await?;
+        let handles = self.ctx.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key =
             private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
@@ -1109,13 +2606,30 @@ impl ShadowCollectWorker {
         let transfer_req = self.gen_transfer_req(&req, &exec_to_addr, nonce).await?;
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_worker_v2", "Generated transfer request with nonce");
 
-        // 构建交易
-        let (tx_hash, raw_tx, fee) =
-            crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
-                transfer_req,
-                Some(private_key),
+        // 构建交易。公共包装负责 guarded endpoint 并发、timeout、成功/失败记录。
+        let Some((tx_hash, raw_tx, fee)) =
+            crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+                self.ctx,
+                &req.chain_code,
+                trade_no,
+                "build",
+                "shadow_worker_v2",
+                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(trade_no)
+                    .chain_code(&req.chain_code)
+                    .source("shadow_worker_v2")
+                    .op("build"),
+                crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
+                    &self.ctx,
+                    transfer_req,
+                    Some(private_key),
+                ),
             )
-            .await?;
+            .await?
+        else {
+            self.clear_build_slot_after_claim(trade_no).await?;
+            return Ok(());
+        };
         info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee, source = "shadow_worker_v2", "Built transfer raw transaction successfully");
 
         // ====== phase 3: 锁内 · 提交不可逆事实 ======
@@ -1139,7 +2653,7 @@ impl ShadowCollectWorker {
             // 注意：使用序列化而非格式化，避免格式问题
             let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
             let rows_affected = ApiCollectRepo::update_after_build(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 &fresh_req.trade_no,
                 &tx_hash,
                 &raw_tx_str,
@@ -1209,13 +2723,15 @@ impl ShadowCollectWorker {
                 return Ok(());
             }
 
-            if Self::is_evm_chain_code(&fresh_req.chain_code)
+            if shared_mechanism::is_evm_chain(&fresh_req.chain_code)
                 && fresh_req.broadcast_uncertain_since_at.is_some()
                 && fresh_req.transaction_time.is_none()
                 && fresh_req.tx_exec_receipt_uploaded_at.is_none()
                 && fresh_req.err_code.is_none()
             {
                 info!(
+                    observability_event = "shadow_broadcast_skipped",
+                    reason = "broadcast_uncertain_in_progress",
                     trade_no = %trade_no,
                     source = "shadow_worker_v2",
                     "Skip Broadcast: EVM uncertain state in progress; recover should proceed"
@@ -1226,14 +2742,6 @@ impl ShadowCollectWorker {
             fresh_req
         };
         // 🔓 锁在这里已经释放
-
-        // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取链交互全局许可（按 guarded endpoint 控制并发）
-        let _chain_rpc_guard =
-            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
-        if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit for broadcast");
-        }
 
         // 检查是否已有raw_tx和tx_hash
         if req.tx_hash.is_none() || req.raw_tx.is_none() || req.raw_tx.as_ref().unwrap().is_empty()
@@ -1253,14 +2761,29 @@ impl ShadowCollectWorker {
         let raw_tx = wallet_utils::serde_func::serde_from_str(req.raw_tx.as_deref().unwrap())?;
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Deserialized raw_tx successfully");
 
-        // 广播交易
+        // 广播交易。公共包装负责 guarded endpoint 并发、timeout、成功/失败记录。
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Starting to broadcast transaction");
-        let tx_resp = crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
+        let tx_resp = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
+            self.ctx,
             &req.chain_code,
-            raw_tx,
-            req.tx_hash.as_deref(),
+            trade_no,
+            "broadcast",
+            "shadow_worker_v2",
+            crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                .trade_no(trade_no)
+                .tx_hash(req.tx_hash.as_deref().unwrap_or_default())
+                .chain_code(&req.chain_code)
+                .source("shadow_worker_v2")
+                .op("broadcast"),
+            crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
+                &self.ctx,
+                &req.chain_code,
+                raw_tx,
+                req.tx_hash.as_deref(),
+            ),
         )
-        .await?;
+        .await?
+        .flatten();
 
         match tx_resp {
             Some(tx) => {
@@ -1305,7 +2828,7 @@ impl ShadowCollectWorker {
                     };
 
                     let rows_affected = ApiCollectRepo::mark_broadcast_executed(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         &fresh_req.trade_no,
                     )
                     .await
@@ -1330,16 +2853,18 @@ impl ShadowCollectWorker {
             None => {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction broadcast result is uncertain");
 
-                if Self::tracks_broadcast_uncertain_state(&req.chain_code) {
+                if shared_mechanism::tracks_broadcast_uncertain_state(&req.chain_code) {
                     let had_uncertain_since = req.broadcast_uncertain_since_at.is_some();
                     let rows_affected = ApiCollectRepo::mark_broadcast_uncertain_attempt(
-                        &self.collect_pool,
+                        &self.ctx.api_transaction_pool()?,
                         trade_no,
                     )
                     .await
                     .map_err(|e| ServiceError::Database(e.into()))?;
                     let refreshed = self.get_collect_entity(trade_no).await?;
                     info!(
+                        observability_event = "shadow_broadcast_uncertain_recorded",
+                        reason = "broadcast_result_uncertain",
                         trade_no = %trade_no,
                         tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
                         nonce = req.nonce,
@@ -1364,9 +2889,12 @@ impl ShadowCollectWorker {
         &self,
         trade_no: &str,
     ) -> Result<ApiCollectEntity, ServiceError> {
-        let entity = ApiCollectRepo::get_api_collect_by_trade_no(&self.collect_pool, trade_no)
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
+        let entity = ApiCollectRepo::get_api_collect_by_trade_no(
+            &self.ctx.api_transaction_pool()?,
+            trade_no,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
         Ok(entity)
     }
 
@@ -1381,7 +2909,7 @@ impl ShadowCollectWorker {
         let account = match wallet_database::repositories::api_wallet::account::ApiAccountRepo::find_one_by_address_chain_code(
             &req.from_addr,
             &req.chain_code,
-            &self.core_pool,
+            &self.ctx.api_wallet_pool()?,
         )
         .await
         {
@@ -1403,10 +2931,13 @@ impl ShadowCollectWorker {
         };
 
         // 2. 查询用户归集策略
-        let strategy = crate::domain::api_wallet::strategy::StrategyDomain::query_collect_strategy(
-            &account.uid,
-        )
-        .await?;
+        let ctx = self.ctx;
+        let strategy =
+            crate::domain::api_wallet::strategy::StrategyDomain::query_collect_strategy_with_ctx(
+                ctx,
+                &account.uid,
+            )
+            .await?;
         info!(trade_no = %req.trade_no, uid = %account.uid, source = "shadow_worker_v2", "Retrieved collect strategy");
 
         // 3. 根据chain_code查询链配置
@@ -1443,17 +2974,21 @@ impl ShadowCollectWorker {
     pub(crate) async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
+        let ctx = self.ctx;
 
         // 查询主币信息
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
-        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?;
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 主币信息: 币种={}, 小数位数={}", main_coin.symbol, main_coin.decimals);
 
         // 确定代币信息
         let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin =
-                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                    .await?;
+            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?;
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 代币信息: 币种={}, 代币地址={:?}, 小数位数={}", 
                 token_coin.symbol, token_coin.token_address, token_coin.decimals);
             (token_coin.symbol, token_coin.token_address, token_coin.decimals)
@@ -1567,6 +3102,21 @@ impl ShadowCollectWorker {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费检查结果 - 可用余额: {}, 需要金额: {}, 手续费: {}", balance, need, fee);
 
         if fee > Decimal::from(0) && balance < need {
+            if Self::tron_token_collect_resource_gate_covers_native_fee(req) {
+                tracing::info!(
+                    trade_no = %req.trade_no,
+                    from_addr = %req.from_addr,
+                    to_addr = %req.to_addr,
+                    balance = %balance,
+                    need = %need,
+                    fee = %fee,
+                    resource_gate_released_at = ?req.resource_gate_released_at,
+                    source = "shadow_worker_v2",
+                    "collect_tx:send: TRON token collect resource gate released; bypassing native fee balance gate"
+                );
+                return Ok(true);
+            }
+
             tracing::warn!(
                 trade_no = %req.trade_no,
                 from_addr = %req.from_addr,
@@ -1602,6 +3152,7 @@ impl ShadowCollectWorker {
         &self,
         req: &ApiCollectEntity,
     ) -> Result<bool, ServiceError> {
+        let ctx = self.ctx;
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
         let token_key = if req.token_addr.is_contract() {
             req.token_addr.clone()
@@ -1610,10 +3161,14 @@ impl ShadowCollectWorker {
         };
 
         let token_coin = if req.token_addr.is_contract() {
-            ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
-                .await?
+            ApiCoinDomain::get_coin_by_token_key_exact(
+                self.ctx,
+                &req.chain_code,
+                req.token_addr.clone(),
+            )
+            .await?
         } else {
-            ApiChainTransDomain::main_coin(&req.chain_code).await?
+            ApiChainTransDomain::main_coin(ctx, &req.chain_code).await?
         };
 
         let balance_str =
@@ -1632,6 +3187,51 @@ impl ShadowCollectWorker {
         Ok(!Self::is_collect_amount_shortage(&balance_str, &req.value)?)
     }
 
+    async fn mark_collect_amount_insufficient(
+        &self,
+        req: &ApiCollectEntity,
+    ) -> Result<(), ServiceError> {
+        let err = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(
+            InsufficientBalanceDetail::new()
+                .from_addr(req.from_addr.clone())
+                .to_addr(req.to_addr.clone())
+                .chain_code(req.chain_code.clone())
+                .token_addr(req.token_addr.to_string())
+                .value(req.value.clone())
+                .reason("collect amount is insufficient; balance is below requested value"),
+        )));
+
+        self.clear_build_slot_after_claim(&req.trade_no).await?;
+
+        let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+            &self.ctx.api_transaction_pool()?,
+            &req.trade_no,
+            ApiCollectStatus::InsufficientBalance,
+            ErrCode::BalanceInsufficient,
+            &format!("{}", err),
+        )
+        .await
+        .map_err(|db_err| {
+            error!(
+                trade_no = %req.trade_no,
+                error = %db_err,
+                source = "shadow_worker_v2",
+                "Failed to mark collect as terminal failure due to insufficient balance"
+            );
+            ServiceError::Database(db_err.into())
+        })?;
+
+        info!(
+            trade_no = %req.trade_no,
+            rows_affected = %rows_affected,
+            source = "shadow_worker_v2",
+            "Marked collect as terminal failure due to insufficient balance"
+        );
+        self.advancer.try_advance(&req.trade_no).await;
+
+        Ok(())
+    }
+
     /// Fee 不足时的构建回退策略。
     ///
     /// - 首次手续费不足：继续打回 `need_service_fee = true`
@@ -1641,25 +3241,26 @@ impl ShadowCollectWorker {
         &self,
         req: &ApiCollectEntity,
     ) -> Result<u64, ServiceError> {
-        let fee_cycle_completed = req.service_fee_uploaded_at.is_some();
+        let fee_cycle_completed = Self::service_fee_cycle_completed(req);
 
         if Self::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
             req,
         ) {
             info!(
                 trade_no = %req.trade_no,
+                chain_code = %req.chain_code,
                 service_fee_uploaded_at = ?req.service_fee_uploaded_at,
                 tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
                 source = "shadow_worker_v2",
-                "Solana token collect fee shortage after completed fee cycle; marking collect as terminal failure"
+                "Token collect fee shortage after completed fee cycle; marking collect as terminal failure"
             );
 
             let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
                 ErrCode::BalanceInsufficient,
-                "solana token collect fee shortage after completed fee cycle",
+                "token collect fee shortage after completed fee cycle",
             )
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
@@ -1668,7 +3269,7 @@ impl ShadowCollectWorker {
                 trade_no = %req.trade_no,
                 rows_affected = %rows_affected,
                 source = "shadow_worker_v2",
-                "Marked Solana token collect as terminal failure after completed fee cycle"
+                "Marked token collect as terminal failure after completed fee cycle"
             );
             return Ok(0);
         }
@@ -1683,7 +3284,7 @@ impl ShadowCollectWorker {
             );
 
             return ApiCollectRepo::invalidate_raw_tx_for_rebuild(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 &req.trade_no,
                 Some(ApiCollectStatus::InsufficientBalance),
             )
@@ -1700,7 +3301,7 @@ impl ShadowCollectWorker {
         );
 
         ApiCollectRepo::invalidate_raw_tx_need_service_fee(
-            &self.collect_pool,
+            &self.ctx.api_transaction_pool()?,
             &req.trade_no,
             Some(ApiCollectStatus::InsufficientBalance),
         )
@@ -1709,6 +3310,7 @@ impl ShadowCollectWorker {
     }
 
     pub(crate) async fn resolve_withdraw_from_addr(
+        ctx: &'static crate::context::Context,
         pool: &ApiWalletDbPool,
         req: &ApiCollectEntity,
     ) -> Result<String, ServiceError> {
@@ -1775,7 +3377,8 @@ impl ShadowCollectWorker {
         };
 
         // 3. 查询用户提币策略
-        let strategy = StrategyDomain::query_withdraw_strategy(&withdraw_wallet.uid).await?;
+        let strategy =
+            StrategyDomain::query_withdraw_strategy_with_ctx(ctx, &withdraw_wallet.uid).await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 获取提现策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
 
         // 4. 根据chain_code查询链配置
@@ -1816,8 +3419,11 @@ impl ShadowCollectWorker {
         tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_key.as_db_str(),
             source = "shadow_worker_v2", "collect_tx:send: 查询余额");
 
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx,
+            &chain_code.to_string(),
+        )
+        .await?;
         let balance = adapter.balance_token_key(&owner_address, token_key.clone()).await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
@@ -1846,8 +3452,11 @@ impl ShadowCollectWorker {
             source = "shadow_worker_v2", "collect_tx:send: 估算交易手续费开始");
 
         let adapter_start = std::time::Instant::now();
-        let adapter =
-            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx,
+            &chain_code.to_string(),
+        )
+        .await?;
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%adapter_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 获取适配器完成");
 
         let params_start = std::time::Instant::now();
@@ -1903,6 +3512,25 @@ impl ShadowCollectWorker {
         Ok(amount)
     }
 
+    async fn estimate_tron_fee_details(
+        &self,
+        from: &str,
+        to: &str,
+        value: &str,
+        symbol: &str,
+        main_symbol: &str,
+        token_key: AssetTokenKey,
+        decimals: u8,
+    ) -> Result<TronFeeDetails, ServiceError> {
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, "tron").await?;
+        let mut params = ApiBaseTransferReq::new(from, to, value, "tron");
+        params.with_token(token_key.to_chain_token_option(), decimals, symbol);
+        let fee = adapter.estimate_fee(params, main_symbol).await?;
+        let details: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
+        Ok(details)
+    }
+
     /// 获取归集配置
     async fn get_collect_config(
         &self,
@@ -1912,7 +3540,8 @@ impl ShadowCollectWorker {
         tracing::info!(uid=%uid, chain_code=%chain_code, source = "shadow_worker_v2", "collect_tx:send: 查询归集策略");
 
         // 查询策略
-        let strategy = StrategyDomain::query_collect_strategy(uid).await?;
+        let ctx = self.ctx;
+        let strategy = StrategyDomain::query_collect_strategy_with_ctx(ctx, uid).await?;
 
         tracing::info!(uid=%uid, source = "shadow_worker_v2", "collect_tx:send: 获取归集策略成功，包含 {} 条链配置", strategy.chain_configs.len());
 
@@ -1932,7 +3561,7 @@ impl ShadowCollectWorker {
     async fn check_digest(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         info!(trade_no = %req.trade_no, source = "shadow_worker_v2", "Checking transaction digest");
 
-        let sn = crate::context::get_context().unwrap().get_sn();
+        let sn = self.ctx.get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         // ⚠️ 这里必须用后端给的空字符串的to_addr，不能用查询策略解析的地址
@@ -1961,6 +3590,7 @@ impl ShadowCollectWorker {
 
         // 获取币种信息
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            self.ctx,
             &req.chain_code,
             req.token_addr.clone().into(),
         )
@@ -2035,9 +3665,8 @@ impl ShadowCollectWorker {
                 // This method MUST guarantee DB-level atomic CAS for nonce allocation.
                 // Any refactor breaking this invariant will cause nonce duplication.
 
-                let nonce_engine = get_nonce_engine();
-                let nonce =
-                    nonce_engine.allocate_nonce(from_addr, chain_code, &self.collect_pool).await?;
+                let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
+                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
                 info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_worker_v2", "Retrieved nonce using NonceEngine");
                 Ok(nonce as u64)
             }
@@ -2062,6 +3691,7 @@ impl ShadowCollectWorker {
         info!(trade_no = %req.trade_no, tx_hash = %tx_hash, source = "shadow_worker_v2", "Processing recovered tx");
 
         match crate::domain::api_wallet::trans::ApiTransDomain::process_recovered_tx(
+            &self.ctx,
             &req.chain_code,
             &req.from_addr,
             tx_hash,
@@ -2085,6 +3715,10 @@ impl ShadowCollectWorker {
         }
     }
 
+    fn is_recovered_tx_terminal_chain_failure(err: &ServiceError) -> bool {
+        format!("{err}").contains("broadcasted tx failed")
+    }
+
     /// 处理归集交易失败
     async fn handle_collect_tx_failed(
         &self,
@@ -2092,6 +3726,16 @@ impl ShadowCollectWorker {
         err: ServiceError,
     ) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, error = %err, source = "shadow_worker_v2", "Handling collect tx failed");
+
+        if err.is_transient_db_pool_timeout() {
+            warn!(
+                trade_no = %trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Skip marking collect tx failed: local DB pool timeout is retryable infrastructure noise"
+            );
+            return Ok(());
+        }
 
         // 🔒 事实保护：检查是否已存在成功事实
         // 规则：一旦成功事实（transaction_time）成立，失败事实永远不能覆盖它
@@ -2121,8 +3765,32 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
+        if Self::should_open_fee_cycle_for_tron_resource_ready(&req, &err) {
+            info!(
+                trade_no = %trade_no,
+                from_addr = %req.from_addr,
+                chain_code = %req.chain_code,
+                resource_gate_result = ?req.resource_gate_result,
+                source = "shadow_worker_v2",
+                "Detected TRON Energy-ready bandwidth fee shortage; opening service fee cycle"
+            );
+
+            let rows_affected = self.invalidate_build_attempt_after_fee_check_failure(&req).await?;
+
+            if rows_affected > 0 {
+                self.advancer.try_advance(&req.trade_no).await;
+                return Ok(());
+            }
+
+            info!(
+                trade_no = %trade_no,
+                source = "shadow_worker_v2",
+                "TRON ResourceReady fee shortage affected no rows because newer collect facts exist"
+            );
+        }
+
         if Self::is_solana_rent_exempt_reserve_balance_error(&req, &err) {
-            if req.service_fee_uploaded_at.is_some() {
+            if Self::service_fee_cycle_completed(&req) {
                 info!(
                     trade_no = %trade_no,
                     error = %err,
@@ -2135,7 +3803,7 @@ impl ShadowCollectWorker {
                 self.clear_build_slot_after_claim(trade_no).await?;
 
                 let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                     ApiCollectStatus::InsufficientBalance,
                     ErrCode::BalanceInsufficient,
@@ -2179,65 +3847,71 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
-        if req.raw_tx.is_none() && req.tx_hash.is_none() && Self::is_collect_build_503_error(&err) {
+        if Self::is_collect_amount_insufficient_error(&err) {
             info!(
                 trade_no = %trade_no,
-                elapsed_secs = ?Self::build_503_elapsed_secs(&req, Utc::now()),
-                retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
+                error = %err,
                 source = "shadow_worker_v2",
-                "Detected BuildTx 503 failure"
+                "Detected collect amount insufficient error; marking collect as terminal failure"
+            );
+
+            self.mark_collect_amount_insufficient(&req).await?;
+
+            return Ok(());
+        }
+
+        if Self::should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
+            &req, &err,
+        ) {
+            info!(
+                trade_no = %trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Detected TRON platform delegated collect resource shortage after BuildTx; marking collect as terminal failure"
             );
 
             self.clear_build_slot_after_claim(trade_no).await?;
 
-            let now = Utc::now();
-            if Self::should_terminal_fail_collect_build_503(&req, &err, now) {
-                let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.collect_pool,
-                    trade_no,
-                    ApiCollectStatus::SendingTxFailed,
-                    ErrCode::NetworkException,
-                    &format!("{}", err),
-                )
-                .await
-                .map_err(|db_err| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark collect as terminal failure after repeated BuildTx 503");
-                    ServiceError::Database(db_err.into())
-                })?;
+            let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+                &self.ctx.api_transaction_pool()?,
+                trade_no,
+                ApiCollectStatus::SendingTxFailed,
+                ErrCode::FeeInsufficient,
+                &format!("{}", err),
+            )
+            .await
+            .map_err(|db_err| {
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark collect as terminal failure after platform resource shortage");
+                ServiceError::Database(db_err.into())
+            })?;
 
-                info!(
-                    trade_no = %trade_no,
-                    rows_affected = %rows_affected,
-                    elapsed_secs = ?Self::build_503_elapsed_secs(&req, now),
-                    retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
-                    source = "shadow_worker_v2",
-                    "BuildTx 503 retry window expired; marked collect as terminal failure"
-                );
-
-                if rows_affected > 0 {
-                    self.advancer.try_advance(&trade_no).await;
-                }
-            } else {
-                let rows_affected = ApiCollectRepo::update_api_collect_post_tx_count(
-                    &self.collect_pool,
-                    trade_no,
-                )
-                .await
-                .map_err(|db_err| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to bump BuildTx 503 retry count");
-                    ServiceError::Database(db_err.into())
-                })?;
-
-                info!(
-                    trade_no = %trade_no,
-                    rows_affected = %rows_affected,
-                    elapsed_secs = ?Self::build_503_elapsed_secs(&req, now),
-                    retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
-                    source = "shadow_worker_v2",
-                    "BuildTx 503 retry window active; will retry later"
-                );
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                source = "shadow_worker_v2",
+                "Marked TRON platform delegated collect as terminal failure"
+            );
+            if rows_affected > 0 {
+                self.advancer.try_advance(&req.trade_no).await;
             }
 
+            return Ok(());
+        }
+
+        let build_rpc_error =
+            crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(&err);
+        if Self::should_retry_collect_build_service_unavailable(&req, &err) {
+            info!(
+                trade_no = %trade_no,
+                error_code = ?build_rpc_error.error_code(),
+                guarded_host = ?build_rpc_error.guarded_host(),
+                transient_reason = ?build_rpc_error.transient_reason(),
+                error = %build_rpc_error.message(),
+                source = "shadow_worker_v2",
+                "BuildTx service unavailable; releasing build slot for circuit-breaker retry"
+            );
+
+            self.clear_build_slot_after_claim(trade_no).await?;
             return Ok(());
         }
 
@@ -2247,23 +3921,25 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
-        // Solana 广播常见可恢复错误：
-        // - blockhash 过期（Blockhash not found）
-        // 这类错误不应直接写失败事实，而应作废 raw_tx/tx_hash 触发重建。
-        if req.chain_code.eq_ignore_ascii_case("sol")
-            && crate::domain::api_wallet::trans::ApiTransDomain::is_blockhash_not_found_error(&err)
-            && req.raw_tx.is_some()
-            && req.tx_hash.is_some()
-            && req.last_broadcast_at.is_none()
-        {
+        let broadcast_failure_decision = broadcast_mechanism::classify_broadcast_failure(
+            &err,
+            broadcast_mechanism::BroadcastFailureFacts::broadcast_stage(
+                &req.chain_code,
+                req.raw_tx.is_some(),
+                req.tx_hash.is_some(),
+                req.last_broadcast_at.is_some(),
+            ),
+        );
+
+        if let Some(rebuild_reason) = broadcast_failure_decision.raw_rebuild_reason() {
             let rows_affected = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 trade_no,
                 None,
             )
             .await
             .map_err(|db_err: wallet_database::Error| {
-                error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to invalidate raw_tx for sol blockhash rebuild");
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "{}", rebuild_reason.db_error_message());
                 ServiceError::Database(db_err.into())
             })?;
 
@@ -2272,7 +3948,7 @@ impl ShadowCollectWorker {
                 rows_affected = %rows_affected,
                 error = %err,
                 source = "shadow_worker_v2",
-                "SOL blockhash not found detected, invalidated raw_tx for rebuild"
+                "{}", rebuild_reason.log_message()
             );
 
             if rows_affected > 0 {
@@ -2281,61 +3957,36 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
-        // "already exists" 表示节点已接收广播，作为幂等成功兜底处理。
-        // 避免误写 SendingTxFailed 并冻结到错误分支。
-        if crate::domain::api_wallet::trans::ApiTransDomain::is_duplicate_broadcast_error(&err)
-            && req.raw_tx.is_some()
-            && req.tx_hash.is_some()
-        {
-            let rows_affected =
-                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_broadcast_executed(
-                    &self.collect_pool,
-                    trade_no,
-                )
-                .await
-                .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark broadcast executed for duplicate broadcast");
-                    ServiceError::Database(db_err.into())
-                })?;
-            info!(
-                trade_no = %trade_no,
-                rows_affected = %rows_affected,
-                error = %err,
-                source = "shadow_worker_v2",
-                "Duplicate broadcast detected, treat as idempotent success and continue"
-            );
-            self.advancer.try_advance(trade_no).await;
-            return Ok(());
-        }
-
         let error_msg = format!("{}", err);
-        if ApiTransDomain::should_treat_nonce_too_low_as_broadcast_success(
-            &req.chain_code,
-            &err,
-            req.raw_tx.is_some(),
-            req.tx_hash.is_some(),
-        ) {
-            info!(
-                trade_no = %trade_no,
-                source = "shadow_worker_v2",
-                "Detected EVM nonce too low on broadcast, treat as idempotent success"
-            );
+        if let Some(accepted_reason) = broadcast_failure_decision.accepted_reason() {
+            if let Some(message) = accepted_reason.pre_self_heal_log_message() {
+                info!(
+                    trade_no = %trade_no,
+                    source = "shadow_worker_v2",
+                    "{}", message
+                );
+            }
 
-            let nonce_engine = get_nonce_engine();
-            if let Err(e) =
-                nonce_engine.handle_nonce_error(&req.from_addr, &req.chain_code, &error_msg).await
-            {
-                warn!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Nonce self-heal failed");
+            if accepted_reason.requires_nonce_self_heal() {
+                nonce_recovery_mechanism::try_nonce_self_heal(
+                    self.ctx,
+                    trade_no,
+                    &req.from_addr,
+                    &req.chain_code,
+                    &error_msg,
+                    "shadow_worker_v2",
+                )
+                .await?;
             }
 
             let rows_affected =
                 wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_broadcast_executed(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                 )
                 .await
                 .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark broadcast executed for nonce too low broadcast conflict");
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "{}", accepted_reason.db_error_message());
                     ServiceError::Database(db_err.into())
                 })?;
 
@@ -2344,7 +3995,7 @@ impl ShadowCollectWorker {
                 rows_affected = %rows_affected,
                 error = %err,
                 source = "shadow_worker_v2",
-                "Nonce too low broadcast conflict treated as idempotent success"
+                "{}", accepted_reason.log_message()
             );
 
             self.advancer.try_advance(trade_no).await;
@@ -2352,18 +4003,21 @@ impl ShadowCollectWorker {
         }
 
         // 处理 nonce too low 错误
-        if ApiTransDomain::is_nonce_too_low_error(&err) {
+        if broadcast_failure_decision.should_fail_after_nonce_self_heal() {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Detected nonce too low error, syncing nonce from chain");
 
-            let nonce_engine = get_nonce_engine();
-            if let Err(e) =
-                nonce_engine.handle_nonce_error(&req.from_addr, &req.chain_code, &error_msg).await
-            {
-                warn!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Nonce self-heal failed");
-            }
+            nonce_recovery_mechanism::try_nonce_self_heal(
+                self.ctx,
+                trade_no,
+                &req.from_addr,
+                &req.chain_code,
+                &error_msg,
+                "shadow_worker_v2",
+            )
+            .await?;
 
             let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                &self.collect_pool,
+                &self.ctx.api_transaction_pool()?,
                 trade_no,
                 wallet_database::entities::api_collect::ApiCollectStatus::SendingTxFailed,
                 ErrCode::SDKInternalError, // 使用通用错误码
@@ -2396,7 +4050,7 @@ impl ShadowCollectWorker {
                 };
 
                 let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.collect_pool,
+                    &self.ctx.api_transaction_pool()?,
                     trade_no,
                     wallet_database::entities::api_collect::ApiCollectStatus::SendingTxFailed,
                     err_code, // err_code - 通用失败码
@@ -2436,7 +4090,7 @@ impl ShadowCollectWorker {
             return Ok(false);
         }
 
-        let rows_affected = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no)
+        let rows_affected = ApiCollectRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
             .await
             .map_err(|e: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear build slot for BuildTx failure");
@@ -2454,7 +4108,15 @@ impl ShadowCollectWorker {
     }
 
     async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
-        let rows_affected = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no)
+        Self::clear_build_slot_after_claim_in_pool(&self.ctx.api_transaction_pool()?, trade_no)
+            .await
+    }
+
+    async fn clear_build_slot_after_claim_in_pool(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let rows_affected = ApiCollectRepo::clear_building_at(pool, trade_no)
             .await
             .map_err(|e: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear build slot after BuildTx early exit");
@@ -2480,7 +4142,24 @@ impl ShadowCollectWorker {
             return Ok(false);
         }
 
-        let rows_affected = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no)
+        Self::reclaim_stale_build_slot_in_pool(
+            &self.ctx.api_transaction_pool()?,
+            trade_no,
+            building_at,
+        )
+        .await
+    }
+
+    async fn reclaim_stale_build_slot_in_pool(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        building_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, ServiceError> {
+        if !Self::is_stale_build_slot(building_at, Utc::now()) {
+            return Ok(false);
+        }
+
+        let rows_affected = ApiCollectRepo::clear_building_at(pool, trade_no)
             .await
             .map_err(|e: wallet_database::Error| {
                 error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear stale build slot");
@@ -2501,20 +4180,169 @@ impl ShadowCollectWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::ShadowCollectWorker;
+    use super::{
+        ResourceBudget, ResourceGateSnapshot, ResourceReservationDecision, ShadowCollectWorker,
+        TronMissingPoolsRecoveryAction, WithdrawResourceReservationManager,
+    };
+    use crate::{
+        context::api_wallet_backend::ApiWalletBackend,
+        error::{service::ServiceError, system::SystemError},
+        infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent},
+    };
+    use async_trait::async_trait;
     use chrono::Utc;
     use rust_decimal::Decimal;
-    use std::{str::FromStr, sync::Arc};
+    use std::{
+        fs,
+        path::PathBuf,
+        str::FromStr,
+        sync::{Arc, OnceLock},
+    };
     use tempfile::tempdir;
-    use tokio::sync::mpsc;
+    use tokio::sync::{OnceCell, mpsc};
+    use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
     use wallet_database::{
         ApiWalletDbPool, SqliteContext,
         entities::{
-            api_collect::{ApiCollectEntity, ApiCollectStatus},
+            api_collect::{ApiCollectEntity, ApiCollectStatus, PendingCollectResourceBudget},
+            api_resource_delegation::{
+                ApiResourceDelegationOperationType, ApiResourceDelegationSource,
+                NewApiResourceDelegation,
+            },
+            api_resource_gate::{
+                ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+            },
+            api_resource_type::ApiResourceType,
+            api_trade_type::ApiTradeType,
             asset_token_key::AssetTokenKey,
         },
-        repositories::api_wallet::collect::ApiCollectRepo,
+        repositories::api_wallet::{
+            collect::ApiCollectRepo, resource_delegation::ApiResourceDelegationRepo,
+            tron_account_activation::ApiTronAccountActivationRepo,
+        },
     };
+    use wallet_transport_backend::{
+        request::{
+            DeviceDeleteReq, KeysInitReq,
+            api_wallet::{
+                address::ExpandAddressCompleteReq,
+                swap::{ApiInitSwapReq, ApiInitSwapResponse},
+                wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq},
+            },
+        },
+        response_vo::api_wallet::wallet::{
+            AppIdUidUsageRes as ApiWalletAppIdUidUsageRes, KeysUidCheckRes,
+            QueryUidBindInfoRes as QueryBindInfoRes,
+            QueryWalletActivationInfoResp as ApiQueryActivationResp, UidStatus,
+        },
+    };
+
+    #[derive(Default)]
+    struct NoopApiWalletBackend;
+
+    #[async_trait]
+    impl ApiWalletBackend for NoopApiWalletBackend {
+        async fn wallet_bind_appid(&self, _: BindAppIdReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn init_api_wallet(&self, _: AppIdImportReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn old_keys_init(&self, _: KeysInitReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn appid_import(&self, _: AppIdImportReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn appid_import_recharge_wallet(
+            &self,
+            _: wallet_transport_backend::request::api_wallet::wallet::AppIdImportRechargeWalletReq,
+        ) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn keys_uid_check(&self, _: &str) -> Result<KeysUidCheckRes, ServiceError> {
+            Ok(KeysUidCheckRes { uid: String::new(), status: UidStatus::NormalWallet })
+        }
+        async fn query_uid_bind_info(&self, _: &str) -> Result<QueryBindInfoRes, ServiceError> {
+            Ok(QueryBindInfoRes {
+                app_id: String::new(),
+                org_id: String::new(),
+                bind_status: false,
+                sn: String::new(),
+            })
+        }
+        async fn query_wallet_activation_info(
+            &self,
+            _: &str,
+        ) -> Result<ApiQueryActivationResp, ServiceError> {
+            Ok(ApiQueryActivationResp(vec![]))
+        }
+        async fn appid_uid_usage(
+            &self,
+            _: AppIdUidUsageReq,
+        ) -> Result<ApiWalletAppIdUidUsageRes, ServiceError> {
+            Ok(ApiWalletAppIdUidUsageRes { used: false })
+        }
+        async fn expand_address_complete(
+            &self,
+            _: ExpandAddressCompleteReq,
+        ) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn appid_withdrawal_wallet_change(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<(), ServiceError> {
+            Ok(())
+        }
+        async fn init_swap(&self, _: &ApiInitSwapReq) -> Result<ApiInitSwapResponse, ServiceError> {
+            Ok(ApiInitSwapResponse { success: true, code: None, msg: None, data: None })
+        }
+        async fn device_delete(&self, _: &DeviceDeleteReq) -> Result<Option<()>, ServiceError> {
+            Ok(None)
+        }
+    }
+
+    async fn test_ctx() -> &'static crate::context::Context {
+        let ctx = crate::context::init_context_with_api_wallet_backend(
+            "wallet_api_shadow_test_sn",
+            "unittest",
+            {
+                let mut dir = PathBuf::from(std::env::temp_dir());
+                dir.push("wallet-api-shadow-worker-tests");
+                fs::create_dir_all(&dir).expect("ensure temp dir");
+                crate::dirs::Dirs::new(&dir.to_string_lossy()).expect("create dirs")
+            },
+            None,
+            crate::config::Config::new(
+                r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#,
+            )
+            .expect("parse test config"),
+            Arc::new(NoopApiWalletBackend::default()),
+        )
+        .await
+        .expect("init test context");
+        Box::leak(Box::new(ctx))
+    }
 
     fn base_collect() -> ApiCollectEntity {
         ApiCollectEntity {
@@ -2542,6 +4370,12 @@ mod tests {
             post_confirm_tx_count: 0,
             err_code: None,
             err_msg: Some(String::new()),
+            resource_check_at: None,
+            resource_gate_released_at: None,
+            resource_gate_result: None,
+            resource_block_reason: None,
+            resource_dependency_trade_no: None,
+            resource_dependency_type: None,
             order_ack_sent_at: Some(Utc::now()),
             raw_tx: None,
             resource_consume: "0".to_string(),
@@ -2567,6 +4401,45 @@ mod tests {
         }
     }
 
+    #[test]
+    fn collect_build_service_unavailable_remains_retryable_regardless_of_updated_at() {
+        let mut req = base_collect();
+        req.updated_at = Some(Utc::now() - chrono::Duration::days(30));
+        let err = ServiceError::System(SystemError::Internal(
+            "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
+                .to_string(),
+        ));
+
+        assert!(ShadowCollectWorker::should_retry_collect_build_service_unavailable(&req, &err));
+
+        req.raw_tx = Some("{}".to_string());
+        assert!(!ShadowCollectWorker::should_retry_collect_build_service_unavailable(&req, &err));
+    }
+
+    #[test]
+    fn tron_missing_pools_recovery_action_observes_fresh_and_rebroadcasts_expired() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.last_broadcast_at = Some(Utc::now());
+
+        assert_eq!(
+            ShadowCollectWorker::tron_missing_pools_recovery_action(&req),
+            TronMissingPoolsRecoveryAction::ObserveWithPointToPointRetry
+        );
+
+        req.last_broadcast_at = Some(
+            Utc::now()
+                - chrono::Duration::seconds(
+                    ShadowCollectWorker::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS
+                        + 1,
+                ),
+        );
+        assert_eq!(
+            ShadowCollectWorker::tron_missing_pools_recovery_action(&req),
+            TronMissingPoolsRecoveryAction::Rebroadcast
+        );
+    }
+
     #[tokio::test]
     async fn clear_build_slot_after_claim_releases_building_at() {
         let dir = tempdir().expect("tempdir");
@@ -2576,24 +4449,6 @@ mod tests {
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
-            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
-                intent_tx,
-                None,
-            )),
-        );
-
         let trade_no = "T_clear_build_slot_after_claim";
         ApiCollectRepo::upsert_api_collect(
             &collect_pool,
@@ -2619,7 +4474,9 @@ mod tests {
             .expect("claim build slot");
         assert_eq!(claimed, 1);
 
-        worker.clear_build_slot_after_claim(trade_no).await.expect("clear build slot");
+        ShadowCollectWorker::clear_build_slot_after_claim_in_pool(&collect_pool, trade_no)
+            .await
+            .expect("clear build slot");
 
         let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
             .await
@@ -2636,24 +4493,6 @@ mod tests {
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
-            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
-                intent_tx,
-                None,
-            )),
-        );
-
         let trade_no = "T_reclaim_stale_build_slot";
         ApiCollectRepo::upsert_api_collect(
             &collect_pool,
@@ -2692,10 +4531,13 @@ mod tests {
             Some(true)
         );
 
-        let reclaimed = worker
-            .reclaim_stale_build_slot(trade_no, req.building_at)
-            .await
-            .expect("reclaim stale slot");
+        let reclaimed = ShadowCollectWorker::reclaim_stale_build_slot_in_pool(
+            &collect_pool,
+            trade_no,
+            req.building_at,
+        )
+        .await
+        .expect("reclaim stale slot");
         assert!(reclaimed);
 
         let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
@@ -2718,24 +4560,6 @@ mod tests {
             .await
             .expect("init api_transaction.db");
         let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-
-        let wallet_ctx =
-            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
-        let wallet_pool: ApiWalletDbPool =
-            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
-
-        let (intent_tx, _intent_rx) = mpsc::channel(1);
-        let worker = ShadowCollectWorker::new(
-            collect_pool.clone(),
-            wallet_pool,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
-            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                collect_pool.clone(),
-                intent_tx,
-                None,
-            )),
-        );
-
         let trade_no = "T_fresh_build_slot";
         ApiCollectRepo::upsert_api_collect(
             &collect_pool,
@@ -2769,10 +4593,13 @@ mod tests {
         let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
             .await
             .expect("load collect");
-        let reclaimed = worker
-            .reclaim_stale_build_slot(trade_no, req.building_at)
-            .await
-            .expect("reclaim fresh slot");
+        let reclaimed = ShadowCollectWorker::reclaim_stale_build_slot_in_pool(
+            &collect_pool,
+            trade_no,
+            req.building_at,
+        )
+        .await
+        .expect("reclaim fresh slot");
         assert!(!reclaimed);
 
         let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
@@ -2805,40 +4632,6 @@ mod tests {
 
         assert!(!changed);
         assert_eq!(req.to_addr, "same-to");
-    }
-
-    #[test]
-    fn recover_skip_nudges_advance_when_chain_fact_exists() {
-        let mut req = base_collect();
-        req.transaction_time = Some(Utc::now());
-        req.tx_exec_receipt_uploaded_at = None;
-
-        assert!(ShadowCollectWorker::should_nudge_advance_after_recover_skip(&req));
-    }
-
-    #[test]
-    fn recover_skip_does_not_nudge_without_chain_fact() {
-        let req = base_collect();
-
-        assert!(!ShadowCollectWorker::should_nudge_advance_after_recover_skip(&req));
-    }
-
-    #[test]
-    fn recover_hash_validation_accepts_missing_existing_hash() {
-        ShadowCollectWorker::validate_recovered_tx_hash("trade-no", None, "0xrecover")
-            .expect("missing local hash should be accepted for backfill");
-    }
-
-    #[test]
-    fn recover_hash_validation_rejects_mismatch() {
-        let err = ShadowCollectWorker::validate_recovered_tx_hash(
-            "trade-no",
-            Some("0xlocal"),
-            "0xrecover",
-        )
-        .expect_err("mismatched hash must fail");
-
-        assert!(err.to_string().contains("recover tx_hash mismatch"));
     }
 
     #[test]
@@ -2889,6 +4682,1015 @@ mod tests {
     }
 
     #[test]
+    fn resource_gate_delegate_trade_no_is_deterministic() {
+        assert_eq!(
+            ShadowCollectWorker::collect_local_delegate_trade_no("C_1"),
+            "rsc_local_delegate_C_1"
+        );
+    }
+
+    #[test]
+    fn tron_collect_resource_gate_ignores_bandwidth_shortage() {
+        let reservations = WithdrawResourceReservationManager::default();
+        let required = ShadowCollectWorker::tron_collect_required_budget(14_650, 345);
+
+        let bandwidth_only_shortage = reservations.reserve_if_available(
+            "T_ENERGY_READY",
+            "C_ENERGY_READY",
+            required,
+            ResourceBudget::new(73_442, 127),
+        );
+        assert!(matches!(bandwidth_only_shortage, ResourceReservationDecision::Reserved { .. }));
+
+        let energy_shortage = reservations.reserve_if_available(
+            "T_ENERGY_SHORT",
+            "C_ENERGY_SHORT",
+            required,
+            ResourceBudget::new(14_649, 10_000),
+        );
+        assert!(matches!(energy_shortage, ResourceReservationDecision::NeedMore(_)));
+    }
+
+    #[test]
+    fn tron_collect_amount_is_prechecked_before_resource_gate() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Native;
+        req.raw_tx = None;
+        req.transaction_time = None;
+        req.finished_at = None;
+        req.err_code = None;
+        req.resource_gate_released_at = None;
+
+        assert!(ShadowCollectWorker::should_precheck_collect_amount_before_resource_gate(&req));
+
+        req.resource_gate_released_at = Some(Utc::now());
+        assert!(!ShadowCollectWorker::should_precheck_collect_amount_before_resource_gate(&req));
+    }
+
+    #[test]
+    fn tron_collect_inactive_resource_snapshot_requires_account_activation() {
+        let inactive_snapshot = ResourceGateSnapshot {
+            required_energy: 500,
+            required_bandwidth: 268,
+            available_energy: 0,
+            available_bandwidth: 0,
+            energy_price: 0.0,
+        };
+        assert!(ShadowCollectWorker::resource_snapshot_needs_account_activation(
+            &inactive_snapshot
+        ));
+
+        let active_resource_shortfall =
+            ResourceGateSnapshot { energy_price: 400.0, ..inactive_snapshot };
+        assert!(!ShadowCollectWorker::resource_snapshot_needs_account_activation(
+            &active_resource_shortfall
+        ));
+
+        let resource_ready = ResourceGateSnapshot { required_energy: 0, ..inactive_snapshot };
+        assert!(!ShadowCollectWorker::resource_snapshot_needs_account_activation(&resource_ready));
+        assert_eq!(
+            ShadowCollectWorker::collect_account_activation_trade_no("C_INACTIVE"),
+            "act_C_INACTIVE"
+        );
+    }
+
+    #[tokio::test]
+    async fn account_activation_block_commit_is_idempotent_and_blocks_collect_build() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
+
+        let trade_no = "C_account_activation_block";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "inactive_from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "USDT",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+
+        ShadowCollectWorker::commit_account_activation_block_in_pools(
+            &collect_pool,
+            &resource_pool,
+            trade_no,
+            &req,
+            "withdraw_payer",
+            100,
+            0,
+            0.0,
+        )
+        .await
+        .expect("first account activation block commit");
+        ShadowCollectWorker::commit_account_activation_block_in_pools(
+            &collect_pool,
+            &resource_pool,
+            trade_no,
+            &req,
+            "withdraw_payer",
+            100,
+            0,
+            0.0,
+        )
+        .await
+        .expect("second account activation block commit");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_none());
+        assert!(persisted.raw_tx.is_none());
+        assert_eq!(
+            persisted.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedAccountActivation)
+        );
+        assert_eq!(
+            persisted.resource_dependency_type,
+            Some(ApiResourceDependencyType::AccountActivation)
+        );
+        assert_eq!(
+            persisted.resource_dependency_trade_no.as_deref(),
+            Some("act_C_account_activation_block")
+        );
+        assert!(
+            ApiCollectRepo::scan_can_build(&collect_pool, 10)
+                .await
+                .expect("scan can build")
+                .is_empty()
+        );
+
+        let activation = ApiTronAccountActivationRepo::find_by_activation_trade_no(
+            &resource_pool,
+            "act_C_account_activation_block",
+        )
+        .await
+        .expect("load activation")
+        .expect("activation task");
+        assert_eq!(activation.origin_trade_no, trade_no);
+        assert_eq!(activation.payer_address, "withdraw_payer");
+        assert_eq!(activation.target_address, "inactive_from");
+        assert_eq!(activation.amount, "0.00001");
+        assert!(activation.tx_hash.is_none());
+        assert!(activation.account_verified_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn account_activation_verified_requeues_resource_gate_without_release() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
+
+        let trade_no = "C_account_activation_recheck";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "inactive_from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "USDT",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(collect_pool.as_ref())
+        .await
+        .expect("mark order ack sent");
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+
+        ShadowCollectWorker::commit_account_activation_block_in_pools(
+            &collect_pool,
+            &resource_pool,
+            trade_no,
+            &req,
+            "withdraw_payer",
+            100,
+            0,
+            0.0,
+        )
+        .await
+        .expect("account activation block commit");
+
+        let activation_trade_no =
+            ShadowCollectWorker::collect_account_activation_trade_no(trade_no);
+        let rows = ApiCollectRepo::clear_account_activation_block_for_reeval(
+            &collect_pool,
+            trade_no,
+            &activation_trade_no,
+        )
+        .await
+        .expect("clear account activation block");
+        assert_eq!(rows, 1);
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect after activation verified");
+        assert!(persisted.resource_gate_released_at.is_none());
+        assert!(persisted.resource_gate_result.is_none());
+        assert!(persisted.resource_block_reason.is_none());
+        assert!(persisted.resource_dependency_trade_no.is_none());
+        assert!(persisted.resource_dependency_type.is_none());
+        assert!(
+            ApiCollectRepo::scan_can_build(&collect_pool, 10)
+                .await
+                .expect("scan can build")
+                .is_empty()
+        );
+
+        let need_resource_gate = ApiCollectRepo::scan_need_resource_gate(&collect_pool, 10)
+            .await
+            .expect("scan need resource gate");
+        assert_eq!(need_resource_gate.len(), 1);
+        assert_eq!(need_resource_gate[0].trade_no, trade_no);
+    }
+
+    #[tokio::test]
+    async fn release_resource_gate_is_idempotent() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let trade_no = "C_release_once";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+
+        ApiCollectRepo::mark_resource_released(
+            &collect_pool,
+            trade_no,
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .expect("first release");
+        ApiCollectRepo::mark_resource_released(
+            &collect_pool,
+            trade_no,
+            ApiResourceGateResult::ResourceReady,
+        )
+        .await
+        .expect("second release");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(persisted.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
+    }
+
+    #[tokio::test]
+    async fn stale_resource_ready_invalidation_reopens_resource_gate() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let trade_no = "C_stale_resource_ready";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+            "USDT",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(collect_pool.as_ref())
+        .await
+        .expect("mark order ack and build slot");
+
+        ApiCollectRepo::mark_resource_released_with_estimate(
+            &collect_pool,
+            trade_no,
+            ApiResourceGateResult::ResourceReady,
+            r#"{"energy":14650,"bandwidth":0}"#,
+        )
+        .await
+        .expect("mark resource ready");
+
+        assert_eq!(
+            ApiCollectRepo::scan_can_build(&collect_pool, 10).await.expect("scan can build").len(),
+            1
+        );
+
+        let rows = ApiCollectRepo::invalidate_resource_ready_for_reeval(&collect_pool, trade_no)
+            .await
+            .expect("invalidate resource ready");
+        assert_eq!(rows, 1);
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_none());
+        assert!(persisted.resource_gate_result.is_none());
+        assert!(persisted.resource_block_reason.is_none());
+        assert!(persisted.resource_dependency_trade_no.is_none());
+        assert!(persisted.resource_dependency_type.is_none());
+        assert_eq!(persisted.resource_consume, "0");
+        assert!(persisted.building_at.is_none());
+        assert!(
+            ApiCollectRepo::scan_can_build(&collect_pool, 10)
+                .await
+                .expect("scan can build")
+                .is_empty()
+        );
+
+        let need_resource_gate = ApiCollectRepo::scan_need_resource_gate(&collect_pool, 10)
+            .await
+            .expect("scan need resource gate");
+        assert_eq!(need_resource_gate.len(), 1);
+        assert_eq!(need_resource_gate[0].trade_no, trade_no);
+    }
+
+    #[tokio::test]
+    async fn tron_resource_ready_bandwidth_fee_shortage_opens_fee_cycle_without_reopening_gate() {
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            ctx,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                ctx, intent_tx, None,
+            )),
+        );
+        let trade_no = format!("C_energy_ready_fee_{}", uuid::Uuid::new_v4().simple());
+        let resource_estimate = r#"{"energy":14650,"bandwidth":345}"#;
+
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "5",
+            "digest",
+            "tron",
+            Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+            "USDT",
+            &trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        ApiCollectRepo::mark_resource_released_with_estimate(
+            &collect_pool,
+            &trade_no,
+            ApiResourceGateResult::ResourceReady,
+            resource_estimate,
+        )
+        .await
+        .expect("mark resource ready");
+        let released = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+            .await
+            .expect("load released collect");
+
+        let rows = worker
+            .invalidate_build_attempt_after_fee_check_failure(&released)
+            .await
+            .expect("open service fee cycle");
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+            .await
+            .expect("load collect after fee shortage");
+
+        assert_eq!(rows, 1);
+        assert_eq!(persisted.need_service_fee, Some(true));
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(persisted.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
+        assert_eq!(persisted.resource_consume, resource_estimate);
+    }
+
+    #[tokio::test]
+    async fn local_delegation_block_commit_is_idempotent() {
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let resource_pool = ctx.api_resource_pool().expect("resource pool");
+        let (intent_tx, mut intent_rx) = mpsc::channel(4);
+        let worker = ShadowCollectWorker::new(
+            ctx,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                ctx,
+                intent_tx.clone(),
+                None,
+            )),
+        );
+
+        let trade_no = format!("C_local_block_once_{}", uuid::Uuid::new_v4().simple());
+        let resource_trade_no = format!("rsc_local_delegate_{trade_no}");
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            &trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+            .await
+            .expect("load collect");
+
+        worker
+            .commit_local_delegation_block(&trade_no, &req, "withdraw_owner", 100, 20, 10.0)
+            .await
+            .expect("first local block commit");
+        worker
+            .commit_local_delegation_block(&trade_no, &req, "withdraw_owner", 100, 20, 10.0)
+            .await
+            .expect("second local block commit");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+            .await
+            .expect("load collect");
+        assert_eq!(
+            persisted.resource_dependency_trade_no.as_deref(),
+            Some(resource_trade_no.as_str())
+        );
+        assert_eq!(
+            persisted.resource_dependency_type,
+            Some(ApiResourceDependencyType::LocalDelegate)
+        );
+        assert_eq!(
+            persisted.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedLocalDelegate)
+        );
+
+        let delegation =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, &resource_trade_no)
+                .await
+                .expect("load delegation");
+        assert_eq!(delegation.source, ApiResourceDelegationSource::Local);
+        assert_eq!(delegation.origin_trade_no.as_deref(), Some(trade_no.as_str()));
+        assert_eq!(delegation.owner_address, "withdraw_owner");
+        assert_eq!(delegation.receiver_address, "from");
+        assert_eq!(delegation.native_amount, "10");
+
+        let intent = intent_rx.try_recv().expect("local delegation fast path should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(ref dispatched))
+                if dispatched == &resource_trade_no
+        ));
+        assert_eq!(delegation.amount, "100");
+    }
+
+    #[tokio::test]
+    async fn local_delegation_failure_releases_collect_gate() {
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let resource_pool = ctx.api_resource_pool().expect("resource pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            ctx,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                ctx,
+                intent_tx.clone(),
+                None,
+            )),
+        );
+
+        let trade_no = "C_local_release";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        ApiCollectRepo::mark_resource_blocked(
+            &collect_pool,
+            trade_no,
+            ApiResourceBlockReason::NeedLocalDelegate,
+            Some("rsc_local_delegate_C_local_release"),
+            Some(ApiResourceDependencyType::LocalDelegate),
+        )
+        .await
+        .expect("block collect");
+        ApiResourceDelegationRepo::upsert(
+            &resource_pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                "rsc_local_delegate_C_local_release",
+                trade_no,
+                2,
+                "withdraw_owner",
+                "from",
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert local delegation");
+        ApiResourceDelegationRepo::mark_failed_with_result_if_unfinished(
+            &resource_pool,
+            "rsc_local_delegate_C_local_release",
+            None,
+            "ERR_6008",
+            "local delegate failed",
+            "local_delegation_terminal_failure",
+        )
+        .await
+        .expect("mark failed");
+
+        let failed = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &resource_pool,
+            "rsc_local_delegate_C_local_release",
+        )
+        .await
+        .expect("load failed delegation");
+        assert!(failed.chain_failed_at.is_none());
+        assert!(failed.finished_at.is_some());
+
+        worker
+            .release_collect_gate_after_local_delegation_failure(
+                "rsc_local_delegate_C_local_release",
+            )
+            .await
+            .expect("release collect after local failure");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(
+            persisted.resource_gate_result,
+            Some(ApiResourceGateResult::LocalDelegationFailedBypass)
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_local_delegation_failure_does_not_release_collect_gate() {
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let resource_pool = ctx.api_resource_pool().expect("resource pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            ctx,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                ctx, intent_tx, None,
+            )),
+        );
+        let test_id = uuid::Uuid::new_v4().simple().to_string();
+        let trade_no = format!("C_local_stale_failure_{test_id}");
+        let resource_trade_no = format!("rsc_local_delegate_{trade_no}");
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            &trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        ApiCollectRepo::mark_resource_blocked(
+            &collect_pool,
+            &trade_no,
+            ApiResourceBlockReason::NeedLocalDelegate,
+            Some(&resource_trade_no),
+            Some(ApiResourceDependencyType::LocalDelegate),
+        )
+        .await
+        .expect("block collect");
+        ApiResourceDelegationRepo::upsert(
+            &resource_pool,
+            NewApiResourceDelegation::local_delegate(
+                "uid",
+                &resource_trade_no,
+                &trade_no,
+                2,
+                "withdraw_owner",
+                "from",
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert local delegation");
+        assert_eq!(
+            ApiResourceDelegationRepo::claim_build_slot(&resource_pool, &resource_trade_no)
+                .await
+                .expect("claim build"),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_built(
+                &resource_pool,
+                &resource_trade_no,
+                "built_hash",
+                "built_raw",
+            )
+            .await
+            .expect("mark built"),
+            1
+        );
+
+        let committed = worker
+            .mark_local_resource_delegation_failed(
+                &resource_trade_no,
+                &ServiceError::Parameter("late local failure".to_string()),
+            )
+            .await
+            .expect("handle stale failure");
+        assert!(!committed);
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_none());
+        assert_eq!(
+            persisted.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedLocalDelegate)
+        );
+    }
+
+    #[tokio::test]
+    async fn platform_delegation_failure_does_not_mark_backend_result_received() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            test_ctx().await,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                test_ctx().await,
+                intent_tx,
+                None,
+            )),
+        );
+        ApiResourceDelegationRepo::upsert(
+            &resource_pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_failed",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "withdraw_owner",
+                "from",
+                ApiResourceType::Energy,
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert platform delegation");
+        ApiResourceDelegationRepo::mark_failed_if_unfinished(
+            &resource_pool,
+            "rsc_platform_failed",
+            "ERR_6008",
+            "platform delegate failed locally",
+        )
+        .await
+        .expect("mark failed");
+
+        worker
+            .release_collect_gate_after_local_delegation_failure("rsc_platform_failed")
+            .await
+            .expect("ignore platform failure");
+
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &resource_pool,
+            "rsc_platform_failed",
+        )
+        .await
+        .expect("load platform task");
+        assert!(task.finished_at.is_none());
+        assert!(task.result_ack_sent_at.is_none());
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&resource_pool, 100)
+            .await
+            .expect("scan result ack");
+        assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_platform_failed"));
+    }
+
+    #[tokio::test]
+    async fn platform_delegate_retryable_error_releases_build_slot() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db");
+        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
+
+        ApiResourceDelegationRepo::upsert(
+            &resource_pool,
+            NewApiResourceDelegation::platform_delegate_task(
+                "uid",
+                "rsc_platform_delegate_retry",
+                ApiTradeType::Collect,
+                ApiResourceDelegationOperationType::Delegate,
+                "tron",
+                "withdraw_owner",
+                "from",
+                ApiResourceType::Energy,
+                "10",
+                "10",
+            ),
+        )
+        .await
+        .expect("insert platform delegation");
+        ApiResourceDelegationRepo::mark_task_ack_sent(
+            &resource_pool,
+            "rsc_platform_delegate_retry",
+        )
+        .await
+        .expect("mark ack");
+        ApiResourceDelegationRepo::claim_build_slot(&resource_pool, "rsc_platform_delegate_retry")
+            .await
+            .expect("claim build slot");
+
+        ShadowCollectWorker::schedule_local_resource_delegation_rebuild_retry_in_pool(
+            &resource_pool,
+            "rsc_platform_delegate_retry",
+            &ServiceError::Parameter("retryable test error".to_string()),
+        )
+        .await
+        .expect("schedule retry");
+
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &resource_pool,
+            "rsc_platform_delegate_retry",
+        )
+        .await
+        .expect("load platform task");
+        assert!(task.building_at.is_none());
+        assert_eq!(task.tx_hash, None);
+    }
+
+    #[tokio::test]
+    async fn local_delegation_success_releases_collect_gate() {
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let resource_pool = ctx.api_resource_pool().expect("resource pool");
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            ctx,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                ctx,
+                intent_tx.clone(),
+                None,
+            )),
+        );
+
+        let trade_no = "C_local_success";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "tron",
+            None,
+            "TRX",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        let input = NewApiResourceDelegation::local_delegate(
+            "uid",
+            "rsc_local_delegate_C_local_success",
+            trade_no,
+            2,
+            "withdraw_owner",
+            "from",
+            "10",
+            "10",
+        );
+        ApiResourceDelegationRepo::upsert(&resource_pool, input)
+            .await
+            .expect("insert local delegation");
+        let delegation = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &resource_pool,
+            "rsc_local_delegate_C_local_success",
+        )
+        .await
+        .expect("load delegation");
+
+        worker
+            .release_collect_gate_after_local_delegation_success(&delegation)
+            .await
+            .expect("release collect after local success");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.resource_gate_released_at.is_some());
+        assert_eq!(
+            persisted.resource_gate_result,
+            Some(ApiResourceGateResult::LocalDelegationSuccess)
+        );
+    }
+
+    #[test]
+    fn resource_shortfall_saturates_at_zero() {
+        assert_eq!(ShadowCollectWorker::resource_shortfall(100, 40), 60);
+        assert_eq!(ShadowCollectWorker::resource_shortfall(100, 120), 0);
+        assert_eq!(ShadowCollectWorker::resource_shortfall(100, -1), 100);
+    }
+
+    #[test]
+    fn collect_delegation_amount_uses_order_required_energy() {
+        let required_energy = 14_650;
+        let same_address_previous_order_energy = 14_649;
+
+        assert_eq!(
+            ShadowCollectWorker::resource_shortfall(
+                required_energy,
+                same_address_previous_order_energy
+            ),
+            1
+        );
+        assert_eq!(
+            ShadowCollectWorker::collect_delegation_energy_amount(required_energy),
+            required_energy
+        );
+        assert_eq!(ShadowCollectWorker::collect_delegation_energy_amount(0), 1);
+    }
+
+    #[test]
+    fn collect_resource_ready_budget_subtracts_pending_same_address_orders() {
+        let available_energy = 20_000;
+        let pending = PendingCollectResourceBudget { energy: 14_650, bandwidth: 0 };
+
+        let effective = ShadowCollectWorker::effective_resource_after_pending_collects(
+            available_energy,
+            600,
+            pending,
+        );
+
+        assert_eq!(effective.energy, 5_350);
+        assert_eq!(effective.bandwidth, 600);
+        let decision = WithdrawResourceReservationManager::default().reserve_if_available(
+            "T_PENDING_ENERGY",
+            "C_PENDING_ENERGY",
+            ShadowCollectWorker::tron_collect_required_budget(14_650, 345),
+            effective,
+        );
+        assert!(matches!(decision, ResourceReservationDecision::NeedMore(_)));
+    }
+
+    #[test]
+    fn platform_delegated_collect_fee_shortage_fails_instead_of_redelegating() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Contract("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string());
+        req.resource_gate_released_at = Some(Utc::now());
+        req.resource_gate_result = Some(ApiResourceGateResult::PlatformDelegateSuccess);
+        req.raw_tx = None;
+
+        let err = ServiceError::Business(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ));
+
+        assert!(
+            ShadowCollectWorker::should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
+                &req,
+                &err
+            )
+        );
+
+        req.resource_gate_result = Some(ApiResourceGateResult::ResourceReady);
+        assert!(ShadowCollectWorker::should_open_fee_cycle_for_tron_resource_ready(&req, &err));
+        assert!(
+            !ShadowCollectWorker::should_fail_tron_platform_delegated_collect_after_build_resource_shortage(
+                &req,
+                &err
+            )
+        );
+    }
+
+    #[test]
     fn sol_native_collect_keeps_sender_rent_bypass_scope() {
         assert!(ShadowCollectWorker::should_spend_all_native_collect(
             "sol",
@@ -2927,6 +5729,45 @@ mod tests {
 
         assert_eq!(need, Decimal::from_str("0.00100588").expect("need"));
         assert!(balance < need);
+    }
+
+    #[test]
+    fn tron_token_collect_resource_gate_bypasses_native_fee_balance_only_after_release() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Contract("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string());
+
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_released_at = Some(Utc::now());
+        req.resource_gate_result = Some(ApiResourceGateResult::PlatformDelegateSuccess);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::FallbackAllowed);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::ResourceDelegationFailedBypass);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::LocalDelegationFailedBypass);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::ResourceReady);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::LocalDelegationSuccess);
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.resource_gate_result = Some(ApiResourceGateResult::ResourceDelegationSuccess);
+        assert!(ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.token_addr = AssetTokenKey::Native;
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
+
+        req.token_addr =
+            AssetTokenKey::Contract("So11111111111111111111111111111111111111112".to_string());
+        req.chain_code = "sol".to_string();
+        assert!(!ShadowCollectWorker::tron_token_collect_resource_gate_covers_native_fee(&req));
     }
 
     #[test]
@@ -2980,6 +5821,7 @@ mod tests {
 
         let mut req = base_collect();
         req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
         let err = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(
             InsufficientBalanceDetail::new()
                 .reason("sender balance must keep rent-exempt reserve after transfer"),
@@ -2994,9 +5836,46 @@ mod tests {
     fn sol_token_collect_fee_shortage_after_fee_cycle_terminates() {
         let mut req = base_collect();
         req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
 
         assert!(
             ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
+        );
+    }
+
+    #[test]
+    fn service_fee_report_without_fee_order_ack_is_not_completed() {
+        let mut req = base_collect();
+        req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = None;
+
+        assert!(!ShadowCollectWorker::service_fee_cycle_completed(&req));
+
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
+        assert!(ShadowCollectWorker::service_fee_cycle_completed(&req));
+    }
+
+    #[test]
+    fn tron_token_collect_fee_report_does_not_complete_fee_cycle() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Contract("token".to_string());
+        req.service_fee_uploaded_at = Some(Utc::now());
+
+        assert!(
+            !ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
+        );
+    }
+
+    #[test]
+    fn tron_native_collect_fee_shortage_after_fee_cycle_does_not_use_token_terminal_rule() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Native;
+        req.service_fee_uploaded_at = Some(Utc::now());
+
+        assert!(
+            !ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
         );
     }
 
@@ -3040,48 +5919,17 @@ mod tests {
     }
 
     #[test]
-    fn sol_chain_tracks_broadcast_uncertain_state() {
-        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("sol"));
-        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("eth"));
-        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("bnb"));
-        assert!(!ShadowCollectWorker::tracks_broadcast_uncertain_state("tron"));
-    }
-
-    #[test]
     fn broadcast_uncertain_timeout_helper_trips_after_five_minutes() {
         let mut req = base_collect();
         req.broadcast_uncertain_since_at = Some(Utc::now() - chrono::TimeDelta::minutes(5));
 
         assert!(ShadowCollectWorker::should_auto_fail_broadcast_uncertain(&req, Utc::now()));
     }
-
-    #[test]
-    fn build_503_error_detector_matches_node_503_message() {
-        let err = crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::Internal(
-                "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
-                    .to_string(),
-            ),
-        );
-
-        assert!(ShadowCollectWorker::is_collect_build_503_error(&err));
-    }
-
-    #[test]
-    fn build_503_terminal_failure_trips_after_time_window() {
-        let mut req = base_collect();
-        req.updated_at = Some(Utc::now() - chrono::TimeDelta::minutes(4));
-        let err = crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::Internal(
-                "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
-                    .to_string(),
-            ),
-        );
-
-        assert!(ShadowCollectWorker::should_terminal_fail_collect_build_503(
-            &req,
-            &err,
-            Utc::now()
-        ));
-    }
+}
+#[test]
+fn local_delegation_post_broadcast_confirm_delays_cover_short_window() {
+    assert_eq!(
+        ShadowCollectWorker::LOCAL_DELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS,
+        [3, 8, 15]
+    );
 }

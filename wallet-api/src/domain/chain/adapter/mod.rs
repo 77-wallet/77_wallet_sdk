@@ -1,4 +1,5 @@
 mod transaction_adapter;
+use crate::context::Context;
 pub use transaction_adapter::*;
 use wallet_chain_interact::{
     tron::{self, TronChain},
@@ -39,13 +40,14 @@ macro_rules! dispatch {
 
 pub struct ChainAdapterFactory;
 impl ChainAdapterFactory {
-    async fn get_chain_node(
+    async fn get_chain_node_with_ctx(
+        ctx: &Context,
         chain_code: &str,
     ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
 
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = ctx.core_pool()?;
+        let api_pool = ctx.api_wallet_pool()?;
         let ensurer = ChainNodeEnsurer::new(core_pool, api_pool);
 
         let chain_with_node =
@@ -55,46 +57,61 @@ impl ChainAdapterFactory {
     }
 
     pub async fn get_multisig_adapter(
+        ctx: &Context,
         chain_code: &str,
     ) -> Result<MultisigAdapter, crate::error::service::ServiceError> {
-        let node = ChainAdapterFactory::get_chain_node(chain_code).await?;
+        Self::get_multisig_adapter_with_ctx(ctx, chain_code).await
+    }
+
+    pub async fn get_multisig_adapter_with_ctx(
+        ctx: &Context,
+        chain_code: &str,
+    ) -> Result<MultisigAdapter, crate::error::service::ServiceError> {
+        let node = ChainAdapterFactory::get_chain_node_with_ctx(ctx, chain_code).await?;
 
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
 
-        let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
-        } else {
-            None
-        };
+        let header_opt =
+            if rpc_need_header(&node.rpc_url)? { Some(ctx.get_rpc_header().await?) } else { None };
 
         MultisigAdapter::new(chain, node, header_opt)
     }
 
     pub async fn get_transaction_adapter(
+        ctx: &Context,
         chain_code: &str,
     ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
-        let node = ChainAdapterFactory::get_chain_node(chain_code).await?;
+        Self::get_transaction_adapter_with_ctx(ctx, chain_code).await
+    }
+
+    pub async fn get_transaction_adapter_with_ctx(
+        ctx: &Context,
+        chain_code: &str,
+    ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
+        let node = ChainAdapterFactory::get_chain_node_with_ctx(ctx, chain_code).await?;
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
         let network =
             crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network);
 
-        let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
-        } else {
-            None
-        };
+        let header_opt =
+            if rpc_need_header(&node.rpc_url)? { Some(ctx.get_rpc_header().await?) } else { None };
 
         Ok(TransactionAdapter::new(chain, &node.rpc_url, header_opt, network)?)
     }
 
-    pub async fn get_tron_adapter() -> Result<TronChain, crate::error::service::ServiceError> {
-        let node = ChainAdapterFactory::get_chain_node(chain_code::TRON).await?;
+    pub async fn get_tron_adapter(
+        ctx: &Context,
+    ) -> Result<TronChain, crate::error::service::ServiceError> {
+        Self::get_tron_adapter_with_ctx(ctx).await
+    }
 
-        let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
-        } else {
-            None
-        };
+    pub async fn get_tron_adapter_with_ctx(
+        ctx: &Context,
+    ) -> Result<TronChain, crate::error::service::ServiceError> {
+        let node = ChainAdapterFactory::get_chain_node_with_ctx(ctx, chain_code::TRON).await?;
+
+        let header_opt =
+            if rpc_need_header(&node.rpc_url)? { Some(ctx.get_rpc_header().await?) } else { None };
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
 
         let http_client = HttpClient::new(&node.rpc_url, header_opt, timeout)?;
@@ -104,6 +121,16 @@ impl ChainAdapterFactory {
     }
 
     pub async fn get_node_transaction_adapter(
+        ctx: &Context,
+        chain_code: &str,
+        rpc_url: &str,
+        network: &str,
+    ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
+        Self::get_node_transaction_adapter_with_ctx(ctx, chain_code, rpc_url, network).await
+    }
+
+    pub async fn get_node_transaction_adapter_with_ctx(
+        ctx: &Context,
         chain_code: &str,
         rpc_url: &str,
         network: &str,
@@ -111,11 +138,8 @@ impl ChainAdapterFactory {
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code)?;
         let network = crate::domain::chain::ChainDomain::network_kind_from_node_network(network);
 
-        let header_opt = if rpc_need_header(rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
-        } else {
-            None
-        };
+        let header_opt =
+            if rpc_need_header(rpc_url)? { Some(ctx.get_rpc_header().await?) } else { None };
 
         Ok(TransactionAdapter::new(chain, rpc_url, header_opt, network)?)
     }

@@ -20,7 +20,7 @@ impl WalletManager {
         &self,
         address: String,
     ) -> ReturnType<Option<AccountPermission>> {
-        PermissionService::new().await?.account_permission(address).await
+        PermissionService::new(self.ctx).await?.account_permission(address).await
     }
 
     // 管理其账号的权限
@@ -28,7 +28,7 @@ impl WalletManager {
         &self,
         grantor_addr: String,
     ) -> ReturnType<Vec<ManagerPermissionResp>> {
-        PermissionService::new().await?.manager_permission(grantor_addr).await
+        PermissionService::new(self.ctx).await?.manager_permission(grantor_addr).await
     }
 
     pub async fn modify_permission_fee(
@@ -36,7 +36,7 @@ impl WalletManager {
         req: PermissionReq,
         types: String,
     ) -> ReturnType<EstimateFeeResp> {
-        PermissionService::new().await?.modify_permission_fee(req, types).await
+        PermissionService::new(self.ctx).await?.modify_permission_fee(req, types).await
     }
 
     pub async fn modify_permission(
@@ -45,7 +45,7 @@ impl WalletManager {
         types: String,
         password: String,
     ) -> ReturnType<String> {
-        PermissionService::new().await?.modify_permission(req, types, password).await
+        PermissionService::new(self.ctx).await?.modify_permission(req, types, password).await
     }
 
     pub async fn build_multisig_queue(
@@ -55,7 +55,7 @@ impl WalletManager {
         password: String,
         expiration: i64,
     ) -> ReturnType<String> {
-        PermissionService::new()
+        PermissionService::new(self.ctx)
             .await?
             .build_multisig_permission(req, types, expiration, password)
             .await

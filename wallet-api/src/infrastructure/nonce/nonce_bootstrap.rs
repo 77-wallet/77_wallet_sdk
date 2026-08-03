@@ -68,6 +68,7 @@ impl NonceBootstrapService {
 
     pub async fn ensure_nonce_initialized(
         &self,
+        ctx: &'static crate::context::Context,
         address: &str,
         chain: &str,
     ) -> Result<(), ServiceError> {
@@ -116,7 +117,7 @@ impl NonceBootstrapService {
         // 单出口结构，确保在任何情况下都能释放锁
         let result = async {
             // 实现具体的 bootstrap 逻辑
-            let result = self.bootstrap_address(&address, &chain).await;
+            let result = self.bootstrap_address(ctx, &address, &chain).await;
 
             // 标记完成
             if result.is_ok() {
@@ -130,15 +131,20 @@ impl NonceBootstrapService {
         result
     }
 
-    async fn bootstrap_address(&self, address: &str, chain: &str) -> Result<(), ServiceError> {
+    async fn bootstrap_address(
+        &self,
+        ctx: &'static crate::context::Context,
+        address: &str,
+        chain: &str,
+    ) -> Result<(), ServiceError> {
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
 
         // 从链上获取 next nonce（pending 语义）
-        let chain_next = ApiTransDomain::nonce(address, chain).await?;
+        let chain_next = ApiTransDomain::nonce(ctx, address, chain).await?;
         info!(address = %address, chain = %chain, chain_next = %chain_next, source = "nonce_bootstrap", "Got chain nonce for bootstrap");
 
         // 获取数据库连接池
-        let pool = crate::get_context()?.api_transaction_pool()?;
+        let pool = ctx.api_transaction_pool()?;
 
         // DB 存储的是 last_used，所以要追平到 (chain_next - 1)
         let chain_next_i64 = i64::try_from(chain_next).map_err(|_| {

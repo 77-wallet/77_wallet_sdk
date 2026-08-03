@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::{error::service::ServiceError, infrastructure::path_guard::validate_path_segment};
+
 #[derive(Debug, Clone, Default)]
 pub struct Dirs {
     pub root_dir: PathBuf,
@@ -28,11 +30,15 @@ impl Dirs {
         Ok(Dirs { root_dir: PathBuf::from(root_dir), wallet_dir, export_dir, db_dir, log_dir })
     }
 
-    pub fn get_wallet_dir(&self, address: Option<&str>) -> std::path::PathBuf {
-        address.map_or_else(
-            || PathBuf::from(&self.wallet_dir),
-            |addr| PathBuf::from(&self.wallet_dir).join(addr),
-        )
+    pub fn get_wallet_dir(
+        &self,
+        address: Option<&str>,
+    ) -> Result<std::path::PathBuf, ServiceError> {
+        match address {
+            Some(addr) => Ok(PathBuf::from(&self.wallet_dir)
+                .join(validate_path_segment(addr, "wallet address")?)),
+            None => Ok(PathBuf::from(&self.wallet_dir)),
+        }
     }
 
     pub fn get_export_dir(&self) -> std::path::PathBuf {
@@ -46,8 +52,11 @@ impl Dirs {
     pub(crate) fn get_root_dir(
         &self,
         wallet_address: &str,
-    ) -> Result<std::path::PathBuf, crate::error::service::ServiceError> {
-        let root_dir = self.wallet_dir.join(wallet_address).join("root");
+    ) -> Result<std::path::PathBuf, ServiceError> {
+        let root_dir = self
+            .wallet_dir
+            .join(validate_path_segment(wallet_address, "wallet address")?)
+            .join("root");
 
         wallet_utils::file_func::create_dir_all(&root_dir)?;
 
@@ -57,8 +66,11 @@ impl Dirs {
     pub(crate) fn get_subs_dir(
         &self,
         wallet_address: &str,
-    ) -> Result<std::path::PathBuf, crate::error::service::ServiceError> {
-        let subs_dir = self.wallet_dir.join(wallet_address).join("subs");
+    ) -> Result<std::path::PathBuf, ServiceError> {
+        let subs_dir = self
+            .wallet_dir
+            .join(validate_path_segment(wallet_address, "wallet address")?)
+            .join("subs");
 
         wallet_utils::file_func::create_dir_all(&subs_dir)?;
 

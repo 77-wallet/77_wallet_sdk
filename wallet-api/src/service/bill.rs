@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{self, app::config::ConfigDomain, bill::BillDomain},
     response_vo::CoinCurrency,
 };
@@ -8,10 +9,17 @@ use wallet_database::{
     repositories::{account::AccountRepo, bill::BillRepo, permission::PermissionRepo},
 };
 
-pub struct BillService;
+pub struct BillService {
+    ctx: &'static crate::context::Context,
+}
 
 impl BillService {
+    pub fn new(ctx: &'static Context) -> Result<Self, crate::error::service::ServiceError> {
+        Ok(Self { ctx })
+    }
+
     pub async fn bill_lists(
+        &self,
         root_addr: Option<String>,
         account_id: Option<u32>,
         addr: Option<String>,
@@ -25,13 +33,15 @@ impl BillService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
+        let sqlite_pool = {
+            let pool = self.ctx.get_global_sqlite_pool()?;
+            wallet_database::CoreDbPool::new(pool)
+        };
         let adds = if let Some(addr) = addr {
             vec![addr]
         } else {
             let account = AccountRepo::get_account_list_by_wallet_address_and_account_id(
-                core_pool.clone(),
+                sqlite_pool.clone(),
                 root_addr.as_deref(),
                 account_id,
             )
@@ -41,7 +51,7 @@ impl BillService {
                 account.iter().map(|item| item.address.clone()).collect::<Vec<String>>();
 
             // 兼容权限里面的地址
-            let users = PermissionRepo::permission_by_users(&core_pool, &address).await?;
+            let users = PermissionRepo::permission_by_users(&sqlite_pool, &address).await?;
 
             for user in users {
                 address.push(user.grantor_addr.clone());
@@ -51,7 +61,9 @@ impl BillService {
 
         // 过滤最小金额
         let min_value = match (symbol, filter_min_value) {
-            (Some(symbol), Some(true)) => ConfigDomain::get_config_min_value(symbol).await?,
+            (Some(symbol), Some(true)) => {
+                ConfigDomain::get_config_min_value(self.ctx, symbol).await?
+            }
             _ => None,
         };
 
@@ -66,7 +78,7 @@ impl BillService {
             transfer_type,
             page,
             page_size,
-            &core_pool,
+            &sqlite_pool,
         )
         .await?;
 
@@ -76,18 +88,22 @@ impl BillService {
     }
 
     pub async fn sync_bill_by_address(
+        &self,
         chain_code: &str,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        BillDomain::sync_bills(chain_code, address).await
+        let backend_api = self.ctx.get_global_backend_api();
+        let pool = self.ctx.core_pool()?;
+        BillDomain::sync_bills(&pool, &backend_api, chain_code, address).await
     }
 
     pub async fn sync_bill_by_wallet_and_account(
+        &self,
         wallet_address: String,
         account_id: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = self.ctx.core_pool()?;
         // get all
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
             core_pool,
             Some(wallet_address.as_str()),
@@ -96,7 +112,12 @@ impl BillService {
         .await?;
 
         for account in accounts.iter() {
-            if let Err(e) = BillDomain::sync_bills(&account.chain_code, &account.address).await {
+            let backend_api = self.ctx.get_global_backend_api();
+            let pool = self.ctx.core_pool()?;
+            if let Err(e) =
+                BillDomain::sync_bills(&pool, &backend_api, &account.chain_code, &account.address)
+                    .await
+            {
                 tracing::warn!(
                     "[bill::sync_bill_by_wallet_and_account] chain_code:{},address {},fail {}",
                     account.chain_code,
@@ -110,6 +131,7 @@ impl BillService {
     }
 
     pub async fn coin_currency_price(
+        &self,
         chain_code: String,
         symbol: String,
         token_key: AssetTokenKey,
@@ -118,6 +140,7 @@ impl BillService {
         let currency = currency.currency();
 
         let token = domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
+            self.ctx,
             currency,
             &chain_code,
             &symbol,

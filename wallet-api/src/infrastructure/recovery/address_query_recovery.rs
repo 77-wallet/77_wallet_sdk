@@ -10,6 +10,7 @@ use crate::{error::service::ServiceError, infrastructure::recovery::pool::Backgr
 /// 1. 等待系统就绪后，启动时扫描一次可恢复任务（Failed + 卡住的 Running）
 /// 2. 然后每5秒扫描一次可恢复任务
 pub async fn start_address_recover_worker(
+    ctx: &'static crate::context::Context,
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
     trace!("启动地址恢复Worker");
@@ -18,13 +19,13 @@ pub async fn start_address_recover_worker(
         crate::infrastructure::system_ready::wait_system_ready().await;
         trace!("地址恢复Worker检测到系统就绪，开始扫描可恢复任务");
 
-        if let Err(e) = scan_and_dispatch(true, background_task_pool.clone()).await {
+        if let Err(e) = scan_and_dispatch(ctx, true, background_task_pool.clone()).await {
             tracing::error!("地址恢复Worker启动扫描失败: {:?}", e);
         }
 
         loop {
             sleep(Duration::from_secs(5)).await;
-            if let Err(e) = scan_and_dispatch(false, background_task_pool.clone()).await {
+            if let Err(e) = scan_and_dispatch(ctx, false, background_task_pool.clone()).await {
                 tracing::error!("地址恢复Worker扫描失败: {:?}", e);
             }
         }
@@ -37,14 +38,13 @@ pub async fn start_address_recover_worker(
 /// - is_startup: true 表示启动扫描；false 表示周期扫描
 /// - 两者都只处理可恢复任务（Failed + 卡住超过10分钟的Running）
 pub async fn scan_and_dispatch(
+    ctx: &'static crate::context::Context,
     is_startup: bool,
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
     trace!(is_startup = is_startup, "开始扫描地址查询状态");
 
-    // 获取全局上下文和数据库连接池
-    let context = crate::context::CONTEXT.get().unwrap();
-    let pool = context.api_wallet_pool()?;
+    let pool = ctx.api_wallet_pool()?;
 
     let query_states = AddressQueryStateRepo::list_recoverable_tasks(&pool, true).await?;
 
@@ -58,7 +58,7 @@ pub async fn scan_and_dispatch(
         background_task_pool.push(async move {
             trace!(uid = %state_clone.uid, chain_code = %state_clone.chain_code, "开始处理地址恢复任务");
             // 使用ApiAccountDomain的continue_recover方法继续恢复
-            let res = crate::domain::api_wallet::account::ApiAccountDomain::continue_recover(&state_clone).await;
+            let res = crate::domain::api_wallet::account::ApiAccountDomain::continue_recover_with_ctx(ctx, &state_clone).await;
             if let Err(e) = res {
                 tracing::error!(uid = %state_clone.uid, chain_code = %state_clone.chain_code, "地址恢复任务失败: {:?}", e);
             } else {

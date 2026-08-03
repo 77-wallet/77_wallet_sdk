@@ -1,11 +1,6 @@
 use wallet_database::entities::{
-    device::DeviceEntity, multisig_account::MultisigAccountEntity,
+    api_wallet::ApiWalletEntity, device::DeviceEntity, multisig_account::MultisigAccountEntity,
     multisig_queue::MultisigQueueEntity, wallet::WalletEntity,
-};
-
-use crate::response_vo::{
-    api_wallet::wallet::{ApiWalletList, WalletInfo},
-    standard_wallet::account::BalanceInfo,
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -14,23 +9,71 @@ pub struct GetConfigRes {
     pub fiat: String,
     pub language: String,
     pub unread_count: UnreadCount,
-    pub standard_wallet_list: Vec<WalletInfo>,
-    pub api_wallet_list: ApiWalletList,
+    pub standard_wallet_list: Vec<ConfigWalletInfo>,
+    pub api_wallet_list: ConfigApiWalletList,
     pub device_info: Option<DeviceEntity>,
     pub url: crate::request::init::UrlParams,
 }
 
-impl From<WalletEntity> for WalletInfo {
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigWalletInfo {
+    pub address: String,
+    pub uid: String,
+    pub name: String,
+    pub app_id: Option<String>,
+}
+
+impl From<WalletEntity> for ConfigWalletInfo {
     fn from(value: WalletEntity) -> Self {
-        WalletInfo {
-            address: value.address,
-            uid: value.uid,
-            name: value.name,
-            app_id: None,
-            sn: None,
-            balance: BalanceInfo::default(),
+        ConfigWalletInfo { address: value.address, uid: value.uid, name: value.name, app_id: None }
+    }
+}
+
+impl From<&ApiWalletEntity> for ConfigWalletInfo {
+    fn from(value: &ApiWalletEntity) -> Self {
+        ConfigWalletInfo {
+            address: value.address.clone(),
+            uid: value.uid.clone(),
+            name: value.name.clone(),
+            app_id: value.app_id.clone(),
         }
     }
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigApiWalletList(pub Vec<ConfigApiWalletItem>);
+
+impl std::ops::Deref for ConfigApiWalletList {
+    type Target = Vec<ConfigApiWalletItem>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ConfigApiWalletList {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl ConfigApiWalletList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn push(&mut self, item: ConfigApiWalletItem) {
+        self.0.push(item);
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigApiWalletItem {
+    pub recharge_wallet: Option<ConfigWalletInfo>,
+    pub withdraw_wallet: Option<ConfigWalletInfo>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -72,5 +115,33 @@ impl From<&MultisigQueueEntity> for MultisigAccountBase {
             address: entity.from_addr.clone(),
             status: Some(entity.status as i32),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ConfigApiWalletItem, ConfigApiWalletList, ConfigWalletInfo};
+
+    #[test]
+    fn get_config_wallet_payload_omits_runtime_fields() {
+        let list = ConfigApiWalletList(vec![ConfigApiWalletItem {
+            recharge_wallet: Some(ConfigWalletInfo {
+                address: "address".to_string(),
+                uid: "uid".to_string(),
+                name: "name".to_string(),
+                app_id: Some("app".to_string()),
+            }),
+            withdraw_wallet: None,
+        }]);
+
+        let value = serde_json::to_value(list).expect("serialize config api wallet list");
+        let wallet = &value[0]["rechargeWallet"];
+
+        assert_eq!(wallet["address"], "address");
+        assert_eq!(wallet["uid"], "uid");
+        assert_eq!(wallet["name"], "name");
+        assert_eq!(wallet["appId"], "app");
+        assert!(wallet.get("balance").is_none());
+        assert!(wallet.get("accounts").is_none());
     }
 }

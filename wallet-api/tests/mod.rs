@@ -4,26 +4,9 @@ use tokio_stream::StreamExt;
 use wallet_api::{dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent};
 use wallet_utils::init_test_log;
 
-mod account;
-mod address_book;
-mod api_wallet;
-mod assets;
-mod backend;
-mod bill;
-mod chain;
-mod coin;
-mod collect;
-mod collect_fee;
-mod config;
-mod layering_guard;
-mod mqtt;
-mod multisig_account;
-mod multisig_tx;
-mod permission;
-mod phrase;
-mod stake;
-mod swap;
-mod transactions;
+mod harness;
+mod integration;
+mod smoke;
 
 static TEST_LOG_INIT: Once = Once::new();
 
@@ -50,7 +33,7 @@ pub async fn get_manager() -> WalletManager {
     });
     let dirs = Dirs::new(&path).unwrap();
 
-    let config_text = wallet_api::test::env::get_config().unwrap_or_else(|_| {
+    let config_text = wallet_api::testkit::env::get_config().unwrap_or_else(|_| {
         r#"
 app_code: "test"
 crypto:

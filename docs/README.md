@@ -18,6 +18,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [guides/feature-network-db-mode.md](guides/feature-network-db-mode.md) | Feature-Network + Single DB Mode |
+| [guides/api-wallet-console.md](guides/api-wallet-console.md) | API Wallet Console 手工测试工具使用指南 |
 | [reference/apr-formula.md](reference/apr-formula.md) | APR 年化收益率计算 |
 | [reference/error_codes.md](reference/error_codes.md) | 错误码说明 |
 

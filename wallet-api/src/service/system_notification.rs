@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     messaging::system_notification::{Notification, TransactionNotification},
     response_vo::standard_wallet::system_notification::SystemNotification,
 };
@@ -7,11 +8,13 @@ use wallet_database::{
     repositories::{bill::BillRepo, system_notification::SystemNotificationRepo},
 };
 
-pub struct SystemNotificationService;
+pub struct SystemNotificationService {
+    ctx: &'static Context,
+}
 
 impl SystemNotificationService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn add_system_notification(
@@ -20,7 +23,7 @@ impl SystemNotificationService {
         notification: Notification,
         status: i8,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let r#type = notification.type_name();
         let content = notification.serialize()?;
         SystemNotificationRepo::upsert(&core_pool, id, &r#type, content, status)
@@ -38,7 +41,7 @@ impl SystemNotificationService {
         key: Option<String>,
         value: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let r#type = notification.type_name();
         let content = notification.serialize()?;
         SystemNotificationRepo::upsert_with_key_value(
@@ -53,7 +56,7 @@ impl SystemNotificationService {
         self,
         reqs: &[CreateSystemNotificationEntity],
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         SystemNotificationRepo::upsert_multi_with_key_value(&core_pool, reqs)
             .await
             .map_err(crate::error::service::ServiceError::Database)?;
@@ -65,7 +68,7 @@ impl SystemNotificationService {
         id: Option<String>,
         status: i8,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         SystemNotificationRepo::update_status(&core_pool, id, status)
             .await
             .map_err(crate::error::service::ServiceError::Database)?;
@@ -81,7 +84,7 @@ impl SystemNotificationService {
         wallet_database::pagination::Pagination<SystemNotification>,
         crate::error::service::ServiceError,
     > {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let list = SystemNotificationRepo::list_page(&core_pool, page, page_size)
             .await
             .map_err(crate::error::service::ServiceError::Database)?;

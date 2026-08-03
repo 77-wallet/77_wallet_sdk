@@ -135,13 +135,14 @@ pub(crate) struct Dispatcher {
 }
 
 impl Dispatcher {
-    pub fn new(running_tasks: RunningTasks) -> Self {
+    pub fn new(ctx: &'static crate::context::Context, running_tasks: RunningTasks) -> Self {
         let (external_tx, external_rx) = tokio::sync::mpsc::unbounded_channel();
         // Dispatcher 负责执行并发上限，默认值来源统一配置模块，避免与 scheduler 分叉。
         let defaults = crate::config::runtime_defaults::task_queue();
         let max_concurrent = defaults.dispatch_max_concurrent;
 
         Self::start_internal_task(
+            ctx,
             external_rx,
             running_tasks,
             Arc::new(Semaphore::new(max_concurrent)),
@@ -163,6 +164,7 @@ impl Dispatcher {
     /// - 若该优先级未注册消费通道，则自动创建通道 + 启动 Tokio task 处理器
     /// - 每个优先级通道独立消费任务，避免全局锁或抢占资源
     fn start_internal_task(
+        ctx: &'static crate::context::Context,
         mut external_rx: tokio::sync::mpsc::UnboundedReceiver<PriorityTask>,
         running_tasks: RunningTasks,
         semaphore: Arc<Semaphore>,
@@ -178,6 +180,7 @@ impl Dispatcher {
                 let sender = priority_senders.entry(priority).or_insert_with(|| {
                     // tracing::info!("创建新的优先级 {} 通道并启动任务消费器", priority);
                     Self::create_priority_channel_task(
+                        ctx,
                         priority,
                         running_tasks.clone(),
                         semaphore.clone(),
@@ -199,6 +202,7 @@ impl Dispatcher {
     ///
     /// 返回该优先级的 `UnboundedSender<TaskQueueEntity>`，用于后续投递任务
     fn create_priority_channel_task(
+        ctx: &'static crate::context::Context,
         priority: u8,
         running_tasks: RunningTasks,
         semaphore: Arc<Semaphore>,
@@ -216,6 +220,7 @@ impl Dispatcher {
                 let category_limit = category_limit.clone();
                 tokio::spawn(async move {
                     Self::handle_task_entity(
+                        ctx,
                         priority,
                         task_entity,
                         category_counter,
@@ -237,6 +242,7 @@ impl Dispatcher {
     /// - 去重（RunningTasks）
     /// - 任务调度（spawn）
     async fn handle_task_entity(
+        ctx: &'static crate::context::Context,
         priority: u8,
         task_entity: TaskQueueEntity,
         category_counter: Arc<Mutex<HashMap<TaskType, usize>>>,
@@ -318,7 +324,7 @@ impl Dispatcher {
 
             tokio::spawn(async move {
                 tracing::debug!("开始执行任务 {}", task_id);
-                TaskManager::process_single_task(task_entity, running_tasks_inner).await;
+                TaskManager::process_single_task(ctx, task_entity, running_tasks_inner).await;
                 let mut counter = category_counter.lock().await;
                 if let Some(count) = counter.get_mut(&category) {
                     *count = count.saturating_sub(1);

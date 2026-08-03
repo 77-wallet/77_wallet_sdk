@@ -88,6 +88,19 @@ impl fmt::Debug for CreateWithdrawalAccountReq {
     }
 }
 
+/// 地址搜索请求
+#[derive(serde::Deserialize, Clone)]
+pub struct ApiWalletAddressSearchReq {
+    pub uid: String,
+    pub keyword: String,
+}
+
+impl ApiWalletAddressSearchReq {
+    pub fn new(uid: &str, keyword: &str) -> Self {
+        Self { uid: uid.to_string(), keyword: keyword.to_string() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CreateApiAccountReq, CreateWithdrawalAccountReq};

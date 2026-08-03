@@ -26,14 +26,17 @@ pub struct SqlitePoolProvider {
 pub enum Migrator {
     Core,           // data.db
     ApiTransaction, // api_transaction.db
+    ApiResource,    // api_resource.db
     ApiWallet,      // api_wallet.db
     Task,           // task.db
 }
 impl Migrator {
     pub fn migrator(&self) -> Result<sqlx::migrate::Migrator, crate::Error> {
+        // Keep this match explicit so sqlx::migrate! paths stay discoverable at compile time.
         match self {
             Migrator::Core => Ok(sqlx::migrate!("./schema/core/migrations")),
             Migrator::ApiTransaction => Ok(sqlx::migrate!("./schema/api_transaction/migrations")),
+            Migrator::ApiResource => Ok(sqlx::migrate!("./schema/api_resource/migrations")),
             Migrator::ApiWallet => Ok(sqlx::migrate!("./schema/api_wallet/migrations")),
             Migrator::Task => Ok(sqlx::migrate!("./schema/task/migrations")),
         }
@@ -214,6 +217,14 @@ mod tests {
             SqlitePoolProvider::init_pool(&uri, 1).await.expect("create sqlite pool");
 
         assert!(created);
+    }
+
+    #[test]
+    fn default_sqlite_pool_config_keeps_single_sqlite_writer() {
+        let config = SqlitePoolConfig::default();
+
+        assert_eq!(config.reader_max_connections, 4);
+        assert_eq!(config.writer_max_connections, 1);
     }
 
     #[tokio::test]

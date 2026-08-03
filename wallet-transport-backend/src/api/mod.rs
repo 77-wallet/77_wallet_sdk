@@ -600,7 +600,7 @@ impl BackendApi {
                 let endpoint = endpoint.clone();
                 let client = client.clone();
                 let req = req.clone();
-
+                tracing::info!("endpoint: {}", endpoint);
                 async move { Ok(client.post(&endpoint).json(&req).send().await?) }
             })
             .await?;
