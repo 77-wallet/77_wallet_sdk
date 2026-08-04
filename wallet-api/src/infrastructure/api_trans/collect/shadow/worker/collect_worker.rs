@@ -188,6 +188,15 @@ pub struct ShadowCollectWorker {
 }
 
 impl ShadowCollectWorker {
+    fn collect_broadcast_guard_skip_requires_retry<T>(
+        outcome: &crate::infrastructure::chain_rpc_guard::GuardedCallOutcome<T>,
+    ) -> bool {
+        matches!(
+            outcome,
+            crate::infrastructure::chain_rpc_guard::GuardedCallOutcome::SkippedBeforeExecution
+        )
+    }
+
     const LOCAL_DELEGATION_POST_BROADCAST_CONFIRM_DELAYS_SECS: [u64; 3] = [3, 8, 15];
 
     const TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS: i64 = 5 * 60;
@@ -2763,27 +2772,50 @@ impl ShadowCollectWorker {
 
         // 广播交易。公共包装负责 guarded endpoint 并发、timeout、成功/失败记录。
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Starting to broadcast transaction");
-        let tx_resp = crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log(
-            self.ctx,
-            &req.chain_code,
-            trade_no,
-            "broadcast",
-            "shadow_worker_v2",
-            crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
-                .trade_no(trade_no)
-                .tx_hash(req.tx_hash.as_deref().unwrap_or_default())
-                .chain_code(&req.chain_code)
-                .source("shadow_worker_v2")
-                .op("broadcast"),
-            crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
-                &self.ctx,
+        let guard_outcome =
+            crate::infrastructure::chain_rpc_guard::run_guarded_with_ctx_and_log_classified(
+                self.ctx,
                 &req.chain_code,
-                raw_tx,
-                req.tx_hash.as_deref(),
-            ),
-        )
-        .await?
-        .flatten();
+                trade_no,
+                "broadcast",
+                "shadow_worker_v2",
+                crate::infrastructure::chain_rpc_guard::ChainRpcFailureLog::new()
+                    .trade_no(trade_no)
+                    .tx_hash(req.tx_hash.as_deref().unwrap_or_default())
+                    .chain_code(&req.chain_code)
+                    .source("shadow_worker_v2")
+                    .op("broadcast"),
+                crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
+                    &self.ctx,
+                    &req.chain_code,
+                    raw_tx,
+                    req.tx_hash.as_deref(),
+                ),
+            )
+            .await?;
+
+        if Self::collect_broadcast_guard_skip_requires_retry(&guard_outcome) {
+            info!(
+                observability_event = "tron_collect_broadcast_retry_scheduled",
+                reason = "rpc_guard_skipped_before_execution",
+                trade_no = %trade_no,
+                tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                source = "shadow_worker_v2",
+                "Collect broadcast was not submitted; scheduling fast BroadcastTx retry"
+            );
+            self.advancer.schedule_broadcast_retry_after_guard_skip(trade_no);
+            return Ok(());
+        }
+
+        let tx_resp = match guard_outcome {
+            crate::infrastructure::chain_rpc_guard::GuardedCallOutcome::Executed(response) => {
+                response
+            }
+            crate::infrastructure::chain_rpc_guard::GuardedCallOutcome::SkippedBeforeExecution => {
+                unreachable!("pre-execution guard skip returned above")
+            }
+            crate::infrastructure::chain_rpc_guard::GuardedCallOutcome::ExecutionTimedOut => None,
+        };
 
         match tx_resp {
             Some(tx) => {
@@ -4236,6 +4268,21 @@ mod tests {
             QueryWalletActivationInfoResp as ApiQueryActivationResp, UidStatus,
         },
     };
+
+    #[test]
+    fn collect_broadcast_guard_skip_does_not_become_uncertain() {
+        use crate::infrastructure::chain_rpc_guard::GuardedCallOutcome;
+
+        assert!(ShadowCollectWorker::collect_broadcast_guard_skip_requires_retry(
+            &GuardedCallOutcome::<()>::SkippedBeforeExecution,
+        ));
+        assert!(!ShadowCollectWorker::collect_broadcast_guard_skip_requires_retry(
+            &GuardedCallOutcome::<()>::ExecutionTimedOut,
+        ));
+        assert!(!ShadowCollectWorker::collect_broadcast_guard_skip_requires_retry(
+            &GuardedCallOutcome::Executed(()),
+        ));
+    }
 
     #[derive(Default)]
     struct NoopApiWalletBackend;

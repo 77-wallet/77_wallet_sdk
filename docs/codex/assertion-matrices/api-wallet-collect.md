@@ -1381,3 +1381,13 @@ scanner entrypoints.
 - Invariant: after a completed fee-order handshake, a still-insufficient TRON
   balance cannot re-enter BuildTx for 30 seconds. The persisted `updated_at`
   cooldown keeps scanner and direct advancement restart-safe without a new field.
+
+### Collect Broadcast Guard Admission
+
+- Test: `collect_broadcast_guard_skip_does_not_become_uncertain`
+- Pre-execution skip: RPC guard/breaker admission skips mean no request reached
+  the chain node, so the raw transaction remains broadcast-eligible.
+- Retry: schedule a one-second point-to-point BroadcastTx wakeup without writing
+  `broadcast_uncertain_since_at`.
+- Invariant: only an RPC execution timeout or ambiguous RPC response may enter
+  broadcast-uncertain recovery.

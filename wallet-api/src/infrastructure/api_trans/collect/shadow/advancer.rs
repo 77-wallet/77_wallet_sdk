@@ -38,6 +38,7 @@ const SEM_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(2);
 const DB_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(3);
 /// DB查询超时（秒）
 const DB_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
+const BROADCAST_GUARD_SKIP_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 /// 从CollectIntent中提取trade_no
 fn intent_trade_no(intent: &CollectIntent) -> Option<String> {
@@ -193,6 +194,20 @@ impl ShadowAdvancer {
         let recover_key = shadow_rpc_policy::recover_dispatch_key(trade_no);
         let delay = shadow_rpc_policy::recover_dispatch_cooldown(&recover_key);
         self.schedule_recover_retry_after(trade_no, delay);
+    }
+
+    pub fn schedule_broadcast_retry_after_guard_skip(&self, trade_no: &str) {
+        let advancer = self.clone();
+        let trade_no = trade_no.to_string();
+        tokio::spawn(async move {
+            tokio::time::sleep(BROADCAST_GUARD_SKIP_RETRY_DELAY).await;
+            info!(
+                trade_no = %trade_no,
+                delay_ms = BROADCAST_GUARD_SKIP_RETRY_DELAY.as_millis(),
+                "Waking collect BroadcastTx after pre-execution RPC guard skip"
+            );
+            advancer.try_advance(&trade_no).await;
+        });
     }
 
     fn schedule_recover_retry_after(&self, trade_no: &str, delay: Duration) {

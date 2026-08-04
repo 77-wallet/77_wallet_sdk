@@ -678,7 +678,7 @@ pub async fn run_guarded_with_ctx_and_log<T, Fut>(
 where
     Fut: Future<Output = Result<T, ServiceError>>,
 {
-    match run_guarded_raw_with_ctx_and_log(
+    match run_guarded_with_ctx_and_log_classified(
         ctx,
         chain_code,
         trade_no,
@@ -689,11 +689,60 @@ where
     )
     .await?
     {
-        Some(Ok(value)) => {
-            record_success_for_chain_code_with_ctx(ctx, chain_code).await;
-            Ok(Some(value))
+        GuardedCallOutcome::Executed(value) => Ok(Some(value)),
+        GuardedCallOutcome::SkippedBeforeExecution | GuardedCallOutcome::ExecutionTimedOut => {
+            Ok(None)
         }
-        Some(Err(err)) => {
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GuardedCallOutcome<T> {
+    Executed(T),
+    SkippedBeforeExecution,
+    ExecutionTimedOut,
+}
+
+pub async fn run_guarded_with_ctx_and_log_classified<T, Fut>(
+    ctx: &Context,
+    chain_code: &str,
+    trade_no: &str,
+    action: &str,
+    source: &str,
+    failure_log: ChainRpcFailureLog<'_>,
+    future: Fut,
+) -> Result<GuardedCallOutcome<T>, ServiceError>
+where
+    Fut: Future<Output = Result<T, ServiceError>>,
+{
+    let _guard = match acquire_for_attempt_with_ctx(ctx, chain_code, trade_no, action, source).await
+    {
+        ChainRpcGuardAttempt::Proceed(permit) => permit,
+        ChainRpcGuardAttempt::Skip => return Ok(GuardedCallOutcome::SkippedBeforeExecution),
+    };
+
+    let _breaker_probe =
+        match admit_breaker_for_attempt_with_ctx(ctx, chain_code, trade_no, action, source).await {
+            ChainRpcBreakerAttempt::Proceed(probe) => probe,
+            ChainRpcBreakerAttempt::Skip => {
+                return Ok(GuardedCallOutcome::SkippedBeforeExecution);
+            }
+        };
+
+    let result = match run_with_rpc_timeout(future, chain_code, trade_no, action, source).await {
+        Ok(result) => result,
+        Err(_) => {
+            failure_log.timeout_skip("rpc_execution_timeout");
+            return Ok(GuardedCallOutcome::ExecutionTimedOut);
+        }
+    };
+
+    match result {
+        Ok(value) => {
+            record_success_for_chain_code_with_ctx(ctx, chain_code).await;
+            Ok(GuardedCallOutcome::Executed(value))
+        }
+        Err(err) => {
             let rpc_error = ChainRpcErrorContext::from_display(&err);
             failure_log.warn(&rpc_error, "guarded chain rpc call failed");
             rpc_error.record_transient_failure_for_chain_code_with_ctx(ctx, chain_code).await;
@@ -702,7 +751,6 @@ where
             }
             Err(err)
         }
-        None => Ok(None),
     }
 }
 
