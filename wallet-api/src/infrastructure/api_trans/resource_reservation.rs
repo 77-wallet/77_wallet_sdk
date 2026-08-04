@@ -21,6 +21,13 @@ impl ResourceBudget {
         }
     }
 
+    fn component_max(self, other: Self) -> Self {
+        Self {
+            energy: self.energy.max(other.energy),
+            bandwidth: self.bandwidth.max(other.bandwidth),
+        }
+    }
+
     fn add_assign(&mut self, other: Self) {
         self.energy = self.energy.saturating_add(other.energy);
         self.bandwidth = self.bandwidth.saturating_add(other.bandwidth);
@@ -83,6 +90,23 @@ impl WithdrawResourceReservationManager {
         required: ResourceBudget,
         available: ResourceBudget,
     ) -> ResourceReservationDecision {
+        self.reserve_with_persisted_budget(
+            resource_key,
+            trade_no,
+            required,
+            available,
+            ResourceBudget::default(),
+        )
+    }
+
+    pub(crate) fn reserve_with_persisted_budget(
+        &self,
+        resource_key: impl Into<String>,
+        trade_no: impl Into<String>,
+        required: ResourceBudget,
+        available: ResourceBudget,
+        persisted: ResourceBudget,
+    ) -> ResourceReservationDecision {
         let resource_key = resource_key.into();
         let trade_no = trade_no.into();
         let mut state = self.inner.lock().expect("resource reservation lock poisoned");
@@ -98,7 +122,10 @@ impl WithdrawResourceReservationManager {
         }
 
         let reserved = state.totals.get(&resource_key).copied().unwrap_or_default();
-        let effective_available = available.saturating_sub(reserved);
+        // Restored reservations are represented in both stores. Taking the
+        // component-wise maximum preserves cross-process DB facts without
+        // charging restored in-memory reservations twice.
+        let effective_available = available.saturating_sub(reserved.component_max(persisted));
         let energy_shortfall = required.energy.saturating_sub(effective_available.energy);
         let bandwidth_shortfall = required.bandwidth.saturating_sub(effective_available.bandwidth);
 
@@ -235,6 +262,23 @@ mod withdraw_resource_reservation_tests {
         assert!(matches!(
             manager.reserve_if_available("TAy4", "B", required, ResourceBudget::new(20_000, 1_000)),
             ResourceReservationDecision::NeedMore(_)
+        ));
+    }
+
+    #[test]
+    fn persisted_and_restored_budget_is_not_subtracted_twice() {
+        let manager = WithdrawResourceReservationManager::default();
+        let required = ResourceBudget::new(13_532, 0);
+        let available = ResourceBudget::new(27_112, 0);
+
+        assert!(manager.restore("TAy4", "A", required));
+
+        assert!(matches!(
+            manager.reserve_with_persisted_budget("TAy4", "B", required, available, required),
+            ResourceReservationDecision::Reserved {
+                effective_available: ResourceBudget { energy: 13_580, bandwidth: 0 },
+                reserved: ResourceBudget { energy: 13_532, bandwidth: 0 },
+            }
         ));
     }
 }

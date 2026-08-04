@@ -40,8 +40,21 @@ Scope: `wallet-api` API wallet withdraw flow.
   fallback.
 - Restart: released but unbroadcast orders are restored into the ledger from
   persisted estimated resource facts.
-- Invariant: the aggregate DB pending budget remains diagnostic and must not be
-  subtracted before per-order memory allocation.
+- Persisted allocation: the chain ENERGY snapshot subtracts the aggregate
+  estimated ENERGY of other unfinished same-owner withdraws before per-order
+  memory allocation.
+- Deduplication: restored in-memory reservations overlap persisted pending
+  orders, so effective allocation subtracts the component-wise maximum of the
+  two ledgers instead of their sum.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
+  withdraw_resource_ready_budget_subtracts_pending_same_address_orders
+  ```
+
+- Invariant: pending bandwidth remains diagnostic because platform delegation
+  supplies ENERGY only; bandwidth shortage continues through the TRX fee fallback.
 
 ### Withdraw Dispatcher Watchdog Timing
 

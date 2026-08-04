@@ -864,12 +864,14 @@ impl ShadowWithdrawWorker {
         // by the existing TRX fee fallback and must not block ENERGY allocation.
         let required = ResourceBudget::new(fee_details.energy, 0);
         let available = ResourceBudget::new(available_energy.max(0) as u64, 0);
+        let persisted = ResourceBudget::new(pending_budget.energy, 0);
 
-        let decision = self.resource_reservations.reserve_if_available(
+        let decision = self.resource_reservations.reserve_with_persisted_budget(
             &req.from_addr,
             trade_no.to_string(),
             required,
             available,
+            persisted,
         );
 
         if let ResourceReservationDecision::Reserved { effective_available, reserved } = decision {
@@ -2778,7 +2780,10 @@ impl ShadowWithdrawWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::{ResourceBudget, ShadowWithdrawWorker};
+    use super::{
+        ResourceBudget, ResourceReservationDecision, ShadowWithdrawWorker,
+        WithdrawResourceReservationManager,
+    };
     use crate::{
         context::api_wallet_backend::ApiWalletBackend, domain::api_wallet::adapter::tx::RawTx,
         error::system::SystemError,
@@ -3028,6 +3033,26 @@ oss:
             client_id: None,
             create_time: None,
         }
+    }
+
+    #[test]
+    fn withdraw_resource_ready_budget_subtracts_pending_same_address_orders() {
+        let reservations = WithdrawResourceReservationManager::default();
+        let pending = PendingWithdrawResourceBudget { energy: 13_532, bandwidth: 345 };
+
+        let decision = reservations.reserve_with_persisted_budget(
+            "TAy4",
+            "W_LATER",
+            ResourceBudget::new(13_532, 0),
+            ResourceBudget::new(13_580, 0),
+            ResourceBudget::new(pending.energy, 0),
+        );
+
+        let ResourceReservationDecision::NeedMore(shortfall) = decision else {
+            panic!("pending same-address energy must block resource-ready");
+        };
+        assert_eq!(shortfall.energy, 13_484);
+        assert_eq!(shortfall.effective_available, ResourceBudget::new(48, 0));
     }
 
     #[test]
