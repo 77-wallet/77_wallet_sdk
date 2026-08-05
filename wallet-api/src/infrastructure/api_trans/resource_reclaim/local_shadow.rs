@@ -7,7 +7,7 @@ use std::{
 };
 
 use dashmap::DashSet;
-use tokio::sync::{Semaphore, broadcast, mpsc};
+use tokio::sync::{Mutex as AsyncMutex, Semaphore, broadcast, mpsc};
 use tracing::{error, info, warn};
 use wallet_chain_interact::{
     BillResourceConsume,
@@ -145,6 +145,7 @@ pub struct LocalResourceReclaimScanner {
     api_resource_pool: ApiResourceDbPool,
     api_transaction_pool: Option<ApiTransactionDbPool>,
     config: LocalResourceReclaimScannerConfig,
+    scan_guard: Arc<AsyncMutex<()>>,
 }
 
 impl LocalResourceReclaimScanner {
@@ -156,7 +157,12 @@ impl LocalResourceReclaimScanner {
         api_resource_pool: ApiResourceDbPool,
         config: LocalResourceReclaimScannerConfig,
     ) -> Self {
-        Self { api_resource_pool, api_transaction_pool: None, config }
+        Self {
+            api_resource_pool,
+            api_transaction_pool: None,
+            config,
+            scan_guard: Arc::new(AsyncMutex::new(())),
+        }
     }
 
     pub fn with_transaction_pool_and_config(
@@ -164,10 +170,16 @@ impl LocalResourceReclaimScanner {
         api_transaction_pool: ApiTransactionDbPool,
         config: LocalResourceReclaimScannerConfig,
     ) -> Self {
-        Self { api_resource_pool, api_transaction_pool: Some(api_transaction_pool), config }
+        Self {
+            api_resource_pool,
+            api_transaction_pool: Some(api_transaction_pool),
+            config,
+            scan_guard: Arc::new(AsyncMutex::new(())),
+        }
     }
 
     pub async fn scan_round(&self) -> Vec<LocalResourceReclaimIntent> {
+        let _scan_guard = self.scan_guard.lock().await;
         let mut intents = Vec::new();
         let mut execute_trade_nos = HashSet::new();
 
@@ -236,57 +248,70 @@ impl LocalResourceReclaimScanner {
         let Some(api_transaction_pool) = &self.api_transaction_pool else {
             return Ok(Vec::new());
         };
-        let delegates =
-            ApiResourceDelegationRepo::scan_local_delegates_missing_undelegation_for_origin_type(
+        let mut after_id = None;
+        let mut resource_trade_nos = Vec::new();
+        loop {
+            let delegates = ApiResourceDelegationRepo::
+                scan_local_delegates_missing_undelegation_page_for_origin_type(
                 &self.api_resource_pool,
                 ApiTradeType::Collect as i64,
+                after_id,
                 self.config.max_items_per_scan,
             )
             .await?;
+            if delegates.is_empty() {
+                break;
+            }
+            let page_len = delegates.len();
+            after_id = delegates.last().map(|delegate| delegate.id);
 
-        let mut resource_trade_nos = Vec::with_capacity(delegates.len());
-        for delegate in delegates {
-            let Some(origin_trade_no) = delegate.origin_trade_no.clone() else {
-                continue;
-            };
-            let Some(origin_collect) = ApiCollectRepo::find_api_collect_by_trade_no(
-                api_transaction_pool,
-                &origin_trade_no,
-            )
-            .await?
-            else {
-                continue;
-            };
-            if origin_collect.finished_at.is_none() {
+            for delegate in delegates {
+                let Some(origin_trade_no) = delegate.origin_trade_no.clone() else {
+                    continue;
+                };
+                let Some(origin_collect) = ApiCollectRepo::find_api_collect_by_trade_no(
+                    api_transaction_pool,
+                    &origin_trade_no,
+                )
+                .await?
+                else {
+                    continue;
+                };
+                if origin_collect.finished_at.is_none() {
+                    info!(
+                        origin_trade_no = %origin_trade_no,
+                        source = "local_resource_reclaim_shadow",
+                        "Skipping missing local undelegation reconciliation before collect terminal fact"
+                    );
+                    continue;
+                }
+                let resource_trade_no = collect_local_undelegate_trade_no(&origin_trade_no);
+                ApiResourceDelegationRepo::upsert(
+                    &self.api_resource_pool,
+                    NewApiResourceDelegation::local_undelegate(
+                        delegate.uid,
+                        resource_trade_no.clone(),
+                        origin_trade_no.clone(),
+                        ApiTradeType::Collect as i64,
+                        delegate.owner_address,
+                        delegate.receiver_address,
+                        delegate.native_amount,
+                        delegate.amount,
+                    ),
+                )
+                .await?;
+                resource_trade_nos.push(resource_trade_no.clone());
                 info!(
+                    resource_trade_no = %resource_trade_no,
                     origin_trade_no = %origin_trade_no,
                     source = "local_resource_reclaim_shadow",
-                    "Skipping missing local undelegation reconciliation before collect terminal fact"
+                    "Reconciled missing local undelegation after local delegation success"
                 );
-                continue;
             }
-            let resource_trade_no = collect_local_undelegate_trade_no(&origin_trade_no);
-            ApiResourceDelegationRepo::upsert(
-                &self.api_resource_pool,
-                NewApiResourceDelegation::local_undelegate(
-                    delegate.uid,
-                    resource_trade_no.clone(),
-                    origin_trade_no.clone(),
-                    ApiTradeType::Collect as i64,
-                    delegate.owner_address,
-                    delegate.receiver_address,
-                    delegate.native_amount,
-                    delegate.amount,
-                ),
-            )
-            .await?;
-            resource_trade_nos.push(resource_trade_no.clone());
-            info!(
-                resource_trade_no = %resource_trade_no,
-                origin_trade_no = %origin_trade_no,
-                source = "local_resource_reclaim_shadow",
-                "Reconciled missing local undelegation after local delegation success"
-            );
+
+            if page_len < self.config.max_items_per_scan {
+                break;
+            }
         }
 
         Ok(resource_trade_nos)
@@ -1010,6 +1035,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scanner_serializes_concurrent_scan_rounds() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
+        let scanner = LocalResourceReclaimScanner::with_config(
+            pool,
+            LocalResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+        let held_round = scanner.scan_guard.lock().await;
+        let waiting_scanner = scanner.clone();
+        let waiting_round = tokio::spawn(async move { waiting_scanner.scan_round().await });
+
+        tokio::task::yield_now().await;
+        assert!(!waiting_round.is_finished());
+
+        drop(held_round);
+        tokio::time::timeout(Duration::from_secs(1), waiting_round)
+            .await
+            .expect("waiting scan should run after the active round exits")
+            .expect("waiting scan task should not panic");
+    }
+
+    #[tokio::test]
     async fn local_undelegation_rebuild_resets_execution_facts() {
         let ctx = test_ctx().await;
         let pool = ctx.api_resource_pool().expect("resource pool");
@@ -1282,6 +1337,95 @@ mod tests {
         assert_eq!(undelegate.origin_trade_no.as_deref(), Some("C_RESTART"));
         assert_eq!(undelegate.source, ApiResourceDelegationSource::Local);
         assert_eq!(undelegate.operation_type, ApiResourceDelegationOperationType::Undelegate);
+    }
+
+    #[tokio::test]
+    async fn scanner_reconciles_terminal_origin_beyond_unfinished_first_page() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
+        let transaction_pool =
+            transaction_pool_with_collect(&db_root, "C_UNFINISHED_PAGE_0", false).await;
+
+        for (trade_no, finished) in [("C_UNFINISHED_PAGE_1", false), ("C_TERMINAL_PAGE_2", true)] {
+            sqlx::query(
+                r#"
+                INSERT INTO api_collect (
+                    uid, name, from_addr, to_addr, value, validate, chain_code,
+                    trade_no, trade_type, status, finished_at, created_at
+                ) VALUES (?, 'api_wallet', 'from', 'to', '1', '0', 'tron', ?, 2, ?, ?,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                "#,
+            )
+            .bind("uid")
+            .bind(trade_no)
+            .bind(if finished { 9_i64 } else { 0_i64 })
+            .bind(finished.then(|| "2026-08-01T10:00:00Z".to_string()))
+            .execute(transaction_pool.write_ref())
+            .await
+            .expect("insert collect fact");
+        }
+
+        for origin_trade_no in ["C_UNFINISHED_PAGE_0", "C_UNFINISHED_PAGE_1", "C_TERMINAL_PAGE_2"] {
+            let resource_trade_no = format!("rsc_local_delegate_{origin_trade_no}");
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::local_delegate(
+                    "uid",
+                    resource_trade_no.clone(),
+                    origin_trade_no,
+                    ApiTradeType::Collect as i64,
+                    "owner",
+                    "receiver",
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .expect("insert local delegate");
+            ApiResourceDelegationRepo::mark_result_received(
+                &pool,
+                &resource_trade_no,
+                ApiResourceDelegationResultStatus::Success,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("mark delegate success");
+        }
+
+        let scanner = LocalResourceReclaimScanner::with_transaction_pool_and_config(
+            pool.clone(),
+            transaction_pool,
+            LocalResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 2,
+            },
+        );
+        let intents = scanner.scan_round().await;
+
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            LocalResourceReclaimIntent::ExecuteLocalUndelegation(trade_no)
+                if trade_no == "rsc_local_undelegate_C_TERMINAL_PAGE_2"
+        )));
+        for origin_trade_no in ["C_UNFINISHED_PAGE_0", "C_UNFINISHED_PAGE_1"] {
+            assert!(
+                ApiResourceDelegationRepo::find_by_resource_trade_no(
+                    &pool,
+                    &format!("rsc_local_undelegate_{origin_trade_no}"),
+                )
+                .await
+                .expect("query undelegation")
+                .is_none()
+            );
+        }
     }
 
     #[tokio::test]

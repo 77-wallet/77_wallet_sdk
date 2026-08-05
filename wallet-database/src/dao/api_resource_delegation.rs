@@ -95,6 +95,7 @@ impl ApiResourceDelegationDao {
     pub async fn scan_local_delegates_missing_undelegation<'a, E>(
         exec: E,
         origin_trade_type: i64,
+        after_id: Option<i64>,
         limit: usize,
     ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
     where
@@ -120,8 +121,9 @@ impl ApiResourceDelegationDao {
                       AND undelegate.operation_type = ?5
                       AND undelegate.origin_trade_no = delegate.origin_trade_no
                   )
-            ORDER BY delegate.updated_at ASC, delegate.id ASC
-            LIMIT ?6
+              AND (?6 IS NULL OR delegate.id > ?6)
+            ORDER BY delegate.id ASC
+            LIMIT ?7
             "#,
         )
         .bind(ApiResourceDelegationSource::Local.as_i64())
@@ -129,6 +131,7 @@ impl ApiResourceDelegationDao {
         .bind(origin_trade_type)
         .bind(ApiResourceDelegationResultStatus::Success.as_i64())
         .bind(ApiResourceDelegationOperationType::Undelegate.as_i64())
+        .bind(after_id)
         .bind(limit as i64)
         .fetch_all(exec)
         .await
@@ -511,7 +514,13 @@ impl ApiResourceDelegationDao {
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
               AND last_broadcast_at IS NOT NULL
-            ORDER BY created_at ASC, id ASC
+            ORDER BY
+                CASE
+                    WHEN broadcast_uncertain_last_checked_at IS NULL THEN 0
+                    ELSE 1
+                END ASC,
+                COALESCE(broadcast_uncertain_last_checked_at, created_at) ASC,
+                id ASC
             LIMIT ?
             "#,
         )
@@ -532,11 +541,19 @@ impl ApiResourceDelegationDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let (ack_clause, order_expr) = match source {
+        let (ack_clause, order_clause) = match source {
             ApiResourceDelegationSource::Platform => {
-                ("AND task_ack_sent_at IS NOT NULL", "task_ack_sent_at")
+                ("AND task_ack_sent_at IS NOT NULL", "task_ack_sent_at ASC, id ASC")
             }
-            ApiResourceDelegationSource::Local => ("", "created_at"),
+            ApiResourceDelegationSource::Local => (
+                "",
+                r#"CASE
+                    WHEN broadcast_uncertain_last_checked_at IS NULL THEN 0
+                    ELSE 1
+                END ASC,
+                COALESCE(broadcast_uncertain_last_checked_at, created_at) ASC,
+                id ASC"#,
+            ),
         };
         let sql = format!(
             r#"
@@ -550,7 +567,7 @@ impl ApiResourceDelegationDao {
               AND trim(tx_hash) <> ''
               AND last_broadcast_at IS NOT NULL
               {ack_clause}
-            ORDER BY {order_expr} ASC, id ASC
+            ORDER BY {order_clause}
             LIMIT ?
             "#
         );

@@ -47,6 +47,22 @@ impl ApiResourceDelegationRepo {
         ApiResourceDelegationDao::scan_local_delegates_missing_undelegation(
             pool.read_ref(),
             origin_trade_type,
+            None,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn scan_local_delegates_missing_undelegation_page_for_origin_type(
+        pool: &ApiResourceDbPool,
+        origin_trade_type: i64,
+        after_id: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_local_delegates_missing_undelegation(
+            pool.read_ref(),
+            origin_trade_type,
+            after_id,
             limit,
         )
         .await
@@ -1269,6 +1285,140 @@ mod tests {
             .await
             .unwrap();
         assert!(recoverable.iter().any(|row| row.resource_trade_no == "rsc_build_fact"));
+    }
+
+    #[tokio::test]
+    async fn local_delegate_recovery_rotates_checked_candidates_behind_unchecked_records() {
+        let pool = setup_api_resource_pool("resource_delegation_recovery_fairness").await;
+        let origin_trade_type = crate::entities::api_trade_type::ApiTradeType::Collect as i64;
+
+        for index in 0..25 {
+            let trade_no = format!("rsc_local_recovery_{index:02}");
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::local_delegate(
+                    "uid_1",
+                    &trade_no,
+                    &format!("origin_local_recovery_{index:02}"),
+                    origin_trade_type,
+                    "owner",
+                    "receiver",
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .unwrap();
+            ApiResourceDelegationRepo::claim_build_slot(&pool, &trade_no).await.unwrap();
+            ApiResourceDelegationRepo::mark_built(
+                &pool,
+                &trade_no,
+                &format!("tx_hash_{index:02}"),
+                "{\"Tron\":[]}",
+            )
+            .await
+            .unwrap();
+            ApiResourceDelegationRepo::mark_broadcasted(
+                &pool,
+                &trade_no,
+                &format!("tx_hash_{index:02}"),
+            )
+            .await
+            .unwrap();
+
+            if index < 20 {
+                assert_eq!(
+                    ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(&pool, &trade_no)
+                        .await
+                        .unwrap(),
+                    1
+                );
+            }
+        }
+
+        let rows = ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
+            &pool,
+            origin_trade_type,
+            ApiResourceDelegationSource::Local,
+            ApiResourceDelegationOperationType::Delegate,
+            20,
+        )
+        .await
+        .unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+
+        for index in 20..25 {
+            assert!(
+                trade_nos.contains(&format!("rsc_local_recovery_{index:02}")),
+                "unchecked candidate {index} was starved by the checked first page"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn local_undelegation_recovery_rotates_checked_candidates_behind_unchecked_records() {
+        let pool = setup_api_resource_pool("resource_undelegation_recovery_fairness").await;
+        let origin_trade_type = crate::entities::api_trade_type::ApiTradeType::Collect as i64;
+
+        for index in 0..25 {
+            let trade_no = format!("rsc_local_undelegation_recovery_{index:02}");
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::local_undelegate(
+                    "uid_1",
+                    &trade_no,
+                    &format!("origin_local_undelegation_recovery_{index:02}"),
+                    origin_trade_type,
+                    "owner",
+                    "receiver",
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .unwrap();
+            ApiResourceDelegationRepo::claim_build_slot(&pool, &trade_no).await.unwrap();
+            ApiResourceDelegationRepo::mark_built(
+                &pool,
+                &trade_no,
+                &format!("undelegate_tx_hash_{index:02}"),
+                "{\"Tron\":[]}",
+            )
+            .await
+            .unwrap();
+            ApiResourceDelegationRepo::mark_broadcasted(
+                &pool,
+                &trade_no,
+                &format!("undelegate_tx_hash_{index:02}"),
+            )
+            .await
+            .unwrap();
+
+            if index < 20 {
+                assert_eq!(
+                    ApiResourceDelegationRepo::mark_broadcast_uncertain_attempt(&pool, &trade_no)
+                        .await
+                        .unwrap(),
+                    1
+                );
+            }
+        }
+
+        let rows = ApiResourceDelegationRepo::scan_can_recover_local_undelegation_for_origin_type(
+            &pool,
+            origin_trade_type,
+            20,
+        )
+        .await
+        .unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+
+        for index in 20..25 {
+            assert!(
+                trade_nos.contains(&format!("rsc_local_undelegation_recovery_{index:02}")),
+                "unchecked undelegation candidate {index} was starved by the checked first page"
+            );
+        }
     }
 
     #[tokio::test]
@@ -2992,6 +3142,65 @@ mod tests {
         let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
 
         assert_eq!(trade_nos, vec!["rsc_local_delegate_missing".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn local_delegate_missing_undelegation_scan_pages_past_the_first_limit() {
+        let pool = setup_api_resource_pool("resource_delegation_missing_reclaim_pages").await;
+        let origin_trade_type = crate::entities::api_trade_type::ApiTradeType::Collect as i64;
+
+        for index in 0..3 {
+            let trade_no = format!("rsc_local_delegate_page_{index}");
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::local_delegate(
+                    "uid_1",
+                    &trade_no,
+                    &format!("origin_collect_page_{index}"),
+                    origin_trade_type,
+                    "owner",
+                    "receiver",
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .unwrap();
+            ApiResourceDelegationRepo::mark_result_received(
+                &pool,
+                &trade_no,
+                ApiResourceDelegationResultStatus::Success,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        }
+
+        let first_page = ApiResourceDelegationRepo::
+            scan_local_delegates_missing_undelegation_page_for_origin_type(
+                &pool,
+                origin_trade_type,
+                None,
+                2,
+            )
+            .await
+            .unwrap();
+        let second_page = ApiResourceDelegationRepo::
+            scan_local_delegates_missing_undelegation_page_for_origin_type(
+                &pool,
+                origin_trade_type,
+                first_page.last().map(|row| row.id),
+                2,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(first_page.len(), 2);
+        assert_eq!(second_page.len(), 1);
+        assert_eq!(second_page[0].resource_trade_no, "rsc_local_delegate_page_2");
     }
 
     #[tokio::test]

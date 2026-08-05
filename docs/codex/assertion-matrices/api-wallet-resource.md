@@ -190,6 +190,15 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   until chain/result confirmation is recorded.
 ## Local Undelegation Fast Path
 
+- Tests:
+  `local_delegate_recovery_rotates_checked_candidates_behind_unchecked_records`
+  and
+  `local_undelegation_recovery_rotates_checked_candidates_behind_unchecked_records`
+- DB facts: more unresolved broadcasts exist than the per-scan limit, and the
+  oldest page has already been checked on chain.
+- Invariant: unchecked local delegation and undelegation broadcasts are selected
+  before previously checked uncertain rows; a fixed oldest page cannot starve them.
+
 - Test:
   `wallet-api/src/infrastructure/api_trans/resource_reclaim/local_shadow.rs`
   `local_undelegation_fast_path_enqueues_exact_task`
@@ -212,6 +221,18 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Invariant: restart reconciliation may create a missing local undelegation only
   after the origin collect has a durable terminal fact. A successful delegation
   alone never authorizes reclaim while the collect can still resume.
+
+- Test:
+  `scanner_reconciles_terminal_origin_beyond_unfinished_first_page`
+- Runtime facts: unfinished origin collects fill the first missing-undelegation
+  page while a later page contains an eligible terminal origin.
+- Invariant: cross-database terminal checks cannot make an unfinished first page
+  starve later terminal origins; the scanner traverses every candidate page.
+
+- Test: `scanner_serializes_concurrent_scan_rounds`
+- Runtime facts: warm startup and periodic ticks may request a scan concurrently.
+- Invariant: one scanner instance executes at most one scan round at a time;
+  subsequent rounds wait for the active paginated traversal to finish.
 ## Local Reclaim Dispatcher Concurrency
 
 - Test:
