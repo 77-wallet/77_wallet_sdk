@@ -361,6 +361,35 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn mark_resource_delegation_confirmed<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET resource_check_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = NULL,
+                resource_gate_result = ?2,
+                resource_block_reason = NULL,
+                resource_dependency_trade_no = NULL,
+                resource_dependency_type = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+              AND resource_gate_released_at IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(ApiResourceGateResult::ResourceDelegationSuccess.as_i64())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn scan_need_resource_gate<'a, E>(
         exec: E,
         limit: usize,

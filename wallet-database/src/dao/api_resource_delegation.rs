@@ -581,6 +581,95 @@ impl ApiResourceDelegationDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_unreconciled_terminal_broadcasts_for_recovery<'a, E>(
+        exec: E,
+        origin_trade_type: i64,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = ?1
+              AND operation_type = ?2
+              AND origin_trade_type = ?3
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND last_broadcast_at IS NOT NULL
+              AND chain_success_at IS NULL
+              AND (
+                    chain_failed_at IS NOT NULL
+                    OR finished_at IS NOT NULL
+                    OR err_code IS NOT NULL
+                    OR result_status = ?4
+                  )
+              AND COALESCE(result_payload, '') NOT LIKE 'historical_chain_reconciliation_confirmed_failure:%'
+            ORDER BY updated_at ASC, id ASC
+            LIMIT ?5
+            "#,
+        )
+        .bind(ApiResourceDelegationSource::Local.as_i64())
+        .bind(operation_type.as_i64())
+        .bind(origin_trade_type)
+        .bind(ApiResourceDelegationResultStatus::Fail.as_i64())
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn reopen_terminal_broadcast_for_reconciliation<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let result = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET chain_failed_at = NULL,
+                result_status = NULL,
+                finished_at = NULL,
+                result_payload = 'historical_chain_reconciliation_pending',
+                fail_type = NULL,
+                err_code = NULL,
+                err_msg = NULL,
+                status = ?2,
+                broadcast_uncertain_since_at = COALESCE(
+                    broadcast_uncertain_since_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                broadcast_uncertain_last_checked_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND source = ?3
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND last_broadcast_at IS NOT NULL
+              AND chain_success_at IS NULL
+              AND (
+                    chain_failed_at IS NOT NULL
+                    OR finished_at IS NOT NULL
+                    OR err_code IS NOT NULL
+                    OR result_status = ?4
+                  )
+              AND COALESCE(result_payload, '') NOT LIKE 'historical_chain_reconciliation_confirmed_failure:%'
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(ApiResourceDelegationStatus::Pending.as_i64())
+        .bind(ApiResourceDelegationSource::Local.as_i64())
+        .bind(ApiResourceDelegationResultStatus::Fail.as_i64())
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result.rows_affected())
+    }
+
     pub async fn claim_build_slot<'a, E>(
         exec: E,
         resource_trade_no: &str,

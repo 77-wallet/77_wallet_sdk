@@ -26,7 +26,7 @@ async fn withdraw_resource_result_ack_uses_wd_rsc_dl_type() {
 
 #[serial]
 #[tokio::test]
-async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
+async fn withdraw_resource_delegation_chain_verification_blocks_build_until_energy_is_visible() {
     let scenario = WithdrawResourceGateScenario::new().await;
     let fixture = WithdrawResourceGateFixture::origin_gate_case("W_RSC_RELEASE");
     let given = scenario.given();
@@ -38,8 +38,8 @@ async fn withdraw_resource_result_ack_releases_origin_withdraw_gate() {
 
     when.resource_result_ack_is_sent(&fixture).await;
 
-    then.origin_withdraw_gate_is_released_by_successful_delegation(&fixture).await;
-    then.withdraw_can_build(&fixture).await;
+    then.origin_withdraw_waits_for_delegated_energy_on_chain(&fixture).await;
+    then.withdraw_cannot_build(&fixture).await;
 }
 
 #[serial]

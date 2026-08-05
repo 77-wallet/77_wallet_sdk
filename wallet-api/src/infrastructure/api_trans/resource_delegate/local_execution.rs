@@ -147,12 +147,19 @@ async fn recover_local_delegate(
             })
         }
         Err(error) => {
+            let recovery_context = if delegation.result_payload.as_deref()
+                == Some("historical_chain_reconciliation_pending")
+            {
+                "historical_chain_reconciliation_confirmed_failure:local_delegation"
+            } else {
+                "local_delegation_recovered_failure"
+            };
             let failed = mark_recovered_resource_delegation_failure(
                 pool,
                 &delegation,
                 tx_hash,
                 &error,
-                "local_delegation_recovered_failure",
+                recovery_context,
             )
             .await?;
             Ok(LocalDelegateExecutionOutcome::RecoveredFailure(failed))

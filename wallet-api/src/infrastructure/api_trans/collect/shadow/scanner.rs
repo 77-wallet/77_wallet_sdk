@@ -510,7 +510,7 @@ use std::{
 };
 
 use tokio::sync::Semaphore;
-use tracing::{error, trace, warn};
+use tracing::{error, info, trace, warn};
 use wallet_database::{
     ApiResourceDbPool, ApiTransactionDbPool,
     entities::{
@@ -520,6 +520,7 @@ use wallet_database::{
         },
         api_trade_type::ApiTradeType,
     },
+    repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
 };
 
 use crate::{
@@ -1233,13 +1234,39 @@ impl ShadowScanner {
 
         trace!(max_items = %self.config.max_items_per_scan, "Scanning recoverable local delegate records");
 
-        let records = wallet_database::repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
-            &pool,
-            ApiTradeType::Collect as i64,
-            ApiResourceDelegationSource::Local,
-            ApiResourceDelegationOperationType::Delegate,
-            self.config.max_items_per_scan,
-        ).await?;
+        let historical_failures =
+            ApiResourceDelegationRepo::scan_unreconciled_terminal_broadcasts_for_recovery(
+                &pool,
+                ApiTradeType::Collect as i64,
+                ApiResourceDelegationOperationType::Delegate,
+                self.config.max_items_per_scan,
+            )
+            .await?;
+        for record in historical_failures {
+            let reopened = ApiResourceDelegationRepo::reopen_terminal_broadcast_for_reconciliation(
+                &pool,
+                &record.resource_trade_no,
+            )
+            .await?;
+            if reopened > 0 {
+                info!(
+                    resource_trade_no = %record.resource_trade_no,
+                    origin_trade_no = ?record.origin_trade_no,
+                    previous_err_code = ?record.err_code,
+                    "Reopened historical terminal local delegation for chain reconciliation"
+                );
+            }
+        }
+
+        let records =
+            ApiResourceDelegationRepo::scan_can_recover_by_origin_type_source_and_operation(
+                &pool,
+                ApiTradeType::Collect as i64,
+                ApiResourceDelegationSource::Local,
+                ApiResourceDelegationOperationType::Delegate,
+                self.config.max_items_per_scan,
+            )
+            .await?;
 
         for record in records {
             let intent = CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(

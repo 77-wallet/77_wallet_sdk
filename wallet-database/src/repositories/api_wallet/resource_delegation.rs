@@ -281,6 +281,32 @@ impl ApiResourceDelegationRepo {
         .await
     }
 
+    pub async fn scan_unreconciled_terminal_broadcasts_for_recovery(
+        pool: &ApiResourceDbPool,
+        origin_trade_type: i64,
+        operation_type: ApiResourceDelegationOperationType,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_unreconciled_terminal_broadcasts_for_recovery(
+            pool.read_ref(),
+            origin_trade_type,
+            operation_type,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn reopen_terminal_broadcast_for_reconciliation(
+        pool: &ApiResourceDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::reopen_terminal_broadcast_for_reconciliation(
+            pool.write_ref(),
+            resource_trade_no,
+        )
+        .await
+    }
+
     pub async fn claim_build_slot(
         pool: &ApiResourceDbPool,
         resource_trade_no: &str,
@@ -1419,6 +1445,121 @@ mod tests {
                 "unchecked undelegation candidate {index} was starved by the checked first page"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn historical_terminal_broadcast_reconciles_once_from_chain_fact() {
+        let pool = setup_api_resource_pool("resource_delegation_historical_terminal").await;
+        let origin_trade_type = crate::entities::api_trade_type::ApiTradeType::Collect as i64;
+
+        for (trade_no, err_code, err_msg) in [
+            ("rsc_terminal_chain_success", "ERR_6005", "rpc timeout"),
+            ("rsc_terminal_chain_failure", "ERR_6008", "chain execution failed"),
+        ] {
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::local_delegate(
+                    "uid_1",
+                    trade_no,
+                    &format!("origin_{trade_no}"),
+                    origin_trade_type,
+                    "owner",
+                    "receiver",
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .unwrap();
+            ApiResourceDelegationRepo::claim_build_slot(&pool, trade_no).await.unwrap();
+            let tx_hash = format!("tx_hash_{trade_no}");
+            ApiResourceDelegationRepo::mark_built(&pool, trade_no, &tx_hash, "signed_raw")
+                .await
+                .unwrap();
+            ApiResourceDelegationRepo::mark_broadcasted(&pool, trade_no, &tx_hash).await.unwrap();
+            ApiResourceDelegationRepo::mark_recovered_chain_failure(
+                &pool, trade_no, &tx_hash, None, err_code, err_msg, err_msg,
+            )
+            .await
+            .unwrap();
+        }
+
+        let candidates =
+            ApiResourceDelegationRepo::scan_unreconciled_terminal_broadcasts_for_recovery(
+                &pool,
+                origin_trade_type,
+                ApiResourceDelegationOperationType::Delegate,
+                10,
+            )
+            .await
+            .unwrap();
+        assert_eq!(candidates.len(), 2);
+
+        assert_eq!(
+            ApiResourceDelegationRepo::reopen_terminal_broadcast_for_reconciliation(
+                &pool,
+                "rsc_terminal_chain_success",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        ApiResourceDelegationRepo::mark_recovered_chain_success(
+            &pool,
+            "rsc_terminal_chain_success",
+            "tx_hash_rsc_terminal_chain_success",
+            None,
+            "chain reconciliation success",
+        )
+        .await
+        .unwrap();
+        let corrected = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_terminal_chain_success",
+        )
+        .await
+        .unwrap();
+        assert!(corrected.chain_success_at.is_some());
+        assert_eq!(corrected.status, ApiResourceDelegationStatus::Success);
+
+        assert_eq!(
+            ApiResourceDelegationRepo::reopen_terminal_broadcast_for_reconciliation(
+                &pool,
+                "rsc_terminal_chain_failure",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        ApiResourceDelegationRepo::mark_recovered_chain_failure(
+            &pool,
+            "rsc_terminal_chain_failure",
+            "tx_hash_rsc_terminal_chain_failure",
+            None,
+            "ERR_6008",
+            "chain execution failed",
+            "historical_chain_reconciliation_confirmed_failure:local_delegation",
+        )
+        .await
+        .unwrap();
+        let confirmed_failure = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_terminal_chain_failure",
+        )
+        .await
+        .unwrap();
+        assert!(confirmed_failure.broadcast_uncertain_reconciled_at.is_some());
+
+        let remaining =
+            ApiResourceDelegationRepo::scan_unreconciled_terminal_broadcasts_for_recovery(
+                &pool,
+                origin_trade_type,
+                ApiResourceDelegationOperationType::Delegate,
+                10,
+            )
+            .await
+            .unwrap();
+        assert!(remaining.is_empty());
     }
 
     #[tokio::test]

@@ -290,7 +290,7 @@ pub(crate) trait WithdrawResourceGateThen {
         fixture: &WithdrawResourceGateFixture,
     );
 
-    async fn origin_withdraw_gate_is_released_by_successful_delegation(
+    async fn origin_withdraw_waits_for_delegated_energy_on_chain(
         &self,
         fixture: &WithdrawResourceGateFixture,
     );
@@ -327,15 +327,18 @@ impl WithdrawResourceGateThen for ThenRole<'_, WithdrawResourceGateScenario> {
         .await;
     }
 
-    async fn origin_withdraw_gate_is_released_by_successful_delegation(
+    async fn origin_withdraw_waits_for_delegated_energy_on_chain(
         &self,
         fixture: &WithdrawResourceGateFixture,
     ) {
-        self.origin_withdraw_gate_is_released(
-            fixture,
-            ApiResourceGateResult::ResourceDelegationSuccess,
-        )
-        .await;
+        let withdraw = self.scenario().load().withdraw(&fixture.trade_no).await;
+        assert!(withdraw.resource_gate_released_at.is_none());
+        assert_eq!(
+            withdraw.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationSuccess)
+        );
+        assert!(withdraw.resource_block_reason.is_none());
+        assert!(withdraw.resource_dependency_trade_no.is_none());
     }
 
     async fn origin_withdraw_gate_is_released_by_failed_bypass(

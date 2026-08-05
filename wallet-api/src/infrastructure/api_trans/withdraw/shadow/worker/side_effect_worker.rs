@@ -448,13 +448,22 @@ impl SideEffectWorker {
 
         if ack_rows > 0 {
             if let Some((origin_trade_no, release_result)) = release.as_ref() {
-                let release_rows = ApiWithdrawRepo::mark_resource_released(
-                    &self.ctx.api_transaction_pool()?,
-                    origin_trade_no,
-                    *release_result,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+                let release_rows =
+                    if *release_result == ApiResourceGateResult::ResourceDelegationSuccess {
+                        ApiWithdrawRepo::mark_resource_delegation_confirmed(
+                            &self.ctx.api_transaction_pool()?,
+                            origin_trade_no,
+                        )
+                        .await
+                    } else {
+                        ApiWithdrawRepo::mark_resource_released(
+                            &self.ctx.api_transaction_pool()?,
+                            origin_trade_no,
+                            *release_result,
+                        )
+                        .await
+                    }
+                    .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     resource_trade_no = %resource_task.resource_trade_no,
                     origin_trade_no = %origin_trade_no,
@@ -462,7 +471,7 @@ impl SideEffectWorker {
                     ack_rows,
                     release_rows,
                     source = "side_effect_worker",
-                    "Withdraw resource gate projected from resource result ACK"
+                    "Withdraw resource result ACK projected to origin gate"
                 );
             }
         }
@@ -473,8 +482,13 @@ impl SideEffectWorker {
                 "Resource result ACK marked 0 rows"
             );
         } else {
-            if let Some((origin_trade_no, _)) = release {
-                self.scanner.trigger_build_fast_path_after_resource_gate_release(&origin_trade_no);
+            if let Some((origin_trade_no, release_result)) = release {
+                if release_result == ApiResourceGateResult::ResourceDelegationSuccess {
+                    self.scanner.try_advance(&origin_trade_no).await;
+                } else {
+                    self.scanner
+                        .trigger_build_fast_path_after_resource_gate_release(&origin_trade_no);
+                }
             }
         }
 
@@ -560,12 +574,20 @@ impl SideEffectWorker {
             return Ok(());
         }
 
-        let release_rows = ApiWithdrawRepo::mark_resource_released(
-            &self.ctx.api_transaction_pool()?,
-            origin_trade_no,
-            release_result,
-        )
-        .await
+        let release_rows = if release_result == ApiResourceGateResult::ResourceDelegationSuccess {
+            ApiWithdrawRepo::mark_resource_delegation_confirmed(
+                &self.ctx.api_transaction_pool()?,
+                origin_trade_no,
+            )
+            .await
+        } else {
+            ApiWithdrawRepo::mark_resource_released(
+                &self.ctx.api_transaction_pool()?,
+                origin_trade_no,
+                release_result,
+            )
+            .await
+        }
         .map_err(|e| ServiceError::Database(e.into()))?;
         info!(
             resource_trade_no = %resource_task.resource_trade_no,
@@ -575,7 +597,11 @@ impl SideEffectWorker {
             source = "side_effect_worker",
             "Withdraw resource gate projected from resource task outcome"
         );
-        self.scanner.trigger_build_fast_path_after_resource_gate_release(origin_trade_no);
+        if release_result == ApiResourceGateResult::ResourceDelegationSuccess {
+            self.scanner.try_advance(origin_trade_no).await;
+        } else {
+            self.scanner.trigger_build_fast_path_after_resource_gate_release(origin_trade_no);
+        }
         Ok(())
     }
 

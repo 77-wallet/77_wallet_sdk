@@ -200,6 +200,13 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::mark_resource_released(pool.write_ref(), trade_no, gate_result).await
     }
 
+    pub async fn mark_resource_delegation_confirmed(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_resource_delegation_confirmed(pool.write_ref(), trade_no).await
+    }
+
     pub async fn scan_need_resource_gate(
         pool: &ApiTransactionDbPool,
         limit: usize,
@@ -1978,6 +1985,73 @@ mod tests {
         assert!(released.resource_gate_released_at.is_some());
         assert_eq!(released.resource_gate_result, Some(ApiResourceGateResult::ResourceReady));
         assert!(released.resource_block_reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn withdraw_resource_delegation_confirmed_keeps_gate_pending_for_chain_check() {
+        let pool = setup_api_transaction_pool("withdraw_resource_delegation_confirmed").await;
+        let trade_no = "withdraw_resource_delegation_confirmed_1";
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "withdraw",
+            "from",
+            "to",
+            "20",
+            "v",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "USDT",
+            trade_no,
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        ApiWithdrawRepo::mark_tx_ack_attempted(&pool, trade_no).await.unwrap();
+        ApiWithdrawRepo::mark_tx_ack_sent(&pool, trade_no).await.unwrap();
+        ApiWithdrawRepo::set_audit_passed(&pool, trade_no).await.unwrap();
+        ApiWithdrawRepo::mark_resource_blocked(
+            &pool,
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            Some(trade_no),
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .unwrap();
+
+        let rows =
+            ApiWithdrawRepo::mark_resource_delegation_confirmed(&pool, trade_no).await.unwrap();
+
+        assert_eq!(rows, 1);
+        let pending =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert!(pending.resource_gate_released_at.is_none());
+        assert_eq!(
+            pending.resource_gate_result,
+            Some(ApiResourceGateResult::ResourceDelegationSuccess)
+        );
+        assert!(pending.resource_block_reason.is_none());
+        assert!(pending.resource_dependency_trade_no.is_none());
+        assert!(pending.resource_dependency_type.is_none());
+
+        let scan = ApiWithdrawRepo::scan_need_resource_gate(&pool, 10).await.unwrap();
+        assert_eq!(scan.len(), 1);
+        assert_eq!(scan[0].trade_no, trade_no);
     }
 
     #[tokio::test]

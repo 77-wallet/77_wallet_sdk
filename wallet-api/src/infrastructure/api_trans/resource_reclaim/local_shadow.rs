@@ -208,6 +208,9 @@ impl LocalResourceReclaimScanner {
         {
             Ok(records) => {
                 for record in records {
+                    if !self.origin_collect_is_terminal(&record).await {
+                        continue;
+                    }
                     if execute_trade_nos.insert(record.resource_trade_no.clone()) {
                         intents.push(LocalResourceReclaimIntent::ExecuteLocalUndelegation(
                             record.resource_trade_no,
@@ -220,6 +223,43 @@ impl LocalResourceReclaimScanner {
             }
         }
 
+        match ApiResourceDelegationRepo::scan_unreconciled_terminal_broadcasts_for_recovery(
+            &self.api_resource_pool,
+            ApiTradeType::Collect as i64,
+            ApiResourceDelegationOperationType::Undelegate,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    if !self.origin_collect_is_terminal(&record).await {
+                        continue;
+                    }
+                    match ApiResourceDelegationRepo::reopen_terminal_broadcast_for_reconciliation(
+                        &self.api_resource_pool,
+                        &record.resource_trade_no,
+                    )
+                    .await
+                    {
+                        Ok(1) => info!(
+                            resource_trade_no = record.resource_trade_no,
+                            "Reopened historical terminal local undelegation for chain reconciliation"
+                        ),
+                        Ok(_) => {}
+                        Err(e) => error!(
+                            resource_trade_no = record.resource_trade_no,
+                            error = %e,
+                            "Failed to reopen historical transient local undelegation failure"
+                        ),
+                    }
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan historical terminal local undelegations for reconciliation");
+            }
+        }
+
         match ApiResourceDelegationRepo::scan_can_recover_local_undelegation_for_origin_type(
             &self.api_resource_pool,
             ApiTradeType::Collect as i64,
@@ -229,6 +269,9 @@ impl LocalResourceReclaimScanner {
         {
             Ok(records) => {
                 for record in records {
+                    if !self.origin_collect_is_terminal(&record).await {
+                        continue;
+                    }
                     intents.push(LocalResourceReclaimIntent::RecoverLocalUndelegation(
                         record.resource_trade_no,
                     ));
@@ -240,6 +283,39 @@ impl LocalResourceReclaimScanner {
         }
 
         intents
+    }
+
+    async fn origin_collect_is_terminal(&self, delegation: &ApiResourceDelegationEntity) -> bool {
+        let Some(api_transaction_pool) = &self.api_transaction_pool else {
+            return true;
+        };
+        let Some(origin_trade_no) = delegation.origin_trade_no.as_deref() else {
+            return false;
+        };
+
+        match ApiCollectRepo::find_api_collect_by_trade_no(api_transaction_pool, origin_trade_no)
+            .await
+        {
+            Ok(Some(origin_collect)) if origin_collect.finished_at.is_some() => true,
+            Ok(_) => {
+                info!(
+                    origin_trade_no,
+                    resource_trade_no = %delegation.resource_trade_no,
+                    source = "local_resource_reclaim_shadow",
+                    "Skipping local undelegation before collect terminal fact"
+                );
+                false
+            }
+            Err(e) => {
+                error!(
+                    origin_trade_no,
+                    resource_trade_no = %delegation.resource_trade_no,
+                    error = %e,
+                    "Failed to verify collect terminal fact before local undelegation"
+                );
+                false
+            }
+        }
     }
 
     async fn reconcile_missing_local_undelegations(
@@ -674,12 +750,19 @@ impl LocalResourceReclaimWorker {
                 self.schedule_local_undelegation_rebuild_retry(&resource_trade_no, &err).await
             }
             Err(err) => {
+                let recovery_context = if delegation.result_payload.as_deref()
+                    == Some("historical_chain_reconciliation_pending")
+                {
+                    "historical_chain_reconciliation_confirmed_failure:local_undelegation"
+                } else {
+                    "local_undelegation_recovered_failure"
+                };
                 mark_recovered_resource_delegation_failure(
                     &self.ctx.api_resource_pool()?,
                     &delegation,
                     tx_hash,
                     &err,
-                    "local_undelegation_recovered_failure",
+                    recovery_context,
                 )
                 .await?;
                 Ok(())
@@ -1035,6 +1118,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scanner_reopens_historical_terminal_undelegations_for_chain_reconciliation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
+
+        for (trade_no, err_code, err_msg) in [
+            ("rsc_local_undelegate_timeout", "ERR_6005", "rpc timeout"),
+            ("rsc_local_undelegate_chain_failed", "ERR_6008", "chain execution failed"),
+        ] {
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::local_undelegate(
+                    "uid",
+                    trade_no,
+                    &format!("C_{trade_no}"),
+                    ApiTradeType::Collect as i64,
+                    "owner",
+                    "receiver",
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .expect("insert local undelegate");
+            ApiResourceDelegationRepo::claim_build_slot(&pool, trade_no)
+                .await
+                .expect("claim build slot");
+            let tx_hash = format!("tx_hash_{trade_no}");
+            ApiResourceDelegationRepo::mark_built(&pool, trade_no, &tx_hash, "signed_raw")
+                .await
+                .expect("mark built");
+            ApiResourceDelegationRepo::mark_broadcasted(&pool, trade_no, &tx_hash)
+                .await
+                .expect("mark broadcasted");
+            ApiResourceDelegationRepo::mark_recovered_chain_failure(
+                &pool, trade_no, &tx_hash, None, err_code, err_msg, err_msg,
+            )
+            .await
+            .expect("mark historical failure");
+        }
+
+        let scanner = LocalResourceReclaimScanner::with_config(
+            pool.clone(),
+            LocalResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+        let intents = scanner.scan_round().await;
+
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            LocalResourceReclaimIntent::RecoverLocalUndelegation(trade_no)
+                if trade_no == "rsc_local_undelegate_timeout"
+        )));
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            LocalResourceReclaimIntent::RecoverLocalUndelegation(trade_no)
+                if trade_no == "rsc_local_undelegate_chain_failed"
+        )));
+        let reopened = ApiResourceDelegationRepo::get_by_resource_trade_no(
+            &pool,
+            "rsc_local_undelegate_timeout",
+        )
+        .await
+        .expect("load reopened task");
+        assert!(reopened.finished_at.is_none());
+        assert!(reopened.chain_failed_at.is_none());
+        assert_eq!(reopened.tx_hash.as_deref(), Some("tx_hash_rsc_local_undelegate_timeout"));
+    }
+
+    #[tokio::test]
     async fn scanner_serializes_concurrent_scan_rounds() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
@@ -1337,6 +1496,85 @@ mod tests {
         assert_eq!(undelegate.origin_trade_no.as_deref(), Some("C_RESTART"));
         assert_eq!(undelegate.source, ApiResourceDelegationSource::Local);
         assert_eq!(undelegate.operation_type, ApiResourceDelegationOperationType::Undelegate);
+    }
+
+    #[tokio::test]
+    async fn scanner_blocks_existing_undelegation_until_collect_is_terminal() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_resource.db"))
+            .await
+            .expect("init api_resource.db")
+            .into_api_resource_db_pool()
+            .expect("resource pool");
+        let transaction_pool =
+            transaction_pool_with_collect(&db_root, "C_WAIT_RECLAIM", false).await;
+
+        for resource_trade_no in ["rsc_wait_execute", "rsc_wait_recover"] {
+            ApiResourceDelegationRepo::upsert(
+                &pool,
+                NewApiResourceDelegation::local_undelegate(
+                    "uid",
+                    resource_trade_no,
+                    "C_WAIT_RECLAIM",
+                    ApiTradeType::Collect as i64,
+                    "owner",
+                    "receiver",
+                    "5",
+                    "1000",
+                ),
+            )
+            .await
+            .expect("insert local undelegate");
+        }
+        ApiResourceDelegationRepo::claim_build_slot(&pool, "rsc_wait_recover")
+            .await
+            .expect("claim recovery build");
+        ApiResourceDelegationRepo::mark_built(
+            &pool,
+            "rsc_wait_recover",
+            "tx_hash_wait_recover",
+            "signed_raw",
+        )
+        .await
+        .expect("mark recovery built");
+        ApiResourceDelegationRepo::mark_broadcasted(
+            &pool,
+            "rsc_wait_recover",
+            "tx_hash_wait_recover",
+        )
+        .await
+        .expect("mark recovery broadcasted");
+
+        let scanner = LocalResourceReclaimScanner::with_transaction_pool_and_config(
+            pool,
+            transaction_pool.clone(),
+            LocalResourceReclaimScannerConfig {
+                scan_interval: Duration::from_secs(60),
+                max_items_per_scan: 8,
+            },
+        );
+        assert!(scanner.scan_round().await.is_empty());
+
+        sqlx::query(
+            "UPDATE api_collect SET finished_at = '2026-08-01T10:00:00Z' WHERE trade_no = ?",
+        )
+        .bind("C_WAIT_RECLAIM")
+        .execute(transaction_pool.write_ref())
+        .await
+        .expect("finish collect");
+
+        let intents = scanner.scan_round().await;
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            LocalResourceReclaimIntent::ExecuteLocalUndelegation(trade_no)
+                if trade_no == "rsc_wait_execute"
+        )));
+        assert!(intents.iter().any(|intent| matches!(
+            intent,
+            LocalResourceReclaimIntent::RecoverLocalUndelegation(trade_no)
+                if trade_no == "rsc_wait_recover"
+        )));
     }
 
     #[tokio::test]

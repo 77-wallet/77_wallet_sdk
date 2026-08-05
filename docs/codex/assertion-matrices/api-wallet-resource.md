@@ -201,6 +201,22 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 ## Local Undelegation Fast Path
 
 - Tests:
+  `historical_terminal_broadcast_reconciles_once_from_chain_fact`
+  and
+  `scanner_reopens_historical_terminal_undelegations_for_chain_reconciliation`
+- DB facts: a local delegation or undelegation has a persisted broadcast hash
+  but an older build recorded terminal failure for a transient observation.
+- Invariant: terminal status and legacy error classification do not prevent one
+  chain reconciliation of a persisted local broadcast. Chain success corrects
+  the local result and continues reclaim; a confirmed chain failure records the
+  reconciliation fact and is not selected again.
+- Test:
+  `scanner_blocks_existing_undelegation_until_collect_is_terminal`
+- Invariant: local undelegation creation, execution, historical reconciliation,
+  and transaction recovery remain blocked until the origin collect has a
+  persisted terminal fact.
+
+- Tests:
   `local_delegate_recovery_rotates_checked_candidates_behind_unchecked_records`
   and
   `local_undelegation_recovery_rotates_checked_candidates_behind_unchecked_records`

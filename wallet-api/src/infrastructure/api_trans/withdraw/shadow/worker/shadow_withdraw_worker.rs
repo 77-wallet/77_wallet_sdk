@@ -887,10 +887,15 @@ impl ShadowWithdrawWorker {
                 effective_available,
             )
             .await?;
+            let gate_result = if Self::is_waiting_for_delegated_energy_on_chain(&req) {
+                ApiResourceGateResult::ResourceDelegationSuccess
+            } else {
+                ApiResourceGateResult::ResourceReady
+            };
             let rows = ApiWithdrawRepo::mark_resource_released(
                 &self.ctx.api_transaction_pool()?,
                 trade_no,
-                ApiResourceGateResult::ResourceReady,
+                gate_result,
             )
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
@@ -916,6 +921,20 @@ impl ShadowWithdrawWorker {
         )
         .await?;
 
+        if Self::is_waiting_for_delegated_energy_on_chain(&req) {
+            self.resource_reservations.release(trade_no);
+            info!(
+                trade_no = %trade_no,
+                from_addr = %req.from_addr,
+                required_energy = %fee_details.energy,
+                chain_available_energy = %available_energy,
+                effective_energy = %shortfall.effective_available.energy,
+                source = "shadow_withdraw_worker",
+                "Platform delegation result received but ENERGY is not yet available on chain; keep withdraw gate blocked"
+            );
+            return Ok(());
+        }
+
         let result = self
             .commit_platform_delegation_block(
                 trade_no,
@@ -936,6 +955,11 @@ impl ShadowWithdrawWorker {
         req.resource_block_reason == Some(ApiResourceBlockReason::NeedPlatformDelegate)
             && req.resource_dependency_type == Some(ApiResourceDependencyType::PlatformDelegate)
             && req.resource_dependency_trade_no.is_some()
+    }
+
+    fn is_waiting_for_delegated_energy_on_chain(req: &ApiWithdrawEntity) -> bool {
+        req.resource_gate_released_at.is_none()
+            && req.resource_gate_result == Some(ApiResourceGateResult::ResourceDelegationSuccess)
     }
 
     async fn log_resource_gate_decision(
@@ -2802,7 +2826,9 @@ mod tests {
                 ApiResourceDelegationOperationType, ApiResourceDelegationResultStatus,
                 NewApiResourceDelegation,
             },
-            api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
+            api_resource_gate::{
+                ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
+            },
             api_resource_type::ApiResourceType,
             api_trade_type::ApiTradeType,
             api_wallet::ApiWalletType,
@@ -3033,6 +3059,18 @@ oss:
             client_id: None,
             create_time: None,
         }
+    }
+
+    #[test]
+    fn withdraw_resource_delegation_chain_verification_waits_until_gate_release() {
+        let mut withdraw = base_withdraw();
+        withdraw.resource_gate_result = Some(ApiResourceGateResult::ResourceDelegationSuccess);
+        withdraw.resource_gate_released_at = None;
+
+        assert!(ShadowWithdrawWorker::is_waiting_for_delegated_energy_on_chain(&withdraw));
+
+        withdraw.resource_gate_released_at = Some(Utc::now());
+        assert!(!ShadowWithdrawWorker::is_waiting_for_delegated_energy_on_chain(&withdraw));
     }
 
     #[test]

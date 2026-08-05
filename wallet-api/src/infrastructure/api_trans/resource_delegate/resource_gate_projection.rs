@@ -59,9 +59,15 @@ pub(crate) async fn mark_result_ack_and_project_gate(
                     .map_err(|e| ServiceError::Database(e.into()))?;
             }
             Some(x) if x == ApiTradeType::Withdraw as i64 => {
-                ApiWithdrawRepo::mark_resource_released(transaction_pool, origin, *result)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                if *result == ApiResourceGateResult::ResourceDelegationSuccess {
+                    ApiWithdrawRepo::mark_resource_delegation_confirmed(transaction_pool, origin)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                } else {
+                    ApiWithdrawRepo::mark_resource_released(transaction_pool, origin, *result)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                }
             }
             _ => {}
         }

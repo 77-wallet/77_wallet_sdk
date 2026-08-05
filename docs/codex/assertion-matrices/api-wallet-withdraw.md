@@ -503,6 +503,16 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ## Template Contract
 
+## Platform Delegation Chain Availability
+
+- A successful platform resource result records
+  `ResourceDelegationSuccess` but keeps `resource_gate_released_at = NULL`.
+- BuildTx remains ineligible until a fresh account-resource query observes
+  enough ENERGY for the withdraw.
+- While delegated ENERGY is not yet visible, the gate waits without issuing a
+  second platform resource request.
+- A failed platform result keeps the existing fee-fallback release behavior.
+
 `withdraw_notification/mod.rs` uses the role-trait Given-When-Then shape:
 
 1. Keep local immutable data in a `*Fixture`.
