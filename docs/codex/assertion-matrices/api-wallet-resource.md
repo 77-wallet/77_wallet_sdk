@@ -2,6 +2,16 @@
 
 Scope: `wallet-api` API wallet foreground resource and governance operations.
 
+## Resource Recovery Error Classification
+
+- Test: `recovery_error_classifier_keeps_transient_observation_errors_uncertain`
+- Runtime facts: a resource transaction has already been broadcast, but its
+  recovery query encounters network, timeout, rate-limit, backpressure, or RPC
+  authorization errors.
+- Invariant: transient observation failures never prove chain failure and cannot
+  write `chain_failed_at`; later recovery must still be able to confirm success
+  and trigger reclaim even when the origin collect ended in failure.
+
 ## Resource Operation Build Slot Retry Recovery
 
 - Test:

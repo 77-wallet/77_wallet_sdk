@@ -342,7 +342,27 @@ pub(crate) fn resource_delegation_failure_fact(err: &ServiceError) -> (String, S
 }
 
 pub(crate) fn resource_recovery_error_is_uncertain(err: &ServiceError) -> bool {
-    shared_mechanism::is_tron_missing_confirmed_and_pending_error(err)
+    err.is_network_error()
+        || err.is_delay_retryable()
+        || err.is_rpc_auth_unauthorized()
+        || err.is_transient_db_pool_timeout()
+        || matches!(
+            err,
+            ServiceError::Timeout
+                | ServiceError::TransportBackend(
+                    wallet_transport_backend::Error::Timeout
+                        | wallet_transport_backend::Error::RateLimited
+                        | wallet_transport_backend::Error::Backpressure
+                )
+        )
+        || matches!(
+            err,
+            ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+                code,
+                _
+            )) if (500..=599).contains(code)
+        )
+        || shared_mechanism::is_tron_missing_confirmed_and_pending_error(err)
 }
 
 pub(crate) async fn mark_recovered_resource_delegation_failure(
@@ -741,12 +761,30 @@ mod tests {
     }
 
     #[test]
-    fn recovery_error_classifier_keeps_tron_visibility_gap_uncertain() {
+    fn recovery_error_classifier_keeps_transient_observation_errors_uncertain() {
         let visibility_gap =
             ServiceError::Parameter("tron tx missing from confirmed and pending pools".to_string());
+        let timeout = ServiceError::Timeout;
+        let backend_timeout =
+            ServiceError::TransportBackend(wallet_transport_backend::Error::Timeout);
+        let rate_limited =
+            ServiceError::TransportBackend(wallet_transport_backend::Error::RateLimited);
+        let backend_unavailable =
+            ServiceError::TransportBackend(wallet_transport_backend::Error::ApiBackend(
+                503,
+                Some("Service Unavailable".to_string()),
+            ));
+        let unauthorized = ServiceError::TransportBackend(
+            wallet_transport_backend::Error::ApiBackend(401, Some("Unauthorized".to_string())),
+        );
         let confirmed_failure = ServiceError::Parameter("chain execution failed".to_string());
 
         assert!(resource_recovery_error_is_uncertain(&visibility_gap));
+        assert!(resource_recovery_error_is_uncertain(&timeout));
+        assert!(resource_recovery_error_is_uncertain(&backend_timeout));
+        assert!(resource_recovery_error_is_uncertain(&rate_limited));
+        assert!(resource_recovery_error_is_uncertain(&backend_unavailable));
+        assert!(resource_recovery_error_is_uncertain(&unauthorized));
         assert!(!resource_recovery_error_is_uncertain(&confirmed_failure));
     }
 
