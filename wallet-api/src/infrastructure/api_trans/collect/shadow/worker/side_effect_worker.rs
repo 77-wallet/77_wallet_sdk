@@ -398,7 +398,11 @@ impl SideEffectWorker {
                         ServiceError::Database(e.into())
                     })?;
 
-                self.advancer.try_advance(&trade_no).await;
+                if shared_mechanism::is_tron_chain(&req.chain_code) {
+                    self.advancer.trigger_resource_gate_fast_path_after_order_ack(&trade_no);
+                } else {
+                    self.advancer.trigger_build_fast_path_after_order_ack(&trade_no);
+                }
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send Order ACK");

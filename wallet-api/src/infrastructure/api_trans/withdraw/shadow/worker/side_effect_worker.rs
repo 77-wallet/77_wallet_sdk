@@ -162,8 +162,7 @@ impl SideEffectWorker {
                 if rows_affected == 0 {
                     info!(trade_no = %trade_no, source = "side_effect_worker", "mark_tx_ack_sent skipped: ACK already sent (idempotent hit)");
                 } else {
-                    // 直接调用 try_advance 进行点对点唤醒
-                    self.scanner.try_advance(&trade_no).await;
+                    self.scanner.trigger_fee_estimate_fast_path_after_tx_ack(&trade_no);
                 }
             }
             Err(e) => {

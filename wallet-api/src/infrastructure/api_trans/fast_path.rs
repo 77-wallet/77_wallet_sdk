@@ -8,6 +8,7 @@ pub(crate) enum FastPathFlow {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum FastPathReason {
+    TxAckSent,
     FeeEstimatePersisted,
     LocalDelegationPersisted,
     ResourceGateReleased,
@@ -16,6 +17,7 @@ pub(crate) enum FastPathReason {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum FastPathTarget {
+    EstimateFee,
     EvalResourceGate,
     ExecuteLocalResourceDelegation,
     BuildTx,
@@ -34,6 +36,7 @@ impl FastPathFlow {
 impl FastPathReason {
     fn as_str(self) -> &'static str {
         match self {
+            Self::TxAckSent => "tx_ack_sent",
             Self::FeeEstimatePersisted => "fee_estimate_persisted",
             Self::LocalDelegationPersisted => "local_delegation_persisted",
             Self::ResourceGateReleased => "resource_gate_released",
@@ -45,6 +48,7 @@ impl FastPathReason {
 impl FastPathTarget {
     fn as_str(self) -> &'static str {
         match self {
+            Self::EstimateFee => "estimate_fee",
             Self::EvalResourceGate => "eval_resource_gate",
             Self::ExecuteLocalResourceDelegation => "execute_local_resource_delegation",
             Self::BuildTx => "build_tx",

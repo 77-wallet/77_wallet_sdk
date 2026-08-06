@@ -249,6 +249,7 @@ impl ShadowWithdrawWorker {
 
     fn can_write_fee_estimate_snapshot(req: &ApiWithdrawEntity) -> bool {
         req.trade_type == ApiTradeType::Withdraw
+            && req.tx_ack_sent_at.is_some()
             && req.fee_estimated_at.is_none()
             && req.raw_tx.is_none()
             && req.transaction_time.is_none()
@@ -778,6 +779,17 @@ impl ShadowWithdrawWorker {
         if !shared_mechanism::is_tron_chain(&req.chain_code) {
             return Ok(());
         }
+        if !Self::resource_gate_prerequisites_ready(&req) {
+            info!(
+                trade_no = %trade_no,
+                audit_passed = req.audit_passed_at.is_some(),
+                tx_ack_sent = req.tx_ack_sent_at.is_some(),
+                source = "shadow_withdraw_worker",
+                "TRON withdraw resource gate skipped until audit and TX ACK prerequisites are ready"
+            );
+            self.scanner.try_advance(trade_no).await;
+            return Ok(());
+        }
         if req.resource_gate_released_at.is_some()
             || req.raw_tx.is_some()
             || req.transaction_time.is_some()
@@ -955,6 +967,10 @@ impl ShadowWithdrawWorker {
         req.resource_block_reason == Some(ApiResourceBlockReason::NeedPlatformDelegate)
             && req.resource_dependency_type == Some(ApiResourceDependencyType::PlatformDelegate)
             && req.resource_dependency_trade_no.is_some()
+    }
+
+    fn resource_gate_prerequisites_ready(req: &ApiWithdrawEntity) -> bool {
+        req.audit_passed_at.is_some() && req.tx_ack_sent_at.is_some()
     }
 
     fn is_waiting_for_delegated_energy_on_chain(req: &ApiWithdrawEntity) -> bool {
@@ -3074,6 +3090,21 @@ oss:
     }
 
     #[test]
+    fn withdraw_fee_estimate_cannot_enter_resource_gate_before_tx_ack_and_audit() {
+        let mut withdraw = base_withdraw();
+
+        withdraw.tx_ack_sent_at = None;
+        assert!(!ShadowWithdrawWorker::resource_gate_prerequisites_ready(&withdraw));
+
+        withdraw.tx_ack_sent_at = Some(Utc::now());
+        withdraw.audit_passed_at = None;
+        assert!(!ShadowWithdrawWorker::resource_gate_prerequisites_ready(&withdraw));
+
+        withdraw.audit_passed_at = Some(Utc::now());
+        assert!(ShadowWithdrawWorker::resource_gate_prerequisites_ready(&withdraw));
+    }
+
+    #[test]
     fn withdraw_resource_ready_budget_subtracts_pending_same_address_orders() {
         let reservations = WithdrawResourceReservationManager::default();
         let pending = PendingWithdrawResourceBudget { energy: 13_532, bandwidth: 345 };
@@ -3103,6 +3134,22 @@ oss:
         assert_eq!(value["bandwidth"], 210);
         assert!(value.get("energy_used").is_none());
         assert!(value.get("net_used").is_none());
+    }
+
+    #[test]
+    fn withdraw_fee_estimate_requires_tx_ack_fact() {
+        let mut withdraw = base_withdraw();
+        withdraw.fee_estimated_at = None;
+        withdraw.raw_tx = None;
+        withdraw.transaction_time = None;
+        withdraw.finished_at = None;
+        withdraw.err_code = None;
+
+        withdraw.tx_ack_sent_at = None;
+        assert!(!ShadowWithdrawWorker::can_write_fee_estimate_snapshot(&withdraw));
+
+        withdraw.tx_ack_sent_at = Some(Utc::now());
+        assert!(ShadowWithdrawWorker::can_write_fee_estimate_snapshot(&withdraw));
     }
 
     #[test]

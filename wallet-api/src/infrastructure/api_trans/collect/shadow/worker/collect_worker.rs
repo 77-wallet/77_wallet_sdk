@@ -1098,6 +1098,16 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
+        if !Self::resource_gate_prerequisites_ready(&req) {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Collect resource gate skipped until order ACK is persisted"
+            );
+            self.advancer.try_advance(origin_trade_no).await;
+            return Ok(());
+        }
+
         if Self::resource_gate_already_resolved(&req) {
             info!(
                 origin_trade_no = %origin_trade_no,
@@ -1161,6 +1171,10 @@ impl ShadowCollectWorker {
             || req.transaction_time.is_some()
             || req.finished_at.is_some()
             || req.err_code.is_some()
+    }
+
+    fn resource_gate_prerequisites_ready(req: &ApiCollectEntity) -> bool {
+        req.order_ack_sent_at.is_some()
     }
 
     async fn process_release_resource_gate(
@@ -4446,6 +4460,17 @@ oss:
             created_at: Utc::now(),
             updated_at: Some(Utc::now()),
         }
+    }
+
+    #[test]
+    fn collect_resource_gate_requires_order_ack_fact() {
+        let mut collect = base_collect();
+
+        collect.order_ack_sent_at = None;
+        assert!(!ShadowCollectWorker::resource_gate_prerequisites_ready(&collect));
+
+        collect.order_ack_sent_at = Some(Utc::now());
+        assert!(ShadowCollectWorker::resource_gate_prerequisites_ready(&collect));
     }
 
     #[test]

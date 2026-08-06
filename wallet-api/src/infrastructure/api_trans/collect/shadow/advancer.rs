@@ -175,6 +175,32 @@ impl ShadowAdvancer {
         );
     }
 
+    pub fn trigger_resource_gate_fast_path_after_order_ack(&self, trade_no: &str) {
+        let intent = CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no.to_string()));
+        let failed_trade_no = trade_no.to_string();
+        dispatch_fast_path(
+            FastPathFlow::Collect,
+            FastPathReason::TxAckSent,
+            FastPathTarget::EvalResourceGate,
+            trade_no,
+            || self.intent_tx.try_send(intent),
+            || self.emit_intent_dispatch_failed(failed_trade_no),
+        );
+    }
+
+    pub fn trigger_build_fast_path_after_order_ack(&self, trade_no: &str) {
+        let intent = CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
+        let failed_trade_no = trade_no.to_string();
+        dispatch_fast_path(
+            FastPathFlow::Collect,
+            FastPathReason::TxAckSent,
+            FastPathTarget::BuildTx,
+            trade_no,
+            || self.intent_tx.try_send(intent),
+            || self.emit_intent_dispatch_failed(failed_trade_no),
+        );
+    }
+
     pub fn trigger_local_delegation_fast_path(&self, resource_trade_no: &str) {
         let intent = CollectIntent::Chain(ChainIntent::ExecuteLocalResourceDelegation(
             resource_trade_no.to_string(),
@@ -768,6 +794,40 @@ mod tests {
             intent,
             CollectIntent::Chain(ChainIntent::BuildTx(ref trade_no))
                 if trade_no == "C_resource_released"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn collect_order_ack_fast_path_dispatches_resource_gate_intent() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, None);
+
+        advancer.trigger_resource_gate_fast_path_after_order_ack("C_order_ack_sent");
+
+        let intent = intent_rx.try_recv().expect("resource gate intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::EvalResourceGate(ref trade_no))
+                if trade_no == "C_order_ack_sent"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn collect_order_ack_fast_path_dispatches_build_intent_for_non_tron() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let advancer = ShadowAdvancer::new(ctx, intent_tx, None);
+
+        advancer.trigger_build_fast_path_after_order_ack("C_non_tron_order_ack_sent");
+
+        let intent = intent_rx.try_recv().expect("build intent should be dispatched");
+        assert!(matches!(
+            intent,
+            CollectIntent::Chain(ChainIntent::BuildTx(ref trade_no))
+                if trade_no == "C_non_tron_order_ack_sent"
         ));
         assert!(intent_rx.try_recv().is_err());
     }

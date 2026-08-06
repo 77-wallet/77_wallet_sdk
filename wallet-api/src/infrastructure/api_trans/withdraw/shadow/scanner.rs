@@ -1132,6 +1132,19 @@ impl ShadowScanner {
         );
     }
 
+    pub fn trigger_fee_estimate_fast_path_after_tx_ack(&self, trade_no: &str) {
+        let intent = WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(trade_no.to_string()));
+        let failed_trade_no = trade_no.to_string();
+        dispatch_fast_path(
+            FastPathFlow::Withdraw,
+            FastPathReason::TxAckSent,
+            FastPathTarget::EstimateFee,
+            trade_no,
+            || self.intent_tx.try_send(intent),
+            || self.emit_intent_dispatch_failed(failed_trade_no),
+        );
+    }
+
     pub fn trigger_resource_gate_fast_path_after_fee_estimate(&self, trade_no: &str) {
         let intent =
             WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no.to_string()));
@@ -1209,7 +1222,17 @@ impl ShadowScanner {
             }
         }
 
-        if need_fee_estimate_snapshot(&withdraw) {
+        let tx_ack_pending = evaluate_point(AdvancementPoint::NeedTxAck, &withdraw).can_advance;
+        if tx_ack_pending {
+            trace!(trade_no = %trade_no, "Need to send tx ACK before other order work");
+            self.dispatch_intent(WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(
+                trade_no.to_string(),
+            )));
+            return Ok(());
+        }
+
+        let fee_estimate_pending = need_fee_estimate_snapshot(&withdraw);
+        if fee_estimate_pending {
             if let Some((host, remaining)) =
                 shadow_rpc_policy::breaker_open_for_chain_code(self.ctx, &withdraw.chain_code).await
             {
@@ -1227,6 +1250,9 @@ impl ShadowScanner {
             let intent =
                 WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(trade_no.to_string()));
             self.dispatch_intent(intent);
+        }
+
+        if fee_estimate_pending {
             return Ok(());
         }
 
@@ -1694,7 +1720,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn withdraw_bnb_try_advance_dispatches_fee_estimate_before_audit() -> anyhow::Result<()> {
+    async fn withdraw_try_advance_dispatches_ack_before_fee_estimate() -> anyhow::Result<()> {
         let ctx = test_ctx().await;
         let pool = ctx.api_transaction_pool()?;
         let (intent_tx, mut intent_rx) = mpsc::channel(100);
@@ -1729,12 +1755,13 @@ mod tests {
 
         scanner.try_advance("W_bnb_fee_estimate_try_advance").await;
 
-        let intent = intent_rx.try_recv().expect("fee estimate intent should be dispatched");
+        let intent = intent_rx.try_recv().expect("tx ACK intent should be dispatched");
         assert!(matches!(
             intent,
-            WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(ref trade_no))
+            WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(ref trade_no))
                 if trade_no == "W_bnb_fee_estimate_try_advance"
         ));
+
         assert!(intent_rx.try_recv().is_err());
 
         Ok(())
@@ -1770,6 +1797,23 @@ mod tests {
             intent,
             WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(ref trade_no))
                 if trade_no == "W_fee_estimated"
+        ));
+        assert!(intent_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn withdraw_tx_ack_fast_path_dispatches_fee_estimate_intent() {
+        let ctx = test_ctx().await;
+        let (intent_tx, mut intent_rx) = mpsc::channel(100);
+        let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
+
+        scanner.trigger_fee_estimate_fast_path_after_tx_ack("W_tx_ack_sent");
+
+        let intent = intent_rx.try_recv().expect("fee estimate intent should be dispatched");
+        assert!(matches!(
+            intent,
+            WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(ref trade_no))
+                if trade_no == "W_tx_ack_sent"
         ));
         assert!(intent_rx.try_recv().is_err());
     }
