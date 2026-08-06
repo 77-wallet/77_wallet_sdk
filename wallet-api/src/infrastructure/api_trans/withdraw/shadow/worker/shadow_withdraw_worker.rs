@@ -629,7 +629,18 @@ impl ShadowWithdrawWorker {
             "Withdraw fee estimate snapshot write attempted"
         );
         if rows > 0 {
-            self.scanner.trigger_resource_gate_fast_path_after_fee_estimate(&trade_no);
+            let refreshed = self.get_withdraw_entity(&trade_no).await?;
+            if Self::should_trigger_resource_gate_after_fee_estimate(&refreshed) {
+                self.scanner.trigger_resource_gate_fast_path_after_fee_estimate(&trade_no);
+            } else {
+                info!(
+                    trade_no = %trade_no,
+                    audit_passed = refreshed.audit_passed_at.is_some(),
+                    tx_ack_sent = refreshed.tx_ack_sent_at.is_some(),
+                    source = "shadow_withdraw_worker",
+                    "Withdraw fee estimate persisted; waiting for resource gate prerequisites"
+                );
+            }
         }
         Ok(())
     }
@@ -971,6 +982,10 @@ impl ShadowWithdrawWorker {
 
     fn resource_gate_prerequisites_ready(req: &ApiWithdrawEntity) -> bool {
         req.audit_passed_at.is_some() && req.tx_ack_sent_at.is_some()
+    }
+
+    fn should_trigger_resource_gate_after_fee_estimate(req: &ApiWithdrawEntity) -> bool {
+        req.fee_estimated_at.is_some() && Self::resource_gate_prerequisites_ready(req)
     }
 
     fn is_waiting_for_delegated_energy_on_chain(req: &ApiWithdrawEntity) -> bool {
@@ -3150,6 +3165,19 @@ oss:
 
         withdraw.tx_ack_sent_at = Some(Utc::now());
         assert!(ShadowWithdrawWorker::can_write_fee_estimate_snapshot(&withdraw));
+    }
+
+    #[test]
+    fn withdraw_fee_estimate_fast_path_waits_for_audit() {
+        let mut withdraw = base_withdraw();
+        withdraw.fee_estimated_at = Some(Utc::now());
+        withdraw.tx_ack_sent_at = Some(Utc::now());
+
+        withdraw.audit_passed_at = None;
+        assert!(!ShadowWithdrawWorker::should_trigger_resource_gate_after_fee_estimate(&withdraw));
+
+        withdraw.audit_passed_at = Some(Utc::now());
+        assert!(ShadowWithdrawWorker::should_trigger_resource_gate_after_fee_estimate(&withdraw));
     }
 
     #[test]
