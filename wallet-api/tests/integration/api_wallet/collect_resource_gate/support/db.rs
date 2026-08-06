@@ -184,6 +184,64 @@ pub(crate) async fn seed_tron_native_collect_order(
     .expect("seed native collect order ack");
 }
 
+pub(crate) async fn seed_tron_token_collect_with_fee_funding_wallet(
+    wallet_pool: &wallet_database::ApiWalletDbPool,
+    collect_pool: &ApiTransactionDbPool,
+    trade_no: &str,
+    funding_addr: &str,
+) {
+    let uid = "uid_collect_fee_reservation";
+    let sub_wallet_addr = "TSubWalletFeeReservation111111111111111";
+    let collect_from = "TCollectFeeReservation11111111111111111";
+    seed_tron_collect_resource_gate_basics(wallet_pool, uid).await;
+
+    ApiWalletRepo::upsert(
+        wallet_pool,
+        uid,
+        "collect fee reservation sub wallet",
+        sub_wallet_addr,
+        &[],
+        &[],
+        ApiWalletType::SubAccount,
+        Some(funding_addr),
+        "sn-collect-fee-reservation-sub",
+        0,
+    )
+    .await
+    .expect("seed bound sub wallet");
+    ApiWalletRepo::upsert(
+        wallet_pool,
+        "uid_collect_fee_funding",
+        "collect fee funding wallet",
+        funding_addr,
+        &[],
+        &[],
+        ApiWalletType::Withdrawal,
+        None,
+        "sn-collect-fee-funding",
+        0,
+    )
+    .await
+    .expect("seed funding wallet");
+    let account = CreateApiAccountVo::new(
+        1,
+        collect_from,
+        "pubkey",
+        sub_wallet_addr,
+        uid,
+        "m/44'/195'/0'/0/0",
+        0,
+        "tron",
+        "collect fee reservation account",
+        ApiWalletType::SubAccount,
+    )
+    .with_is_init(true);
+    ApiAccountRepo::upsert_account_multi(wallet_pool, vec![account])
+        .await
+        .expect("seed collect fee reservation account");
+    seed_collect_order(collect_pool, trade_no, collect_from, uid, "2026-08-06T00:00:00Z").await;
+}
+
 async fn seed_collect_order(
     collect_pool: &ApiTransactionDbPool,
     trade_no: &str,

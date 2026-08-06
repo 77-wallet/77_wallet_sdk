@@ -5,7 +5,7 @@ use serial_test::serial;
 use support::{
     CollectResourceGateFixture, CollectResourceGateGiven, CollectResourceGateScenario,
     CollectResourceGateThen, CollectResourceGateWhen, LocalCollectResourceDb, ScenarioRoles,
-    install_tron_resource_gate_adapter,
+    install_tron_insufficient_fee_funding_adapter, install_tron_resource_gate_adapter,
 };
 
 #[tokio::test]
@@ -73,6 +73,25 @@ async fn tron_collect_amount_shortage_fails_before_resource_delegation() {
     when.resource_gate_is_evaluated(&fixture).await;
 
     then.collect_fails_amount_shortage_without_resource_delegation(&fixture).await;
+    then.collect_cannot_build(&fixture).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn tron_collect_fee_funding_shortage_fails_before_resource_delegation() {
+    let funding_addr = "TFundingFeeReservation111111111111111111";
+    let _adapter = install_tron_insufficient_fee_funding_adapter(funding_addr);
+    let scenario = CollectResourceGateScenario::new().await;
+    let fixture = CollectResourceGateFixture::origin_case("C_RSC_FEE_RESERVE_SHORT");
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+
+    given.tron_token_collect_with_insufficient_fee_funding(&fixture, funding_addr).await;
+
+    when.resource_gate_is_evaluated(&fixture).await;
+
+    then.collect_fails_fee_reservation_without_resource_delegation(&fixture).await;
     then.collect_cannot_build(&fixture).await;
 }
 

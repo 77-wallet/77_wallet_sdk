@@ -53,6 +53,103 @@ pub(crate) enum ResourceReservationDecision {
     NeedMore(ResourceShortfall),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FeeReservationDecision {
+    Reserved { total_reserved: u64 },
+    Insufficient { available: u64, reserved: u64, required: u64 },
+}
+
+#[derive(Debug, Default)]
+struct FeeReservationState {
+    totals: HashMap<String, u64>,
+    by_trade_no: HashMap<String, (String, u64)>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct CollectFeeReservationManager {
+    inner: Arc<Mutex<FeeReservationState>>,
+}
+
+impl CollectFeeReservationManager {
+    pub(crate) fn reserve_if_available(
+        &self,
+        funding_key: impl Into<String>,
+        trade_no: impl Into<String>,
+        required: u64,
+        available: u64,
+    ) -> FeeReservationDecision {
+        let funding_key = funding_key.into();
+        let trade_no = trade_no.into();
+        let mut state = self.inner.lock().expect("fee reservation lock poisoned");
+
+        if let Some((existing_key, _)) = state.by_trade_no.get(&trade_no).cloned() {
+            if existing_key == funding_key {
+                let total_reserved = state.totals.get(&funding_key).copied().unwrap_or_default();
+                return FeeReservationDecision::Reserved { total_reserved };
+            }
+            Self::release_locked(&mut state, &trade_no);
+        }
+
+        let reserved = state.totals.get(&funding_key).copied().unwrap_or_default();
+        if available.saturating_sub(reserved) < required {
+            return FeeReservationDecision::Insufficient { available, reserved, required };
+        }
+
+        state.totals.insert(funding_key.clone(), reserved.saturating_add(required));
+        state.by_trade_no.insert(trade_no, (funding_key, required));
+        FeeReservationDecision::Reserved { total_reserved: reserved.saturating_add(required) }
+    }
+
+    pub(crate) fn release(&self, trade_no: &str) {
+        let mut state = self.inner.lock().expect("fee reservation lock poisoned");
+        Self::release_locked(&mut state, trade_no);
+    }
+
+    fn release_locked(state: &mut FeeReservationState, trade_no: &str) {
+        let Some((key, amount)) = state.by_trade_no.remove(trade_no) else {
+            return;
+        };
+        if let Some(total) = state.totals.get_mut(&key) {
+            *total = total.saturating_sub(amount);
+            if *total == 0 {
+                state.totals.remove(&key);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod collect_fee_reservation_tests {
+    use super::*;
+
+    #[test]
+    fn same_funding_address_reserves_idempotently_and_releases() {
+        let manager = CollectFeeReservationManager::default();
+        assert_eq!(
+            manager.reserve_if_available("tron:funding", "C1", 700_000, 1_000_000),
+            FeeReservationDecision::Reserved { total_reserved: 700_000 }
+        );
+        assert_eq!(
+            manager.reserve_if_available("tron:funding", "C1", 700_000, 1_000_000),
+            FeeReservationDecision::Reserved { total_reserved: 700_000 }
+        );
+        assert_eq!(
+            manager.reserve_if_available("tron:funding", "C2", 400_000, 1_000_000),
+            FeeReservationDecision::Insufficient {
+                available: 1_000_000,
+                reserved: 700_000,
+                required: 400_000,
+            }
+        );
+
+        manager.release("C1");
+        assert_eq!(
+            manager.reserve_if_available("tron:funding", "C2", 400_000, 1_000_000),
+            FeeReservationDecision::Reserved { total_reserved: 400_000 }
+        );
+    }
+}
+
 #[derive(Debug, Default)]
 struct ResourceReservationState {
     totals: HashMap<String, ResourceBudget>,

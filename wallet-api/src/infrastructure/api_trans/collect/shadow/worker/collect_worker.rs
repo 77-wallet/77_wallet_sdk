@@ -8,7 +8,7 @@
 use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, prelude::ToPrimitive};
 use tracing::{error, info, warn};
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
@@ -85,7 +85,8 @@ use crate::{
             resource_delegation_failure_fact, resource_delegation_retry_wait_secs,
         },
         resource_reservation::{
-            ResourceBudget, ResourceReservationDecision, WithdrawResourceReservationManager,
+            CollectFeeReservationManager, FeeReservationDecision, ResourceBudget,
+            ResourceReservationDecision, WithdrawResourceReservationManager,
         },
         resource_rpc_auth, shadow_rpc_policy,
     },
@@ -112,6 +113,8 @@ pub enum ShadowCollectCommand {
 
 #[derive(Debug, Clone, Copy)]
 struct ResourceGateSnapshot {
+    /// 当前资源快照下的最大 TRX 手续费估算
+    estimated_fee_trx: f64,
     /// BuildTx 前当前归集交易需要的能量
     required_energy: u64,
     /// BuildTx 前当前归集交易需要的带宽
@@ -185,6 +188,7 @@ pub struct ShadowCollectWorker {
     /// ShadowAdvancer 引用，用于统一推进执行
     advancer: Arc<ShadowAdvancer>,
     resource_reservations: WithdrawResourceReservationManager,
+    fee_reservations: CollectFeeReservationManager,
 }
 
 impl ShadowCollectWorker {
@@ -484,7 +488,22 @@ impl ShadowCollectWorker {
         address_locks: Arc<AddressLockManager>,
         advancer: Arc<ShadowAdvancer>,
     ) -> Self {
-        Self { ctx, address_locks, advancer, resource_reservations: Default::default() }
+        Self::new_with_fee_reservations(ctx, address_locks, advancer, Default::default())
+    }
+
+    pub(crate) fn new_with_fee_reservations(
+        ctx: &'static crate::context::Context,
+        address_locks: Arc<AddressLockManager>,
+        advancer: Arc<ShadowAdvancer>,
+        fee_reservations: CollectFeeReservationManager,
+    ) -> Self {
+        Self {
+            ctx,
+            address_locks,
+            advancer,
+            resource_reservations: Default::default(),
+            fee_reservations,
+        }
     }
 
     /// 处理单个 Command
@@ -1084,6 +1103,7 @@ impl ShadowCollectWorker {
         info!(origin_trade_no = %origin_trade_no, source = "shadow_worker_v2", "Processing resource gate command");
 
         if let Err(err) = self.process_resource_gate_inner(&origin_trade_no).await {
+            self.fee_reservations.release(&origin_trade_no);
             error!(origin_trade_no = %origin_trade_no, error = %err, source = "shadow_worker_v2", "Resource gate check failed");
             return Err(err);
         }
@@ -1136,6 +1156,11 @@ impl ShadowCollectWorker {
         else {
             return Ok(());
         };
+
+        if !self.reserve_collect_service_fee_before_resource_gate(&req, snapshot).await? {
+            self.mark_collect_fee_funding_insufficient(&req).await?;
+            return Ok(());
+        }
 
         // 资源顺序只处理到“允许回到旧 collect 主链”为止：
         // 自身资源 -> 平台代理 -> 本地代理 fallback -> release gate。
@@ -1362,12 +1387,131 @@ impl ShadowCollectWorker {
         let resource = adapter.account_resource(&req.from_addr).await?;
 
         Ok(ResourceGateSnapshot {
+            estimated_fee_trx: fee_details.estimate_fee.amount,
             required_energy: fee_details.energy,
             required_bandwidth: fee_details.bandwidth,
             available_energy: resource.available_energy(),
             available_bandwidth: resource.available_bandwidth(),
             energy_price: resource.energy_price(),
         })
+    }
+
+    fn trx_to_sun_ceil(amount: Decimal) -> Result<i64, ServiceError> {
+        if amount <= Decimal::ZERO {
+            return Ok(0);
+        }
+        (amount * Decimal::from(1_000_000u64))
+            .ceil()
+            .to_i64()
+            .ok_or_else(|| ServiceError::Parameter("TRON fee reservation exceeds i64".into()))
+    }
+
+    fn trx_balance_to_sun(amount: Decimal) -> Result<i64, ServiceError> {
+        if amount <= Decimal::ZERO {
+            return Ok(0);
+        }
+        (amount * Decimal::from(1_000_000u64))
+            .floor()
+            .to_i64()
+            .ok_or_else(|| ServiceError::Parameter("TRON funding balance exceeds i64".into()))
+    }
+
+    async fn reserve_collect_service_fee_before_resource_gate(
+        &self,
+        req: &ApiCollectEntity,
+        snapshot: ResourceGateSnapshot,
+    ) -> Result<bool, ServiceError> {
+        if !req.token_addr.is_contract() {
+            return Ok(true);
+        }
+
+        let estimated_fee = conversion::decimal_from_f64(snapshot.estimated_fee_trx)?;
+        let child_balance = conversion::decimal_from_str(
+            &self.query_balance(&req.from_addr, ChainCode::Tron, AssetTokenKey::Native, 6).await?,
+        )?;
+        let fee_top_up_sun =
+            Self::trx_to_sun_ceil((estimated_fee - child_balance).max(Decimal::ZERO))?;
+        if fee_top_up_sun == 0 {
+            return Ok(true);
+        }
+
+        let funding_addr =
+            Self::resolve_withdraw_from_addr(self.ctx, &self.ctx.api_wallet_pool()?, req).await?;
+        let funding_tx_fee = self
+            .estimate_tron_fee_details(
+                &funding_addr,
+                &req.from_addr,
+                &Decimal::new(fee_top_up_sun, 6).to_string(),
+                "TRX",
+                "TRX",
+                AssetTokenKey::Native,
+                6,
+            )
+            .await?;
+        let funding_tx_fee_sun = Self::trx_to_sun_ceil(conversion::decimal_from_f64(
+            funding_tx_fee.estimate_fee.amount,
+        )?)?;
+        let required_sun = fee_top_up_sun
+            .checked_add(funding_tx_fee_sun)
+            .ok_or_else(|| ServiceError::Parameter("TRON fee reservation overflow".into()))?;
+        let funding_balance = conversion::decimal_from_str(
+            &self.query_balance(&funding_addr, ChainCode::Tron, AssetTokenKey::Native, 6).await?,
+        )?;
+        let available_sun = Self::trx_balance_to_sun(funding_balance)?;
+
+        let funding_key = format!("{}:{}", req.chain_code.to_ascii_lowercase(), funding_addr);
+        match self.fee_reservations.reserve_if_available(
+            funding_key,
+            req.trade_no.clone(),
+            required_sun as u64,
+            available_sun as u64,
+        ) {
+            FeeReservationDecision::Reserved { total_reserved } => {
+                info!(
+                    trade_no = %req.trade_no,
+                    funding_addr = %funding_addr,
+                    fee_top_up_sun,
+                    funding_tx_fee_sun,
+                    required_sun,
+                    available_sun,
+                    total_reserved_sun = total_reserved,
+                    source = "shadow_worker_v2",
+                    "Reserved collect service fee before resource delegation"
+                );
+                Ok(true)
+            }
+            FeeReservationDecision::Insufficient { reserved, .. } => {
+                warn!(
+                    trade_no = %req.trade_no,
+                    funding_addr = %funding_addr,
+                    fee_top_up_sun,
+                    funding_tx_fee_sun,
+                    required_sun,
+                    available_sun,
+                    reserved_sun = reserved,
+                    source = "shadow_worker_v2",
+                    "Withdrawal wallet cannot reserve collect service fee before resource delegation"
+                );
+                Ok(false)
+            }
+        }
+    }
+
+    async fn mark_collect_fee_funding_insufficient(
+        &self,
+        req: &ApiCollectEntity,
+    ) -> Result<(), ServiceError> {
+        ApiCollectRepo::update_api_collect_status_and_err(
+            &self.ctx.api_transaction_pool()?,
+            &req.trade_no,
+            ApiCollectStatus::InsufficientBalance,
+            ErrCode::BalanceInsufficient,
+            "withdrawal wallet balance is insufficient for collect service fee reservation",
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        self.advancer.try_advance(&req.trade_no).await;
+        Ok(())
     }
 
     async fn decide_collect_resource_gate_next_step(
@@ -2372,6 +2516,7 @@ impl ShadowCollectWorker {
 
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_build_tx_inner(&trade_no).await {
+            self.fee_reservations.release(&trade_no);
             error!(trade_no = %trade_no, error = %err, source = "shadow_worker_v2", "BuildTx inner failed, handling error");
             self.handle_collect_tx_failed(&trade_no, err).await?;
         }
@@ -2693,6 +2838,8 @@ impl ShadowCollectWorker {
             }
 
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Updated tx_hash and raw_tx to database successfully");
+
+            self.fee_reservations.release(&fresh_req.trade_no);
 
             // 直接调用 try_advance 进行点对点唤醒
             self.advancer.try_advance(&fresh_req.trade_no).await;
@@ -4803,6 +4950,7 @@ oss:
     #[test]
     fn tron_collect_inactive_resource_snapshot_requires_account_activation() {
         let inactive_snapshot = ResourceGateSnapshot {
+            estimated_fee_trx: 0.0,
             required_energy: 500,
             required_bandwidth: 268,
             available_energy: 0,

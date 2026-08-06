@@ -153,12 +153,22 @@ pub struct SideEffectWorker {
     ctx: &'static crate::context::Context,
     /// ShadowAdvancer 引用，用于统一推进执行
     advancer: Arc<ShadowAdvancer>,
+    fee_reservations:
+        crate::infrastructure::api_trans::resource_reservation::CollectFeeReservationManager,
 }
 
 impl SideEffectWorker {
     /// 创建新的 SideEffect Worker
     pub fn new(ctx: &'static crate::context::Context, advancer: Arc<ShadowAdvancer>) -> Self {
-        Self { ctx, advancer }
+        Self::new_with_fee_reservations(ctx, advancer, Default::default())
+    }
+
+    pub(crate) fn new_with_fee_reservations(
+        ctx: &'static crate::context::Context,
+        advancer: Arc<ShadowAdvancer>,
+        fee_reservations: crate::infrastructure::api_trans::resource_reservation::CollectFeeReservationManager,
+    ) -> Self {
+        Self { ctx, advancer, fee_reservations }
     }
     /// 从数据库中获取归集交易信息
     async fn get_collect_entity(
@@ -582,6 +592,8 @@ impl SideEffectWorker {
                 if affected == 0 {
                     warn!(trade_no = %trade_no, "Tx Fee Res ACK marked 0 rows (trade_no missing or already marked)");
                 }
+
+                self.fee_reservations.release(&trade_no);
 
                 let fresh = self.get_collect_entity(&trade_no).await?;
                 self.advancer.trigger_fast_path_after_tx_fee_res_ack(

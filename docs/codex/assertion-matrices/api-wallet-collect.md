@@ -1391,3 +1391,26 @@ scanner entrypoints.
   `broadcast_uncertain_since_at`.
 - Invariant: only an RPC execution timeout or ambiguous RPC response may enter
   broadcast-uncertain recovery.
+### Collect Service-Fee Reservation Before Resource Delegation
+
+- Layer: unit plus integration.
+- Entrypoints:
+
+  ```text
+  src/infrastructure/api_trans/resource_reservation.rs
+  same_funding_address_reserves_idempotently_and_releases
+
+  tests/integration/api_wallet/collect_resource_gate/mod.rs
+  tron_collect_fee_funding_shortage_fails_before_resource_delegation
+  ```
+
+- Memory facts: reservations are keyed by `trade_no` and aggregated by chain
+  and withdrawal funding address inside the single wallet process.
+- Resource gate: a TRON token collect reserves its maximum native-fee shortfall
+  before any platform or local resource delegation request.
+- Failure: insufficient unreserved withdrawal-wallet balance records a terminal
+  balance error and leaves the resource gate and dependency facts empty.
+- Release: a successful build or fee-result ACK releases the reservation.
+- Invariant: repeated evaluation of one order is idempotent, concurrent orders
+  cannot reserve more than the observed funding balance, and no database schema
+  is required.

@@ -30,6 +30,7 @@ use super::{
         mark_collect_chain_success, seed_blocked_collect, seed_failed_resource_receipt_row,
         seed_resource_result, seed_same_address_collect_resource_window,
         seed_tron_collect_resource_gate_basics, seed_tron_native_collect_order,
+        seed_tron_token_collect_with_fee_funding_wallet,
     },
     fixtures::CollectResourceGateFixture,
 };
@@ -98,6 +99,12 @@ pub(crate) trait CollectResourceGateGiven {
         &self,
         fixture: &CollectResourceGateFixture,
     );
+
+    async fn tron_token_collect_with_insufficient_fee_funding(
+        &self,
+        fixture: &CollectResourceGateFixture,
+        funding_addr: &str,
+    );
 }
 
 #[async_trait::async_trait(?Send)]
@@ -153,6 +160,17 @@ impl CollectResourceGateGiven for GivenRole<'_, CollectResourceGateScenario> {
     ) {
         self.scenario().seed().tron_native_collect_with_insufficient_amount(fixture).await;
     }
+
+    async fn tron_token_collect_with_insufficient_fee_funding(
+        &self,
+        fixture: &CollectResourceGateFixture,
+        funding_addr: &str,
+    ) {
+        self.scenario()
+            .seed()
+            .tron_token_collect_with_insufficient_fee_funding(fixture, funding_addr)
+            .await;
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -181,6 +199,12 @@ trait CollectResourceGateSeed {
     async fn tron_native_collect_with_insufficient_amount(
         &self,
         fixture: &CollectResourceGateFixture,
+    );
+
+    async fn tron_token_collect_with_insufficient_fee_funding(
+        &self,
+        fixture: &CollectResourceGateFixture,
+        funding_addr: &str,
     );
 }
 
@@ -288,6 +312,34 @@ impl CollectResourceGateSeed for SeedRole<'_, CollectResourceGateScenario> {
         )
         .await;
     }
+
+    async fn tron_token_collect_with_insufficient_fee_funding(
+        &self,
+        fixture: &CollectResourceGateFixture,
+        funding_addr: &str,
+    ) {
+        seed_tron_token_collect_with_fee_funding_wallet(
+            &self.scenario().wallet_pool,
+            &self.scenario().collect_pool,
+            &fixture.trade_no,
+            funding_addr,
+        )
+        .await;
+        for uid in ["uid_collect_fee_reservation", "uid_collect_fee_funding"] {
+            self.scenario().env.recorder.succeed_next_api_backend_call_with_data(
+                serde_json::json!({
+                    "uid": uid,
+                    "threshold": 0,
+                    "chainConfigs": [{
+                        "chainCode": "tron",
+                        "chainAddressType": null,
+                        "normalAddress": { "index": 0, "address": funding_addr },
+                        "riskAddress": { "index": 0, "address": funding_addr }
+                    }]
+                }),
+            );
+        }
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -344,6 +396,11 @@ pub(crate) trait CollectResourceGateThen {
     );
 
     async fn collect_fails_amount_shortage_without_resource_delegation(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    );
+
+    async fn collect_fails_fee_reservation_without_resource_delegation(
         &self,
         fixture: &CollectResourceGateFixture,
     );
@@ -415,6 +472,21 @@ impl CollectResourceGateThen for ThenRole<'_, CollectResourceGateScenario> {
         self.scenario()
             .assert()
             .collect_fails_amount_shortage_without_resource_delegation(&collect, delegation_count);
+    }
+
+    async fn collect_fails_fee_reservation_without_resource_delegation(
+        &self,
+        fixture: &CollectResourceGateFixture,
+    ) {
+        let collect = self.scenario().load().collect(&fixture.trade_no).await;
+        let delegation_count =
+            self.scenario().load().resource_delegation_count(&fixture.trade_no).await;
+        assert_eq!(collect.status, ApiCollectStatus::InsufficientBalance);
+        assert_eq!(collect.err_code, Some(ErrCode::BalanceInsufficient));
+        assert!(collect.err_msg.as_deref().is_some_and(|msg| msg.contains("fee reservation")));
+        assert!(collect.resource_gate_released_at.is_none());
+        assert!(collect.resource_dependency_trade_no.is_none());
+        assert_eq!(delegation_count, 0);
     }
 }
 

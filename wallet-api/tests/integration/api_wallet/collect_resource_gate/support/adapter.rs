@@ -19,11 +19,30 @@ use wallet_database::entities::asset_token_key::AssetTokenKey;
 pub(crate) struct TronResourceGateAdapter {
     available_energy: i64,
     available_bandwidth: i64,
+    native_balance: U256,
+    funding_addr: Option<String>,
+    funding_balance: U256,
 }
 
 impl TronResourceGateAdapter {
     pub(crate) fn near_ready() -> Self {
-        Self { available_energy: 14_649, available_bandwidth: 0 }
+        Self {
+            available_energy: 14_649,
+            available_bandwidth: 0,
+            native_balance: U256::from(10_000_000u64),
+            funding_addr: None,
+            funding_balance: U256::ZERO,
+        }
+    }
+
+    pub(crate) fn insufficient_funding(funding_addr: &str) -> Self {
+        Self {
+            available_energy: 14_649,
+            available_bandwidth: 0,
+            native_balance: U256::ZERO,
+            funding_addr: Some(funding_addr.to_string()),
+            funding_balance: U256::from(1_000_000u64),
+        }
     }
 }
 
@@ -49,8 +68,14 @@ impl Tx for TronResourceGateAdapter {
         })
     }
 
-    async fn balance_token_key(&self, _addr: &str, _token: AssetTokenKey) -> Result<U256, Error> {
-        Ok(U256::ZERO)
+    async fn balance_token_key(&self, addr: &str, token: AssetTokenKey) -> Result<U256, Error> {
+        if token.is_contract() {
+            return Ok(U256::from(10_000_000u64));
+        }
+        if self.funding_addr.as_deref() == Some(addr) {
+            return Ok(self.funding_balance);
+        }
+        Ok(self.native_balance)
     }
 
     async fn nonce(&self, _addr: &str) -> Result<u64, ServiceError> {
@@ -123,6 +148,13 @@ impl Drop for AdapterGuard {
 
 pub(crate) fn install_tron_resource_gate_adapter() -> AdapterGuard {
     let adapter: Arc<dyn Tx + Send + Sync> = Arc::new(TronResourceGateAdapter::near_ready());
+    set_test_transaction_adapter_override("tron", adapter);
+    AdapterGuard
+}
+
+pub(crate) fn install_tron_insufficient_fee_funding_adapter(funding_addr: &str) -> AdapterGuard {
+    let adapter: Arc<dyn Tx + Send + Sync> =
+        Arc::new(TronResourceGateAdapter::insufficient_funding(funding_addr));
     set_test_transaction_adapter_override("tron", adapter);
     AdapterGuard
 }

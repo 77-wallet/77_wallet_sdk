@@ -689,12 +689,22 @@ impl CollectorShadowActorSystem {
         // 初始化Shadow Worker
         // 创建AddressLockManager
         let address_locks = Arc::new(AddressLockManager::new());
+        let fee_reservations =
+            crate::infrastructure::api_trans::resource_reservation::CollectFeeReservationManager::default();
         // 创建ShadowCollectWorker
-        let shadow_worker =
-            Arc::new(ShadowCollectWorker::new(ctx, address_locks, advancer.clone()));
+        let shadow_worker = Arc::new(ShadowCollectWorker::new_with_fee_reservations(
+            ctx,
+            address_locks,
+            advancer.clone(),
+            fee_reservations.clone(),
+        ));
 
         // 初始化SideEffect Worker
-        let side_effect_worker = Arc::new(SideEffectWorker::new(ctx, advancer.clone()));
+        let side_effect_worker = Arc::new(SideEffectWorker::new_with_fee_reservations(
+            ctx,
+            advancer.clone(),
+            fee_reservations,
+        ));
 
         // 启动时执行一次 warm single scan
         let scanner_clone = scanner.clone();
