@@ -8,9 +8,12 @@ use crate::{
         event::NotifyEvent,
         other::{Process, TransactionProcessFrontend},
     },
-    request::stake::{FreezeBalanceReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq},
+    request::stake::{
+        DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq,
+        WithdrawBalanceReq,
+    },
     response_vo::standard_wallet::stake::{
-        FreezeResp, VoteListResp, VoterInfoResp, WithdrawUnfreezeResp,
+        DelegateResp, FreezeResp, VoteListResp, VoterInfoResp, WithdrawUnfreezeResp,
     },
     service::stake::StackService,
 };
@@ -123,6 +126,32 @@ impl ApiResourceApplication {
                 "api wallet unstake response missing".to_string(),
             ))
         })
+    }
+
+    pub(crate) async fn delegate_withdraw_wallet_resource(
+        &self,
+        req: DelegateReq,
+        password: String,
+    ) -> Result<DelegateResp, ServiceError> {
+        WalletApplication::validate_password(self.ctx, &password).await?;
+        let resource = ResourceType::try_from(req.resource.as_str())?;
+        let bill_kind = ApiResourceDomain::delegate_bill_kind(resource);
+        self.notify_transaction_process(bill_kind, Process::Building).await?;
+
+        ApiResourceDomain::delegate_withdraw_wallet_resource(self.ctx, req).await
+    }
+
+    pub(crate) async fn undelegate_withdraw_wallet_resource(
+        &self,
+        req: UnDelegateReq,
+        password: String,
+    ) -> Result<DelegateResp, ServiceError> {
+        WalletApplication::validate_password(self.ctx, &password).await?;
+        let resource = ResourceType::try_from(req.resource.as_str())?;
+        let bill_kind = ApiResourceDomain::undelegate_bill_kind(resource);
+        self.notify_transaction_process(bill_kind, Process::Building).await?;
+
+        ApiResourceDomain::undelegate_withdraw_wallet_resource(self.ctx, req).await
     }
 
     pub(crate) async fn withdraw_wallet_votes(

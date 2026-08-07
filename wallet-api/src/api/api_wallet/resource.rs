@@ -1,9 +1,12 @@
 use crate::{
     api::ReturnType,
     manager::WalletManager,
-    request::stake::{FreezeBalanceReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq},
+    request::stake::{
+        DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq,
+        WithdrawBalanceReq,
+    },
     response_vo::standard_wallet::stake::{
-        FreezeResp, VoteListResp, VoterInfoResp, WithdrawUnfreezeResp,
+        DelegateResp, FreezeResp, VoteListResp, VoterInfoResp, WithdrawUnfreezeResp,
     },
     service::api_wallet::resource::ApiResourceService,
 };
@@ -23,6 +26,22 @@ impl WalletManager {
         password: String,
     ) -> ReturnType<FreezeResp> {
         ApiResourceService::new(self.ctx).unstake_withdraw_wallet_resource(req, password).await
+    }
+
+    pub async fn delegate_api_withdraw_wallet_resource(
+        &self,
+        req: DelegateReq,
+        password: String,
+    ) -> ReturnType<DelegateResp> {
+        ApiResourceService::new(self.ctx).delegate_withdraw_wallet_resource(req, password).await
+    }
+
+    pub async fn undelegate_api_withdraw_wallet_resource(
+        &self,
+        req: UnDelegateReq,
+        password: String,
+    ) -> ReturnType<DelegateResp> {
+        ApiResourceService::new(self.ctx).undelegate_withdraw_wallet_resource(req, password).await
     }
 
     pub async fn api_withdraw_wallet_votes(

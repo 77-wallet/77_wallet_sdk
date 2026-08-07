@@ -18,10 +18,15 @@ use crate::{
         other::{Process, TransactionProcessFrontend},
     },
     request::{
-        stake::{FreezeBalanceReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq},
+        stake::{
+            DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq,
+            WithdrawBalanceReq,
+        },
         transaction::Signer,
     },
-    response_vo::standard_wallet::stake::{FreezeResp, ResourceResp, WithdrawUnfreezeResp},
+    response_vo::standard_wallet::stake::{
+        DelegateResp, FreezeResp, ResourceResp, WithdrawUnfreezeResp,
+    },
 };
 use wallet_chain_interact::{
     BillResourceConsume,
@@ -30,8 +35,8 @@ use wallet_chain_interact::{
         operations::{
             TronTxOperation,
             stake::{
-                FreezeBalanceArgs, ResourceType, UnFreezeBalanceArgs, VoteWitnessArgs,
-                WithdrawBalanceArgs, WithdrawUnfreezeArgs,
+                DelegateArgs, FreezeBalanceArgs, ResourceType, UnDelegateArgs, UnFreezeBalanceArgs,
+                VoteWitnessArgs, WithdrawBalanceArgs, WithdrawUnfreezeArgs,
             },
         },
     },
@@ -143,6 +148,70 @@ impl ApiResourceDomain {
             .withdraw_amount(can_withdraw.to_sun()),
         );
         Ok(outcome)
+    }
+
+    pub(crate) async fn delegate_withdraw_wallet_resource(
+        ctx: &'static Context,
+        req: DelegateReq,
+    ) -> Result<DelegateResp, ServiceError> {
+        let owner_ctx = Self::withdraw_wallet_account_context(ctx, &req.owner_address).await?;
+        let balance_trx = Self::parse_amount_trx(req.balance)?;
+        let resource_type = ResourceType::try_from(req.resource.as_str())?;
+        let bill_kind = Self::delegate_bill_kind(resource_type);
+        let args = DelegateArgs::try_from(&req)?;
+        let resource_value =
+            Self::resource_value(&owner_ctx.owner_address, balance_trx, resource_type, ctx).await?;
+        let outcome = Self::execute_tron_resource_operation(
+            owner_ctx.owner_address,
+            0,
+            args,
+            bill_kind,
+            &req.signer,
+            ctx,
+        )
+        .await?;
+        let resource = ResourceResp::new(balance_trx, resource_type, resource_value);
+
+        Ok(DelegateResp::new_delegate(req, resource, bill_kind, outcome.tx_hash))
+    }
+
+    pub(crate) async fn undelegate_withdraw_wallet_resource(
+        ctx: &'static Context,
+        req: UnDelegateReq,
+    ) -> Result<DelegateResp, ServiceError> {
+        let owner_ctx = Self::withdraw_wallet_account_context(ctx, &req.owner_address).await?;
+        let balance_trx = Self::parse_amount_trx(req.balance)?;
+        let resource_type = ResourceType::try_from(req.resource.as_str())?;
+        let bill_kind = Self::undelegate_bill_kind(resource_type);
+        let args = UnDelegateArgs::try_from(&req)?;
+        let resource_value =
+            Self::resource_value(&owner_ctx.owner_address, balance_trx, resource_type, ctx).await?;
+        let outcome = Self::execute_tron_resource_operation(
+            owner_ctx.owner_address,
+            0,
+            args,
+            bill_kind,
+            &req.signer,
+            ctx,
+        )
+        .await?;
+        let resource = ResourceResp::new(balance_trx, resource_type, resource_value);
+
+        Ok(DelegateResp::new_undelegate(req, resource, bill_kind, outcome.tx_hash))
+    }
+
+    pub(crate) fn delegate_bill_kind(resource_type: ResourceType) -> BillKind {
+        match resource_type {
+            ResourceType::BANDWIDTH => BillKind::DelegateBandwidth,
+            ResourceType::ENERGY => BillKind::DelegateEnergy,
+        }
+    }
+
+    pub(crate) fn undelegate_bill_kind(resource_type: ResourceType) -> BillKind {
+        match resource_type {
+            ResourceType::BANDWIDTH => BillKind::UnDelegateBandwidth,
+            ResourceType::ENERGY => BillKind::UnDelegateEnergy,
+        }
     }
 
     pub(crate) async fn withdraw_wallet_votes(
@@ -396,6 +465,8 @@ impl ApiResourceDomain {
 #[cfg(test)]
 mod tests {
     use super::ApiResourceDomain;
+    use wallet_chain_interact::tron::operations::stake::ResourceType;
+    use wallet_database::entities::bill::BillKind;
     use wallet_database::entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType};
 
     #[test]
@@ -410,6 +481,30 @@ mod tests {
         assert_eq!(
             ApiResourceDomain::required_balance_sun(345, 2),
             2 * wallet_chain_interact::tron::consts::TRX_VALUE + 345
+        );
+    }
+
+    #[test]
+    fn api_withdraw_wallet_delegate_uses_delegate_bill_kinds() {
+        assert_eq!(
+            ApiResourceDomain::delegate_bill_kind(ResourceType::BANDWIDTH) as u8,
+            BillKind::DelegateBandwidth as u8
+        );
+        assert_eq!(
+            ApiResourceDomain::delegate_bill_kind(ResourceType::ENERGY) as u8,
+            BillKind::DelegateEnergy as u8
+        );
+    }
+
+    #[test]
+    fn api_withdraw_wallet_undelegate_uses_reclaim_bill_kinds() {
+        assert_eq!(
+            ApiResourceDomain::undelegate_bill_kind(ResourceType::BANDWIDTH) as u8,
+            BillKind::UnDelegateBandwidth as u8
+        );
+        assert_eq!(
+            ApiResourceDomain::undelegate_bill_kind(ResourceType::ENERGY) as u8,
+            BillKind::UnDelegateEnergy as u8
         );
     }
 
