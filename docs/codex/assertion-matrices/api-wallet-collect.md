@@ -332,17 +332,19 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   ```text
   wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
   collect_pre_delegation_fee_ignores_energy_burn_cost
-  collect_pre_delegation_fee_keeps_bandwidth_and_extra_fee
+  collect_pre_delegation_fee_charges_full_bandwidth_when_not_fully_covered
   ```
 
 - Backend: none; tests exercise the fee-admission rule directly.
-- Funding: before platform/local delegation, reserve only uncovered Bandwidth
-  cost plus fixed extra fee; subtract the child address's existing TRX through
-  the existing shortfall calculation.
+- Funding: before platform/local delegation, reserve the full transaction
+  Bandwidth cost when the account cannot fully cover the required Bandwidth,
+  plus fixed extra fee; subtract the child address's existing TRX through the
+  existing shortfall calculation.
 - Fallback: the full current fee estimate remains available to the existing
   post-delegation fallback when both resource providers fail.
 - Invariant: potential Energy burn cost cannot reject an order before either
-  Energy delegation path is attempted.
+  Energy delegation path is attempted, while partial Bandwidth cannot be used
+  as a proportional discount against the transaction's Bandwidth fee.
 
 ### Shared Local Delegation Capacity Reservation
 

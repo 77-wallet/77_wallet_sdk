@@ -1417,8 +1417,12 @@ impl ShadowCollectWorker {
         bandwidth_price: f64,
         extra_fee: f64,
     ) -> f64 {
-        let bandwidth_shortfall = required_bandwidth.saturating_sub(user_bandwidth);
-        bandwidth_shortfall as f64 * bandwidth_price + extra_fee
+        let bandwidth_fee = if user_bandwidth >= required_bandwidth {
+            0.0
+        } else {
+            required_bandwidth as f64 * bandwidth_price
+        };
+        bandwidth_fee + extra_fee
     }
 
     fn trx_balance_to_sun(amount: Decimal) -> Result<i64, ServiceError> {
@@ -4953,13 +4957,13 @@ oss:
     }
 
     #[test]
-    fn collect_pre_delegation_fee_keeps_bandwidth_and_extra_fee() {
-        let partial_bandwidth =
-            ShadowCollectWorker::collect_pre_delegation_fee_trx(345, 145, 0.001, 0.12);
+    fn collect_pre_delegation_fee_charges_full_bandwidth_when_not_fully_covered() {
+        let insufficient_bandwidth =
+            ShadowCollectWorker::collect_pre_delegation_fee_trx(345, 286, 0.001, 0.12);
         let covered_bandwidth =
             ShadowCollectWorker::collect_pre_delegation_fee_trx(345, 500, 0.001, 0.12);
 
-        assert!((partial_bandwidth - 0.32).abs() < f64::EPSILON);
+        assert!((insufficient_bandwidth - 0.465).abs() < f64::EPSILON);
         assert!((covered_bandwidth - 0.12).abs() < f64::EPSILON);
     }
 
