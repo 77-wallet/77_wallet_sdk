@@ -113,7 +113,7 @@ pub enum ShadowCollectCommand {
 
 #[derive(Debug, Clone, Copy)]
 struct ResourceGateSnapshot {
-    /// 当前资源快照下的最大 TRX 手续费估算
+    /// Energy 代理成功后仍不可避免的 TRX 手续费估算，用于代理前资金预占。
     estimated_fee_trx: f64,
     /// BuildTx 前当前归集交易需要的能量
     required_energy: u64,
@@ -1387,7 +1387,12 @@ impl ShadowCollectWorker {
         let resource = adapter.account_resource(&req.from_addr).await?;
 
         Ok(ResourceGateSnapshot {
-            estimated_fee_trx: fee_details.estimate_fee.amount,
+            estimated_fee_trx: Self::collect_pre_delegation_fee_trx(
+                fee_details.bandwidth,
+                fee_details.user_bandwidth,
+                fee_details.bandwidth_price,
+                fee_details.extra_fee,
+            ),
             required_energy: fee_details.energy,
             required_bandwidth: fee_details.bandwidth,
             available_energy: resource.available_energy(),
@@ -1404,6 +1409,16 @@ impl ShadowCollectWorker {
             .ceil()
             .to_i64()
             .ok_or_else(|| ServiceError::Parameter("TRON fee reservation exceeds i64".into()))
+    }
+
+    fn collect_pre_delegation_fee_trx(
+        required_bandwidth: u64,
+        user_bandwidth: u64,
+        bandwidth_price: f64,
+        extra_fee: f64,
+    ) -> f64 {
+        let bandwidth_shortfall = required_bandwidth.saturating_sub(user_bandwidth);
+        bandwidth_shortfall as f64 * bandwidth_price + extra_fee
     }
 
     fn trx_balance_to_sun(amount: Decimal) -> Result<i64, ServiceError> {
@@ -4928,6 +4943,24 @@ oss:
             ResourceBudget::new(14_649, 10_000),
         );
         assert!(matches!(energy_shortage, ResourceReservationDecision::NeedMore(_)));
+    }
+
+    #[test]
+    fn collect_pre_delegation_fee_ignores_energy_burn_cost() {
+        let fee = ShadowCollectWorker::collect_pre_delegation_fee_trx(345, 0, 0.001, 0.0);
+
+        assert!((fee - 0.345).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn collect_pre_delegation_fee_keeps_bandwidth_and_extra_fee() {
+        let partial_bandwidth =
+            ShadowCollectWorker::collect_pre_delegation_fee_trx(345, 145, 0.001, 0.12);
+        let covered_bandwidth =
+            ShadowCollectWorker::collect_pre_delegation_fee_trx(345, 500, 0.001, 0.12);
+
+        assert!((partial_bandwidth - 0.32).abs() < f64::EPSILON);
+        assert!((covered_bandwidth - 0.12).abs() < f64::EPSILON);
     }
 
     #[test]

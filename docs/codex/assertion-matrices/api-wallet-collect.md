@@ -324,6 +324,26 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   address-level `ResourceReady` shortage may re-evaluate, but platform success
   shortage must not trigger a second Energy request.
 
+### Collect TRON Pre-Delegation Minimum Fee Reservation
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  collect_pre_delegation_fee_ignores_energy_burn_cost
+  collect_pre_delegation_fee_keeps_bandwidth_and_extra_fee
+  ```
+
+- Backend: none; tests exercise the fee-admission rule directly.
+- Funding: before platform/local delegation, reserve only uncovered Bandwidth
+  cost plus fixed extra fee; subtract the child address's existing TRX through
+  the existing shortfall calculation.
+- Fallback: the full current fee estimate remains available to the existing
+  post-delegation fallback when both resource providers fail.
+- Invariant: potential Energy burn cost cannot reject an order before either
+  Energy delegation path is attempted.
+
 ### Shared Local Delegation Capacity Reservation
 
 - Layer: unit.

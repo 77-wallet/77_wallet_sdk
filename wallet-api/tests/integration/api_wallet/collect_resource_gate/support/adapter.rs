@@ -119,7 +119,7 @@ impl Tx for TronResourceGateAdapter {
         _req: ApiBaseTransferReq,
         _main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        Ok(r#"{"estimateFee":{"amount":"1.8027","currency":"TRX","unitPrice":0.0,"fiatValue":0.0},"energy":14650,"userEnergy":14649,"energyPrice":0.0,"bandwidth":345,"userBandwidth":0,"bandwidthPrice":0.0,"extraFee":0.0}"#.to_string())
+        Ok(r#"{"estimateFee":{"amount":"1.8027","currency":"TRX","unitPrice":0.0,"fiatValue":0.0},"energy":14650,"userEnergy":14649,"energyPrice":0.0,"bandwidth":345,"userBandwidth":0,"bandwidthPrice":0.001,"extraFee":0.0}"#.to_string())
     }
 
     async fn build_transfer_raw(
