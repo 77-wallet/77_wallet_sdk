@@ -1472,7 +1472,10 @@ impl ApiCollectDao {
             WHERE need_service_fee = true
             AND service_fee_uploaded_at IS NULL
             AND err_code IS NULL
-            AND resource_gate_released_at IS NOT NULL
+            AND (
+                lower(chain_code) <> 'tron'
+                OR resource_gate_released_at IS NOT NULL
+            )
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -2812,6 +2815,66 @@ mod tests {
         .await
         .unwrap();
 
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "sol_from",
+            "to",
+            "0",
+            "v",
+            "sol",
+            Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string()),
+            "USDC",
+            "C_SERVICE_FEE_SOL_TOKEN",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET need_service_fee = true,
+                 service_fee_uploaded_at = NULL,
+                 resource_gate_released_at = NULL
+             WHERE trade_no = ?",
+        )
+        .bind("C_SERVICE_FEE_SOL_TOKEN")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "tron_from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            Some("TToken".to_string()),
+            "USDT",
+            "C_SERVICE_FEE_TRON_GATE_WAIT",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET need_service_fee = true,
+                 service_fee_uploaded_at = NULL,
+                 resource_gate_released_at = NULL
+             WHERE trade_no = ?",
+        )
+        .bind("C_SERVICE_FEE_TRON_GATE_WAIT")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
         let records = ApiCollectDao::scan_confirmed_need_service_fee_upload(pool.as_ref(), 100)
             .await
             .unwrap();
@@ -2819,7 +2882,9 @@ mod tests {
 
         assert!(trade_nos.contains(&"C_SERVICE_FEE_WAIT".to_string()));
         assert!(trade_nos.contains(&"C_SERVICE_FEE_READY".to_string()));
+        assert!(trade_nos.contains(&"C_SERVICE_FEE_SOL_TOKEN".to_string()));
         assert!(!trade_nos.contains(&"C_SERVICE_FEE_DONE".to_string()));
+        assert!(!trade_nos.contains(&"C_SERVICE_FEE_TRON_GATE_WAIT".to_string()));
     }
 
     #[tokio::test]

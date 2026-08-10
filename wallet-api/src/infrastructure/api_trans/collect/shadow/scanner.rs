@@ -524,6 +524,7 @@ use wallet_database::{
 };
 
 use crate::{
+    domain::api_wallet::trans::shared_mechanism,
     error::service::ServiceError,
     infrastructure::api_trans::{
         collect::{
@@ -637,17 +638,17 @@ fn need_result_ack(collect: &ApiCollectEntity) -> bool {
 /// - need_service_fee = true
 /// - service_fee_uploaded_at IS NULL
 /// - err_code IS NULL
-/// - resource_gate_released_at IS NOT NULL（资源闸门已释放）
+/// - 非 TRON 链不依赖 resource gate；TRON 必须等待 resource gate 释放
 ///
 /// ⚠️ 重要说明：
 /// - UploadServiceFee 只在构建阶段的可恢复失败路径触发
 /// - 一旦发生不可逆执行失败（err_code IS NOT NULL），不再允许上传服务费
-/// - 必须等待资源闸门释放后才能上传服务费
 fn need_service_fee_upload(collect: &ApiCollectEntity) -> bool {
     collect.need_service_fee == Some(true)
         && collect.service_fee_uploaded_at.is_none()
         && collect.err_code.is_none()
-        && collect.resource_gate_released_at.is_some()
+        && (!shared_mechanism::is_tron_chain(&collect.chain_code)
+            || collect.resource_gate_released_at.is_some())
 }
 
 /// 检查是否需要发送手续费结果确认 ACK

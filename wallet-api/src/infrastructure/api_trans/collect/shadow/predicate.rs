@@ -42,6 +42,11 @@ fn collect_resource_gate_released_for_build(collect: &ApiCollectEntity) -> bool 
         || collect.resource_gate_released_at.is_some()
 }
 
+fn collect_resource_gate_released_for_service_fee_upload(collect: &ApiCollectEntity) -> bool {
+    !shared_mechanism::is_tron_chain(&collect.chain_code)
+        || collect.resource_gate_released_at.is_some()
+}
+
 fn evaluate_need_resource_gate(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
@@ -582,6 +587,7 @@ fn evaluate_need_result_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - need_service_fee = true
 /// - service_fee_uploaded_at IS NULL
 /// - err_code IS NULL
+/// - 非 TRON 链不依赖 resource gate；TRON 必须等待 resource gate 释放
 ///
 fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
@@ -608,7 +614,7 @@ fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
         && collect.service_fee_uploaded_at.is_none()
         && collect.err_code.is_none()
         && collect.finished_at.is_none()
-        && collect.resource_gate_released_at.is_some()
+        && collect_resource_gate_released_for_service_fee_upload(collect)
     {
         reasons.push(StageReason {
             code: "ready_for_service_fee_upload",
@@ -620,7 +626,7 @@ fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
         && collect.service_fee_uploaded_at.is_none()
         && collect.err_code.is_none()
         && collect.finished_at.is_none()
-        && collect.resource_gate_released_at.is_some();
+        && collect_resource_gate_released_for_service_fee_upload(collect);
 
     StageEval { can_advance, reasons }
 }
@@ -883,9 +889,11 @@ mod tests {
     #[test]
     fn need_service_fee_upload_advances_without_backend_order_fact() {
         let mut c = base_collect();
+        c.chain_code = "tron".to_string();
         c.need_service_fee = Some(true);
         c.service_fee_order_received_at = None;
         c.service_fee_uploaded_at = None;
+        c.resource_gate_released_at = Some(Utc::now());
 
         let eval = evaluate_stage(CollectStage::NeedServiceFeeUpload, &c);
         assert!(eval.can_advance);
@@ -895,13 +903,40 @@ mod tests {
     #[test]
     fn need_service_fee_upload_still_advances_when_backend_order_received() {
         let mut c = base_collect();
+        c.chain_code = "tron".to_string();
         c.need_service_fee = Some(true);
         c.service_fee_order_received_at = Some(Utc::now());
         c.service_fee_uploaded_at = None;
+        c.resource_gate_released_at = Some(Utc::now());
 
         let eval = evaluate_stage(CollectStage::NeedServiceFeeUpload, &c);
         assert!(eval.can_advance);
         assert!(eval.reasons.iter().any(|r| r.code == "ready_for_service_fee_upload"));
+    }
+
+    #[test]
+    fn need_service_fee_upload_allows_sol_without_resource_gate() {
+        let mut c = base_collect();
+        c.chain_code = "sol".to_string();
+        c.need_service_fee = Some(true);
+        c.service_fee_uploaded_at = None;
+        c.resource_gate_released_at = None;
+
+        let eval = evaluate_stage(CollectStage::NeedServiceFeeUpload, &c);
+        assert!(eval.can_advance);
+        assert!(eval.reasons.iter().any(|r| r.code == "ready_for_service_fee_upload"));
+    }
+
+    #[test]
+    fn need_service_fee_upload_blocks_unreleased_tron_resource_gate() {
+        let mut c = base_collect();
+        c.chain_code = "tron".to_string();
+        c.need_service_fee = Some(true);
+        c.service_fee_uploaded_at = None;
+        c.resource_gate_released_at = None;
+
+        let eval = evaluate_stage(CollectStage::NeedServiceFeeUpload, &c);
+        assert!(!eval.can_advance);
     }
 
     // --- NeedOrderAck ---

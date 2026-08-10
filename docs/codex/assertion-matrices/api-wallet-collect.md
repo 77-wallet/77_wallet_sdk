@@ -167,6 +167,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: failed frontend notification must not lose the persisted collect
   order, so retrying the same `trade_no` can notify again.
 
+### Collect SOL Token Service Fee Admission
+
+- Layer: database.
+- Entrypoint:
+
+  ```text
+  wallet-database/src/dao/api_collect.rs
+  scan_confirmed_need_service_fee_upload_requires_need_service_fee_only
+  ```
+
+- DB facts: a SOL token collect row with `need_service_fee = true` and no
+  resource-gate release is eligible for service-fee upload.
+- Scanner: non-TRON chains do not depend on TRON resource-gate facts, while
+  unreleased TRON rows remain blocked until the gate is released.
+- Invariant: SOL token collect fee or rent shortage must not be stuck behind a
+  TRON-only resource gate before service-fee upload.
+
 ### Collect Resource Receipt Scanner
 
 - Layer: integration.
