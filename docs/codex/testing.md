@@ -17,6 +17,8 @@
 - 测试改动必须遵循最小改动原则，不引入新的业务语义。
 - 测试必须默认离线可运行，不依赖真实 backend/真实网络。
 - 测试必须按 unit / component / integration / smoke-live 分层，不能把真实环境测试混入默认测试。
+- 归集、提币、手续费、资源等 API wallet transaction-like flow 改动必须先按
+  `docs/codex/api-wallet-flow-maintenance.md` 确认生命周期阶段和不变性。
 - 每次功能改动必须新增或更新测试（至少覆盖一条成功路径）。
 - 每个关键 flow 必须至少有一条失败路径测试，并断言“不变性”。
 - 必须更新断言矩阵（涉及 flow 改动时）。
@@ -102,11 +104,13 @@
 ## Required Process
 
 1. 先确认改动边界与受影响 flow。
-2. 先补黄金路径，再补失败路径。
-3. 用 fixture/scenario/helper 复用测试准备逻辑；integration 测试正文使用
+2. 对 API wallet transaction-like flow，先确认触及的生命周期阶段、durable
+   fact、side effect owner 和不变性。
+3. 先补黄金路径，再补失败路径。
+4. 用 fixture/scenario/helper 复用测试准备逻辑；integration 测试正文使用
    Given-When-Then。
-4. 记录并汇报执行的测试命令与结果摘要。
-5. 按 `docs/codex/checklists/pr-definition-of-done.md` 逐项完成 DoD。
+5. 记录并汇报执行的测试命令与结果摘要。
+6. 按 `docs/codex/checklists/pr-definition-of-done.md` 逐项完成 DoD。
 
 ## Command Policy
 
