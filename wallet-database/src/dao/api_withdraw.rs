@@ -624,6 +624,73 @@ impl ApiWithdrawDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn recent_completed_platform_delegate_resource_budget_by_owner<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        exclude_trade_no: &str,
+        since: DateTime<Utc>,
+    ) -> Result<PendingWithdrawResourceBudget, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(estimated_resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(estimated_resource_consume, '$.energy'),
+                            json_extract(estimated_resource_consume, '$.energy_used'),
+                            json_extract(estimated_resource_consume, '$.energyUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS energy,
+                COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(estimated_resource_consume)
+                        THEN CAST(COALESCE(
+                            json_extract(estimated_resource_consume, '$.bandwidth'),
+                            json_extract(estimated_resource_consume, '$.net_used'),
+                            json_extract(estimated_resource_consume, '$.netUsed'),
+                            0
+                        ) AS INTEGER)
+                        ELSE 0
+                    END
+                ), 0) AS bandwidth
+            FROM api_withdraws
+            WHERE trade_type = ?
+              AND lower(chain_code) = lower(?)
+              AND from_addr = ?
+              AND trade_no <> ?
+              AND estimated_resource_consume IS NOT NULL
+              AND resource_gate_result = ?
+              AND resource_dependency_type = ?
+              AND resource_dependency_trade_no IS NOT NULL
+              AND transaction_time IS NOT NULL
+              AND finished_at IS NOT NULL
+              AND err_code IS NULL
+              AND finished_at >= ?
+        "#;
+
+        let row = sqlx::query(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(exclude_trade_no)
+            .bind(ApiResourceGateResult::PlatformDelegateSuccess)
+            .bind(ApiResourceDependencyType::PlatformDelegate)
+            .bind(since)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        let energy = row.try_get::<i64, _>("energy").unwrap_or_default().max(0) as u64;
+        let bandwidth = row.try_get::<i64, _>("bandwidth").unwrap_or_default().max(0) as u64;
+        Ok(PendingWithdrawResourceBudget { energy, bandwidth })
+    }
+
     /// Find withdraw candidates for acct_change-driven tx_hash backfill.
     ///
     /// Notes:
@@ -2813,13 +2880,14 @@ mod tests {
     use crate::{
         SqliteContext,
         entities::{
-            api_resource_gate::ApiResourceGateResult,
+            api_resource_gate::{ApiResourceDependencyType, ApiResourceGateResult},
             api_trade_type::ApiTradeType,
             api_withdraw::{ApiWithdrawStatus, ErrCode, WithdrawFailureStage},
             asset_token_key::AssetTokenKey,
         },
         repositories::api_wallet::withdraw::ApiWithdrawRepo,
     };
+    use chrono::Utc;
 
     fn make_temp_dir(prefix: &str) -> String {
         let now =
@@ -3200,6 +3268,121 @@ mod tests {
         assert_eq!(affected, 1);
         assert_eq!(stale_retry, 0);
         assert_eq!(after.resource_consume, replacement);
+    }
+
+    #[tokio::test]
+    async fn withdraw_completed_platform_delegate_budget_counts_reclaim_risk_only() {
+        let dir = make_temp_dir("wallet_db_withdraw_reclaim_risk_budget");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+        let now = Utc::now();
+        let recent = now - chrono::Duration::minutes(2);
+        let old = now - chrono::Duration::minutes(20);
+
+        for trade_no in [
+            "W_RECLAIM_RISK_RECENT",
+            "W_RECLAIM_RISK_OLD",
+            "W_RECLAIM_RISK_READY",
+            "W_RECLAIM_RISK_PENDING",
+            "W_RECLAIM_RISK_OTHER_OWNER",
+            "W_RECLAIM_RISK_CURRENT",
+        ] {
+            seed_withdraw_for_fee_estimate(&pool, trade_no, "tron", ApiTradeType::Withdraw).await;
+        }
+
+        for (trade_no, from_addr, gate_result, dependency_type, finished_at) in [
+            (
+                "W_RECLAIM_RISK_RECENT",
+                "FROM_FEE_ESTIMATE",
+                ApiResourceGateResult::PlatformDelegateSuccess,
+                ApiResourceDependencyType::PlatformDelegate,
+                Some(recent),
+            ),
+            (
+                "W_RECLAIM_RISK_OLD",
+                "FROM_FEE_ESTIMATE",
+                ApiResourceGateResult::PlatformDelegateSuccess,
+                ApiResourceDependencyType::PlatformDelegate,
+                Some(old),
+            ),
+            (
+                "W_RECLAIM_RISK_READY",
+                "FROM_FEE_ESTIMATE",
+                ApiResourceGateResult::ResourceReady,
+                ApiResourceDependencyType::PlatformDelegate,
+                Some(recent),
+            ),
+            (
+                "W_RECLAIM_RISK_PENDING",
+                "FROM_FEE_ESTIMATE",
+                ApiResourceGateResult::PlatformDelegateSuccess,
+                ApiResourceDependencyType::PlatformDelegate,
+                None,
+            ),
+            (
+                "W_RECLAIM_RISK_OTHER_OWNER",
+                "OTHER_FROM",
+                ApiResourceGateResult::PlatformDelegateSuccess,
+                ApiResourceDependencyType::PlatformDelegate,
+                Some(recent),
+            ),
+            (
+                "W_RECLAIM_RISK_CURRENT",
+                "FROM_FEE_ESTIMATE",
+                ApiResourceGateResult::PlatformDelegateSuccess,
+                ApiResourceDependencyType::PlatformDelegate,
+                Some(recent),
+            ),
+        ] {
+            sqlx::query(
+                r#"
+                UPDATE api_withdraws
+                SET from_addr = ?,
+                    estimated_resource_consume = ?,
+                    resource_gate_result = ?,
+                    resource_dependency_type = ?,
+                    resource_dependency_trade_no = ?,
+                    transaction_time = ?,
+                    finished_at = ?
+                WHERE trade_no = ?
+                "#,
+            )
+            .bind(from_addr)
+            .bind(r#"{"bandwidth":345,"energy":13532}"#)
+            .bind(gate_result)
+            .bind(dependency_type)
+            .bind(format!("WD_{trade_no}"))
+            .bind(finished_at)
+            .bind(finished_at)
+            .bind(trade_no)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        }
+
+        let reclaim_risk =
+            ApiWithdrawRepo::recent_completed_platform_delegate_resource_budget_by_owner(
+                &pool,
+                "TRON",
+                "FROM_FEE_ESTIMATE",
+                "W_RECLAIM_RISK_CURRENT",
+                now - chrono::Duration::minutes(10),
+            )
+            .await
+            .unwrap();
+        let pending = ApiWithdrawRepo::pending_resource_budget_by_owner(
+            &pool,
+            "TRON",
+            "FROM_FEE_ESTIMATE",
+            "W_RECLAIM_RISK_CURRENT",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(reclaim_risk.energy, 13_532);
+        assert_eq!(reclaim_risk.bandwidth, 345);
+        assert_eq!(pending.energy, 13_532);
+        assert_eq!(pending.bandwidth, 345);
     }
 
     #[tokio::test]

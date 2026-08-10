@@ -1,14 +1,10 @@
 use crate::get_manager;
 use wallet_api::request::transaction::{QuoteReq, SwapTokenInfo};
 use wallet_database::{
-    CoreDbPool,
+    CoreDbPool, SqliteContext,
     dao::assets::CreateAssetsVo,
-    entities::{
-        asset_token_key::AssetTokenKey,
-        assets::AssetsId,
-    },
+    entities::{asset_token_key::AssetTokenKey, assets::AssetsId},
     repositories::assets::AssetsRepo,
-    SqliteContext,
 };
 
 const AGGREGATOR: &str = "TSPSEgjQS1gChQLXW8qiVQtwrPdu1E4iCn";

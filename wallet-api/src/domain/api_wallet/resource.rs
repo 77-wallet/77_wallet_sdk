@@ -466,8 +466,9 @@ impl ApiResourceDomain {
 mod tests {
     use super::ApiResourceDomain;
     use wallet_chain_interact::tron::operations::stake::ResourceType;
-    use wallet_database::entities::bill::BillKind;
-    use wallet_database::entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType};
+    use wallet_database::entities::{
+        api_account::ApiAccountEntity, api_wallet::ApiWalletType, bill::BillKind,
+    };
 
     #[test]
     fn api_resource_amount_requires_positive_integer_trx() {

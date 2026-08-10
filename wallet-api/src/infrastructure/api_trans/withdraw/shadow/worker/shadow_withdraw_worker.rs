@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use tracing::{error, info, warn};
 use wallet_chain_interact::{
     BillResourceConsume,
@@ -87,6 +87,8 @@ use crate::{
 };
 use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_utils::{RetryableError as _, conversion, unit};
+
+const TRON_WITHDRAW_RECLAIM_RISK_WINDOW_SECS: i64 = 10 * 60;
 
 /// ShadowWithdrawWorker
 ///
@@ -883,11 +885,24 @@ impl ShadowWithdrawWorker {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
+        let reclaim_risk_since =
+            Utc::now() - Duration::seconds(TRON_WITHDRAW_RECLAIM_RISK_WINDOW_SECS);
+        let reclaim_risk_budget =
+            ApiWithdrawRepo::recent_completed_platform_delegate_resource_budget_by_owner(
+                &self.ctx.api_transaction_pool()?,
+                &req.chain_code,
+                &req.from_addr,
+                trade_no,
+                reclaim_risk_since,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
         // Platform delegation supplies ENERGY only. Bandwidth shortage is paid
         // by the existing TRX fee fallback and must not block ENERGY allocation.
         let required = ResourceBudget::new(fee_details.energy, 0);
         let available = ResourceBudget::new(available_energy.max(0) as u64, 0);
-        let persisted = ResourceBudget::new(pending_budget.energy, 0);
+        let persisted =
+            Self::withdraw_resource_gate_persisted_budget(pending_budget, reclaim_risk_budget);
 
         let decision = self.resource_reservations.reserve_with_persisted_budget(
             &req.from_addr,
@@ -906,6 +921,7 @@ impl ShadowWithdrawWorker {
                 available_energy,
                 available_bandwidth,
                 pending_budget,
+                reclaim_risk_budget,
                 reserved,
                 effective_available,
             )
@@ -939,6 +955,7 @@ impl ShadowWithdrawWorker {
             available_energy,
             available_bandwidth,
             pending_budget,
+            reclaim_risk_budget,
             shortfall.reserved,
             shortfall.effective_available,
         )
@@ -993,6 +1010,16 @@ impl ShadowWithdrawWorker {
             && req.resource_gate_result == Some(ApiResourceGateResult::ResourceDelegationSuccess)
     }
 
+    fn withdraw_resource_gate_persisted_budget(
+        pending_budget: PendingWithdrawResourceBudget,
+        reclaim_risk_budget: PendingWithdrawResourceBudget,
+    ) -> ResourceBudget {
+        ResourceBudget::new(
+            pending_budget.energy.saturating_add(reclaim_risk_budget.energy),
+            pending_budget.bandwidth.saturating_add(reclaim_risk_budget.bandwidth),
+        )
+    }
+
     async fn log_resource_gate_decision(
         &self,
         trade_no: &str,
@@ -1002,6 +1029,7 @@ impl ShadowWithdrawWorker {
         available_energy: i64,
         available_bandwidth: i64,
         pending_budget: PendingWithdrawResourceBudget,
+        reclaim_risk_budget: PendingWithdrawResourceBudget,
         reserved: ResourceBudget,
         effective_available: ResourceBudget,
     ) -> Result<(), ServiceError> {
@@ -1015,6 +1043,9 @@ impl ShadowWithdrawWorker {
             chain_available_bandwidth = %available_bandwidth,
             pending_db_energy = %pending_budget.energy,
             pending_db_bandwidth = %pending_budget.bandwidth,
+            reclaim_risk_energy = %reclaim_risk_budget.energy,
+            reclaim_risk_bandwidth = %reclaim_risk_budget.bandwidth,
+            reclaim_risk_window_secs = TRON_WITHDRAW_RECLAIM_RISK_WINDOW_SECS,
             reserved_memory_energy = %reserved.energy,
             reserved_memory_bandwidth = %reserved.bandwidth,
             effective_energy = %effective_available.energy,
@@ -3134,6 +3165,29 @@ oss:
 
         let ResourceReservationDecision::NeedMore(shortfall) = decision else {
             panic!("pending same-address energy must block resource-ready");
+        };
+        assert_eq!(shortfall.energy, 13_484);
+        assert_eq!(shortfall.effective_available, ResourceBudget::new(48, 0));
+    }
+
+    #[test]
+    fn withdraw_resource_ready_budget_subtracts_reclaim_risk_orders() {
+        let reservations = WithdrawResourceReservationManager::default();
+        let pending = PendingWithdrawResourceBudget { energy: 0, bandwidth: 0 };
+        let reclaim_risk = PendingWithdrawResourceBudget { energy: 13_532, bandwidth: 345 };
+        let persisted =
+            ShadowWithdrawWorker::withdraw_resource_gate_persisted_budget(pending, reclaim_risk);
+
+        let decision = reservations.reserve_with_persisted_budget(
+            "TAy4",
+            "W_LATER",
+            ResourceBudget::new(13_532, 0),
+            ResourceBudget::new(13_580, 0),
+            persisted,
+        );
+
+        let ResourceReservationDecision::NeedMore(shortfall) = decision else {
+            panic!("recent completed delegate reclaim risk must block resource-ready");
         };
         assert_eq!(shortfall.energy, 13_484);
         assert_eq!(shortfall.effective_available, ResourceBudget::new(48, 0));
