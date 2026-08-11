@@ -43,9 +43,6 @@ Scope: `wallet-api` API wallet withdraw flow.
 - Persisted allocation: the chain ENERGY snapshot subtracts the aggregate
   estimated ENERGY of other unfinished same-owner withdraws before per-order
   memory allocation.
-- Reclaim risk: recently completed same-owner withdraws that used platform
-  delegation remain in the persisted budget window because backend reclaim can
-  still lower the address ENERGY limit after their withdraw consumed energy.
 - Deduplication: restored in-memory reservations overlap persisted pending
   orders, so effective allocation subtracts the component-wise maximum of the
   two ledgers instead of their sum.
@@ -54,10 +51,7 @@ Scope: `wallet-api` API wallet withdraw flow.
   ```text
   src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs
   withdraw_resource_ready_budget_subtracts_pending_same_address_orders
-  withdraw_resource_ready_budget_subtracts_reclaim_risk_orders
-
-  wallet-database/src/dao/api_withdraw.rs
-  withdraw_completed_platform_delegate_budget_counts_reclaim_risk_only
+  withdraw_resource_ready_uses_chain_energy_when_no_pending_orders
   ```
 
 - Invariant: pending bandwidth remains diagnostic because platform delegation

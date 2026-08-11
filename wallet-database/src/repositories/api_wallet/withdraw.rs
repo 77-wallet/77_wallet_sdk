@@ -246,23 +246,6 @@ impl ApiWithdrawRepo {
         .await
     }
 
-    pub async fn recent_completed_platform_delegate_resource_budget_by_owner(
-        pool: &ApiTransactionDbPool,
-        chain_code: &str,
-        from_addr: &str,
-        exclude_trade_no: &str,
-        since: chrono::DateTime<chrono::Utc>,
-    ) -> Result<PendingWithdrawResourceBudget, crate::Error> {
-        ApiWithdrawDao::recent_completed_platform_delegate_resource_budget_by_owner(
-            pool.read_ref(),
-            chain_code,
-            from_addr,
-            exclude_trade_no,
-            since,
-        )
-        .await
-    }
-
     /// Runtime repair helper: query withdraw candidates from acct_change facts.
     ///
     /// Caller must still perform Rust-side filtering (amount/time window/uniqueness)
