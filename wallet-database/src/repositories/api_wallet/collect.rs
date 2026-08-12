@@ -480,6 +480,31 @@ impl ApiCollectRepo {
         ApiCollectDao::scan_can_build(pool.read_ref(), limit).await
     }
 
+    pub async fn scan_unexecuted_created_before(
+        pool: &ApiTransactionDbPool,
+        created_before: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::scan_unexecuted_created_before(pool.read_ref(), created_before, limit).await
+    }
+
+    pub async fn mark_unexecuted_expired(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        created_before: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+        err_code: ErrCode,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_unexecuted_expired(
+            pool.write_ref(),
+            trade_no,
+            created_before,
+            err_code,
+            err_msg,
+        )
+        .await
+    }
+
     pub async fn scan_need_resource_gate(
         pool: &ApiTransactionDbPool,
         limit: usize,

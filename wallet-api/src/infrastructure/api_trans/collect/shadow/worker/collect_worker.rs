@@ -97,6 +97,8 @@ use crate::{
 /// 只表达："对某个 trade_no 执行某个确定动作"
 #[derive(Debug)]
 pub enum ShadowCollectCommand {
+    /// 终结超过执行租期且从未进入链上执行的订单
+    ExpireUnexecuted(String),
     /// 评估资源闸门
     EvalResourceGate(String),
     /// 构建交易
@@ -192,6 +194,9 @@ pub struct ShadowCollectWorker {
 }
 
 impl ShadowCollectWorker {
+    const UNEXECUTED_ORDER_TTL_HOURS: i64 = 24;
+    const UNEXECUTED_ORDER_EXPIRED_MESSAGE: &'static str =
+        "Collect order expired after 24 hours without chain execution";
     fn collect_broadcast_guard_skip_requires_retry<T>(
         outcome: &crate::infrastructure::chain_rpc_guard::GuardedCallOutcome<T>,
     ) -> bool {
@@ -521,6 +526,9 @@ impl ShadowCollectWorker {
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
 
         match cmd {
+            ShadowCollectCommand::ExpireUnexecuted(trade_no) => {
+                self.process_expire_unexecuted(trade_no).await
+            }
             ShadowCollectCommand::EvalResourceGate(trade_no) => {
                 self.process_resource_gate(trade_no).await
             }
@@ -535,6 +543,32 @@ impl ShadowCollectWorker {
                 self.process_account_activation(trade_no).await
             }
         }
+    }
+
+    async fn process_expire_unexecuted(&self, trade_no: String) -> Result<(), ServiceError> {
+        let cutoff = Utc::now() - chrono::Duration::hours(Self::UNEXECUTED_ORDER_TTL_HOURS);
+        let rows = ApiCollectRepo::mark_unexecuted_expired(
+            &self.ctx.api_transaction_pool()?,
+            &trade_no,
+            cutoff,
+            ErrCode::UnknownError,
+            Self::UNEXECUTED_ORDER_EXPIRED_MESSAGE,
+        )
+        .await
+        .map_err(|error| ServiceError::Database(error.into()))?;
+
+        if rows > 0 {
+            info!(
+                trade_no = %trade_no,
+                ttl_hours = Self::UNEXECUTED_ORDER_TTL_HOURS,
+                source = "shadow_worker_v2",
+                "Expired unexecuted collect order"
+            );
+            self.fee_reservations.release(&trade_no);
+            self.advancer.try_advance(&trade_no).await;
+        }
+
+        Ok(())
     }
 
     async fn process_account_activation(

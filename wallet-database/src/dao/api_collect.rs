@@ -1352,6 +1352,82 @@ impl ApiCollectDao {
         Ok(result)
     }
 
+    /// Select collect orders whose execution lease expired before any chain attempt.
+    ///
+    /// The caller owns the expiry policy and supplies an explicit cutoff. Rows with
+    /// any durable build/broadcast fact are excluded because their outcome must be
+    /// recovered from chain state instead of inferred from age.
+    pub async fn scan_unexecuted_created_before<'a, E>(
+        exec: E,
+        created_before: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_collect
+            WHERE created_at <= ?
+            AND order_ack_sent_at IS NOT NULL
+            AND raw_tx IS NULL
+            AND tx_hash IS NULL
+            AND last_broadcast_at IS NULL
+            AND transaction_time IS NULL
+            AND err_code IS NULL
+            AND finished_at IS NULL
+            AND tx_exec_receipt_uploaded_at IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(created_before)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn mark_unexecuted_expired<'a, E>(
+        exec: E,
+        trade_no: &str,
+        created_before: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+        err_code: ErrCode,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let result = sqlx::query(
+            r#"
+            UPDATE api_collect
+            SET status = ?,
+                err_code = ?,
+                err_msg = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+              AND created_at <= ?
+              AND order_ack_sent_at IS NOT NULL
+              AND raw_tx IS NULL
+              AND tx_hash IS NULL
+              AND last_broadcast_at IS NULL
+              AND transaction_time IS NULL
+              AND err_code IS NULL
+              AND finished_at IS NULL
+              AND tx_exec_receipt_uploaded_at IS NULL
+            "#,
+        )
+        .bind(ApiCollectStatus::SendingTxFailed)
+        .bind(err_code)
+        .bind(err_msg)
+        .bind(trade_no)
+        .bind(created_before)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(result.rows_affected())
+    }
+
     pub async fn scan_need_resource_gate<'a, E>(
         exec: E,
         limit: usize,
@@ -4703,5 +4779,116 @@ mod tests {
 
         assert!(!trade_nos.contains(&"C_CAN_BROADCAST_SOL_BLOCKED".to_string()));
         assert!(trade_nos.contains(&"C_CAN_BROADCAST_SOL_READY".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_unexecuted_created_before_selects_only_expired_pre_chain_orders() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_unexecuted_expired");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for trade_no in [
+            "C_EXPIRED_UNEXECUTED",
+            "C_RECENT_UNEXECUTED",
+            "C_EXPIRED_BUILT",
+            "C_EXPIRED_FAILED",
+            "C_EXPIRED_FINISHED",
+        ] {
+            ApiCollectRepo::upsert_api_collect(
+                &pool,
+                "uid",
+                "collect",
+                "from",
+                "to",
+                "12.1",
+                "digest",
+                "tron",
+                Some("TToken".to_string()),
+                "JST",
+                trade_no,
+                2,
+                ApiCollectStatus::Init,
+                1,
+            )
+            .await
+            .unwrap();
+        }
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 created_at = strftime('%Y-%m-%dT%H:%M:%SZ','now','-25 hours')",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET created_at = strftime('%Y-%m-%dT%H:%M:%SZ','now','-23 hours')
+             WHERE trade_no = 'C_RECENT_UNEXECUTED'",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect SET raw_tx = '{\"tx\":true}', tx_hash = '0xbuilt'
+             WHERE trade_no = 'C_EXPIRED_BUILT'",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect SET err_code = 6001
+             WHERE trade_no = 'C_EXPIRED_FAILED'",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect SET finished_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = 'C_EXPIRED_FINISHED'",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let cutoff = sqlx::types::chrono::Utc::now() - chrono::Duration::hours(24);
+        let rows =
+            ApiCollectDao::scan_unexecuted_created_before(pool.as_ref(), cutoff, 10).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.trade_no).collect();
+
+        assert_eq!(trade_nos, vec!["C_EXPIRED_UNEXECUTED"]);
+
+        let affected = ApiCollectDao::mark_unexecuted_expired(
+            pool.as_ref(),
+            "C_EXPIRED_UNEXECUTED",
+            cutoff,
+            crate::entities::api_collect::ErrCode::UnknownError,
+            "Collect order expired after 24 hours without chain execution",
+        )
+        .await
+        .unwrap();
+        assert_eq!(affected, 1);
+
+        let expired = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_EXPIRED_UNEXECUTED")
+            .await
+            .unwrap();
+        assert_eq!(expired.err_code, Some(crate::entities::api_collect::ErrCode::UnknownError));
+        assert_eq!(expired.status, ApiCollectStatus::SendingTxFailed);
+        assert_eq!(
+            expired.err_msg.as_deref(),
+            Some("Collect order expired after 24 hours without chain execution")
+        );
+
+        let built_affected = ApiCollectDao::mark_unexecuted_expired(
+            pool.as_ref(),
+            "C_EXPIRED_BUILT",
+            cutoff,
+            crate::entities::api_collect::ErrCode::UnknownError,
+            "must not win against build facts",
+        )
+        .await
+        .unwrap();
+        assert_eq!(built_affected, 0);
     }
 }

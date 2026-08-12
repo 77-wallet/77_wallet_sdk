@@ -47,6 +47,8 @@ pub(crate) static COLLECT_SHADOW_ENABLED: AtomicBool = AtomicBool::new(false);
 /// 🔒 规则：只有 Confirm（transaction_time != NULL）才是"世界已发生"
 #[derive(Debug, Clone)]
 pub enum ChainIntent {
+    /// 终结超过执行租期且从未进入链上执行的订单。
+    ExpireUnexecuted(String),
     /// 评估 TRON 资源闸门。
     ///
     /// 这是真正的“操作步骤”：

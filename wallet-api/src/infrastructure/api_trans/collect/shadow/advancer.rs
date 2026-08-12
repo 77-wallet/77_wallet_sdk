@@ -44,6 +44,7 @@ const BROADCAST_GUARD_SKIP_RETRY_DELAY: Duration = Duration::from_secs(1);
 fn intent_trade_no(intent: &CollectIntent) -> Option<String> {
     match intent {
         CollectIntent::Chain(chain_intent) => match chain_intent {
+            ChainIntent::ExpireUnexecuted(trade_no) => Some(trade_no.clone()),
             ChainIntent::EvalResourceGate(trade_no) => Some(trade_no.clone()),
             ChainIntent::BuildTx(trade_no) => Some(trade_no.clone()),
             ChainIntent::BroadcastTx(trade_no) => Some(trade_no.clone()),

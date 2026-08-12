@@ -107,14 +107,16 @@
 // - 失败事实一旦成立，只允许"终态收口"，不再补过程
 //
 // ----------------------------------------------------------------------------
-// 2. Scanner 不使用时间做决策
+// 2. Scanner 不使用时间推断链上结果
 // ----------------------------------------------------------------------------
 //
-// - 禁止使用：
+// - 链上推进阶段禁止使用：
 //   - now - xxx > duration
 //   - xxx_at < yyy_at
 //
-// - 时间字段唯一用途：
+// - 例外：订单执行租期由独立的 expiry scan 使用 created_at 明确判断；
+//   该判断只允许终结从未生成 raw_tx / tx_hash / broadcast 事实的订单。
+// - 其他时间字段唯一用途：
 //   - 作为"该事实是否已发生"的布尔信号
 //     （IS NULL / IS NOT NULL）
 //
@@ -509,6 +511,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::Utc;
 use tokio::sync::Semaphore;
 use tracing::{error, info, trace, warn};
 use wallet_database::{
@@ -1050,6 +1053,7 @@ impl fmt::Debug for ShadowScanner {
 }
 
 impl ShadowScanner {
+    const UNEXECUTED_ORDER_TTL_HOURS: i64 = 24;
     pub fn new(
         ctx: &'static crate::context::Context,
         config: ScannerConfig,
@@ -1077,6 +1081,18 @@ impl ShadowScanner {
 
         let start = Instant::now();
         trace!("Starting collect shadow scan round");
+
+        match self.scan_unexecuted_expired().await {
+            Ok(expired_count) if expired_count > 0 => {
+                trace!(expired_count, "Expiry intents dispatched; deferring normal advancement");
+                drop(permit);
+                return;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                error!(stage = "unexecuted_expiry", %error, "Collect shadow scan stage failed");
+            }
+        }
 
         // 资源结果 ACK 是后端允许原单继续推进的门槛。
         // 如果先扫 BuildTx/UploadServiceFee，可能出现“先申请手续费、后 ACK 资源结果”的乱序。
@@ -1112,6 +1128,28 @@ impl ShadowScanner {
 
         // 许可证会在这里自动释放
         drop(permit);
+    }
+
+    async fn scan_unexecuted_expired(&self) -> Result<usize, ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+        let cutoff = Utc::now() - chrono::Duration::hours(Self::UNEXECUTED_ORDER_TTL_HOURS);
+        let records =
+            wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_unexecuted_created_before(
+                &pool,
+                cutoff,
+                self.config.max_items_per_scan,
+            )
+            .await?;
+
+        let record_count = records.len();
+        for record in records {
+            self.dispatch_intent(CollectIntent::Chain(ChainIntent::ExpireUnexecuted(
+                record.trade_no,
+            )))
+            .await;
+        }
+
+        Ok(record_count)
     }
 
     /// 根据阶段执行扫描

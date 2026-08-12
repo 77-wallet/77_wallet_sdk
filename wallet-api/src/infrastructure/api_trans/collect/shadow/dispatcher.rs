@@ -82,6 +82,9 @@ impl RunningKey {
     /// 从 CollectIntent 生成对应的 RunningKey
     pub fn from_intent(intent: &CollectIntent) -> Self {
         match intent {
+            CollectIntent::Chain(ChainIntent::ExpireUnexecuted(trade_no)) => {
+                RunningKey::TxMutation(trade_no.clone())
+            }
             CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => {
                 RunningKey::EvalResourceGate(trade_no.clone())
             }
@@ -134,8 +137,11 @@ mod tests {
     use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     #[test]
-    fn build_and_broadcast_share_mutation_key_but_recover_is_independent() {
+    fn expiry_build_and_broadcast_share_mutation_key_but_recover_is_independent() {
         let trade_no = "C_KEY";
+        let expiry = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::ExpireUnexecuted(
+            trade_no.to_string(),
+        )));
         let build = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BuildTx(
             trade_no.to_string(),
         )));
@@ -145,6 +151,7 @@ mod tests {
         let recover = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::RecoverTx(
             trade_no.to_string(),
         )));
+        assert_eq!(expiry, build);
         assert_eq!(build, broadcast);
         assert_ne!(broadcast, recover);
         assert!(matches!(build, RunningKey::TxMutation(_)));
@@ -194,6 +201,14 @@ struct DispatchTrace {
 impl DispatchTrace {
     fn from_intent(intent: &CollectIntent, key: RunningKey) -> Self {
         match intent {
+            CollectIntent::Chain(ChainIntent::ExpireUnexecuted(trade_no)) => Self {
+                worker: "ShadowCollectWorker",
+                command: "ExpireUnexecuted",
+                phase: "expiry",
+                trade_no: trade_no.clone(),
+                key,
+                side_effect: false,
+            },
             CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => Self {
                 worker: "ShadowCollectWorker",
                 command: "EvalResourceGate",
@@ -404,6 +419,10 @@ impl ShadowDispatcher {
         side_effect_worker: Arc<SideEffectWorker>,
     ) -> Result<(), crate::error::service::ServiceError> {
         match intent {
+            CollectIntent::Chain(ChainIntent::ExpireUnexecuted(trade_no)) => {
+                debug!(trade_no = %trade_no, "Sending ExpireUnexecuted command to Shadow Worker");
+                shadow_worker.handle(ShadowCollectCommand::ExpireUnexecuted(trade_no.clone())).await
+            }
             CollectIntent::Chain(ChainIntent::EvalResourceGate(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending EvalResourceGate command to Shadow Worker");
                 shadow_worker.handle(ShadowCollectCommand::EvalResourceGate(trade_no.clone())).await

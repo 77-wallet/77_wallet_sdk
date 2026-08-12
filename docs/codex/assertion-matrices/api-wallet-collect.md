@@ -4,6 +4,30 @@ Scope: `wallet-api` API wallet collect flow.
 
 Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
+### Unexecuted Collect Order Expiry
+
+- Layer: component/unit.
+- Entrypoints:
+
+  ```text
+  wallet-database/src/dao/api_collect.rs
+  scan_unexecuted_created_before_selects_only_expired_pre_chain_orders
+
+  wallet-api/src/infrastructure/api_trans/collect/shadow/dispatcher.rs
+  expiry_build_and_broadcast_share_mutation_key_but_recover_is_independent
+  ```
+
+- DB facts: an order older than 24 hours with an order ACK but no raw transaction,
+  transaction hash, broadcast attempt, chain result, prior error, or finish fact is
+  atomically frozen with `UnknownError` and the expiry reason.
+- Backend: the existing `UploadTxExecReceipt` side effect reports the persisted
+  failure fact; no new backend protocol is introduced.
+- Concurrency: expiry shares the per-trade mutation key with Build/Broadcast and
+  the database update repeats all pre-chain predicates as a compare-and-set guard.
+- Invariant: age can terminate only an order that has never entered chain
+  execution; built, broadcast, recoverable, failed, and finished rows are never
+  expired by this policy.
+
 ### Collect Fee TRON Uncertain Rebuild
 
 - Layer: component.
