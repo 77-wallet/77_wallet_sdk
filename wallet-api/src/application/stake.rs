@@ -1,6 +1,6 @@
 use crate::{
     context::Context,
-    domain::stake_batch::StakeBatchDomain,
+    domain::stake::batch::StakeBatchDomain,
     error::service::ServiceError,
     request::stake::{BatchDelegate, BatchUnDelegate},
     response_vo::standard_wallet::stake::BatchDelegateResp,

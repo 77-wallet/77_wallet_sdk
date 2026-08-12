@@ -10,6 +10,8 @@ use wallet_chain_interact::{
     types::MultisigTxResp,
 };
 
+pub(crate) mod batch;
+
 use crate::response_vo::standard_wallet::stake::VoteListResp;
 
 pub enum StakeArgs {

@@ -288,3 +288,64 @@ pub struct BatchList {
     pub receive_address: String,
     pub value: i64,
 }
+
+#[cfg(test)]
+mod batch_tests {
+    use super::{BatchDelegate, BatchList, BatchUnDelegate};
+    use crate::request::transaction::Signer;
+    use wallet_chain_interact::tron::{
+        consts,
+        operations::stake::{DelegateArgs, UnDelegateArgs},
+    };
+
+    const OWNER: &str = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
+    const RECEIVER: &str = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ";
+
+    #[test]
+    fn batch_delegate_contract_preserves_total_addresses_amount_lock_and_permission() {
+        let req = BatchDelegate {
+            owner_address: OWNER.to_string(),
+            resource_type: "energy".to_string(),
+            lock: true,
+            lock_period: 2.0,
+            list: vec![BatchList { receive_address: RECEIVER.to_string(), value: 7 }],
+            signer: Some(Signer { address: OWNER.to_string(), permission_id: 3 }),
+        };
+
+        let args: Vec<DelegateArgs> = (&req).try_into().unwrap();
+
+        assert_eq!(req.total(), 7);
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].owner_address, wallet_utils::address::bs58_addr_to_hex(OWNER).unwrap());
+        assert_eq!(
+            args[0].receiver_address,
+            wallet_utils::address::bs58_addr_to_hex(RECEIVER).unwrap()
+        );
+        assert_eq!(args[0].balance, 7 * consts::TRX_VALUE);
+        assert!(args[0].lock);
+        assert_eq!(args[0].lock_period, 2 * 28_800);
+        assert_eq!(args[0].permission_id, Some(3));
+    }
+
+    #[test]
+    fn batch_reclaim_contract_preserves_total_addresses_amount_and_permission() {
+        let req = BatchUnDelegate {
+            owner_address: OWNER.to_string(),
+            resource_type: "bandwidth".to_string(),
+            list: vec![BatchList { receive_address: RECEIVER.to_string(), value: 9 }],
+            signer: Some(Signer { address: OWNER.to_string(), permission_id: 4 }),
+        };
+
+        let args: Vec<UnDelegateArgs> = (&req).try_into().unwrap();
+
+        assert_eq!(req.total(), 9);
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].owner_address, wallet_utils::address::bs58_addr_to_hex(OWNER).unwrap());
+        assert_eq!(
+            args[0].receiver_address,
+            wallet_utils::address::bs58_addr_to_hex(RECEIVER).unwrap()
+        );
+        assert_eq!(args[0].balance, 9 * consts::TRX_VALUE);
+        assert_eq!(args[0].permission_id, Some(4));
+    }
+}
