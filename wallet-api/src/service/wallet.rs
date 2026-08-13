@@ -917,6 +917,7 @@ impl WalletService {
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
 
         ApiWalletRepo::physical_delete_all_wallet(&pool).await?;
+        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
         // 删除所有mqtt相关的任务
         // TaskQueueRepoTrait::delete_all(&mut tx, 2).await?;
         ApiAccountRepo::physical_delete_all(&pool, &[]).await?;
