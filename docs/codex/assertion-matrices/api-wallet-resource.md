@@ -17,6 +17,9 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   `api_batch_delegate_success_is_queryable_from_api_bill_detail`,
   `api_batch_undelegate_success_is_queryable_from_api_bill_detail`, and
   `api_batch_delegate_failed_broadcast_has_no_api_bill_detail`.
+- Single-operation integration tests:
+  `api_single_delegate_success_is_queryable_from_api_bill_detail` and
+  `api_single_undelegate_success_is_queryable_from_api_bill_detail`.
 - Entry points: `delegate_api_withdraw_wallet_resource`,
   `undelegate_api_withdraw_wallet_resource`,
   `batch_delegate_api_withdraw_wallet_resource`, and

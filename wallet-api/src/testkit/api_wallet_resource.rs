@@ -11,6 +11,8 @@ use wallet_database::entities::api_resource_operation::ApiResourceOperationType;
 pub enum TestBatchResourceOperation {
     Delegate,
     Undelegate,
+    BatchDelegate,
+    BatchUndelegate,
 }
 
 #[derive(Debug)]
@@ -31,8 +33,10 @@ pub async fn record_batch_resource_broadcasts(
     let ctx = api_trans_test_ctx().await;
     let resource = ResourceType::try_from(resource_type)?;
     let operation_type = match operation {
-        TestBatchResourceOperation::Delegate => ApiResourceOperationType::BatchDelegate,
-        TestBatchResourceOperation::Undelegate => ApiResourceOperationType::BatchUndelegate,
+        TestBatchResourceOperation::Delegate => ApiResourceOperationType::Delegate,
+        TestBatchResourceOperation::Undelegate => ApiResourceOperationType::Undelegate,
+        TestBatchResourceOperation::BatchDelegate => ApiResourceOperationType::BatchDelegate,
+        TestBatchResourceOperation::BatchUndelegate => ApiResourceOperationType::BatchUndelegate,
     };
     let broadcasts = broadcasts
         .into_iter()

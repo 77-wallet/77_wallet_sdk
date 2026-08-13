@@ -51,3 +51,29 @@ async fn api_batch_undelegate_success_is_queryable_from_api_bill_detail() {
     assert_eq!(detail.bill.value, fixture.amount.to_string());
     assert_eq!(detail.bill.tx_kind, BillKind::BatchUnDelegateBandwidth.to_i8());
 }
+
+#[serial]
+#[tokio::test]
+async fn api_single_delegate_success_is_queryable_from_api_bill_detail() {
+    let scenario = BatchResourceDetailScenario::new();
+    let fixture = BatchResourceFixture::delegate("single_delegate_detail");
+
+    scenario.given_successful_single_delegate_broadcast(&fixture).await;
+
+    let detail = scenario.when_bill_detail_is_requested(&fixture.tx_hash, &fixture.owner).await;
+    assert_eq!(detail.bill.to_addr, fixture.receiver);
+    assert_eq!(detail.bill.tx_kind, BillKind::DelegateEnergy.to_i8());
+}
+
+#[serial]
+#[tokio::test]
+async fn api_single_undelegate_success_is_queryable_from_api_bill_detail() {
+    let scenario = BatchResourceDetailScenario::new();
+    let fixture = BatchResourceFixture::undelegate("single_undelegate_detail");
+
+    scenario.given_successful_single_undelegate_broadcast(&fixture).await;
+
+    let detail = scenario.when_bill_detail_is_requested(&fixture.tx_hash, &fixture.owner).await;
+    assert_eq!(detail.bill.to_addr, fixture.receiver);
+    assert_eq!(detail.bill.tx_kind, BillKind::UnDelegateBandwidth.to_i8());
+}

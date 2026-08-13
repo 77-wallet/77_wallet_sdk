@@ -41,7 +41,7 @@ impl BatchResourceDetailScenario {
             &fixture.uid,
             &fixture.owner,
             "energy",
-            TestBatchResourceOperation::Delegate,
+            TestBatchResourceOperation::BatchDelegate,
             vec![TestBatchBroadcast {
                 receiver_address: fixture.receiver.clone(),
                 amount: fixture.amount,
@@ -61,7 +61,7 @@ impl BatchResourceDetailScenario {
             &fixture.uid,
             &fixture.owner,
             "bandwidth",
-            TestBatchResourceOperation::Undelegate,
+            TestBatchResourceOperation::BatchUndelegate,
             vec![TestBatchBroadcast {
                 receiver_address: fixture.receiver.clone(),
                 amount: fixture.amount,
@@ -71,6 +71,43 @@ impl BatchResourceDetailScenario {
         )
         .await
         .expect("persist successful API batch resource reclaim broadcast");
+    }
+
+    pub(super) async fn given_successful_single_delegate_broadcast(
+        &self,
+        fixture: &BatchResourceFixture,
+    ) {
+        self.given_single_broadcast(fixture, "energy", TestBatchResourceOperation::Delegate).await;
+    }
+
+    pub(super) async fn given_successful_single_undelegate_broadcast(
+        &self,
+        fixture: &BatchResourceFixture,
+    ) {
+        self.given_single_broadcast(fixture, "bandwidth", TestBatchResourceOperation::Undelegate)
+            .await;
+    }
+
+    async fn given_single_broadcast(
+        &self,
+        fixture: &BatchResourceFixture,
+        resource: &str,
+        operation: TestBatchResourceOperation,
+    ) {
+        record_batch_resource_broadcasts(
+            &fixture.uid,
+            &fixture.owner,
+            resource,
+            operation,
+            vec![TestBatchBroadcast {
+                receiver_address: fixture.receiver.clone(),
+                amount: fixture.amount,
+                tx_hash: fixture.tx_hash.clone(),
+                transaction_fee: fixture.transaction_fee.clone(),
+            }],
+        )
+        .await
+        .expect("persist successful API single resource broadcast");
     }
 
     pub(super) async fn when_bill_detail_is_requested(

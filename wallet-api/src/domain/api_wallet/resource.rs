@@ -58,6 +58,7 @@ pub(crate) struct ApiResourceBroadcastOutcome {
     pub(crate) raw_tx: String,
     pub(crate) transaction_fee: String,
     pub(crate) resp: Option<FreezeResp>,
+    pub(crate) delegate_resp: Option<DelegateResp>,
     pub(crate) withdraw_unfreeze_resp: Option<WithdrawUnfreezeResp>,
 }
 
@@ -176,7 +177,7 @@ impl ApiResourceDomain {
     pub(crate) async fn delegate_withdraw_wallet_resource(
         ctx: &'static Context,
         req: DelegateReq,
-    ) -> Result<DelegateResp, ServiceError> {
+    ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
         let owner_ctx = Self::withdraw_wallet_account_context(ctx, &req.owner_address).await?;
         let balance_trx = Self::parse_amount_trx(req.balance)?;
         let resource_type = ResourceType::try_from(req.resource.as_str())?;
@@ -184,7 +185,7 @@ impl ApiResourceDomain {
         let args = DelegateArgs::try_from(&req)?;
         let resource_value =
             Self::resource_value(&owner_ctx.owner_address, balance_trx, resource_type, ctx).await?;
-        let outcome = Self::execute_tron_resource_operation(
+        let mut outcome = Self::execute_tron_resource_operation(
             owner_ctx.owner_address,
             0,
             args,
@@ -195,13 +196,18 @@ impl ApiResourceDomain {
         .await?;
         let resource = ResourceResp::new(balance_trx, resource_type, resource_value);
 
-        Ok(DelegateResp::new_delegate(req, resource, bill_kind, outcome.tx_hash))
+        outcome.uid = Some(owner_ctx.uid);
+        outcome.resource_type = Some(resource_type);
+        outcome.amount = Some(balance_trx.to_string());
+        outcome.delegate_resp =
+            Some(DelegateResp::new_delegate(req, resource, bill_kind, outcome.tx_hash.clone()));
+        Ok(outcome)
     }
 
     pub(crate) async fn undelegate_withdraw_wallet_resource(
         ctx: &'static Context,
         req: UnDelegateReq,
-    ) -> Result<DelegateResp, ServiceError> {
+    ) -> Result<ApiResourceBroadcastOutcome, ServiceError> {
         let owner_ctx = Self::withdraw_wallet_account_context(ctx, &req.owner_address).await?;
         let balance_trx = Self::parse_amount_trx(req.balance)?;
         let resource_type = ResourceType::try_from(req.resource.as_str())?;
@@ -209,7 +215,7 @@ impl ApiResourceDomain {
         let args = UnDelegateArgs::try_from(&req)?;
         let resource_value =
             Self::resource_value(&owner_ctx.owner_address, balance_trx, resource_type, ctx).await?;
-        let outcome = Self::execute_tron_resource_operation(
+        let mut outcome = Self::execute_tron_resource_operation(
             owner_ctx.owner_address,
             0,
             args,
@@ -220,7 +226,12 @@ impl ApiResourceDomain {
         .await?;
         let resource = ResourceResp::new(balance_trx, resource_type, resource_value);
 
-        Ok(DelegateResp::new_undelegate(req, resource, bill_kind, outcome.tx_hash))
+        outcome.uid = Some(owner_ctx.uid);
+        outcome.resource_type = Some(resource_type);
+        outcome.amount = Some(balance_trx.to_string());
+        outcome.delegate_resp =
+            Some(DelegateResp::new_undelegate(req, resource, bill_kind, outcome.tx_hash.clone()));
+        Ok(outcome)
     }
 
     pub(crate) fn delegate_bill_kind(resource_type: ResourceType) -> BillKind {
@@ -690,6 +701,7 @@ impl ApiResourceDomain {
             raw_tx: raw_tx_str,
             transaction_fee,
             resp: None,
+            delegate_resp: None,
             withdraw_unfreeze_resp: None,
         })
     }

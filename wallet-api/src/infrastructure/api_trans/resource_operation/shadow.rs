@@ -660,6 +660,8 @@ impl ResourceOperationWorker {
             ApiResourceOperationType::Vote
             | ApiResourceOperationType::WithdrawReward
             | ApiResourceOperationType::WithdrawUnfreeze
+            | ApiResourceOperationType::Delegate
+            | ApiResourceOperationType::Undelegate
             | ApiResourceOperationType::BatchDelegate
             | ApiResourceOperationType::BatchUndelegate => {
                 return Err(ServiceError::Parameter(
@@ -689,6 +691,8 @@ impl ResourceOperationWorker {
             ApiResourceOperationType::Vote
             | ApiResourceOperationType::WithdrawReward
             | ApiResourceOperationType::WithdrawUnfreeze
+            | ApiResourceOperationType::Delegate
+            | ApiResourceOperationType::Undelegate
             | ApiResourceOperationType::BatchDelegate
             | ApiResourceOperationType::BatchUndelegate => 0,
         };

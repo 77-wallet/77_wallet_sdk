@@ -138,8 +138,21 @@ impl ApiResourceApplication {
         let resource = ResourceType::try_from(req.resource.as_str())?;
         let bill_kind = ApiResourceDomain::delegate_bill_kind(resource);
         self.notify_transaction_process(bill_kind, Process::Building).await?;
-
-        ApiResourceDomain::delegate_withdraw_wallet_resource(self.ctx, req).await
+        let receiver_address = req.receiver_address.clone();
+        let outcome = ApiResourceDomain::delegate_withdraw_wallet_resource(self.ctx, req).await?;
+        self.record_client_resource_broadcast(
+            outcome.uid.as_deref().ok_or_else(|| Self::missing_outcome("delegate uid"))?,
+            &outcome.owner_address,
+            receiver_address,
+            resource,
+            outcome.amount.clone().ok_or_else(|| Self::missing_outcome("delegate amount"))?,
+            ApiResourceOperationType::Delegate,
+            outcome.tx_hash.clone(),
+            outcome.raw_tx.clone(),
+            outcome.transaction_fee.clone(),
+        )
+        .await?;
+        outcome.delegate_resp.ok_or_else(|| Self::missing_outcome("delegate response"))
     }
 
     pub(crate) async fn undelegate_withdraw_wallet_resource(
@@ -151,8 +164,21 @@ impl ApiResourceApplication {
         let resource = ResourceType::try_from(req.resource.as_str())?;
         let bill_kind = ApiResourceDomain::undelegate_bill_kind(resource);
         self.notify_transaction_process(bill_kind, Process::Building).await?;
-
-        ApiResourceDomain::undelegate_withdraw_wallet_resource(self.ctx, req).await
+        let receiver_address = req.receiver_address.clone();
+        let outcome = ApiResourceDomain::undelegate_withdraw_wallet_resource(self.ctx, req).await?;
+        self.record_client_resource_broadcast(
+            outcome.uid.as_deref().ok_or_else(|| Self::missing_outcome("undelegate uid"))?,
+            &outcome.owner_address,
+            receiver_address,
+            resource,
+            outcome.amount.clone().ok_or_else(|| Self::missing_outcome("undelegate amount"))?,
+            ApiResourceOperationType::Undelegate,
+            outcome.tx_hash.clone(),
+            outcome.raw_tx.clone(),
+            outcome.transaction_fee.clone(),
+        )
+        .await?;
+        outcome.delegate_resp.ok_or_else(|| Self::missing_outcome("undelegate response"))
     }
 
     pub(crate) async fn batch_delegate_withdraw_wallet_resource(
@@ -403,28 +429,61 @@ impl ApiResourceApplication {
         operation_type: ApiResourceOperationType,
         broadcasts: Vec<crate::domain::api_wallet::resource::ApiBatchResourceBroadcast>,
     ) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_resource_pool()?;
         for broadcast in broadcasts {
-            let mut input = NewApiResourceOperation::client(
+            self.record_client_resource_broadcast(
                 uid,
-                Self::client_resource_trade_no(),
                 owner_address,
-                Self::db_resource_type(resource),
+                broadcast.receiver_address,
+                resource,
                 broadcast.amount.to_string(),
                 operation_type,
-            );
-            input.receiver_address = Some(broadcast.receiver_address);
-            ApiResourceOperationRepo::record_client_broadcast_success(
-                &pool,
-                input,
-                &broadcast.tx_hash,
-                &broadcast.raw_tx,
-                &broadcast.transaction_fee,
+                broadcast.tx_hash,
+                broadcast.raw_tx,
+                broadcast.transaction_fee,
             )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()))?;
+            .await?;
         }
         Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn record_client_resource_broadcast(
+        &self,
+        uid: &str,
+        owner_address: &str,
+        receiver_address: String,
+        resource: ResourceType,
+        amount: String,
+        operation_type: ApiResourceOperationType,
+        tx_hash: String,
+        raw_tx: String,
+        transaction_fee: String,
+    ) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+        let mut input = NewApiResourceOperation::client(
+            uid,
+            Self::client_resource_trade_no(),
+            owner_address,
+            Self::db_resource_type(resource),
+            amount,
+            operation_type,
+        );
+        input.receiver_address = Some(receiver_address);
+        ApiResourceOperationRepo::record_client_broadcast_success(
+            &pool,
+            input,
+            &tx_hash,
+            &raw_tx,
+            &transaction_fee,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))
+    }
+
+    fn missing_outcome(field: &str) -> ServiceError {
+        ServiceError::System(crate::error::system::SystemError::Internal(format!(
+            "api wallet resource outcome missing {field}"
+        )))
     }
 
     fn db_resource_type(resource: ResourceType) -> DbApiResourceType {
