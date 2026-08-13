@@ -929,6 +929,8 @@ impl ApiWalletService {
             accounts.extend(withdraw_accounts);
         }
 
+        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+
         let sn = self.ctx.get_sn();
 
         let dirs = self.ctx.get_global_dirs();

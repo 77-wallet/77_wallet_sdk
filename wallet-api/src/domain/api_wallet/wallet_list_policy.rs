@@ -139,23 +139,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_wallet_list_policy_reloads_after_invalidation() {
-        let first = super::load_api_wallet_list(|| async { Ok(ApiWalletList::new()) })
-            .await
-            .expect("initial list query ok");
-        assert!(first.is_empty());
-
-        super::invalidate_api_wallet_list();
-
-        let reloaded = super::load_api_wallet_list(|| async {
+    async fn api_wallet_list_policy_drops_deleted_wallet_after_invalidation() {
+        let cached = super::load_api_wallet_list(|| async {
             Ok(ApiWalletList(vec![crate::response_vo::api_wallet::wallet::ApiWalletItem {
                 recharge_wallet: None,
                 withdraw_wallet: None,
             }]))
         })
         .await
-        .expect("reloaded list query ok");
+        .expect("initial list query ok");
+        assert_eq!(cached.len(), 1);
 
-        assert_eq!(reloaded.len(), 1);
+        super::invalidate_api_wallet_list();
+
+        let reloaded = super::load_api_wallet_list(|| async { Ok(ApiWalletList::new()) })
+            .await
+            .expect("reloaded list query ok");
+
+        assert!(reloaded.is_empty());
     }
 }
