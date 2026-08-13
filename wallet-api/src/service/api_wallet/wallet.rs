@@ -855,6 +855,7 @@ impl ApiWalletService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
+        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
         Ok(())
     }
 
