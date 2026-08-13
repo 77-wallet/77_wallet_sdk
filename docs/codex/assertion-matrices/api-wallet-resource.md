@@ -9,6 +9,10 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 - Batch tests: `api_withdraw_wallet_batch_delegate_uses_batch_bill_kinds`,
   `api_withdraw_wallet_batch_reclaim_uses_batch_bill_kinds`, and the shared
   request-contract tests under `request::stake::batch_tests`.
+- Detail persistence tests:
+  `resource_operation_records_client_batch_delegate_for_hash_detail_lookup`,
+  `api_resource_operation_batch_delegate_maps_to_batch_delegate_detail`, and
+  `api_resource_operation_batch_undelegate_maps_to_batch_undelegate_detail`.
 - Entry points: `delegate_api_withdraw_wallet_resource`,
   `undelegate_api_withdraw_wallet_resource`,
   `batch_delegate_api_withdraw_wallet_resource`, and
@@ -20,13 +24,18 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
   undelegate `BillKind` values for build and broadcast notifications. Batch
   responses preserve per-address broadcast status and successful transaction
   hashes.
+- DB facts: each successfully broadcast batch transaction creates one client
+  `api_resource_operation` row containing owner, receiver, amount, signed raw
+  transaction, hash, and transaction fee. Failed broadcast items are absent
+  from the successful-broadcast collection and do not create detail rows.
 - Failure facts: all batch transactions are built, fee-checked, and signed
   before the first broadcast; an invalid API withdrawal account, insufficient
   total fee balance, or signing failure therefore cannot partially broadcast
   the batch.
 - Invariant: API withdrawal-wallet delegation and reclaim reuse the API-wallet
-  signing/broadcast path and do not create normal-wallet bills or client
-  `api_resource_operation` rows.
+  signing/broadcast path, never create normal-wallet bills, and expose every
+  successful batch hash through API wallet bill detail with the correct batch
+  delegate or undelegate transaction kind.
 
 ## Resource Recovery Error Classification
 

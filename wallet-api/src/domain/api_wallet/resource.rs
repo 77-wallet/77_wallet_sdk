@@ -68,8 +68,24 @@ pub(crate) struct ApiWithdrawWalletAccountContext {
 
 struct TempBuildTransaction {
     to: String,
-    transaction_fee: i64,
+    amount: i64,
+    transaction_fee_sun: i64,
+    transaction_fee: String,
+    resource_consume: BillResourceConsume,
     raw_tx: RawTransactionParams,
+}
+
+pub(crate) struct ApiBatchResourceBroadcast {
+    pub(crate) receiver_address: String,
+    pub(crate) amount: i64,
+    pub(crate) tx_hash: String,
+    pub(crate) raw_tx: String,
+    pub(crate) transaction_fee: String,
+}
+
+pub(crate) struct ApiBatchResourceOutcome {
+    pub(crate) resp: BatchDelegateResp,
+    pub(crate) broadcasts: Vec<ApiBatchResourceBroadcast>,
 }
 
 impl ApiResourceDomain {
@@ -238,7 +254,7 @@ impl ApiResourceDomain {
     pub(crate) async fn batch_delegate_withdraw_wallet_resource(
         ctx: &'static Context,
         req: BatchDelegate,
-    ) -> Result<BatchDelegateResp, ServiceError> {
+    ) -> Result<ApiBatchResourceOutcome, ServiceError> {
         let resource_type = ResourceType::try_from(req.resource_type.as_str())?;
 
         for list in req.list.iter() {
@@ -251,6 +267,7 @@ impl ApiResourceDomain {
 
         let bill_kind = Self::batch_delegate_bill_kind(resource_type);
         let args: Vec<DelegateArgs> = (&req).try_into()?;
+        let amounts = req.list.iter().map(|item| item.value).collect();
         let amount = req.total();
 
         Self::process_batch(
@@ -259,6 +276,7 @@ impl ApiResourceDomain {
             &req.owner_address,
             bill_kind,
             args,
+            amounts,
             amount,
             &req.signer,
         )
@@ -268,7 +286,7 @@ impl ApiResourceDomain {
     pub(crate) async fn batch_undelegate_withdraw_wallet_resource(
         ctx: &'static Context,
         req: BatchUnDelegate,
-    ) -> Result<BatchDelegateResp, ServiceError> {
+    ) -> Result<ApiBatchResourceOutcome, ServiceError> {
         let resource_type = ResourceType::try_from(req.resource_type.as_str())?;
 
         for list in req.list.iter() {
@@ -281,6 +299,7 @@ impl ApiResourceDomain {
 
         let bill_kind = Self::batch_undelegate_bill_kind(resource_type);
         let args: Vec<UnDelegateArgs> = (&req).try_into()?;
+        let amounts = req.list.iter().map(|item| item.value).collect();
         let amount = req.total();
 
         Self::process_batch(
@@ -289,6 +308,7 @@ impl ApiResourceDomain {
             &req.owner_address,
             bill_kind,
             args,
+            amounts,
             amount,
             &req.signer,
         )
@@ -309,10 +329,11 @@ impl ApiResourceDomain {
         chain: &wallet_chain_interact::tron::TronChain,
         from: &str,
         args: Vec<impl TronTxOperation<T>>,
+        amounts: Vec<i64>,
         bill_kind: BillKind,
     ) -> Result<Vec<TempBuildTransaction>, ServiceError> {
         let mut result = vec![];
-        for (i, item) in args.into_iter().enumerate() {
+        for (i, (item, amount)) in args.into_iter().zip(amounts).enumerate() {
             let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new_with_num(
                 bill_kind,
                 (i + 1) as i64,
@@ -322,9 +343,14 @@ impl ApiResourceDomain {
             let raw_tx = item.build_raw_transaction(&chain.provider).await?;
             let consumer =
                 chain.get_provider().transfer_fee(from, None, &raw_tx.raw_data_hex, 1).await?;
+            let resource_consume =
+                BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
             result.push(TempBuildTransaction {
                 to: item.get_to(),
-                transaction_fee: consumer.transaction_fee_i64(),
+                amount,
+                transaction_fee_sun: consumer.transaction_fee_i64(),
+                transaction_fee: consumer.transaction_fee(),
+                resource_consume,
                 raw_tx,
             });
         }
@@ -337,9 +363,10 @@ impl ApiResourceDomain {
         key: ChainPrivateKey,
         bill_kind: BillKind,
         txs: Vec<TempBuildTransaction>,
-    ) -> Result<(Vec<BatchRes>, Vec<String>), ServiceError> {
+    ) -> Result<(Vec<BatchRes>, Vec<String>, Vec<ApiBatchResourceBroadcast>), ServiceError> {
         let mut exec_res = vec![];
         let mut tx_hash = vec![];
+        let mut broadcasts = vec![];
         let txs = txs
             .into_iter()
             .map(|mut item| {
@@ -355,15 +382,44 @@ impl ApiResourceDomain {
                 Process::Broadcast,
             ));
             FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
-            match chain.get_provider().exec_raw_transaction(item.raw_tx).await {
+            let TempBuildTransaction {
+                to,
+                amount,
+                transaction_fee_sun: _,
+                transaction_fee,
+                resource_consume,
+                raw_tx,
+            } = item;
+            let expected_hash = raw_tx.tx_id.clone();
+            let persisted_raw = RawTx::Tron(raw_tx, resource_consume, transaction_fee.clone());
+            let raw_tx = wallet_utils::serde_func::serde_to_string(&persisted_raw)?;
+            let RawTx::Tron(broadcast_raw, ..) = persisted_raw else {
+                unreachable!("batch resource operation builds tron tx")
+            };
+            match chain.get_provider().exec_raw_transaction(broadcast_raw).await {
                 Ok(result) => {
-                    exec_res.push(BatchRes { address: item.to, status: true });
-                    tx_hash.push(result.tx_id);
+                    if result.tx_id != expected_hash {
+                        return Err(ServiceError::System(
+                            crate::error::system::SystemError::Internal(
+                                "api wallet batch resource tx_hash mismatch after broadcast"
+                                    .to_string(),
+                            ),
+                        ));
+                    }
+                    exec_res.push(BatchRes { address: to.clone(), status: true });
+                    tx_hash.push(result.tx_id.clone());
+                    broadcasts.push(ApiBatchResourceBroadcast {
+                        receiver_address: to,
+                        amount,
+                        tx_hash: result.tx_id,
+                        raw_tx,
+                        transaction_fee,
+                    });
                 }
-                Err(_) => exec_res.push(BatchRes { address: item.to, status: false }),
+                Err(_) => exec_res.push(BatchRes { address: to, status: false }),
             }
         }
-        Ok((exec_res, tx_hash))
+        Ok((exec_res, tx_hash, broadcasts))
     }
 
     async fn process_batch<T>(
@@ -372,9 +428,10 @@ impl ApiResourceDomain {
         owner_address: &str,
         bill_kind: BillKind,
         args: Vec<impl TronTxOperation<T>>,
+        amounts: Vec<i64>,
         amount: i64,
         signer: &Option<Signer>,
-    ) -> Result<BatchDelegateResp, ServiceError>
+    ) -> Result<ApiBatchResourceOutcome, ServiceError>
     where
         T: Send + 'static,
     {
@@ -383,22 +440,26 @@ impl ApiResourceDomain {
         let chain = adapter.chain();
         let account_resource = chain.account_resource(owner_address).await?;
         let resource_value = account_resource.resource_value(resource_type, amount)?;
-        let txs = Self::batch_build_transaction(ctx, chain, owner_address, args, bill_kind).await?;
+        let txs =
+            Self::batch_build_transaction(ctx, chain, owner_address, args, amounts, bill_kind)
+                .await?;
         let balance = chain.balance(owner_address, None).await?;
-        let total_fee = txs.iter().map(|item| item.transaction_fee).sum::<i64>();
+        let total_fee = txs.iter().map(|item| item.transaction_fee_sun).sum::<i64>();
         if balance.to::<i64>() < total_fee {
             return Err(ServiceError::Business(BusinessError::Chain(
                 ChainError::InsufficientFeeBalance,
             )));
         }
         let key = Self::get_key(ctx, owner_address, signer).await?;
-        let res = Self::batch_exec(ctx, chain, key, bill_kind, txs).await?;
-        Ok(BatchDelegateResp::new(
+        let (result, hashes, broadcasts) =
+            Self::batch_exec(ctx, chain, key, bill_kind, txs).await?;
+        let resp = BatchDelegateResp::new(
             owner_address.to_string(),
-            res,
+            (result, hashes),
             ResourceResp::new(amount, resource_type, resource_value),
             bill_kind,
-        ))
+        );
+        Ok(ApiBatchResourceOutcome { resp, broadcasts })
     }
 
     pub(crate) async fn withdraw_wallet_votes(

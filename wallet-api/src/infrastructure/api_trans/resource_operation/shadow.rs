@@ -659,7 +659,9 @@ impl ResourceOperationWorker {
             }
             ApiResourceOperationType::Vote
             | ApiResourceOperationType::WithdrawReward
-            | ApiResourceOperationType::WithdrawUnfreeze => {
+            | ApiResourceOperationType::WithdrawUnfreeze
+            | ApiResourceOperationType::BatchDelegate
+            | ApiResourceOperationType::BatchUndelegate => {
                 return Err(ServiceError::Parameter(
                     "resource operation worker does not build client governance tasks".to_string(),
                 ));
@@ -686,7 +688,9 @@ impl ResourceOperationWorker {
             ApiResourceOperationType::Unstake => 0,
             ApiResourceOperationType::Vote
             | ApiResourceOperationType::WithdrawReward
-            | ApiResourceOperationType::WithdrawUnfreeze => 0,
+            | ApiResourceOperationType::WithdrawUnfreeze
+            | ApiResourceOperationType::BatchDelegate
+            | ApiResourceOperationType::BatchUndelegate => 0,
         };
         let need_sun = consumer.transaction_fee_i64().saturating_add(stake_amount_sun);
         if balance.to::<i64>() < need_sun {

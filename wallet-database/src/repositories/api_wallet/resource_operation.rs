@@ -284,6 +284,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resource_operation_records_client_batch_delegate_for_hash_detail_lookup() {
+        let pool = setup_api_resource_pool("resource_operation_client_batch_delegate_lookup").await;
+        let mut input = NewApiResourceOperation::client(
+            "uid_1",
+            "delegate_trade_1",
+            "owner",
+            ApiResourceType::Energy,
+            "2",
+            ApiResourceOperationType::BatchDelegate,
+        );
+        input.receiver_address = Some("receiver".to_string());
+
+        ApiResourceOperationRepo::record_client_broadcast_success(
+            &pool,
+            input,
+            "delegate_hash",
+            "raw_delegate_tx",
+            "123",
+        )
+        .await
+        .unwrap();
+
+        let got = ApiResourceOperationRepo::get_by_hash_and_owner(&pool, "delegate_hash", "owner")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.operation_type, ApiResourceOperationType::BatchDelegate);
+        assert_eq!(got.receiver_address.as_deref(), Some("receiver"));
+        assert_eq!(got.amount, "2");
+        assert_eq!(got.raw_tx.as_deref(), Some("raw_delegate_tx"));
+        assert_eq!(got.transaction_fee.as_deref(), Some("123"));
+    }
+
+    #[tokio::test]
     async fn resource_operation_records_client_withdraw_reward_for_hash_detail_lookup() {
         let pool =
             setup_api_resource_pool("resource_operation_client_withdraw_reward_lookup").await;

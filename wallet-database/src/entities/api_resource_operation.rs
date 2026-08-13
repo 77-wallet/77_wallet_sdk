@@ -49,6 +49,8 @@ pub enum ApiResourceOperationType {
     Vote = 3,
     WithdrawReward = 4,
     WithdrawUnfreeze = 5,
+    BatchDelegate = 6,
+    BatchUndelegate = 7,
 }
 
 impl ApiResourceOperationType {
@@ -59,6 +61,8 @@ impl ApiResourceOperationType {
             Self::Vote => 3,
             Self::WithdrawReward => 4,
             Self::WithdrawUnfreeze => 5,
+            Self::BatchDelegate => 6,
+            Self::BatchUndelegate => 7,
         }
     }
 }

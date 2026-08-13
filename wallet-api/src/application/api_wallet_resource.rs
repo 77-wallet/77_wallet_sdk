@@ -161,7 +161,21 @@ impl ApiResourceApplication {
         password: String,
     ) -> Result<BatchDelegateResp, ServiceError> {
         WalletApplication::validate_password(self.ctx, &password).await?;
-        ApiResourceDomain::batch_delegate_withdraw_wallet_resource(self.ctx, req).await
+        let owner_ctx =
+            ApiResourceDomain::withdraw_wallet_account_context(self.ctx, &req.owner_address)
+                .await?;
+        let resource = ResourceType::try_from(req.resource_type.as_str())?;
+        let outcome =
+            ApiResourceDomain::batch_delegate_withdraw_wallet_resource(self.ctx, req).await?;
+        self.record_client_batch_resource_broadcasts(
+            &owner_ctx.uid,
+            &owner_ctx.owner_address,
+            resource,
+            ApiResourceOperationType::BatchDelegate,
+            outcome.broadcasts,
+        )
+        .await?;
+        Ok(outcome.resp)
     }
 
     pub(crate) async fn batch_undelegate_withdraw_wallet_resource(
@@ -170,7 +184,21 @@ impl ApiResourceApplication {
         password: String,
     ) -> Result<BatchDelegateResp, ServiceError> {
         WalletApplication::validate_password(self.ctx, &password).await?;
-        ApiResourceDomain::batch_undelegate_withdraw_wallet_resource(self.ctx, req).await
+        let owner_ctx =
+            ApiResourceDomain::withdraw_wallet_account_context(self.ctx, &req.owner_address)
+                .await?;
+        let resource = ResourceType::try_from(req.resource_type.as_str())?;
+        let outcome =
+            ApiResourceDomain::batch_undelegate_withdraw_wallet_resource(self.ctx, req).await?;
+        self.record_client_batch_resource_broadcasts(
+            &owner_ctx.uid,
+            &owner_ctx.owner_address,
+            resource,
+            ApiResourceOperationType::BatchUndelegate,
+            outcome.broadcasts,
+        )
+        .await?;
+        Ok(outcome.resp)
     }
 
     pub(crate) async fn withdraw_wallet_votes(
@@ -365,6 +393,38 @@ impl ApiResourceApplication {
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))
+    }
+
+    async fn record_client_batch_resource_broadcasts(
+        &self,
+        uid: &str,
+        owner_address: &str,
+        resource: ResourceType,
+        operation_type: ApiResourceOperationType,
+        broadcasts: Vec<crate::domain::api_wallet::resource::ApiBatchResourceBroadcast>,
+    ) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_resource_pool()?;
+        for broadcast in broadcasts {
+            let mut input = NewApiResourceOperation::client(
+                uid,
+                Self::client_resource_trade_no(),
+                owner_address,
+                Self::db_resource_type(resource),
+                broadcast.amount.to_string(),
+                operation_type,
+            );
+            input.receiver_address = Some(broadcast.receiver_address);
+            ApiResourceOperationRepo::record_client_broadcast_success(
+                &pool,
+                input,
+                &broadcast.tx_hash,
+                &broadcast.raw_tx,
+                &broadcast.transaction_fee,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        }
+        Ok(())
     }
 
     fn db_resource_type(resource: ResourceType) -> DbApiResourceType {

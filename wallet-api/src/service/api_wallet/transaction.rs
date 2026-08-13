@@ -520,6 +520,14 @@ impl ApiTransService {
             ApiResourceOperationType::Vote => BillKind::Vote,
             ApiResourceOperationType::WithdrawReward => BillKind::WithdrawReward,
             ApiResourceOperationType::WithdrawUnfreeze => BillKind::WithdrawUnFreeze,
+            ApiResourceOperationType::BatchDelegate => match operation.resource_type {
+                ApiResourceType::Bandwidth => BillKind::BatchDelegateBandwidth,
+                ApiResourceType::Energy => BillKind::BatchDelegateEnergy,
+            },
+            ApiResourceOperationType::BatchUndelegate => match operation.resource_type {
+                ApiResourceType::Bandwidth => BillKind::BatchUnDelegateBandwidth,
+                ApiResourceType::Energy => BillKind::BatchUnDelegateEnergy,
+            },
         };
 
         BillEntity {
@@ -872,6 +880,46 @@ mod transfer_token_tests {
         assert_eq!(bill.hash, "unstake_hash");
         assert_eq!(bill.tx_kind, BillKind::UnFreezeEnergy.to_i8());
         assert_eq!(bill.value, "50");
+    }
+
+    #[test]
+    fn api_resource_operation_batch_delegate_maps_to_batch_delegate_detail() {
+        let now = chrono::Utc::now();
+        let mut operation = test_resource_operation(
+            ApiResourceOperationType::BatchDelegate,
+            ApiResourceType::Energy,
+            "delegate_hash",
+            "delegate_trade_1",
+            "2",
+            now,
+        );
+        operation.receiver_address = Some("TReceiver".to_string());
+
+        let bill = ApiTransService::convert_resource_operation_to_bill_entity(&operation);
+
+        assert_eq!(bill.tx_kind, BillKind::BatchDelegateEnergy.to_i8());
+        assert_eq!(bill.to_addr, "TReceiver");
+        assert_eq!(bill.value, "2");
+    }
+
+    #[test]
+    fn api_resource_operation_batch_undelegate_maps_to_batch_undelegate_detail() {
+        let now = chrono::Utc::now();
+        let mut operation = test_resource_operation(
+            ApiResourceOperationType::BatchUndelegate,
+            ApiResourceType::Bandwidth,
+            "undelegate_hash",
+            "undelegate_trade_1",
+            "3",
+            now,
+        );
+        operation.receiver_address = Some("TReceiver".to_string());
+
+        let bill = ApiTransService::convert_resource_operation_to_bill_entity(&operation);
+
+        assert_eq!(bill.tx_kind, BillKind::BatchUnDelegateBandwidth.to_i8());
+        assert_eq!(bill.to_addr, "TReceiver");
+        assert_eq!(bill.value, "3");
     }
 
     #[test]
