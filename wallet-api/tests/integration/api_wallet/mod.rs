@@ -8,6 +8,7 @@ mod collect_receipt;
 mod collect_recovery;
 mod collect_resource_gate;
 mod import_bind;
+mod resource_batch_detail;
 mod sync;
 mod transaction;
 mod transfer_nonce;

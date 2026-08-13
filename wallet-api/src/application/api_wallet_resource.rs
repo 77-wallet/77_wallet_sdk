@@ -395,7 +395,7 @@ impl ApiResourceApplication {
         .map_err(|e| ServiceError::Database(e.into()))
     }
 
-    async fn record_client_batch_resource_broadcasts(
+    pub(crate) async fn record_client_batch_resource_broadcasts(
         &self,
         uid: &str,
         owner_address: &str,
