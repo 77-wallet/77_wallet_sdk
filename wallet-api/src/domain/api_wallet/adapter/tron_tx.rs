@@ -58,6 +58,10 @@ pub(crate) struct TronTx {
 impl TronTx {
     const API_WITHDRAW_RAW_EXPIRATION_SECS: u64 = 3 * 60;
 
+    pub(crate) fn chain(&self) -> &TronChain {
+        &self.chain
+    }
+
     fn has_enough_main_balance_for_token_fee(balance: i64, transaction_fee: i64) -> bool {
         transaction_fee <= 0 || balance >= transaction_fee
     }

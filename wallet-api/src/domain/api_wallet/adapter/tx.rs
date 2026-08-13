@@ -3,6 +3,7 @@ use crate::{
     error::{service::ServiceError, system::SystemError},
 };
 use alloy::primitives::U256;
+use std::any::Any;
 use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
@@ -132,7 +133,7 @@ pub trait Oracle {
 }
 
 #[async_trait::async_trait]
-pub trait Tx {
+pub trait Tx: Any {
     fn rpc_endpoint_for_log(&self) -> Option<String> {
         None
     }

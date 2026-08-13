@@ -12,6 +12,7 @@ use crate::{
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::{
+    any::Any,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -238,5 +239,17 @@ impl ApiChainAdapterFactory {
         let chain: ChainCode = chain_code.try_into()?;
         let factory = Self::get_instance();
         factory.new_transaction_adapter_with_ctx(ctx, chain).await
+    }
+
+    pub(crate) async fn get_tron_adapter_with_ctx(
+        ctx: &'static Context,
+    ) -> Result<Arc<TronTx>, ServiceError> {
+        let adapter = Self::get_transaction_adapter_with_ctx(ctx, "tron").await?;
+        let adapter: Arc<dyn Any + Send + Sync> = adapter;
+        Arc::downcast::<TronTx>(adapter).map_err(|_| {
+            ServiceError::System(crate::error::system::SystemError::Internal(
+                "api tron adapter type mismatch".to_string(),
+            ))
+        })
     }
 }

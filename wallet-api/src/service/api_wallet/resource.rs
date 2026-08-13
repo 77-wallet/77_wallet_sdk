@@ -3,11 +3,12 @@ use crate::{
     context::Context,
     error::service::ServiceError,
     request::stake::{
-        DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq,
-        WithdrawBalanceReq,
+        BatchDelegate, BatchUnDelegate, DelegateReq, FreezeBalanceReq, UnDelegateReq,
+        UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq,
     },
     response_vo::standard_wallet::stake::{
-        DelegateResp, FreezeResp, VoteListResp, VoterInfoResp, WithdrawUnfreezeResp,
+        BatchDelegateResp, DelegateResp, FreezeResp, VoteListResp, VoterInfoResp,
+        WithdrawUnfreezeResp,
     },
 };
 
@@ -51,6 +52,26 @@ impl ApiResourceService {
     ) -> Result<DelegateResp, ServiceError> {
         ApiResourceApplication::new(self.ctx)
             .undelegate_withdraw_wallet_resource(req, password)
+            .await
+    }
+
+    pub async fn batch_delegate_withdraw_wallet_resource(
+        &self,
+        req: BatchDelegate,
+        password: String,
+    ) -> Result<BatchDelegateResp, ServiceError> {
+        ApiResourceApplication::new(self.ctx)
+            .batch_delegate_withdraw_wallet_resource(req, password)
+            .await
+    }
+
+    pub async fn batch_undelegate_withdraw_wallet_resource(
+        &self,
+        req: BatchUnDelegate,
+        password: String,
+    ) -> Result<BatchDelegateResp, ServiceError> {
+        ApiResourceApplication::new(self.ctx)
+            .batch_undelegate_withdraw_wallet_resource(req, password)
             .await
     }
 

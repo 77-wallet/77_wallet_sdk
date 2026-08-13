@@ -1,7 +1,7 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{account::ApiAccountDomain, adapter::tx::RawTx},
+        api_wallet::{ApiChainAdapterFactory, account::ApiAccountDomain, adapter::tx::RawTx},
         chain::adapter::ChainAdapterFactory,
     },
     error::{
@@ -19,13 +19,13 @@ use crate::{
     },
     request::{
         stake::{
-            DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq,
-            WithdrawBalanceReq,
+            BatchDelegate, BatchUnDelegate, DelegateReq, FreezeBalanceReq, UnDelegateReq,
+            UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq,
         },
         transaction::Signer,
     },
     response_vo::standard_wallet::stake::{
-        DelegateResp, FreezeResp, ResourceResp, WithdrawUnfreezeResp,
+        BatchDelegateResp, BatchRes, DelegateResp, FreezeResp, ResourceResp, WithdrawUnfreezeResp,
     },
 };
 use wallet_chain_interact::{
@@ -33,13 +33,14 @@ use wallet_chain_interact::{
     tron::{
         self,
         operations::{
-            TronTxOperation,
+            RawTransactionParams, TronTxOperation,
             stake::{
                 DelegateArgs, FreezeBalanceArgs, ResourceType, UnDelegateArgs, UnFreezeBalanceArgs,
                 VoteWitnessArgs, WithdrawBalanceArgs, WithdrawUnfreezeArgs,
             },
         },
     },
+    types::ChainPrivateKey,
 };
 use wallet_database::{
     entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType, bill::BillKind},
@@ -63,6 +64,12 @@ pub(crate) struct ApiResourceBroadcastOutcome {
 pub(crate) struct ApiWithdrawWalletAccountContext {
     pub(crate) uid: String,
     pub(crate) owner_address: String,
+}
+
+struct TempBuildTransaction {
+    to: String,
+    transaction_fee: i64,
+    raw_tx: RawTransactionParams,
 }
 
 impl ApiResourceDomain {
@@ -212,6 +219,186 @@ impl ApiResourceDomain {
             ResourceType::BANDWIDTH => BillKind::UnDelegateBandwidth,
             ResourceType::ENERGY => BillKind::UnDelegateEnergy,
         }
+    }
+
+    pub(crate) fn batch_delegate_bill_kind(resource_type: ResourceType) -> BillKind {
+        match resource_type {
+            ResourceType::BANDWIDTH => BillKind::BatchDelegateBandwidth,
+            ResourceType::ENERGY => BillKind::BatchDelegateEnergy,
+        }
+    }
+
+    pub(crate) fn batch_undelegate_bill_kind(resource_type: ResourceType) -> BillKind {
+        match resource_type {
+            ResourceType::BANDWIDTH => BillKind::BatchUnDelegateBandwidth,
+            ResourceType::ENERGY => BillKind::BatchUnDelegateEnergy,
+        }
+    }
+
+    pub(crate) async fn batch_delegate_withdraw_wallet_resource(
+        ctx: &'static Context,
+        req: BatchDelegate,
+    ) -> Result<BatchDelegateResp, ServiceError> {
+        let resource_type = ResourceType::try_from(req.resource_type.as_str())?;
+
+        for list in req.list.iter() {
+            if list.value <= 0 {
+                return Err(ServiceError::Business(BusinessError::Stake(
+                    crate::error::business::stake::StakeError::DelegateLessThanMin,
+                )));
+            }
+        }
+
+        let bill_kind = Self::batch_delegate_bill_kind(resource_type);
+        let args: Vec<DelegateArgs> = (&req).try_into()?;
+        let amount = req.total();
+
+        Self::process_batch(
+            ctx,
+            resource_type,
+            &req.owner_address,
+            bill_kind,
+            args,
+            amount,
+            &req.signer,
+        )
+        .await
+    }
+
+    pub(crate) async fn batch_undelegate_withdraw_wallet_resource(
+        ctx: &'static Context,
+        req: BatchUnDelegate,
+    ) -> Result<BatchDelegateResp, ServiceError> {
+        let resource_type = ResourceType::try_from(req.resource_type.as_str())?;
+
+        for list in req.list.iter() {
+            if list.value <= 0 {
+                return Err(ServiceError::Business(BusinessError::Stake(
+                    crate::error::business::stake::StakeError::UnDelegateLessThanMin,
+                )));
+            }
+        }
+
+        let bill_kind = Self::batch_undelegate_bill_kind(resource_type);
+        let args: Vec<UnDelegateArgs> = (&req).try_into()?;
+        let amount = req.total();
+
+        Self::process_batch(
+            ctx,
+            resource_type,
+            &req.owner_address,
+            bill_kind,
+            args,
+            amount,
+            &req.signer,
+        )
+        .await
+    }
+
+    async fn get_key(
+        ctx: &'static Context,
+        from: &str,
+        signer: &Option<Signer>,
+    ) -> Result<ChainPrivateKey, ServiceError> {
+        let signing_address = signer.as_ref().map(|signer| signer.address.as_str()).unwrap_or(from);
+        ApiAccountDomain::get_private_key_with_ctx(ctx, signing_address, "tron").await
+    }
+
+    async fn batch_build_transaction<T>(
+        ctx: &'static Context,
+        chain: &wallet_chain_interact::tron::TronChain,
+        from: &str,
+        args: Vec<impl TronTxOperation<T>>,
+        bill_kind: BillKind,
+    ) -> Result<Vec<TempBuildTransaction>, ServiceError> {
+        let mut result = vec![];
+        for (i, item) in args.into_iter().enumerate() {
+            let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new_with_num(
+                bill_kind,
+                (i + 1) as i64,
+                Process::Building,
+            ));
+            FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
+            let raw_tx = item.build_raw_transaction(&chain.provider).await?;
+            let consumer =
+                chain.get_provider().transfer_fee(from, None, &raw_tx.raw_data_hex, 1).await?;
+            result.push(TempBuildTransaction {
+                to: item.get_to(),
+                transaction_fee: consumer.transaction_fee_i64(),
+                raw_tx,
+            });
+        }
+        Ok(result)
+    }
+
+    async fn batch_exec(
+        ctx: &'static Context,
+        chain: &wallet_chain_interact::tron::TronChain,
+        key: ChainPrivateKey,
+        bill_kind: BillKind,
+        txs: Vec<TempBuildTransaction>,
+    ) -> Result<(Vec<BatchRes>, Vec<String>), ServiceError> {
+        let mut exec_res = vec![];
+        let mut tx_hash = vec![];
+        let txs = txs
+            .into_iter()
+            .map(|mut item| {
+                let sign = wallet_utils::sign::sign_tron(&item.raw_tx.tx_id, &key, None)?;
+                item.raw_tx.signature.push(sign);
+                Ok(item)
+            })
+            .collect::<Result<Vec<_>, ServiceError>>()?;
+        for (i, item) in txs.into_iter().enumerate() {
+            let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new_with_num(
+                bill_kind,
+                (i + 1) as i64,
+                Process::Broadcast,
+            ));
+            FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
+            match chain.get_provider().exec_raw_transaction(item.raw_tx).await {
+                Ok(result) => {
+                    exec_res.push(BatchRes { address: item.to, status: true });
+                    tx_hash.push(result.tx_id);
+                }
+                Err(_) => exec_res.push(BatchRes { address: item.to, status: false }),
+            }
+        }
+        Ok((exec_res, tx_hash))
+    }
+
+    async fn process_batch<T>(
+        ctx: &'static Context,
+        resource_type: ResourceType,
+        owner_address: &str,
+        bill_kind: BillKind,
+        args: Vec<impl TronTxOperation<T>>,
+        amount: i64,
+        signer: &Option<Signer>,
+    ) -> Result<BatchDelegateResp, ServiceError>
+    where
+        T: Send + 'static,
+    {
+        Self::withdraw_wallet_account_context(ctx, owner_address).await?;
+        let adapter = ApiChainAdapterFactory::get_tron_adapter_with_ctx(ctx).await?;
+        let chain = adapter.chain();
+        let account_resource = chain.account_resource(owner_address).await?;
+        let resource_value = account_resource.resource_value(resource_type, amount)?;
+        let txs = Self::batch_build_transaction(ctx, chain, owner_address, args, bill_kind).await?;
+        let balance = chain.balance(owner_address, None).await?;
+        let total_fee = txs.iter().map(|item| item.transaction_fee).sum::<i64>();
+        if balance.to::<i64>() < total_fee {
+            return Err(ServiceError::Business(BusinessError::Chain(
+                ChainError::InsufficientFeeBalance,
+            )));
+        }
+        let key = Self::get_key(ctx, owner_address, signer).await?;
+        let res = Self::batch_exec(ctx, chain, key, bill_kind, txs).await?;
+        Ok(BatchDelegateResp::new(
+            owner_address.to_string(),
+            res,
+            ResourceResp::new(amount, resource_type, resource_value),
+            bill_kind,
+        ))
     }
 
     pub(crate) async fn withdraw_wallet_votes(
@@ -506,6 +693,30 @@ mod tests {
         assert_eq!(
             ApiResourceDomain::undelegate_bill_kind(ResourceType::ENERGY) as u8,
             BillKind::UnDelegateEnergy as u8
+        );
+    }
+
+    #[test]
+    fn api_withdraw_wallet_batch_delegate_uses_batch_bill_kinds() {
+        assert_eq!(
+            ApiResourceDomain::batch_delegate_bill_kind(ResourceType::BANDWIDTH) as u8,
+            BillKind::BatchDelegateBandwidth as u8
+        );
+        assert_eq!(
+            ApiResourceDomain::batch_delegate_bill_kind(ResourceType::ENERGY) as u8,
+            BillKind::BatchDelegateEnergy as u8
+        );
+    }
+
+    #[test]
+    fn api_withdraw_wallet_batch_reclaim_uses_batch_bill_kinds() {
+        assert_eq!(
+            ApiResourceDomain::batch_undelegate_bill_kind(ResourceType::BANDWIDTH) as u8,
+            BillKind::BatchUnDelegateBandwidth as u8
+        );
+        assert_eq!(
+            ApiResourceDomain::batch_undelegate_bill_kind(ResourceType::ENERGY) as u8,
+            BillKind::BatchUnDelegateEnergy as u8
         );
     }
 

@@ -9,11 +9,12 @@ use crate::{
         other::{Process, TransactionProcessFrontend},
     },
     request::stake::{
-        DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq,
-        WithdrawBalanceReq,
+        BatchDelegate, BatchUnDelegate, DelegateReq, FreezeBalanceReq, UnDelegateReq,
+        UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq,
     },
     response_vo::standard_wallet::stake::{
-        DelegateResp, FreezeResp, VoteListResp, VoterInfoResp, WithdrawUnfreezeResp,
+        BatchDelegateResp, DelegateResp, FreezeResp, VoteListResp, VoterInfoResp,
+        WithdrawUnfreezeResp,
     },
     service::stake::StackService,
 };
@@ -152,6 +153,24 @@ impl ApiResourceApplication {
         self.notify_transaction_process(bill_kind, Process::Building).await?;
 
         ApiResourceDomain::undelegate_withdraw_wallet_resource(self.ctx, req).await
+    }
+
+    pub(crate) async fn batch_delegate_withdraw_wallet_resource(
+        &self,
+        req: BatchDelegate,
+        password: String,
+    ) -> Result<BatchDelegateResp, ServiceError> {
+        WalletApplication::validate_password(self.ctx, &password).await?;
+        ApiResourceDomain::batch_delegate_withdraw_wallet_resource(self.ctx, req).await
+    }
+
+    pub(crate) async fn batch_undelegate_withdraw_wallet_resource(
+        &self,
+        req: BatchUnDelegate,
+        password: String,
+    ) -> Result<BatchDelegateResp, ServiceError> {
+        WalletApplication::validate_password(self.ctx, &password).await?;
+        ApiResourceDomain::batch_undelegate_withdraw_wallet_resource(self.ctx, req).await
     }
 
     pub(crate) async fn withdraw_wallet_votes(

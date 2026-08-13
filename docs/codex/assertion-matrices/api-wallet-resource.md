@@ -6,13 +6,24 @@ Scope: `wallet-api` API wallet foreground resource and governance operations.
 
 - Tests: `api_withdraw_wallet_delegate_uses_delegate_bill_kinds` and
   `api_withdraw_wallet_undelegate_uses_reclaim_bill_kinds`.
-- Entry points: `delegate_api_withdraw_wallet_resource` and
-  `undelegate_api_withdraw_wallet_resource`.
+- Batch tests: `api_withdraw_wallet_batch_delegate_uses_batch_bill_kinds`,
+  `api_withdraw_wallet_batch_reclaim_uses_batch_bill_kinds`, and the shared
+  request-contract tests under `request::stake::batch_tests`.
+- Entry points: `delegate_api_withdraw_wallet_resource`,
+  `undelegate_api_withdraw_wallet_resource`,
+  `batch_delegate_api_withdraw_wallet_resource`, and
+  `batch_undelegate_api_withdraw_wallet_resource`.
 - Account facts: the owner must resolve to an API withdrawal account, and the
   signing key must be loaded through `ApiAccountDomain` rather than the normal
   wallet account/key lookup.
 - UI/API facts: bandwidth and energy map to their matching delegate or
-  undelegate `BillKind` values for build and broadcast notifications.
+  undelegate `BillKind` values for build and broadcast notifications. Batch
+  responses preserve per-address broadcast status and successful transaction
+  hashes.
+- Failure facts: all batch transactions are built, fee-checked, and signed
+  before the first broadcast; an invalid API withdrawal account, insufficient
+  total fee balance, or signing failure therefore cannot partially broadcast
+  the batch.
 - Invariant: API withdrawal-wallet delegation and reclaim reuse the API-wallet
   signing/broadcast path and do not create normal-wallet bills or client
   `api_resource_operation` rows.
