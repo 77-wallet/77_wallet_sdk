@@ -515,6 +515,7 @@ impl ShadowCollectWorker {
     pub async fn handle(&self, cmd: ShadowCollectCommand) -> Result<(), ServiceError> {
         // 提取 trade_no 用于日志
         let trade_no = match &cmd {
+            ShadowCollectCommand::ExpireUnexecuted(trade_no) => trade_no,
             ShadowCollectCommand::EvalResourceGate(trade_no) => trade_no,
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,

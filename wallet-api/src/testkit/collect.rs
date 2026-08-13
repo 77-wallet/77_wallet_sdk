@@ -219,6 +219,9 @@ pub async fn scan_collect_intent_labels_once(
     let mut labels = Vec::new();
     while let Ok(intent) = intent_rx.try_recv() {
         let label = match intent {
+            CollectIntent::Chain(ChainIntent::ExpireUnexecuted(_)) => {
+                "ExpireUnexecuted".to_string()
+            }
             CollectIntent::Chain(ChainIntent::EvalResourceGate(_)) => {
                 "EvalResourceGate".to_string()
             }
