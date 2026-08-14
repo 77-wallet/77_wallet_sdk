@@ -5,7 +5,8 @@ use crate::{
     entities::{
         account::AccountEntity,
         api_account::{
-            AccountToWalletAddress, ApiAccountEntity, ApiAccountWalletMapping, CreateApiAccountVo,
+            AccountToWalletAddress, ApiAccountAddressPageRow, ApiAccountEntity,
+            ApiAccountWalletMapping, CreateApiAccountVo,
         },
         api_wallet::ApiWalletType,
     },
@@ -14,6 +15,23 @@ use crate::{
 pub struct ApiAccountRepo;
 
 impl ApiAccountRepo {
+    pub async fn list_active_address_page_by_wallet(
+        pool: &ApiWalletDbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        after_id: i64,
+        limit: u32,
+    ) -> Result<Vec<ApiAccountAddressPageRow>, crate::Error> {
+        ApiAccountDao::list_active_address_page_by_wallet(
+            pool.read_ref(),
+            wallet_address,
+            account_id,
+            after_id,
+            limit,
+        )
+        .await
+    }
+
     async fn with_write_guard<T, F, Fut>(
         pool: &ApiWalletDbPool,
         op: &'static str,
@@ -533,6 +551,71 @@ mod tests {
         .await
         .unwrap();
         assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn account_repo_pages_active_wallet_addresses_by_stable_id_cursor() {
+        let pool = setup_api_wallet_pool("wallet_db_api_account_address_cursor").await;
+        let wallet_address = "0xapi_account_wallet_cursor";
+        let other_wallet = "0xapi_account_wallet_other";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+
+        let accounts = vec![
+            make_account_vo(1, "0xcursor_1", wallet_address, chain_code),
+            make_account_vo(1, "0xcursor_2", wallet_address, chain_code),
+            make_account_vo(2, "0xcursor_3", wallet_address, chain_code),
+            make_account_vo(1, "0xcursor_other", other_wallet, chain_code),
+        ];
+        ApiAccountRepo::upsert_account_multi(&pool, accounts).await.unwrap();
+        sqlx::query("UPDATE api_account SET status = 0 WHERE address = ?")
+            .bind("0xcursor_2")
+            .execute(pool.write_ref())
+            .await
+            .unwrap();
+
+        let first =
+            ApiAccountRepo::list_active_address_page_by_wallet(&pool, wallet_address, None, 0, 1)
+                .await
+                .unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].address, "0xcursor_1");
+
+        let second = ApiAccountRepo::list_active_address_page_by_wallet(
+            &pool,
+            wallet_address,
+            None,
+            first[0].id,
+            2,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            second.iter().map(|row| row.address.as_str()).collect::<Vec<_>>(),
+            vec!["0xcursor_3"]
+        );
+
+        let account_filtered = ApiAccountRepo::list_active_address_page_by_wallet(
+            &pool,
+            wallet_address,
+            Some(2),
+            0,
+            10,
+        )
+        .await
+        .unwrap();
+        assert_eq!(account_filtered.len(), 1);
+        assert_eq!(account_filtered[0].address, "0xcursor_3");
+
+        let empty = ApiAccountRepo::list_active_address_page_by_wallet(
+            &pool,
+            wallet_address,
+            None,
+            second[0].id,
+            10,
+        )
+        .await
+        .unwrap();
+        assert!(empty.is_empty());
     }
 
     #[tokio::test]

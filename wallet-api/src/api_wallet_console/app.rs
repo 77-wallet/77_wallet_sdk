@@ -217,6 +217,20 @@ impl ApiWalletConsoleApp {
         });
     }
 
+    pub(crate) fn sync_assets_for_wallet(&mut self, wallet_address: String) {
+        if wallet_address.trim().is_empty() {
+            self.append_log("Asset sync skipped: wallet address is empty");
+            return;
+        }
+        if let Some(client) = self.selected_client() {
+            self.append_log(format!(
+                "{}: on-chain asset sync requested for {}",
+                client.name, wallet_address
+            ));
+        }
+        self.send_command_to_selected(ConsoleCommand::SyncWalletAssets { wallet_address });
+    }
+
     pub(crate) fn import_bind_for_selected_client(&mut self) {
         if let Some(client) = self.selected_client() {
             self.append_log(format!("{}: import_bind requested", client.name));

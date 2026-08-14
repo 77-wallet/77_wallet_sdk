@@ -38,6 +38,8 @@ use crate::{
 };
 
 pub struct ApiAssetsDomain;
+const WALLET_ASSET_SYNC_ADDRESS_PAGE_SIZE: u32 = 200;
+const BALANCE_FAILURE_DETAIL_LOG_LIMIT: usize = 5;
 mod singleflight;
 mod total_query_policy;
 
@@ -53,46 +55,42 @@ enum SyncFilter {
 fn filter_assets_for_sync(
     assets: Vec<wallet_database::entities::api_assets::ApiAssetsEntity>,
     token_address: &AssetTokenKey,
-) -> (Vec<wallet_database::entities::api_assets::ApiAssetsEntity>, Vec<String>) {
+) -> (Vec<wallet_database::entities::api_assets::ApiAssetsEntity>, usize) {
     let mut filtered_assets = Vec::new();
-    let mut filtered_out = Vec::new();
+    let mut filtered_out_count = 0;
 
     for asset in assets {
         if asset.token_key() == *token_address {
             filtered_assets.push(asset);
         } else {
-            filtered_out
-                .push(format!("{}/{}/{}", asset.symbol, asset.address, asset.token_address));
+            filtered_out_count += 1;
         }
     }
 
-    (filtered_assets, filtered_out)
+    (filtered_assets, filtered_out_count)
 }
 
 fn select_assets_for_sync(
     assets: Vec<ApiAssetsEntity>,
     filter: &SyncFilter,
-) -> (Vec<ApiAssetsEntity>, Vec<String>) {
+) -> (Vec<ApiAssetsEntity>, usize) {
     match filter {
         SyncFilter::Token(token_address) => filter_assets_for_sync(assets, token_address),
         SyncFilter::Symbol(symbol) => {
             if symbol.is_empty() {
-                return (assets, Vec::new());
+                return (assets, 0);
             }
 
             let mut matched = Vec::new();
-            let mut filtered_out = Vec::new();
+            let mut filtered_out_count = 0;
             for asset in assets {
                 if symbol.contains(&asset.symbol) {
                     matched.push(asset);
                 } else {
-                    filtered_out.push(format!(
-                        "{}/{}/{}",
-                        asset.symbol, asset.address, asset.token_address
-                    ));
+                    filtered_out_count += 1;
                 }
             }
-            (matched, filtered_out)
+            (matched, filtered_out_count)
         }
     }
 }
@@ -272,11 +270,6 @@ impl ApiAssetsDomain {
             return Ok(());
         }
 
-        let list = ApiAccountRepo::list_by_wallet_address(&pool, &wallet_address, account_id, None)
-            .await?;
-
-        let addr = list.iter().map(|a| a.address.clone()).collect::<Vec<String>>();
-
         tracing::debug!(
             "按 symbol 兼容接口同步 api 钱包资产: wallet_address={}, account_id={:?}, symbol={:?}",
             wallet_address,
@@ -284,7 +277,60 @@ impl ApiAssetsDomain {
             symbol
         );
 
-        Self::do_async_balance(pool, ctx, addr, None, SyncFilter::Symbol(symbol), 0, false).await
+        let mut after_id = 0i64;
+        let mut page_number = 0usize;
+        let mut processed_addresses = 0usize;
+
+        loop {
+            let page = ApiAccountRepo::list_active_address_page_by_wallet(
+                &pool,
+                &wallet_address,
+                account_id,
+                after_id,
+                WALLET_ASSET_SYNC_ADDRESS_PAGE_SIZE,
+            )
+            .await?;
+            if page.is_empty() {
+                break;
+            }
+
+            page_number += 1;
+            let page_len = page.len();
+            after_id = page.last().map(|row| row.id).unwrap_or(after_id);
+            let addresses = page.into_iter().map(|row| row.address).collect::<Vec<_>>();
+
+            Self::do_async_balance(
+                pool.clone(),
+                ctx,
+                addresses,
+                None,
+                SyncFilter::Symbol(symbol.clone()),
+                0,
+                false,
+            )
+            .await?;
+
+            processed_addresses += page_len;
+            tracing::info!(
+                wallet_address = %wallet_address,
+                page = page_number,
+                page_addresses = page_len,
+                processed_addresses,
+                "api wallet asset sync page completed"
+            );
+
+            if page_len < WALLET_ASSET_SYNC_ADDRESS_PAGE_SIZE as usize {
+                break;
+            }
+        }
+
+        tracing::info!(
+            wallet_address = %wallet_address,
+            pages = page_number,
+            processed_addresses,
+            "api wallet asset sync completed"
+        );
+        Ok(())
     }
 
     // async fn do_async_balance(
@@ -398,45 +444,48 @@ impl ApiAssetsDomain {
             retry_count
         );
 
+        // ApiAssetsRepo::list treats an empty address vector as "no address
+        // filter". Never forward an empty wallet/account result, otherwise a
+        // wallet with no accounts would load and synchronize the entire
+        // api_assets table.
+        if addr.is_empty() {
+            tracing::debug!(chain_code = ?chain_code, "skip api asset sync for empty address set");
+            return Ok(());
+        }
+
         // 优化：对地址和链代码进行早期HashSet过滤，减少数据库返回的数据量
         let mut assets = ApiAssetsRepo::list(&pool, addr.clone(), chain_code.clone()).await?;
         let original_count = assets.len();
 
-        let (filtered_assets, filtered_out) = select_assets_for_sync(assets, &filter);
-        if !filtered_out.is_empty() {
+        let (filtered_assets, filtered_out_count) = select_assets_for_sync(assets, &filter);
+        if filtered_out_count > 0 {
             match &filter {
                 SyncFilter::Token(token_address) => {
                     tracing::debug!(
-                        "过滤掉 {} 个资产（token_key 不匹配）: token_address={}, filtered_out={:?}",
-                        filtered_out.len(),
-                        token_address,
-                        filtered_out
+                        "过滤掉 {} 个资产（token_key 不匹配）: token_address={}",
+                        filtered_out_count,
+                        token_address
                     );
                 }
                 SyncFilter::Symbol(symbol) => {
                     tracing::debug!(
-                        "过滤掉 {} 个资产（symbol 不匹配）: symbol={:?}, filtered_out={:?}",
-                        filtered_out.len(),
-                        symbol,
-                        filtered_out
+                        "过滤掉 {} 个资产（symbol 不匹配）: symbol={:?}",
+                        filtered_out_count,
+                        symbol
                     );
                 }
             }
         }
         assets = filtered_assets;
 
-        tracing::debug!(
-            "查询到 {} 个资产（过滤前: {}），需要同步: {:?}",
-            assets.len(),
-            original_count,
-            assets
-                .iter()
-                .map(|a| format!("{}/{}/{}", a.symbol, a.address, a.token_address))
-                .collect::<Vec<_>>()
-        );
+        tracing::debug!("查询到 {} 个资产（过滤前: {}）", assets.len(), original_count);
 
         if assets.is_empty() {
-            tracing::warn!("没有找到需要同步的资产: addr={:?}, chain_code={:?}", addr, chain_code);
+            tracing::debug!(
+                "没有找到需要同步的资产: addr_count={}, chain_code={:?}",
+                addr.len(),
+                chain_code
+            );
             return Ok(());
         }
 
@@ -455,12 +504,12 @@ impl ApiAssetsDomain {
                     && asset.chain_code == assets_id.chain_code
                     && asset.token_address == assets_id.token_address
             }) {
-                tracing::info!(
+                tracing::trace!(
                     "同步余额明细: {}",
                     format_sync_balance_change(asset, synced_balance)
                 );
             } else {
-                tracing::info!(
+                tracing::trace!(
                     "同步余额明细: address={}, chain_code={}, token_address={}, synced_balance={}, old_balance=<missing>",
                     assets_id.address,
                     assets_id.chain_code,
@@ -478,26 +527,30 @@ impl ApiAssetsDomain {
         let total_count = sync_result.success.len() + sync_result.failed_tasks.len();
 
         // 处理失败的任务，区分可重试和不可重试的错误
-        for (failed_task, err) in &sync_result.failed_tasks {
+        for (failure_index, (failed_task, err)) in sync_result.failed_tasks.iter().enumerate() {
             let is_retryable = matches!(err.retry_policy(), RetryPolicy::Delay);
 
             if is_retryable {
-                tracing::warn!(
-                    "余额查询失败（可重试）: address={}, chain_code={}, symbol={}, error={}",
-                    failed_task.address,
-                    failed_task.chain_code,
-                    failed_task.symbol,
-                    err
-                );
+                if failure_index < BALANCE_FAILURE_DETAIL_LOG_LIMIT {
+                    tracing::warn!(
+                        "余额查询失败（可重试）: address={}, chain_code={}, symbol={}, error={}",
+                        failed_task.address,
+                        failed_task.chain_code,
+                        failed_task.symbol,
+                        err
+                    );
+                }
                 retry_tasks.push(failed_task.clone());
             } else {
-                tracing::error!(
-                    "余额查询失败（不可重试）: address={}, chain_code={}, symbol={}, error={}",
-                    failed_task.address,
-                    failed_task.chain_code,
-                    failed_task.symbol,
-                    err
-                );
+                if failure_index < BALANCE_FAILURE_DETAIL_LOG_LIMIT {
+                    tracing::error!(
+                        "余额查询失败（不可重试）: address={}, chain_code={}, symbol={}, error={}",
+                        failed_task.address,
+                        failed_task.chain_code,
+                        failed_task.symbol,
+                        err
+                    );
+                }
                 fail_count += 1;
             }
         }
@@ -607,7 +660,7 @@ impl ApiAssetsDomain {
             // 数据库更新完成后，计算每个账户的总余额
             let account_balances =
                 Self::calculate_account_balances(&pool, ctx, &accounts_map).await?;
-            tracing::debug!("计算账户余额: {:?}", account_balances);
+            tracing::debug!(account_count = account_balances.len(), "计算账户余额完成");
             // 收集变更的账户，用于发送前端通知
             let changed_accounts = Self::collect_changed_accounts(
                 &sync_result.success,
@@ -629,7 +682,7 @@ impl ApiAssetsDomain {
             }
         }
 
-        tracing::info!(
+        tracing::trace!(
             "余额同步完成: 成功={}, 失败={}, 需要重试={}, 总数={}",
             success_count,
             fail_count,
@@ -763,7 +816,7 @@ impl ApiAssetsDomain {
         let mut notified_accounts = std::collections::HashSet::new();
 
         for (assets_id, balance) in success {
-            tracing::info!(
+            tracing::trace!(
                 "处理资产: address={}, chain_code={}, token_address={:?}, balance={}",
                 assets_id.address,
                 assets_id.chain_code,
@@ -772,7 +825,7 @@ impl ApiAssetsDomain {
             );
 
             if let Some(account) = accounts_map.get(&assets_id.address) {
-                tracing::debug!(
+                tracing::trace!(
                     "找到关联账户: address={}, account_id={}, wallet_address={}",
                     assets_id.address,
                     account.account_id,
@@ -782,7 +835,7 @@ impl ApiAssetsDomain {
                 let key = (account.wallet_address.clone(), account.account_id);
                 if !notified_accounts.contains(&key) {
                     if let Some(balance_info) = account_balances.get(&key) {
-                        tracing::debug!(
+                        tracing::trace!(
                             "添加变更账户: account_id={}, wallet_address={}, balance_info={:?}",
                             account.account_id,
                             account.wallet_address,
@@ -799,7 +852,7 @@ impl ApiAssetsDomain {
                 }
             }
         }
-        tracing::debug!("收集变更账户完成: 变更账户={:?}", changed_accounts);
+        tracing::debug!(wallet_count = changed_accounts.len(), "收集变更账户完成");
         changed_accounts
     }
 
@@ -828,7 +881,7 @@ impl ApiAssetsDomain {
             );
 
             // 记录最终失败的任务详情
-            for task in &failed_tasks {
+            for task in failed_tasks.iter().take(BALANCE_FAILURE_DETAIL_LOG_LIMIT) {
                 tracing::error!(
                     "最终失败的资产同步任务: address={}, chain_code={}, symbol={}, token_address={:?}",
                     task.address,
@@ -1277,7 +1330,7 @@ impl ApiChainBalance {
         // 成功请求后立即回写成功，允许熔断器尽快恢复关闭状态。
         chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, &chain_code).await;
 
-        tracing::info!(
+        tracing::trace!(
             address = %address,
             chain_code = %chain_code,
             symbol = %symbol,
@@ -1289,7 +1342,7 @@ impl ApiChainBalance {
         // 格式化
         let bal_str =
             wallet_utils::unit::format_to_string(raw, decimals).unwrap_or_else(|_| "0".to_string());
-        tracing::info!(
+        tracing::trace!(
             address = %address,
             chain_code = %chain_code,
             symbol = %symbol,
@@ -1372,7 +1425,7 @@ mod tests {
 
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].symbol, "USDC");
-        assert_eq!(filtered_out.len(), 1);
+        assert_eq!(filtered_out, 1);
     }
 
     #[test]
@@ -1391,7 +1444,7 @@ mod tests {
 
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].token_address, AssetTokenKey::Native);
-        assert_eq!(filtered_out.len(), 1);
+        assert_eq!(filtered_out, 1);
     }
 
     #[test]
@@ -1412,7 +1465,7 @@ mod tests {
             matched[0].token_address,
             AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
         );
-        assert_eq!(filtered_out.len(), 2);
+        assert_eq!(filtered_out, 2);
     }
 
     #[test]
@@ -1434,7 +1487,7 @@ mod tests {
         );
 
         assert_eq!(matched.len(), 2);
-        assert_eq!(filtered_out.len(), 1);
+        assert_eq!(filtered_out, 1);
         assert!(matched.iter().all(|asset| {
             asset.token_address
                 == AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")

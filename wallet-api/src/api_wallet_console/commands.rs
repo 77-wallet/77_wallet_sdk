@@ -6,6 +6,7 @@ pub enum ConsoleCommand {
     RefreshWallets,
     RefreshAccountAddresses { wallet_address: String, chain_code: String },
     RefreshBalances { wallet_address: String, account_id: Option<u32>, chain_code: Option<String> },
+    SyncWalletAssets { wallet_address: String },
     ImportBind { app_id: String, org_id: String, subaccount_uid: String, withdrawal_uid: String },
     ScanBind { app_id: String, org_id: String, subaccount_uid: String, withdrawal_uid: String },
     FetchPendingWithdrawOrders { withdrawal_uid: String, page_size: i64 },
@@ -48,6 +49,21 @@ mod tests {
         assert!(matches!(
             decoded,
             ConsoleCommand::DiagnoseTrade { trade_no } if trade_no == "trade-001"
+        ));
+    }
+
+    #[test]
+    fn sync_wallet_assets_command_round_trips() {
+        let command =
+            ConsoleCommand::SyncWalletAssets { wallet_address: "0xwithdrawal".to_string() };
+
+        let encoded = serde_json::to_string(&command).unwrap();
+        let decoded: ConsoleCommand = serde_json::from_str(&encoded).unwrap();
+
+        assert!(matches!(
+            decoded,
+            ConsoleCommand::SyncWalletAssets { wallet_address }
+                if wallet_address == "0xwithdrawal"
         ));
     }
 }

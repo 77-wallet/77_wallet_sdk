@@ -95,7 +95,7 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
   ```text
   tests/integration/api_wallet/sync/mod.rs
-  sync_api_assets_by_wallet_updates_api_assets_from_chain
+  sync_api_assets_by_wallet_traverses_multiple_address_pages
   ```
 
 - Backend: none; the chain balance path uses a fake BNB transaction adapter.
@@ -139,6 +139,43 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Chain calls: fake adapter balance query is not called.
 - Invariant: API wallet asset sync must skip subaccount wallets and leave their
   balances untouched.
+
+### Sync API Wallet Bounds Withdrawal Address Memory
+
+- Layer: component plus integration.
+- Entrypoints:
+
+  ```text
+  wallet-database/src/repositories/api_wallet/account.rs
+  account_repo_pages_active_wallet_addresses_by_stable_id_cursor
+
+  tests/integration/api_wallet/sync/mod.rs
+  sync_api_assets_by_wallet_updates_api_assets_from_chain
+  ```
+
+- Backend: none; the integration balance path uses a fake chain adapter across
+  201 addresses, crossing the 200-address page boundary.
+- DB facts: active API-account addresses are traversed by increasing row ID for
+  one wallet; inactive accounts and accounts belonging to another wallet are
+  excluded.
+- Invariant: withdrawal-wallet synchronization loads and completes one bounded
+  address page before reading the next page, while preserving the existing
+  synchronous `Result<()>` API contract.
+### Empty Withdrawal Wallet Never Falls Back To All Assets
+
+- Layer: integration.
+- Entrypoint:
+
+  ```text
+  tests/integration/api_wallet/sync/mod.rs
+  sync_empty_withdrawal_wallet_does_not_sync_other_wallet_assets
+  ```
+
+- DB facts: one withdrawal wallet has no active API-account rows while another
+  wallet owns an initialized account and native asset.
+- Invariant: an empty address result must finish without calling a chain adapter
+  and must never interpret an empty address vector as an unfiltered
+  `api_assets` query.
 
 ### Backend Asset Query Dispatches Updated Token Events
 

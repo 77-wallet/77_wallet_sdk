@@ -175,29 +175,24 @@ async fn handle_command(
             }
         }
         ConsoleCommand::RefreshBalances { wallet_address, account_id, chain_code } => {
-            let res = wallet_manager
-                .get_api_assets_list(&wallet_address, account_id, chain_code, None, false)
-                .await;
-            match res {
-                Ok(assets) => {
-                    let rows = assets
-                        .0
-                        .into_iter()
-                        .map(|asset| BalanceAssetRow {
-                            wallet_address: wallet_address.clone(),
-                            account_id,
-                            chain_code: asset.chain_code,
-                            symbol: asset.symbol,
-                            name: asset.name,
-                            amount: asset.balance.amount,
-                            currency: asset.balance.currency,
-                            fiat_value: asset.balance.fiat_value,
-                        })
-                        .collect::<Vec<_>>();
-                    emit(&WorkerEvent::BalanceAssetsLoaded { wallet_address, rows });
-                }
-                Err(err) => emit(&WorkerEvent::Failed { error: err.to_string() }),
+            emit_balance_assets(wallet_manager, wallet_address, account_id, chain_code).await;
+        }
+        ConsoleCommand::SyncWalletAssets { wallet_address } => {
+            emit(&WorkerEvent::Log {
+                message: format!("starting on-chain asset sync for {wallet_address}"),
+            });
+            match wallet_manager
+                .sync_api_assets_by_wallet(wallet_address.clone(), None, vec![])
+                .await
+            {
+                Ok(()) => emit(&WorkerEvent::Log {
+                    message: format!("on-chain asset sync completed for {wallet_address}"),
+                }),
+                Err(err) => emit(&WorkerEvent::Log {
+                    message: format!("on-chain asset sync failed for {wallet_address}: {err}"),
+                }),
             }
+            emit_balance_assets(wallet_manager, wallet_address, None, None).await;
         }
         ConsoleCommand::ImportBind { app_id, org_id, subaccount_uid, withdrawal_uid } => {
             let res = wallet_manager
@@ -336,6 +331,37 @@ async fn handle_command(
                 Err(err) => emit(&WorkerEvent::Failed { error: err.to_string() }),
             }
         }
+    }
+}
+
+async fn emit_balance_assets(
+    wallet_manager: &wallet_api::manager::WalletManager,
+    wallet_address: String,
+    account_id: Option<u32>,
+    chain_code: Option<String>,
+) {
+    let res = wallet_manager
+        .get_api_assets_list(&wallet_address, account_id, chain_code, None, false)
+        .await;
+    match res {
+        Ok(assets) => {
+            let rows = assets
+                .0
+                .into_iter()
+                .map(|asset| BalanceAssetRow {
+                    wallet_address: wallet_address.clone(),
+                    account_id,
+                    chain_code: asset.chain_code,
+                    symbol: asset.symbol,
+                    name: asset.name,
+                    amount: asset.balance.amount,
+                    currency: asset.balance.currency,
+                    fiat_value: asset.balance.fiat_value,
+                })
+                .collect::<Vec<_>>();
+            emit(&WorkerEvent::BalanceAssetsLoaded { wallet_address, rows });
+        }
+        Err(err) => emit(&WorkerEvent::Failed { error: err.to_string() }),
     }
 }
 

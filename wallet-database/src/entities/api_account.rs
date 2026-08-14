@@ -25,6 +25,14 @@ pub struct ApiAccountEntity {
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 
+/// Lightweight row used to traverse a wallet's active addresses without
+/// materializing every account column in memory.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct ApiAccountAddressPageRow {
+    pub id: i64,
+    pub address: String,
+}
+
 impl fmt::Debug for ApiAccountEntity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ApiAccountEntity")

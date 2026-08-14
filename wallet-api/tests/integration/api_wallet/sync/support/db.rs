@@ -14,7 +14,7 @@ use wallet_database::{
     },
 };
 
-use crate::harness::{TestEnv, open_api_wallet_pool, upsert_wallet};
+use crate::harness::{TestEnv, next_tag, open_api_wallet_pool, upsert_wallet};
 
 use super::fixtures::{CHAIN_CODE, SyncAssetsFixture};
 
@@ -103,4 +103,55 @@ pub(crate) async fn load_native_asset(
     .expect("asset should exist");
 
     Ok(saved)
+}
+
+pub(crate) async fn append_native_assets(
+    env: &TestEnv,
+    wallet_address: &str,
+    count: usize,
+) -> anyhow::Result<String> {
+    let api_pool = open_api_wallet_pool(&env.db_dir).await;
+    let mut accounts = Vec::with_capacity(count);
+    let mut assets = Vec::with_capacity(count);
+    let mut last_address = String::new();
+
+    for index in 1..=count {
+        let address = format!("0x{}", next_tag("paged-acct"));
+        accounts.push(
+            CreateApiAccountVo::new(
+                1,
+                &address,
+                "pubkey",
+                wallet_address,
+                "api-wallet-page",
+                &format!("m/44'/60'/0'/0/{index}"),
+                index as i32,
+                CHAIN_CODE,
+                "account",
+                ApiWalletType::Withdrawal,
+            )
+            .with_is_init(true),
+        );
+        assets.push(
+            ApiCreateAssetsVo::new(
+                AssetsId::new(&address, CHAIN_CODE, AssetTokenKey::Native),
+                "BNB",
+                18,
+                None,
+                0,
+            )
+            .with_name("BNB")
+            .with_balance("0"),
+        );
+        last_address = address;
+    }
+
+    ApiAccountRepo::upsert_account_multi(&api_pool, accounts).await?;
+    ApiAssetsRepo::upsert_assets_multi(&api_pool, assets).await?;
+    Ok(last_address)
+}
+
+pub(crate) async fn prepare_empty_withdrawal_wallet(env: &TestEnv) -> String {
+    let wallet_uid = next_tag("api-wallet-empty");
+    upsert_wallet(&env.db_dir, "sn-sync-empty", &wallet_uid, ApiWalletType::Withdrawal, None).await
 }

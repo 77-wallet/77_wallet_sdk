@@ -25,6 +25,44 @@ async fn sync_api_assets_by_wallet_updates_api_assets_from_chain() -> anyhow::Re
 
 #[tokio::test]
 #[serial]
+async fn sync_api_assets_by_wallet_traverses_multiple_address_pages() -> anyhow::Result<()> {
+    let scenario = SyncAssetsScenario::new().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+
+    let fixture = given.withdrawal_bnb_assets(201).await?;
+    given.chain_balance(123);
+
+    when.sync_api_assets_by_wallet_runs(&fixture).await?;
+
+    then.chain_balance_was_queried(201);
+    then.asset_balance_is_chain_balance(&fixture, 123).await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn sync_empty_withdrawal_wallet_does_not_sync_other_wallet_assets() -> anyhow::Result<()> {
+    let scenario = SyncAssetsScenario::new().await;
+    let given = scenario.given();
+    let when = scenario.when();
+    let then = scenario.then();
+
+    let (empty_wallet, other_wallet) = given.empty_withdrawal_wallet_with_other_asset().await?;
+    given.chain_balance(123);
+
+    when.sync_api_assets_by_wallet_runs(&empty_wallet).await?;
+
+    then.chain_balance_was_not_queried();
+    then.asset_balance_is_zero(&other_wallet).await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn sync_api_assets_by_wallet_keeps_balance_when_chain_query_fails() -> anyhow::Result<()> {
     let scenario = SyncAssetsScenario::new().await;
     let given = scenario.given();

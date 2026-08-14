@@ -13,7 +13,10 @@ use crate::harness::{
 
 use super::{
     adapter::{InstalledBalanceAdapter, install_balance_adapter},
-    db::{load_native_asset, prepare_wallet_fixture},
+    db::{
+        append_native_assets, load_native_asset, prepare_empty_withdrawal_wallet,
+        prepare_wallet_fixture,
+    },
     fixtures::SyncAssetsFixture,
 };
 
@@ -51,6 +54,12 @@ impl SyncAssetsScenario {
 pub(crate) trait SyncAssetsGiven {
     async fn withdrawal_bnb_asset(&self) -> anyhow::Result<SyncAssetsFixture>;
 
+    async fn withdrawal_bnb_assets(&self, count: usize) -> anyhow::Result<SyncAssetsFixture>;
+
+    async fn empty_withdrawal_wallet_with_other_asset(
+        &self,
+    ) -> anyhow::Result<(SyncAssetsFixture, SyncAssetsFixture)>;
+
     async fn subaccount_bnb_asset(&self) -> anyhow::Result<SyncAssetsFixture>;
 
     fn chain_balance(&self, balance: u64);
@@ -62,6 +71,28 @@ pub(crate) trait SyncAssetsGiven {
 impl SyncAssetsGiven for GivenRole<'_, SyncAssetsScenario> {
     async fn withdrawal_bnb_asset(&self) -> anyhow::Result<SyncAssetsFixture> {
         self.scenario().seed().bnb_asset(ApiWalletType::Withdrawal, "api-wallet").await
+    }
+
+    async fn withdrawal_bnb_assets(&self, count: usize) -> anyhow::Result<SyncAssetsFixture> {
+        assert!(count > 0);
+        let mut fixture = self.withdrawal_bnb_asset().await?;
+        if count > 1 {
+            fixture.account_address =
+                append_native_assets(self.scenario().env, &fixture.wallet_address, count - 1)
+                    .await?;
+        }
+        Ok(fixture)
+    }
+
+    async fn empty_withdrawal_wallet_with_other_asset(
+        &self,
+    ) -> anyhow::Result<(SyncAssetsFixture, SyncAssetsFixture)> {
+        let other = self.withdrawal_bnb_asset().await?;
+        let empty = SyncAssetsFixture {
+            wallet_address: prepare_empty_withdrawal_wallet(self.scenario().env).await,
+            account_address: String::new(),
+        };
+        Ok((empty, other))
     }
 
     async fn subaccount_bnb_asset(&self) -> anyhow::Result<SyncAssetsFixture> {
@@ -160,6 +191,8 @@ pub(crate) trait SyncAssetsThen {
 
     fn chain_balance_was_queried_once(&self);
 
+    fn chain_balance_was_queried(&self, expected: usize);
+
     fn chain_balance_was_not_queried(&self);
 
     async fn asset_balance_is_chain_balance(
@@ -180,6 +213,10 @@ impl SyncAssetsThen for ThenRole<'_, SyncAssetsScenario> {
     fn chain_balance_was_queried_once(&self) {
         let call_count = self.scenario().count().chain_balance_calls();
         self.scenario().assert().chain_balance_was_queried_once(call_count);
+    }
+
+    fn chain_balance_was_queried(&self, expected: usize) {
+        assert_eq!(self.scenario().count().chain_balance_calls(), expected);
     }
 
     fn chain_balance_was_not_queried(&self) {

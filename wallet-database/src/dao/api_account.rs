@@ -2,7 +2,8 @@ use crate::{
     entities::{
         account::AccountEntity,
         api_account::{
-            AccountToWalletAddress, ApiAccountEntity, ApiAccountWalletMapping, CreateApiAccountVo,
+            AccountToWalletAddress, ApiAccountAddressPageRow, ApiAccountEntity,
+            ApiAccountWalletMapping, CreateApiAccountVo,
         },
         api_wallet::ApiWalletType,
     },
@@ -16,6 +17,38 @@ use sqlx::{Executor, Sqlite, SqliteConnection};
 pub(crate) struct ApiAccountDao;
 
 impl ApiAccountDao {
+    pub async fn list_active_address_page_by_wallet<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        after_id: i64,
+        limit: u32,
+    ) -> Result<Vec<ApiAccountAddressPageRow>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+            // Force a rowid-range walk. Existing wallet indexes do not end in `id`,
+            // so letting SQLite choose one can require sorting every remaining row
+            // for each page before applying LIMIT.
+            "SELECT id, address FROM api_account NOT INDEXED WHERE wallet_address = ",
+        );
+        qb.push_bind(wallet_address).push(" AND status = 1 AND id > ").push_bind(after_id);
+        if let Some(account_id) = account_id {
+            qb.push(" AND account_id = ").push_bind(account_id);
+        }
+        qb.push(" ORDER BY id ASC LIMIT ").push_bind(i64::from(limit));
+
+        qb.build_query_as::<ApiAccountAddressPageRow>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     /// 插入多个账户（存在则更新 updated_at）
     pub async fn upsert_multi<'a>(
         exec: &mut SqliteConnection,

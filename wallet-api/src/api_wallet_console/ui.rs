@@ -799,7 +799,9 @@ fn draw_api_wallet_table(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                                 }
                             }
                         } else {
-                            ui.label("");
+                            if ui.button("同步余额").clicked() {
+                                app.sync_assets_for_wallet(wallet.address.clone());
+                            }
                         }
                         ui.end_row();
                     }
@@ -1237,6 +1239,9 @@ fn draw_balance_table_for_wallet(
                 );
                 if ui.button("查询").clicked() {
                     app.refresh_balances_for_wallet(wallet.address.clone());
+                }
+                if wallet.role == "withdraw" && ui.button("同步链上余额").clicked() {
+                    app.sync_assets_for_wallet(wallet.address.clone());
                 }
             });
 
