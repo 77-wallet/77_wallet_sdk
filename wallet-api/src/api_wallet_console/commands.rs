@@ -13,7 +13,6 @@ pub enum ConsoleCommand {
     SetChainNode { chain_code: String, rpc_url: String },
     RefreshTaskQueueStatus,
     DiagnoseTrade { trade_no: String },
-    CleanupResidualTronEnergy { template_resource_trade_no: String },
     LoadTransferTargets { chain_code: String, sub_wallet_address: String },
     RunBatchTransfer { config: BatchTransferConfig },
 }
@@ -49,22 +48,6 @@ mod tests {
         assert!(matches!(
             decoded,
             ConsoleCommand::DiagnoseTrade { trade_no } if trade_no == "trade-001"
-        ));
-    }
-
-    #[test]
-    fn cleanup_residual_tron_energy_command_round_trips() {
-        let command = ConsoleCommand::CleanupResidualTronEnergy {
-            template_resource_trade_no: "WR001".to_string(),
-        };
-
-        let encoded = serde_json::to_string(&command).unwrap();
-        let decoded: ConsoleCommand = serde_json::from_str(&encoded).unwrap();
-
-        assert!(matches!(
-            decoded,
-            ConsoleCommand::CleanupResidualTronEnergy { template_resource_trade_no }
-                if template_resource_trade_no == "WR001"
         ));
     }
 }

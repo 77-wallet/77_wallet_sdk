@@ -122,10 +122,6 @@ pub enum ConsoleEvent {
         client_id: ClientId,
         diagnostics: TradeDiagnostics,
     },
-    MaintenanceCleanupFinished {
-        client_id: ClientId,
-        result: Result<(i64, String), String>,
-    },
     LoadedTargets {
         client_id: ClientId,
         targets: Vec<String>,

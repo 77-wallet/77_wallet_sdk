@@ -25,7 +25,6 @@ pub enum WorkerEvent {
     ChainNodeSetFailed { error: String },
     TaskQueueStatusLoaded { summary: ConsoleTaskQueueSummary },
     TradeDiagnosticsLoaded { diagnostics: TradeDiagnostics },
-    MaintenanceCleanupFinished { result: Result<(i64, String), String> },
     LoadedTargets { targets: Vec<String> },
     TransferFinished { summary: BatchTransferSummary },
 }

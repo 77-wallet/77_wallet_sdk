@@ -155,9 +155,6 @@ fn forward_worker_event(
         WorkerEvent::TradeDiagnosticsLoaded { diagnostics } => {
             ConsoleEvent::TradeDiagnosticsLoaded { client_id, diagnostics }
         }
-        WorkerEvent::MaintenanceCleanupFinished { result } => {
-            ConsoleEvent::MaintenanceCleanupFinished { client_id, result }
-        }
         WorkerEvent::LoadedTargets { targets } => {
             ConsoleEvent::LoadedTargets { client_id, targets }
         }
