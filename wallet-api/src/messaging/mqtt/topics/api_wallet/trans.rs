@@ -11,17 +11,11 @@ use crate::{
 };
 use wallet_database::{
     entities::{
-        api_resource_delegation::{
-            ApiResourceDelegationMode, ApiResourceDelegationOperationType, NewApiResourceDelegation,
-        },
+        api_resource_delegation::ApiResourceDelegationOperationType,
         api_resource_operation::{ApiResourceOperationType, NewApiResourceOperation},
         api_resource_type::ApiResourceType,
-        api_trade_type::ApiTradeType,
     },
-    repositories::api_wallet::{
-        resource_delegation::ApiResourceDelegationRepo,
-        resource_operation::ApiResourceOperationRepo,
-    },
+    repositories::api_wallet::resource_operation::ApiResourceOperationRepo,
 };
 
 // biz_type = AWM_ORDER_TRANS
@@ -284,104 +278,20 @@ impl AwmResourceOperationMsg {
 impl AwmResourceDelegationMsg {
     pub(crate) async fn resource_delegation(
         &self,
-        ctx: &'static Context,
+        _ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let (origin_trade_type, operation_type) = match self.trade_type {
-            5 => (ApiTradeType::Collect, ApiResourceDelegationOperationType::Delegate),
-            6 => (ApiTradeType::Collect, ApiResourceDelegationOperationType::Undelegate),
-            7 => (ApiTradeType::Withdraw, ApiResourceDelegationOperationType::Delegate),
-            8 => (ApiTradeType::Withdraw, ApiResourceDelegationOperationType::Undelegate),
+        let operation_type = match self.trade_type {
+            5 | 7 => ApiResourceDelegationOperationType::Delegate,
+            6 | 8 => ApiResourceDelegationOperationType::Undelegate,
             _ => return Ok(()),
         };
-        let resource_type =
-            ApiResourceType::from_backend_rsc_type(self.rsc_type).unwrap_or_else(|| {
-                tracing::warn!(
-                    trade_no = %self.trade_no,
-                    rsc_type = %self.rsc_type,
-                    "Unknown resource delegation rscType, defaulting to energy"
-                );
-                ApiResourceType::Energy
-            });
-        let amount = self.resource_delegation_amount();
-        let req = NewApiResourceDelegation::platform_delegate_task(
-            self.uid.to_string(),
-            self.trade_no.to_string(),
-            origin_trade_type,
-            operation_type,
-            self.chain_code.to_string(),
-            self.from.to_string(),
-            self.to.to_string(),
-            resource_type,
-            self.resource_delegation_native_amount(),
-            amount,
-        )
-        .with_delegation_auth(self.resource_delegation_mode(), self.normalized_permission_id());
-
-        let pool = ctx.api_resource_pool()?;
-        ApiResourceDelegationRepo::upsert(&pool, req).await?;
-        if operation_type == ApiResourceDelegationOperationType::Delegate {
-            match ctx.get_handles_arc().await {
-                Ok(handles) => {
-                    if let Err(error) =
-                        handles.trigger_platform_resource_delegation(&self.trade_no).await
-                    {
-                        tracing::warn!(
-                            trade_no = %self.trade_no,
-                            %error,
-                            "平台资源代理任务快速通道触发失败，将等待扫描兜底"
-                        );
-                    }
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        trade_no = %self.trade_no,
-                        %error,
-                        "平台资源代理任务无法获取 handles，将等待扫描兜底"
-                    );
-                }
-            }
-        }
-        tracing::info!(
+        tracing::warn!(
             trade_no = %self.trade_no,
-            uid = %self.uid,
             trade_type = %self.trade_type,
-            rsc_type = %self.rsc_type,
-            mode = %self.mode,
-            permission_id = ?self.permission_id,
             operation_type = ?operation_type,
-            fast_wakeup = operation_type == ApiResourceDelegationOperationType::Delegate,
-            "平台资源代理/回收任务已落库"
+            "忽略已迁移到后端执行的平台资源代理/回收任务"
         );
         Ok(())
-    }
-
-    fn resource_delegation_amount(&self) -> String {
-        if !self.rsc_value.trim().is_empty() {
-            return self.rsc_value.clone();
-        }
-        if !self.native_value.trim().is_empty() {
-            return self.native_value.clone();
-        }
-        self.native_value.clone()
-    }
-
-    fn resource_delegation_native_amount(&self) -> String {
-        self.native_value.clone()
-    }
-
-    fn resource_delegation_mode(&self) -> ApiResourceDelegationMode {
-        match self.mode {
-            2 => ApiResourceDelegationMode::AuthorizedAddress,
-            _ => ApiResourceDelegationMode::WithdrawAddress,
-        }
-    }
-
-    fn normalized_permission_id(&self) -> Option<String> {
-        self.permission_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
     }
 }
 

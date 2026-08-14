@@ -2875,7 +2875,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resource_delegation_original_order_result_fact_scans_for_result_ack_only() {
+    async fn resource_delegation_original_order_result_fact_uses_origin_ack_scanner_only() {
         let pool = setup_api_resource_pool("resource_delegation_original_order_result_fact").await;
         let payload = r#"{"tradeNo":"C_origin","tradeType":"2","status":false}"#;
 
@@ -2917,6 +2917,20 @@ mod tests {
         let result_ack_rows =
             ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
         assert!(result_ack_rows.iter().any(|row| row.resource_trade_no == "C_origin"));
+
+        let platform_task_ack_rows =
+            ApiResourceDelegationRepo::scan_need_result_ack_for_source_and_operation(
+                &pool,
+                ApiResourceDelegationSource::Platform,
+                ApiResourceDelegationOperationType::Delegate,
+                100,
+            )
+            .await
+            .unwrap();
+        assert!(
+            !platform_task_ack_rows.iter().any(|row| row.resource_trade_no == "C_origin"),
+            "backend-executed original-order projections must not enter the SDK platform-task ACK scanner"
+        );
 
         assert_eq!(
             ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "C_origin").await.unwrap(),

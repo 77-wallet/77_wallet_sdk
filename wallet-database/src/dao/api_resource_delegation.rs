@@ -314,6 +314,9 @@ impl ApiResourceDelegationDao {
             SELECT * FROM api_resource_delegation
             WHERE source = ?
               AND operation_type = ?
+              -- Original-order projections are ACKed by the collect/withdraw
+              -- flow. They are not SDK-executed platform resource tasks.
+              AND (origin_trade_no IS NULL OR origin_trade_no <> resource_trade_no)
               AND finished_at IS NOT NULL
               AND result_payload IS NOT NULL
               AND tx_res_received_at IS NOT NULL

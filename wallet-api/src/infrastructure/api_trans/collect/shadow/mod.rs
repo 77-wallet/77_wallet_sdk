@@ -69,11 +69,11 @@ pub enum ChainIntent {
     RecoverTx(String),
     /// 执行商户本地资源代理 fallback，trade_no 是资源任务号。
     ///
-    /// 注意：平台代理 Delegate 已拆到 `resource_delegate::platform_shadow`。
+    /// 注意：平台代理 Delegate 已迁移到后端执行。
     /// collect shadow 只保留商户本地 fallback，因为它依赖 collect 资源 gate
     /// 的本地兜底顺序。
     ///
-    /// 平台结果成功/失败后释放 collect gate 的事实投影，也由资源代理副链负责。
+    /// 平台结果成功/失败后释放 collect gate 的事实投影仍由 collect 结果 ACK 负责。
     ExecuteLocalResourceDelegation(String),
     /// 执行 TRON 账户激活任务，trade_no 是激活任务号。
     ExecuteAccountActivation(String),

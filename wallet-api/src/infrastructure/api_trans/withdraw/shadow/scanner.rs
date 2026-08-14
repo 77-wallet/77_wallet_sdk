@@ -574,10 +574,8 @@ impl ShadowScanner {
             }
         }
 
-        // Withdraw shadow only owns the original-order resource result ACK.
-        // Platform Delegate resource tasks are handled by
-        // resource_delegate::platform_shadow; scanning them here would race the
-        // platform resource state machine and delay fast-path execution.
+        // Backend owns platform delegation execution. Withdraw shadow only
+        // owns the merchant original-order resource result ACK.
 
         trace!("Withdraw shadow scan round completed in {:?}", start.elapsed());
     }

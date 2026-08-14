@@ -1121,8 +1121,7 @@ impl ShadowScanner {
                 error!(stage, %error, "Collect shadow scan stage failed");
             }
         }
-        // collect shadow 只保留商户本地代理 fallback。
-        // 平台代理由 resource_delegate::platform_shadow 处理，避免主链和资源副链重复消费同一任务。
+        // collect shadow 只保留商户本地代理 fallback；平台代理由后端执行。
 
         trace!(elapsed = ?start.elapsed(), "Collect shadow scan round completed");
 

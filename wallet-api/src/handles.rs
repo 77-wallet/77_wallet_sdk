@@ -6,12 +6,8 @@ use crate::{
         // asset_calc::actor_model::AssetCalcActorManager,
         api_trans::collect::legacy::process_collect_tx::ProcessCollectTxHandle,
         api_trans::collect_fee::legacy::process_fee_tx::ProcessFeeTxHandle,
-        api_trans::resource_delegate::platform_shadow::PlatformResourceDelegateShadowActorSystem,
         api_trans::resource_operation::shadow::ResourceOperationShadowActorSystem,
-        api_trans::resource_reclaim::{
-            local_shadow::LocalResourceReclaimShadowActorSystem,
-            platform_shadow::PlatformResourceReclaimShadowActorSystem,
-        },
+        api_trans::resource_reclaim::local_shadow::LocalResourceReclaimShadowActorSystem,
         api_trans::withdraw::legacy::process_withdraw_tx::ProcessWithdrawTxHandle,
         collector_unconfirm_msg::UnconfirmedMsgCollector,
         inner_event::InnerEventHandle,
@@ -36,10 +32,7 @@ pub struct Handles {
     process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
     process_collect_tx_handle: Arc<ProcessCollectTxHandle>,
     resource_operation_shadow: Arc<Mutex<Option<ResourceOperationShadowActorSystem>>>,
-    platform_resource_delegate_shadow:
-        Arc<Mutex<Option<PlatformResourceDelegateShadowActorSystem>>>,
     local_resource_reclaim_shadow: Arc<Mutex<Option<LocalResourceReclaimShadowActorSystem>>>,
-    platform_resource_reclaim_shadow: Arc<Mutex<Option<PlatformResourceReclaimShadowActorSystem>>>,
     upload_log: Arc<UploadLogHandle>,
     normal_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
     api_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
@@ -67,19 +60,8 @@ impl Handles {
         let process_collect_tx_handle = ProcessCollectTxHandle::new_with_ctx(context).await?;
         let resource_operation_shadow =
             infrastructure::api_trans::resource_operation::shadow::init(context).await?;
-        let platform_resource_delegate_shadow = {
-            let api_resource_pool = context.api_resource_pool()?;
-            let api_transaction_pool = context.api_transaction_pool()?;
-            infrastructure::api_trans::resource_delegate::platform_shadow::init(
-                api_resource_pool,
-                api_transaction_pool,
-            )
-            .await
-        };
         let local_resource_reclaim_shadow =
             infrastructure::api_trans::resource_reclaim::local_shadow::init(context).await?;
-        let platform_resource_reclaim_shadow =
-            infrastructure::api_trans::resource_reclaim::platform_shadow::init(context).await?;
 
         // 初始化私钥管理器
         tracing::info!("Initialize private key manager start");
@@ -101,14 +83,8 @@ impl Handles {
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
             process_collect_tx_handle: Arc::new(process_collect_tx_handle),
             resource_operation_shadow: Arc::new(Mutex::new(Some(resource_operation_shadow))),
-            platform_resource_delegate_shadow: Arc::new(Mutex::new(Some(
-                platform_resource_delegate_shadow,
-            ))),
             local_resource_reclaim_shadow: Arc::new(Mutex::new(Some(
                 local_resource_reclaim_shadow,
-            ))),
-            platform_resource_reclaim_shadow: Arc::new(Mutex::new(Some(
-                platform_resource_reclaim_shadow,
             ))),
             upload_log: Arc::new(upload_log_handle),
             normal_wallet_mqtt: Arc::new(Mutex::new(None)),
@@ -130,31 +106,11 @@ impl Handles {
             resource_operation_shadow.take();
         }
         {
-            let mut platform_resource_delegate_shadow =
-                self.platform_resource_delegate_shadow.lock().await;
-            if let Some(platform_resource_delegate_shadow) =
-                platform_resource_delegate_shadow.as_mut()
-            {
-                platform_resource_delegate_shadow.stop().await;
-            }
-            platform_resource_delegate_shadow.take();
-        }
-        {
             let mut local_resource_reclaim_shadow = self.local_resource_reclaim_shadow.lock().await;
             if let Some(local_resource_reclaim_shadow) = local_resource_reclaim_shadow.as_mut() {
                 local_resource_reclaim_shadow.stop().await;
             }
             local_resource_reclaim_shadow.take();
-        }
-        {
-            let mut platform_resource_reclaim_shadow =
-                self.platform_resource_reclaim_shadow.lock().await;
-            if let Some(platform_resource_reclaim_shadow) =
-                platform_resource_reclaim_shadow.as_mut()
-            {
-                platform_resource_reclaim_shadow.stop().await;
-            }
-            platform_resource_reclaim_shadow.take();
         }
         self.upload_log.close().await?;
         self.unconfirmed_msg_processor.close().await?;
@@ -193,20 +149,6 @@ impl Handles {
         let resource_operation_shadow = self.resource_operation_shadow.lock().await;
         if let Some(resource_operation_shadow) = resource_operation_shadow.as_ref() {
             resource_operation_shadow.trigger_resource_operation(resource_trade_no).await?;
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn trigger_platform_resource_delegation(
-        &self,
-        resource_trade_no: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        let platform_resource_delegate_shadow = self.platform_resource_delegate_shadow.lock().await;
-        if let Some(platform_resource_delegate_shadow) = platform_resource_delegate_shadow.as_ref()
-        {
-            platform_resource_delegate_shadow
-                .trigger_platform_delegation(resource_trade_no)
-                .await?;
         }
         Ok(())
     }
