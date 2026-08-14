@@ -192,6 +192,38 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - DB facts: `tx_ack_sent_at` stays `NULL`; scanner still emits `SendTxAck`.
 - Invariant: backend ACK failure must not persist the durable ACK fact.
 
+### Withdraw Platform Delegation Apply Fact Gap
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  wallet-database/src/repositories/api_wallet/withdraw.rs
+  withdraw_platform_delegation_fact_gap_scans_apply_without_rechecking_resources
+  ```
+
+- Backend: none.
+- DB facts: `resource_block_reason = NeedPlatformDelegate`, platform dependency facts are set,
+  `resource_gate_result = NULL`, and `resource_gate_released_at = NULL`.
+- Invariant: a persisted platform-delegation decision scans the idempotent apply gap but cannot
+  re-enter resource evaluation or BuildTx.
+
+### Withdraw Platform Delegation Result Before Apply Response
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  wallet-database/src/repositories/api_wallet/withdraw.rs
+  withdraw_platform_delegation_result_closes_apply_gap_before_apply_response
+  ```
+
+- Backend: none.
+- DB facts: the first resource result fills `resource_gate_result` monotonically while preserving
+  the platform dependency and keeping `resource_gate_released_at = NULL`.
+- Invariant: a resource result may close the apply gap before the HTTP response, but it cannot
+  release the withdraw gate before its result ACK.
+
 ### Withdraw Resource Result ACK Payload
 
 - Layer: integration.

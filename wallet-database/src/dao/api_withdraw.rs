@@ -390,6 +390,77 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
+    /// Persist the platform-delegation result without releasing the withdraw
+    /// resource gate. The result ACK is a separate fact and remains the hard
+    /// prerequisite for gate release.
+    pub async fn mark_platform_delegation_result_received<'a, E>(
+        exec: E,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET resource_check_at = COALESCE(resource_check_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_result = COALESCE(resource_gate_result, ?2),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+              AND resource_gate_released_at IS NULL
+              AND resource_gate_result IS NULL
+              AND resource_block_reason = ?3
+              AND resource_dependency_type = ?4
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(gate_result.as_i64())
+            .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
+            .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Scan withdraws whose resource decision is already frozen at platform
+    /// delegation but whose result fact has not arrived yet. Re-running the
+    /// idempotent apply call fills this fact gap; it must not re-enter resource
+    /// evaluation.
+    pub async fn scan_need_platform_delegation_apply<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?1
+              AND lower(chain_code) = 'tron'
+              AND resource_gate_released_at IS NULL
+              AND resource_gate_result IS NULL
+              AND resource_block_reason = ?2
+              AND resource_dependency_type = ?3
+              AND resource_dependency_trade_no IS NOT NULL
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?4
+        "#;
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
+            .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn scan_need_resource_gate<'a, E>(
         exec: E,
         limit: usize,

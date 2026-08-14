@@ -207,6 +207,26 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::mark_resource_delegation_confirmed(pool.write_ref(), trade_no).await
     }
 
+    pub async fn mark_platform_delegation_result_received(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        gate_result: ApiResourceGateResult,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_platform_delegation_result_received(
+            pool.write_ref(),
+            trade_no,
+            gate_result,
+        )
+        .await
+    }
+
+    pub async fn scan_need_platform_delegation_apply(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_platform_delegation_apply(pool.read_ref(), limit).await
+    }
+
     pub async fn scan_need_resource_gate(
         pool: &ApiTransactionDbPool,
         limit: usize,
@@ -2052,6 +2072,149 @@ mod tests {
         let scan = ApiWithdrawRepo::scan_need_resource_gate(&pool, 10).await.unwrap();
         assert_eq!(scan.len(), 1);
         assert_eq!(scan[0].trade_no, trade_no);
+    }
+
+    #[tokio::test]
+    async fn withdraw_platform_delegation_fact_gap_scans_apply_without_rechecking_resources() {
+        let pool = setup_api_transaction_pool("withdraw_platform_delegation_apply_gap").await;
+        let trade_no = "withdraw_platform_delegation_apply_gap_1";
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "withdraw",
+            "from",
+            "to",
+            "20",
+            "v",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "USDT",
+            trade_no,
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        ApiWithdrawRepo::mark_tx_ack_attempted(&pool, trade_no).await.unwrap();
+        ApiWithdrawRepo::mark_tx_ack_sent(&pool, trade_no).await.unwrap();
+        ApiWithdrawRepo::set_audit_passed(&pool, trade_no).await.unwrap();
+        ApiWithdrawRepo::mark_resource_blocked(
+            &pool,
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            Some(trade_no),
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .unwrap();
+
+        let resource_gate = ApiWithdrawRepo::scan_need_resource_gate(&pool, 10).await.unwrap();
+        let delegation_apply =
+            ApiWithdrawRepo::scan_need_platform_delegation_apply(&pool, 10).await.unwrap();
+        let can_build = ApiWithdrawRepo::scan_can_build(&pool, 10).await.unwrap();
+
+        assert!(resource_gate.is_empty());
+        assert_eq!(delegation_apply.len(), 1);
+        assert_eq!(delegation_apply[0].trade_no, trade_no);
+        assert!(can_build.is_empty());
+    }
+
+    #[tokio::test]
+    async fn withdraw_platform_delegation_result_closes_apply_gap_before_apply_response() {
+        let pool = setup_api_transaction_pool("withdraw_platform_delegation_result_first").await;
+        let trade_no = "withdraw_platform_delegation_result_first_1";
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "withdraw",
+            "from",
+            "to",
+            "20",
+            "v",
+            wallet_types::constant::chain_code::TRON,
+            None,
+            "USDT",
+            trade_no,
+            None,
+            None,
+            None,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        ApiWithdrawRepo::mark_resource_blocked(
+            &pool,
+            trade_no,
+            ApiResourceBlockReason::NeedPlatformDelegate,
+            Some(trade_no),
+            Some(ApiResourceDependencyType::PlatformDelegate),
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiWithdrawRepo::mark_platform_delegation_result_received(
+            &pool,
+            trade_no,
+            ApiResourceGateResult::PlatformDelegateSuccess,
+        )
+        .await
+        .unwrap();
+        let duplicate_rows = ApiWithdrawRepo::mark_platform_delegation_result_received(
+            &pool,
+            trade_no,
+            ApiResourceGateResult::ResourceDelegationFailedBypass,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(rows, 1);
+        assert_eq!(duplicate_rows, 0);
+        let received =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert_eq!(
+            received.resource_gate_result,
+            Some(ApiResourceGateResult::PlatformDelegateSuccess)
+        );
+        assert_eq!(
+            received.resource_block_reason,
+            Some(ApiResourceBlockReason::NeedPlatformDelegate)
+        );
+        assert_eq!(received.resource_dependency_trade_no.as_deref(), Some(trade_no));
+        assert_eq!(
+            received.resource_dependency_type,
+            Some(ApiResourceDependencyType::PlatformDelegate)
+        );
+        assert!(received.resource_gate_released_at.is_none());
+
+        let delegation_apply =
+            ApiWithdrawRepo::scan_need_platform_delegation_apply(&pool, 10).await.unwrap();
+        let resource_gate = ApiWithdrawRepo::scan_need_resource_gate(&pool, 10).await.unwrap();
+        let can_build = ApiWithdrawRepo::scan_can_build(&pool, 10).await.unwrap();
+        assert!(delegation_apply.is_empty());
+        assert!(resource_gate.is_empty());
+        assert!(can_build.is_empty());
     }
 
     #[tokio::test]
