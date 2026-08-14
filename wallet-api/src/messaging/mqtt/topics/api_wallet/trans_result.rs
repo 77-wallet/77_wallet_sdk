@@ -494,20 +494,24 @@ impl AwmOrderTransResMsg {
             status = %self.status,
             "Withdraw resource delegation result matched blocked origin order"
         );
-        if self.status {
-            let rows = ApiWithdrawRepo::mark_resource_released(
-                api_transaction_pool,
-                &withdraw.trade_no,
-                ApiResourceGateResult::PlatformDelegateSuccess,
-            )
-            .await?;
-            tracing::info!(
-                resource_trade_no = %self.trade_no,
-                origin_trade_no = %withdraw.trade_no,
-                rows = rows,
-                "Withdraw resource gate released by platform delegation result"
-            );
-        }
+        let gate_result = if self.status {
+            ApiResourceGateResult::PlatformDelegateSuccess
+        } else {
+            ApiResourceGateResult::ResourceDelegationFailedBypass
+        };
+        let rows = ApiWithdrawRepo::mark_platform_delegation_result_received(
+            api_transaction_pool,
+            &withdraw.trade_no,
+            gate_result,
+        )
+        .await?;
+        tracing::info!(
+            resource_trade_no = %self.trade_no,
+            origin_trade_no = %withdraw.trade_no,
+            gate_result = ?gate_result,
+            rows,
+            "Withdraw platform delegation result persisted; gate remains blocked until ACK"
+        );
 
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
             api_resource_pool,

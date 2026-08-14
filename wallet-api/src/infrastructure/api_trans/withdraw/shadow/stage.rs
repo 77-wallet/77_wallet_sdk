@@ -2,6 +2,7 @@
 pub enum AdvancementPoint {
     NeedTxAck,
     NeedResourceGate,
+    NeedPlatformDelegateApply,
     CanBuild,
     CanBroadcast,
     NeedRecover,
@@ -16,6 +17,7 @@ pub enum AdvancementPoint {
 pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
     AdvancementPoint::NeedTxAck,
     AdvancementPoint::NeedResourceGate,
+    AdvancementPoint::NeedPlatformDelegateApply,
     AdvancementPoint::CanBuild,
     AdvancementPoint::CanBroadcast,
     AdvancementPoint::NeedRecover,
@@ -28,6 +30,7 @@ impl AdvancementPoint {
         match self {
             AdvancementPoint::NeedTxAck => 1,
             AdvancementPoint::NeedResourceGate => 1,
+            AdvancementPoint::NeedPlatformDelegateApply => 1,
             AdvancementPoint::CanBuild => 0,
             AdvancementPoint::CanBroadcast => 0,
             AdvancementPoint::NeedRecover => 2,
@@ -41,6 +44,7 @@ impl AdvancementPoint {
         match self {
             AdvancementPoint::NeedTxAck => 2,
             AdvancementPoint::NeedResourceGate => 2,
+            AdvancementPoint::NeedPlatformDelegateApply => 2,
             AdvancementPoint::CanBuild => 5,
             AdvancementPoint::CanBroadcast => 5,
             AdvancementPoint::NeedRecover => 10,
@@ -54,6 +58,7 @@ impl AdvancementPoint {
         match self {
             AdvancementPoint::NeedTxAck => "tx_ack_sent_at",
             AdvancementPoint::NeedResourceGate => "resource_gate_released_at",
+            AdvancementPoint::NeedPlatformDelegateApply => "resource_gate_result",
             AdvancementPoint::CanBuild => "raw_tx",
             AdvancementPoint::CanBroadcast => "last_broadcast_at",
             AdvancementPoint::NeedRecover => "transaction_time",

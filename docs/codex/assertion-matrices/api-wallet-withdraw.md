@@ -6,6 +6,29 @@ Scope: `wallet-api` API wallet withdraw flow.
   `transaction_time` before receipt resources, NeedRecover remains eligible and
   conditionally backfills actual energy/bandwidth without changing terminal facts.
 
+### Withdraw Platform Delegation Fact Split
+
+- Layer: repository component and shadow predicate unit tests.
+- Decision: `NeedPlatformDelegate` is persisted before the idempotent backend apply call.
+- Retry: scanner retries only while the apply response is unknown. A definite `true` records the
+  dependency trade number (the original trade number when the backend omits one) and waits only for
+  MQTT; a definite `false` releases the gate through `FallbackAllowed` for the TRX-fee path.
+- Race: a resource result received before the apply response closes the apply fact gap, while the
+  resource gate remains blocked until the result ACK is persisted.
+- Build invariant: TRON BuildTx requires `resource_gate_released_at`, including a fresh worker-side
+  check immediately before nonce allocation.
+- Entrypoints:
+
+  ```text
+  wallet-database/src/repositories/api_wallet/withdraw.rs
+  withdraw_platform_delegation_fact_gap_scans_apply_without_rechecking_resources
+  withdraw_platform_delegation_result_closes_apply_gap_before_apply_response
+
+  wallet-api/src/infrastructure/api_trans/withdraw/shadow/predicate.rs
+  platform_delegate_apply_advances_only_for_persisted_fact_gap
+  tron_build_requires_resource_gate_release_even_when_other_facts_are_ready
+  ```
+
 ### Withdraw Broadcast Resource Reservation Reconciliation
 
 - Layer: unit plus existing Recover flow coverage.

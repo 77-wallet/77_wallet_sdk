@@ -337,6 +337,9 @@ use crate::{
 fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
     withdraw.tx_ack_sent_at.is_some()          // 顺序门 1: TxAck
         && withdraw.audit_passed_at.is_some()   // 顺序门 2: AuditPass
+        && (!crate::domain::api_wallet::trans::shared_mechanism::is_tron_chain(
+            &withdraw.chain_code,
+        ) || withdraw.resource_gate_released_at.is_some())
         && withdraw.raw_tx.is_none()           // 执行条件: 未构建
         && withdraw.finished_at.is_none()       // 终止排除: 未结束
         && withdraw.err_code.is_none() // 终止排除: 无错误
@@ -559,6 +562,7 @@ impl ShadowScanner {
             ("need_fee_estimate", self.scan_need_fee_estimate().await),
             ("need_tx_ack", self.scan_need_tx_ack().await),
             ("need_resource_gate", self.scan_need_resource_gate().await),
+            ("need_platform_delegate_apply", self.scan_need_platform_delegate_apply().await),
             ("can_build", self.scan_can_build().await),
             ("can_broadcast", self.scan_can_broadcast().await),
             ("need_recover", self.scan_need_recover().await),
@@ -724,6 +728,23 @@ impl ShadowScanner {
             self.dispatch_intent(intent);
         }
 
+        Ok(())
+    }
+
+    async fn scan_need_platform_delegate_apply(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+        trace!(max_items = %self.config.max_resource_gate_per_scan, "Scanning withdraw platform delegation apply fact gaps");
+
+        let records = wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_platform_delegation_apply(
+            &pool,
+            self.config.max_resource_gate_per_scan,
+        ).await?;
+
+        for record in records {
+            self.dispatch_intent(WithdrawIntent::Chain(
+                WithdrawChainIntent::ApplyPlatformDelegate(record.trade_no),
+            ));
+        }
         Ok(())
     }
 
@@ -1061,6 +1082,7 @@ impl ShadowScanner {
                 let trade_no = match &intent {
                     WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no))
+                    | WithdrawIntent::Chain(WithdrawChainIntent::ApplyPlatformDelegate(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no))
@@ -1292,6 +1314,13 @@ impl ShadowScanner {
                         trade_no.to_string(),
                     ));
                     self.dispatch_intent(intent);
+                    return Ok(());
+                }
+                AdvancementPoint::NeedPlatformDelegateApply => {
+                    trace!(trade_no = %trade_no, "Need to apply platform delegation");
+                    self.dispatch_intent(WithdrawIntent::Chain(
+                        WithdrawChainIntent::ApplyPlatformDelegate(trade_no.to_string()),
+                    ));
                     return Ok(());
                 }
                 AdvancementPoint::CanBuild => {

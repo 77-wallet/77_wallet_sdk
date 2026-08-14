@@ -12,6 +12,8 @@ pub enum ShadowWithdrawCommand {
     EstimateFee(String),
     /// 评估资源闸门
     EvalResourceGate(String),
+    /// 调用幂等的平台代理申请接口
+    ApplyPlatformDelegate(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易

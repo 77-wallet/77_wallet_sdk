@@ -1,6 +1,7 @@
 use smallvec::SmallVec;
 use wallet_database::entities::{
-    api_resource_gate::ApiResourceBlockReason, api_withdraw::ApiWithdrawEntity,
+    api_resource_gate::{ApiResourceBlockReason, ApiResourceDependencyType},
+    api_withdraw::ApiWithdrawEntity,
 };
 
 use crate::domain::api_wallet::trans::shared_mechanism;
@@ -28,6 +29,9 @@ pub fn evaluate_point(point: AdvancementPoint, withdraw: &ApiWithdrawEntity) -> 
     match point {
         AdvancementPoint::NeedTxAck => evaluate_need_tx_ack(withdraw),
         AdvancementPoint::NeedResourceGate => evaluate_need_resource_gate(withdraw),
+        AdvancementPoint::NeedPlatformDelegateApply => {
+            evaluate_need_platform_delegate_apply(withdraw)
+        }
         AdvancementPoint::CanBuild => evaluate_can_build(withdraw),
         AdvancementPoint::CanBroadcast => evaluate_can_broadcast(withdraw),
         AdvancementPoint::NeedRecover => evaluate_need_recover(withdraw),
@@ -37,6 +41,63 @@ pub fn evaluate_point(point: AdvancementPoint, withdraw: &ApiWithdrawEntity) -> 
             StageEval { can_advance: false, reasons: SmallVec::new() }
         }
     }
+}
+
+fn evaluate_need_platform_delegate_apply(withdraw: &ApiWithdrawEntity) -> StageEval {
+    let mut reasons = SmallVec::new();
+    let platform_apply_fact_gap = withdraw.resource_block_reason
+        == Some(ApiResourceBlockReason::NeedPlatformDelegate)
+        && withdraw.resource_dependency_type == Some(ApiResourceDependencyType::PlatformDelegate)
+        && withdraw.resource_dependency_trade_no.is_none();
+
+    if !platform_apply_fact_gap {
+        reasons.push(StageReason {
+            code: "platform_delegate_apply_fact_gap_closed",
+            message: "Platform delegation is not required or its apply response was accepted"
+                .to_string(),
+        });
+    }
+    if withdraw.resource_gate_result.is_some() {
+        reasons.push(StageReason {
+            code: "platform_delegate_result_received",
+            message: "Platform delegation result already received".to_string(),
+        });
+    }
+    if withdraw.resource_gate_released_at.is_some() {
+        reasons.push(StageReason {
+            code: "resource_gate_released",
+            message: "Resource gate already released".to_string(),
+        });
+    }
+    if withdraw.raw_tx.is_some() {
+        reasons.push(StageReason {
+            code: "raw_tx_exists",
+            message: "Raw tx already exists".to_string(),
+        });
+    }
+    if withdraw.transaction_time.is_some() {
+        reasons.push(StageReason {
+            code: "transaction_time_exists",
+            message: "Transaction already committed".to_string(),
+        });
+    }
+    if withdraw.finished_at.is_some() {
+        reasons
+            .push(StageReason { code: "finished", message: "Order already finished".to_string() });
+    }
+    if withdraw.err_code.is_some() {
+        reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
+    }
+
+    let can_advance = platform_apply_fact_gap
+        && withdraw.resource_gate_result.is_none()
+        && withdraw.resource_gate_released_at.is_none()
+        && withdraw.raw_tx.is_none()
+        && withdraw.transaction_time.is_none()
+        && withdraw.finished_at.is_none()
+        && withdraw.err_code.is_none();
+
+    StageEval { can_advance, reasons }
 }
 
 fn evaluate_need_resource_gate(withdraw: &ApiWithdrawEntity) -> StageEval {
@@ -374,6 +435,7 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use wallet_database::entities::{
+        api_resource_gate::ApiResourceGateResult,
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawStatus, WithdrawFailureStage},
         asset_token_key::AssetTokenKey,
@@ -599,6 +661,58 @@ mod tests {
         needs_local_task.resource_dependency_trade_no = None;
         let retry_eval = evaluate_point(AdvancementPoint::NeedResourceGate, &needs_local_task);
         assert!(retry_eval.can_advance);
+    }
+
+    #[test]
+    fn platform_delegate_apply_advances_only_for_persisted_fact_gap() {
+        let mut withdraw = base_withdraw();
+        withdraw.resource_block_reason = Some(ApiResourceBlockReason::NeedPlatformDelegate);
+        withdraw.resource_dependency_type = Some(ApiResourceDependencyType::PlatformDelegate);
+        withdraw.resource_dependency_trade_no = None;
+        withdraw.resource_gate_result = None;
+        withdraw.resource_gate_released_at = None;
+        withdraw.raw_tx = None;
+        withdraw.transaction_time = None;
+        withdraw.finished_at = None;
+        withdraw.err_code = None;
+
+        let pending = evaluate_point(AdvancementPoint::NeedPlatformDelegateApply, &withdraw);
+        assert!(pending.can_advance);
+
+        withdraw.resource_dependency_trade_no = Some(withdraw.trade_no.clone());
+        let accepted = evaluate_point(AdvancementPoint::NeedPlatformDelegateApply, &withdraw);
+        assert!(!accepted.can_advance);
+        assert!(
+            accepted
+                .reasons
+                .iter()
+                .any(|reason| reason.code == "platform_delegate_apply_fact_gap_closed")
+        );
+
+        withdraw.resource_dependency_trade_no = None;
+        withdraw.resource_gate_result = Some(ApiResourceGateResult::PlatformDelegateSuccess);
+        let result_first = evaluate_point(AdvancementPoint::NeedPlatformDelegateApply, &withdraw);
+        assert!(!result_first.can_advance);
+        assert!(
+            result_first
+                .reasons
+                .iter()
+                .any(|reason| reason.code == "platform_delegate_result_received")
+        );
+    }
+
+    #[test]
+    fn tron_build_requires_resource_gate_release_even_when_other_facts_are_ready() {
+        let mut withdraw = base_withdraw();
+        withdraw.raw_tx = None;
+        withdraw.resource_gate_released_at = None;
+
+        let blocked = evaluate_point(AdvancementPoint::CanBuild, &withdraw);
+        assert!(!blocked.can_advance);
+        assert!(blocked.reasons.iter().any(|reason| reason.code == "resource_gate_not_released"));
+
+        withdraw.resource_gate_released_at = Some(Utc::now());
+        assert!(evaluate_point(AdvancementPoint::CanBuild, &withdraw).can_advance);
     }
 
     #[test]

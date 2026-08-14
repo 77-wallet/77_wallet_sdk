@@ -158,6 +158,9 @@ fn withdraw_intent_summary(intent: WithdrawIntent) -> (String, String) {
         WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no)) => {
             ("EvalResourceGate".to_string(), trade_no)
         }
+        WithdrawIntent::Chain(WithdrawChainIntent::ApplyPlatformDelegate(trade_no)) => {
+            ("ApplyPlatformDelegate".to_string(), trade_no)
+        }
         WithdrawIntent::Chain(WithdrawChainIntent::ExecuteResourceDelegation(trade_no)) => {
             ("ExecuteResourceDelegation".to_string(), trade_no)
         }

@@ -447,22 +447,13 @@ impl SideEffectWorker {
 
         if ack_rows > 0 {
             if let Some((origin_trade_no, release_result)) = release.as_ref() {
-                let release_rows =
-                    if *release_result == ApiResourceGateResult::ResourceDelegationSuccess {
-                        ApiWithdrawRepo::mark_resource_delegation_confirmed(
-                            &self.ctx.api_transaction_pool()?,
-                            origin_trade_no,
-                        )
-                        .await
-                    } else {
-                        ApiWithdrawRepo::mark_resource_released(
-                            &self.ctx.api_transaction_pool()?,
-                            origin_trade_no,
-                            *release_result,
-                        )
-                        .await
-                    }
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let release_rows = ApiWithdrawRepo::mark_resource_released(
+                    &self.ctx.api_transaction_pool()?,
+                    origin_trade_no,
+                    *release_result,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 info!(
                     resource_trade_no = %resource_task.resource_trade_no,
                     origin_trade_no = %origin_trade_no,

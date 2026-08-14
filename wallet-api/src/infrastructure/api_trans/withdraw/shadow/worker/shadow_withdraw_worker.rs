@@ -518,6 +518,9 @@ impl ShadowWithdrawWorker {
             super::ShadowWithdrawCommand::EvalResourceGate(trade_no) => {
                 self.process_eval_resource_gate(trade_no).await
             }
+            super::ShadowWithdrawCommand::ApplyPlatformDelegate(trade_no) => {
+                self.process_apply_platform_delegate(trade_no).await
+            }
             super::ShadowWithdrawCommand::BuildTx(trade_no) => {
                 self.process_build_tx(trade_no).await
             }
@@ -980,6 +983,12 @@ impl ShadowWithdrawWorker {
             && req.resource_dependency_trade_no.is_some()
     }
 
+    fn needs_platform_delegate_apply(req: &ApiWithdrawEntity) -> bool {
+        req.resource_block_reason == Some(ApiResourceBlockReason::NeedPlatformDelegate)
+            && req.resource_dependency_type == Some(ApiResourceDependencyType::PlatformDelegate)
+            && req.resource_dependency_trade_no.is_none()
+    }
+
     fn resource_gate_prerequisites_ready(req: &ApiWithdrawEntity) -> bool {
         req.audit_passed_at.is_some() && req.tx_ack_sent_at.is_some()
     }
@@ -1102,45 +1111,15 @@ impl ShadowWithdrawWorker {
             source = "shadow_withdraw_worker",
             "TRON withdraw resource gate requires platform ENERGY delegation"
         );
-        let resource_trade_no = match self
-            .apply_platform_resource_delegation(
-                &req.uid,
-                origin_trade_no,
-                &req.chain_code,
-                &req.from_addr,
-                &amount,
-            )
-            .await?
-        {
-            PlatformApplyOutcome::AcceptedWithResourceTradeNo(resource_trade_no) => {
-                resource_trade_no
-            }
-            // Some backend versions accept the platform delegation request but
-            // push the resource result with the original withdraw trade number
-            // instead of returning a dedicated WD... delegation trade number.
-            // Keep the gate blocked on the original order until TX_RSC_RES is
-            // received and ACKed; otherwise BuildTx can outrun the delegation.
-            PlatformApplyOutcome::AcceptedWithOriginalTradeNo => origin_trade_no.to_string(),
-            PlatformApplyOutcome::Rejected => {
-                let rows = ApiWithdrawRepo::mark_resource_released(
-                    &self.ctx.api_transaction_pool()?,
-                    origin_trade_no,
-                    ApiResourceGateResult::FallbackAllowed,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                if rows > 0 {
-                    self.scanner.try_advance(origin_trade_no).await;
-                }
-                return Ok(());
-            }
-        };
-        ApiWithdrawRepo::mark_resource_blocked(
+        let estimated_resource_consume = req.estimated_resource_consume.as_deref().ok_or_else(|| {
+            ServiceError::Context(format!(
+                "withdraw {origin_trade_no} requires platform delegation without resource estimate"
+            ))
+        })?;
+        let rows = ApiWithdrawRepo::mark_platform_delegation_required(
             &self.ctx.api_transaction_pool()?,
             origin_trade_no,
-            ApiResourceBlockReason::NeedPlatformDelegate,
-            Some(resource_trade_no.as_str()),
-            Some(ApiResourceDependencyType::PlatformDelegate),
+            estimated_resource_consume,
         )
         .await
         .map_err(|e| ServiceError::Database(e.into()))?;
@@ -1150,11 +1129,101 @@ impl ShadowWithdrawWorker {
             available_energy = %available_energy,
             required_bandwidth = %required_bandwidth,
             available_bandwidth = %available_bandwidth,
-            resource_trade_no = ?resource_trade_no,
+            rows,
             source = "shadow_withdraw_worker",
-            "TRON withdraw resource gate blocked"
+            "TRON withdraw platform delegation requirement persisted before apply"
         );
+        if rows > 0 {
+            self.scanner.try_advance(origin_trade_no).await;
+        }
 
+        Ok(())
+    }
+
+    async fn process_apply_platform_delegate(&self, trade_no: String) -> Result<(), ServiceError> {
+        let result = self.process_apply_platform_delegate_inner(&trade_no).await;
+        let Err(err) = result else {
+            return Ok(());
+        };
+
+        // The scanner is the retry scheduler. A timed-out response is not a
+        // negative business fact because the idempotent backend may already
+        // have accepted the request.
+        if err.retry_policy() == wallet_utils::RetryPolicy::Delay {
+            warn!(
+                trade_no = %trade_no,
+                error = %err,
+                source = "shadow_withdraw_worker",
+                "Platform delegation apply did not produce a fact; scanner will retry"
+            );
+            return Ok(());
+        }
+        Err(err)
+    }
+
+    async fn process_apply_platform_delegate_inner(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let withdraw = self.get_withdraw_entity(trade_no).await?;
+        if !Self::needs_platform_delegate_apply(&withdraw)
+            || withdraw.resource_gate_result.is_some()
+            || withdraw.resource_gate_released_at.is_some()
+        {
+            return Ok(());
+        }
+        let consume = withdraw
+            .estimated_resource_consume
+            .as_deref()
+            .and_then(api_wallet_resource_consume)
+            .ok_or_else(|| {
+                ServiceError::Context(format!(
+                    "withdraw {trade_no} platform delegation fact has no resource estimate"
+                ))
+            })?;
+        let amount = consume.energy.to_string();
+
+        match self
+            .apply_platform_resource_delegation(
+                &withdraw.uid,
+                trade_no,
+                &withdraw.chain_code,
+                &withdraw.from_addr,
+                &amount,
+            )
+            .await?
+        {
+            PlatformApplyOutcome::AcceptedWithResourceTradeNo(resource_trade_no) => {
+                ApiWithdrawRepo::update_platform_delegation_dependency_trade_no(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                    &resource_trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+            }
+            PlatformApplyOutcome::AcceptedWithOriginalTradeNo => {
+                ApiWithdrawRepo::update_platform_delegation_dependency_trade_no(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                    trade_no,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+            }
+            PlatformApplyOutcome::Rejected => {
+                let rows = ApiWithdrawRepo::mark_resource_released(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                    ApiResourceGateResult::FallbackAllowed,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                if rows > 0 {
+                    self.scanner.try_advance(trade_no).await;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1760,6 +1829,20 @@ impl ShadowWithdrawWorker {
             // 🔒 必须重新读取，确保基于最新状态做决策
             // ⚠️ 只读"裁决字段"，不做任何业务推断
             let fresh_withdraw = self.get_withdraw_entity(trade_no).await?;
+
+            if fresh_withdraw.chain_code == ChainCode::Tron.to_string()
+                && fresh_withdraw.resource_gate_released_at.is_none()
+            {
+                warn!(
+                    trade_no = %trade_no,
+                    resource_block_reason = ?fresh_withdraw.resource_block_reason,
+                    resource_gate_result = ?fresh_withdraw.resource_gate_result,
+                    source = "shadow_withdraw_worker",
+                    "BuildTx rejected because the persisted resource gate is not released"
+                );
+                self.clear_build_slot_after_claim(trade_no).await?;
+                return Ok(());
+            }
 
             // 2. 事实校验：BuildTx 只能处理 raw_tx 为空的交易
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过

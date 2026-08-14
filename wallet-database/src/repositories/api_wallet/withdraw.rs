@@ -192,6 +192,32 @@ impl ApiWithdrawRepo {
         .await
     }
 
+    pub async fn mark_platform_delegation_required(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_platform_delegation_required(
+            pool.write_ref(),
+            trade_no,
+            estimated_resource_consume,
+        )
+        .await
+    }
+
+    pub async fn update_platform_delegation_dependency_trade_no(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        dependency_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_platform_delegation_dependency_trade_no(
+            pool.write_ref(),
+            trade_no,
+            dependency_trade_no,
+        )
+        .await
+    }
+
     pub async fn mark_resource_released(
         pool: &ApiTransactionDbPool,
         trade_no: &str,
@@ -2046,7 +2072,7 @@ mod tests {
             &pool,
             trade_no,
             ApiResourceBlockReason::NeedPlatformDelegate,
-            Some(trade_no),
+            None,
             Some(ApiResourceDependencyType::PlatformDelegate),
         )
         .await
@@ -2113,7 +2139,7 @@ mod tests {
             &pool,
             trade_no,
             ApiResourceBlockReason::NeedPlatformDelegate,
-            Some(trade_no),
+            None,
             Some(ApiResourceDependencyType::PlatformDelegate),
         )
         .await
@@ -2128,6 +2154,20 @@ mod tests {
         assert_eq!(delegation_apply.len(), 1);
         assert_eq!(delegation_apply[0].trade_no, trade_no);
         assert!(can_build.is_empty());
+
+        let accepted_rows = ApiWithdrawRepo::update_platform_delegation_dependency_trade_no(
+            &pool, trade_no, trade_no,
+        )
+        .await
+        .unwrap();
+        assert_eq!(accepted_rows, 1);
+        assert!(
+            ApiWithdrawRepo::scan_need_platform_delegation_apply(&pool, 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(ApiWithdrawRepo::scan_can_build(&pool, 10).await.unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -2166,7 +2206,7 @@ mod tests {
             &pool,
             trade_no,
             ApiResourceBlockReason::NeedPlatformDelegate,
-            Some(trade_no),
+            None,
             Some(ApiResourceDependencyType::PlatformDelegate),
         )
         .await
@@ -2201,7 +2241,7 @@ mod tests {
             received.resource_block_reason,
             Some(ApiResourceBlockReason::NeedPlatformDelegate)
         );
-        assert_eq!(received.resource_dependency_trade_no.as_deref(), Some(trade_no));
+        assert!(received.resource_dependency_trade_no.is_none());
         assert_eq!(
             received.resource_dependency_type,
             Some(ApiResourceDependencyType::PlatformDelegate)

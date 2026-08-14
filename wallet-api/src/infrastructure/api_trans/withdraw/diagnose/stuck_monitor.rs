@@ -36,6 +36,7 @@ fn withdraw_stage_to_diagnose_stage(
     match stage {
         NeedTxAck => DiagnoseStage::OrderAck,
         NeedResourceGate => DiagnoseStage::Build,
+        NeedPlatformDelegateApply => DiagnoseStage::Build,
         CanBuild => DiagnoseStage::Build,
         CanBroadcast => DiagnoseStage::Broadcast,
         NeedRecover => DiagnoseStage::Recover,

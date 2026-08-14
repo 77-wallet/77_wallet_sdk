@@ -24,6 +24,7 @@ use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 pub enum RunningKey {
     EstimateFee(String),
     EvalResourceGate(String),
+    ApplyPlatformDelegate(String),
     TxMutation(String),
     RecoverTx(String),
     ExecuteResourceDelegation(String),
@@ -73,6 +74,9 @@ impl RunningKey {
             }
             WithdrawIntent::Chain(WithdrawChainIntent::EvalResourceGate(trade_no)) => {
                 RunningKey::EvalResourceGate(trade_no.clone())
+            }
+            WithdrawIntent::Chain(WithdrawChainIntent::ApplyPlatformDelegate(trade_no)) => {
+                RunningKey::ApplyPlatformDelegate(trade_no.clone())
             }
             WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
                 RunningKey::TxMutation(trade_no.clone())
@@ -391,6 +395,12 @@ impl ShadowDispatcher {
                     info!(trade_no = %trade_no, "Sending EvalResourceGate command to Shadow Worker");
                     shadow_worker
                         .handle(ShadowWithdrawCommand::EvalResourceGate(trade_no.clone()))
+                        .await
+                }
+                WithdrawIntent::Chain(WithdrawChainIntent::ApplyPlatformDelegate(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending ApplyPlatformDelegate command to Shadow Worker");
+                    shadow_worker
+                        .handle(ShadowWithdrawCommand::ApplyPlatformDelegate(trade_no.clone()))
                         .await
                 }
                 WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {

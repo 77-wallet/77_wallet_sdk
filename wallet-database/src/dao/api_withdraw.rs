@@ -334,6 +334,77 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
+    /// Freeze the platform-delegation decision and its exact request amount
+    /// before the idempotent backend call is attempted.
+    pub async fn mark_platform_delegation_required<'a, E>(
+        exec: E,
+        trade_no: &str,
+        estimated_resource_consume: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET resource_check_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = NULL,
+                resource_gate_result = NULL,
+                resource_block_reason = ?2,
+                resource_dependency_trade_no = NULL,
+                resource_dependency_type = ?3,
+                estimated_resource_consume = ?4,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+              AND resource_gate_released_at IS NULL
+              AND resource_gate_result IS NULL
+              AND resource_block_reason IS NULL
+              AND raw_tx IS NULL
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
+            .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
+            .bind(estimated_resource_consume)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn update_platform_delegation_dependency_trade_no<'a, E>(
+        exec: E,
+        trade_no: &str,
+        dependency_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET resource_dependency_trade_no = ?2,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+              AND resource_gate_released_at IS NULL
+              AND resource_gate_result IS NULL
+              AND resource_block_reason = ?3
+              AND resource_dependency_type = ?4
+              AND resource_dependency_trade_no IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(dependency_trade_no)
+            .bind(ApiResourceBlockReason::NeedPlatformDelegate.as_i64())
+            .bind(ApiResourceDependencyType::PlatformDelegate.as_i64())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_resource_released<'a, E>(
         exec: E,
         trade_no: &str,
@@ -443,7 +514,7 @@ impl ApiWithdrawDao {
               AND resource_gate_result IS NULL
               AND resource_block_reason = ?2
               AND resource_dependency_type = ?3
-              AND resource_dependency_trade_no IS NOT NULL
+              AND resource_dependency_trade_no IS NULL
               AND raw_tx IS NULL
               AND transaction_time IS NULL
               AND finished_at IS NULL
