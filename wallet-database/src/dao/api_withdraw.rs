@@ -1211,6 +1211,46 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
+    /// 批量失败指定钱包的所有 pending 提币订单（设备被顶掉时调用）。
+    /// 只写 err_code / err_msg / 资源门禁释放字段，不写 finished_at（链终态事实）。
+    pub async fn batch_fail_pending_by_uid<'a, E>(
+        exec: E,
+        uid: &str,
+        err_code: ErrCode,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                err_code = $2,
+                err_msg = $3,
+                resource_block_reason = NULL,
+                resource_dependency_trade_no = NULL,
+                resource_dependency_type = NULL,
+                resource_gate_released_at = COALESCE(resource_gate_released_at, strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+            WHERE uid = $1
+              AND trade_type = $4
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(uid)
+            .bind(err_code)
+            .bind(err_msg)
+            .bind(ApiTradeType::Withdraw)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_build_failed_if_unfinished<'a, E>(
         exec: E,
         trade_no: &str,
@@ -5037,5 +5077,109 @@ mod tests {
 
         let scan_after = ApiWithdrawDao::scan_need_resource_gate(pool.as_ref(), 10).await.unwrap();
         assert!(!scan_after.iter().any(|row| row.trade_no == "W_RESOURCE_GATE_FAILURE"));
+    }
+
+    #[tokio::test]
+    async fn batch_fail_pending_by_uid_releases_pending_energy() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_batch_fail_pending");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        let uid = "uid_batch_fail";
+        let from_addr = "FROM_BATCH_FAIL";
+        let chain_code = "tron";
+
+        // Seed 3 pending withdraw orders with the same uid + from_addr
+        for i in 0..3u32 {
+            let trade_no = format!("W_BATCH_FAIL_{i}");
+            ApiWithdrawRepo::upsert_api_withdraw(
+                &pool,
+                uid,
+                "withdraw",
+                from_addr,
+                "TO_BATCH_FAIL",
+                "1",
+                "validate",
+                chain_code,
+                AssetTokenKey::Native,
+                "TRX",
+                &trade_no,
+                None,
+                None,
+                None,
+                ApiTradeType::Withdraw,
+                0,
+                None,
+                ApiWithdrawStatus::Init,
+                ApiWithdrawStatus::InitOrder,
+                "0",
+                "0",
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+            // Set estimated_resource_consume to simulate pending energy reservation
+            ApiWithdrawRepo::update_fee_estimate(
+                &pool,
+                &trade_no,
+                "0.456",
+                r#"{"energy":13532,"bandwidth":345}"#,
+            )
+            .await
+            .unwrap();
+        }
+
+        // Verify pending budget is non-zero before batch fail
+        let before = ApiWithdrawRepo::pending_resource_budget_by_owner(
+            &pool,
+            chain_code,
+            from_addr,
+            "DUMMY_EXCLUDE",
+        )
+        .await
+        .unwrap();
+        assert_eq!(before.energy, 13532 * 3);
+        assert_eq!(before.bandwidth, 345 * 3);
+
+        // Batch fail all pending orders for this uid
+        let affected = ApiWithdrawRepo::batch_fail_pending_by_uid(
+            &pool,
+            uid,
+            ErrCode::SDKInternalError,
+            "device takeover",
+        )
+        .await
+        .unwrap();
+        assert_eq!(affected, 3);
+
+        // Verify pending budget is now 0
+        let after = ApiWithdrawRepo::pending_resource_budget_by_owner(
+            &pool,
+            chain_code,
+            from_addr,
+            "DUMMY_EXCLUDE",
+        )
+        .await
+        .unwrap();
+        assert_eq!(after.energy, 0);
+        assert_eq!(after.bandwidth, 0);
+
+        // Verify each order has err_code set
+        for i in 0..3u32 {
+            let trade_no = format!("W_BATCH_FAIL_{i}");
+            let row = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+                &pool,
+                &trade_no,
+                ApiTradeType::Withdraw,
+            )
+            .await
+            .unwrap();
+            assert_eq!(row.err_code, Some(ErrCode::SDKInternalError));
+            assert_eq!(row.err_msg.as_deref(), Some("device takeover"));
+            // finished_at must NOT be set (chain terminal fact constraint)
+            assert!(row.finished_at.is_none());
+        }
     }
 }

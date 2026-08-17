@@ -51,6 +51,16 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::all_api_withdraw(pool.read_ref(), uid).await
     }
 
+    /// 批量失败指定钱包的所有 pending 提币订单（设备被顶掉时调用）。
+    pub async fn batch_fail_pending_by_uid(
+        pool: &ApiTransactionDbPool,
+        uid: &str,
+        err_code: ErrCode,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::batch_fail_pending_by_uid(pool.write_ref(), uid, err_code, err_msg).await
+    }
+
     pub async fn list_api_withdraw_with_status(
         pool: &ApiTransactionDbPool,
         status: Vec<ApiWithdrawStatus>,
