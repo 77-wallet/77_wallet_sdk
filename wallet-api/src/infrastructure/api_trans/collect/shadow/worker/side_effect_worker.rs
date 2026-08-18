@@ -175,24 +175,6 @@ fn matches_unrecoverable_business_error(err: &ServiceError) -> bool {
     )
 }
 
-fn matches_unrecoverable_business_error(err: &ServiceError) -> bool {
-    use crate::error::business::{
-        BusinessError,
-        api_wallet::{ApiWalletError, account::AccountError, wallet::WalletError},
-    };
-    matches!(
-        err,
-        ServiceError::Business(BusinessError::ApiWallet(api_err))
-            if matches!(
-                api_err,
-                ApiWalletError::Account(AccountError::NotFound)
-                    | ApiWalletError::Wallet(WalletError::NotFound)
-                    | ApiWalletError::Wallet(WalletError::SubAccountWalletNotBoundWithdrawalWalletAddress)
-                    | ApiWalletError::ChainConfigNotFound(_)
-            )
-    )
-}
-
 impl SideEffectWorker {
     /// 创建新的 SideEffect Worker
     pub fn new(ctx: &'static crate::context::Context, advancer: Arc<ShadowAdvancer>) -> Self {
