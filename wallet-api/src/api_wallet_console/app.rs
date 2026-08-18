@@ -44,6 +44,8 @@ pub struct ApiWalletConsoleApp {
     pub(crate) last_summary: Option<BatchTransferSummary>,
     pub(crate) is_busy: bool,
     pub(crate) show_transfer_confirm: bool,
+    pub(crate) new_client_name: String,
+    pub(crate) new_client_config: String,
     event_tx: mpsc::Sender<ConsoleEvent>,
     event_rx: mpsc::Receiver<ConsoleEvent>,
 }
@@ -68,10 +70,7 @@ pub enum LogFilter {
 impl ApiWalletConsoleApp {
     pub fn new() -> Self {
         let (event_tx, event_rx) = mpsc::channel();
-        let clients = vec![
-            ClientState::new(0, "client1", "client1.toml"),
-            ClientState::new(1, "client4", "client4.toml"),
-        ];
+        let clients = discover_clients();
         let transfer_forms =
             clients.iter().map(|client| TransferForm::for_client(&client.name)).collect::<Vec<_>>();
         let bind_forms =
@@ -104,6 +103,8 @@ impl ApiWalletConsoleApp {
             last_summary: None,
             is_busy: false,
             show_transfer_confirm: false,
+            new_client_name: String::new(),
+            new_client_config: String::new(),
             event_tx,
             event_rx,
         }
@@ -453,6 +454,37 @@ impl ApiWalletConsoleApp {
         }
     }
 
+    pub(crate) fn add_client(&mut self, name: String, config_file: String) {
+        let id = ClientId(self.clients.iter().map(|c| c.id.0).max().map(|m| m + 1).unwrap_or(0));
+        let client = ClientState::new(id.0, &name, &config_file);
+        self.clients.push(client);
+        self.transfer_forms.push(TransferForm::for_client(&name));
+        self.bind_forms.push(BindForm::for_client(&name));
+        self.log_panel_widths.push(340.0);
+        self.append_log(format!("Added client: {name} ({config_file})"));
+        self.selected_client = id;
+    }
+
+    pub(crate) fn remove_client(&mut self, client_id: ClientId) {
+        if self.clients.len() <= 1 {
+            self.append_log("Cannot remove the last client");
+            return;
+        }
+        let idx = self.clients.iter().position(|c| c.id == client_id).unwrap_or(0);
+        self.clients.remove(idx);
+        self.transfer_forms.remove(idx);
+        self.bind_forms.remove(idx);
+        self.log_panel_widths.remove(idx);
+        if self.selected_client == client_id {
+            self.selected_client = self.clients.first().map(|c| c.id).unwrap_or(ClientId(0));
+            self.selected_client_mut().map(|c| {
+                c.status = ClientStatus::Idle;
+                c.command_tx = None;
+            });
+        }
+        self.append_log(format!("Removed client id={}", client_id.0));
+    }
+
     fn pull_events(&mut self) {
         while let Ok(event) = self.event_rx.try_recv() {
             self.handle_event(event);
@@ -743,4 +775,58 @@ impl eframe::App for ApiWalletConsoleApp {
         ui::draw(self, ctx);
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
+}
+
+fn discover_clients() -> Vec<ClientState> {
+    let search_paths: Vec<std::path::PathBuf> = {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let mut paths = Vec::new();
+        paths.push(cwd.join("examples/client_config"));
+        paths.push(cwd.join("wallet-api/examples/client_config"));
+        paths.push(cwd.join("../examples/client_config"));
+        paths.push(cwd.join("../wallet-api/examples/client_config"));
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                paths.push(parent.join("examples/client_config"));
+                if let Some(grandparent) = parent.parent() {
+                    paths.push(grandparent.join("examples/client_config"));
+                }
+            }
+        }
+        if let Ok(dir) = std::env::var("API_WALLET_CONSOLE_CONFIG_DIR") {
+            paths.push(std::path::PathBuf::from(dir));
+        }
+        paths
+    };
+
+    let mut clients = Vec::new();
+
+    for config_dir in &search_paths {
+        if let Ok(entries) = std::fs::read_dir(config_dir) {
+            let mut toml_files: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
+                .collect();
+            if toml_files.is_empty() {
+                continue;
+            }
+            toml_files.sort_by_key(|e| e.file_name());
+
+            for (id, entry) in toml_files.iter().enumerate() {
+                let path = entry.path();
+                let stem =
+                    path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
+                let file_name = entry.file_name();
+                let config_file = file_name.to_str().unwrap_or("").to_string();
+                clients.push(ClientState::new(id as usize, &stem, &config_file));
+            }
+            break;
+        }
+    }
+
+    if clients.is_empty() {
+        clients.push(ClientState::new(0, "client1", "client1.toml"));
+    }
+
+    clients
 }

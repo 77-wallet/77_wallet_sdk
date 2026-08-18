@@ -123,6 +123,8 @@ fn draw_clients_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
         let mut selected = app.selected_client;
         let mut next_selected = None;
         let mut start_selected_requested = false;
+        let mut remove_requested = None;
+
         for client in app.clients.iter_mut() {
             let is_selected = selected == client.id;
             let fill = if is_selected {
@@ -145,6 +147,9 @@ fn draw_clients_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
                             selected = client.id;
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("✕").clicked() {
+                                remove_requested = Some(client.id);
+                            }
                             ui.label(status_badge(&client.status));
                         });
                     });
@@ -163,13 +168,37 @@ fn draw_clients_panel(app: &mut ApiWalletConsoleApp, ui: &mut egui::Ui) {
         if let Some(next_selected) = next_selected {
             app.select_client(next_selected);
         }
+        if let Some(id) = remove_requested {
+            app.remove_client(id);
+        }
         if start_selected_requested {
             app.start_selected_client();
         }
 
+        ui.add_space(6.0);
+        ui.separator();
         ui.add_space(4.0);
+
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("添加客户端").strong());
+        });
+        ui.horizontal(|ui| {
+            ui.label("名称");
+            ui.add_sized([100.0, 22.0], TextEdit::singleline(&mut app.new_client_name));
+            ui.label("配置文件");
+            ui.add_sized([120.0, 22.0], TextEdit::singleline(&mut app.new_client_config));
+            if ui.button("+ 添加").clicked() {
+                let name = app.new_client_name.trim().to_string();
+                let config = app.new_client_config.trim().to_string();
+                if !name.is_empty() && !config.is_empty() {
+                    app.add_client(name.clone(), config.clone());
+                    app.new_client_name.clear();
+                    app.new_client_config.clear();
+                }
+            }
+        });
         ui.label(
-            RichText::new("选择客户端后可修改配置文件、密码并启动独立 worker。")
+            RichText::new("从 examples/client_config/ 自动发现 .toml 文件，也可手动添加。")
                 .color(Color32::from_rgb(105, 118, 132)),
         );
     });

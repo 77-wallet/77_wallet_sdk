@@ -30,7 +30,7 @@ impl ApiWithdrawDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"SELECT * FROM api_withdraws where uid = ? AND trade_type = ?"#;
+        let sql = r#"SELECT * FROM api_withdraws WHERE uid = ? AND trade_type = ?"#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(uid)
             .bind(ApiTradeType::Withdraw)
@@ -1212,7 +1212,7 @@ impl ApiWithdrawDao {
     }
 
     /// 批量失败指定钱包的所有 pending 提币订单（设备被顶掉时调用）。
-    /// 只写 err_code / err_msg / 资源门禁释放字段，不写 finished_at（链终态事实）。
+    /// 写 err_code / err_msg / status（设为发送失败报告终态），释放资源门禁。
     pub async fn batch_fail_pending_by_uid<'a, E>(
         exec: E,
         uid: &str,
@@ -1227,6 +1227,7 @@ impl ApiWithdrawDao {
             SET
                 err_code = $2,
                 err_msg = $3,
+                status = $5,
                 resource_block_reason = NULL,
                 resource_dependency_trade_no = NULL,
                 resource_dependency_type = NULL,
@@ -1244,6 +1245,7 @@ impl ApiWithdrawDao {
             .bind(err_code)
             .bind(err_msg)
             .bind(ApiTradeType::Withdraw)
+            .bind(ApiWithdrawStatus::SendingTxFailedReport)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -5166,7 +5168,7 @@ mod tests {
         assert_eq!(after.energy, 0);
         assert_eq!(after.bandwidth, 0);
 
-        // Verify each order has err_code set
+        // Verify each order has err_code set and status changed to failed terminal
         for i in 0..3u32 {
             let trade_no = format!("W_BATCH_FAIL_{i}");
             let row = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
@@ -5178,6 +5180,7 @@ mod tests {
             .unwrap();
             assert_eq!(row.err_code, Some(ErrCode::SDKInternalError));
             assert_eq!(row.err_msg.as_deref(), Some("device takeover"));
+            assert_eq!(row.status, ApiWithdrawStatus::SendingTxFailedReport);
             // finished_at must NOT be set (chain terminal fact constraint)
             assert!(row.finished_at.is_none());
         }
