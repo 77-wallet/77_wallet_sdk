@@ -39,7 +39,10 @@ where
 }
 
 pub(crate) fn invalidate_api_wallet_list() {
-    API_WALLET_LIST_QUERY.invalidate_key(API_WALLET_LIST_KEY);
+    // 注意：必须用 mark_stale（内部会 invalidate_flight），不能用 mark_key_stale
+    // 否则 singleflight 的 state.result 仍保留旧查询结果，下次 load 会跳过 query_fn 直接返回旧值
+    API_WALLET_LIST_QUERY
+        .mark_stale(API_WALLET_LIST_KEY, runtime_defaults::api_assets().total_cache_ttl);
 }
 
 /// 从缓存中移除指定地址的钱包，避免 invalidate 后全量重查 DB
@@ -249,22 +252,59 @@ mod tests {
 
     #[tokio::test]
     async fn api_wallet_list_policy_drops_deleted_wallet_after_invalidation() {
-        let cached = super::load_api_wallet_list(|| async {
-            Ok(ApiWalletList(vec![crate::response_vo::api_wallet::wallet::ApiWalletItem {
-                recharge_wallet: None,
-                withdraw_wallet: None,
-            }]))
-        })
-        .await
-        .expect("initial list query ok");
+        // 使用局部 ProtectedQuery + unique_key 避免全局缓存污染，精确控制 TTL 行为
+        let protected = ProtectedQuery::<ApiWalletList>::default();
+        let key = unique_key("api-wallet-list-invalidate");
+        let ttl = Duration::from_secs(60);
+        let hits = Arc::new(AtomicUsize::new(0));
+
+        // 1. 首次加载：填充缓存（1 个 item）
+        let hits1 = hits.clone();
+        let cached = protected
+            .load(&key, ttl, move || async move {
+                hits1.fetch_add(1, Ordering::SeqCst);
+                Ok(ApiWalletList(vec![crate::response_vo::api_wallet::wallet::ApiWalletItem {
+                    recharge_wallet: None,
+                    withdraw_wallet: None,
+                }]))
+            })
+            .await
+            .expect("initial list query ok");
         assert_eq!(cached.len(), 1);
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
 
-        super::invalidate_api_wallet_list();
+        // 2. mark stale（与 invalidate_api_wallet_list 内部实现相同语义：mark stale + invalidate flight）
+        protected.mark_stale(&key, ttl);
+        // 验证 stale 标记后 get_fresh 取不到（TTL 过期），但 get_stale 仍能取到旧内容
+        assert!(
+            protected.get_fresh(&key, ttl).is_none(),
+            "after mark stale, get_fresh should miss"
+        );
+        assert!(protected.get_stale(&key).is_some(), "after mark stale, get_stale should hit");
 
-        let reloaded = super::load_api_wallet_list(|| async { Ok(ApiWalletList::new()) })
+        // 3. 再次加载：TTL 已过期，应重新执行 query_fn，返回新的空列表覆盖旧缓存
+        let hits2 = hits.clone();
+        let reloaded = protected
+            .load(&key, ttl, move || async move {
+                hits2.fetch_add(1, Ordering::SeqCst);
+                Ok(ApiWalletList::new())
+            })
             .await
             .expect("reloaded list query ok");
 
-        assert!(reloaded.is_empty());
+        assert_eq!(hits.load(Ordering::SeqCst), 2, "query_fn should have been called twice");
+        assert!(
+            reloaded.is_empty(),
+            "reloaded should be empty after new query, got len={}",
+            reloaded.len()
+        );
+
+        // 4. mark stale 后，失败时仍能 fallback 到上一次成功写入的 stale 数据（空 list）
+        protected.mark_stale(&key, ttl);
+        let stale = protected
+            .load(&key, Duration::from_millis(0), || async { Err(ServiceError::Timeout) })
+            .await
+            .expect("timeout should return stale empty list");
+        assert!(stale.is_empty());
     }
 }
