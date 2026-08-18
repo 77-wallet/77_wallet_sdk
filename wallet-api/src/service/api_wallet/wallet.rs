@@ -330,7 +330,9 @@ impl ApiWalletService {
             .send_with_ctx(self.ctx)
             .await?;
 
-        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+        if let Ok(Some(entity)) = ApiWalletRepo::find_by_address(&pool, address).await {
+            crate::domain::api_wallet::wallet_list_policy::add_wallets_to_cache(&[entity]);
+        }
 
         tracing::debug!("cose time: {}", start.elapsed().as_millis());
         Ok(uid)
@@ -728,7 +730,9 @@ impl ApiWalletService {
         tracing::info!("[import_wallet] Backend tasks sent successfully");
         tracing::info!("[import_wallet] Wallet import completed successfully, uid: {}", uid);
 
-        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+        if let Ok(Some(entity)) = ApiWalletRepo::find_by_uid(&pool, &uid).await {
+            crate::domain::api_wallet::wallet_list_policy::add_wallets_to_cache(&[entity]);
+        }
 
         Ok(uid)
     }
@@ -854,7 +858,7 @@ impl ApiWalletService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
-        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+        crate::domain::api_wallet::wallet_list_policy::rename_wallet_in_cache(address, name);
         Ok(())
     }
 
@@ -929,7 +933,7 @@ impl ApiWalletService {
             accounts.extend(withdraw_accounts);
         }
 
-        crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+        crate::domain::api_wallet::wallet_list_policy::remove_wallet_from_cache(&address);
 
         let sn = self.ctx.get_sn();
 

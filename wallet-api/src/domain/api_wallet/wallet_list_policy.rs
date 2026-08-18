@@ -1,9 +1,10 @@
 use once_cell::sync::Lazy;
+use wallet_database::entities::api_wallet::ApiWalletEntity;
 
 use crate::{
     config::runtime_defaults, error::service::ServiceError,
     infrastructure::protected_query::ProtectedQuery,
-    response_vo::api_wallet::wallet::ApiWalletList,
+    response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList, WalletInfo},
 };
 
 static API_WALLET_LIST_QUERY: Lazy<ProtectedQuery<ApiWalletList>> =
@@ -38,6 +39,119 @@ where
 
 pub(crate) fn invalidate_api_wallet_list() {
     API_WALLET_LIST_QUERY.invalidate_key(API_WALLET_LIST_KEY);
+}
+
+/// 从缓存中移除指定地址的钱包，避免 invalidate 后全量重查 DB
+pub(crate) fn remove_wallet_from_cache(address: &str) {
+    if let Some(mut list) = API_WALLET_LIST_QUERY.get_stale(API_WALLET_LIST_KEY) {
+        let before = list.len();
+        list.retain(|item| {
+            let recharge_match = item
+                .recharge_wallet
+                .as_ref()
+                .map_or(false, |w| w.address == address);
+            let withdraw_match = item
+                .withdraw_wallet
+                .as_ref()
+                .map_or(false, |w| w.address == address);
+            !recharge_match && !withdraw_match
+        });
+        // 级联：移除 withdraw_wallet 被保留但 recharge_wallet 被删除的孤儿项
+        // 以及其他因级联删除产生的半空项（根据业务场景决定是否保留）
+        if list.len() != before {
+            API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
+        }
+    }
+}
+
+/// 将新创建/导入的钱包追加到缓存中，避免 invalidate 后全量重查 DB
+pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
+    if wallets.is_empty() {
+        return;
+    }
+    if let Some(mut list) = API_WALLET_LIST_QUERY.get_stale(API_WALLET_LIST_KEY) {
+        let mut balance_list = std::collections::HashMap::new();
+        // 从现有缓存中收集余额信息，避免丢失
+        for item in list.iter() {
+            if let Some(r) = &item.recharge_wallet {
+                balance_list.insert(r.address.clone(), r.balance.clone());
+            }
+            if let Some(w) = &item.withdraw_wallet {
+                balance_list.insert(w.address.clone(), w.balance.clone());
+            }
+        }
+
+        use wallet_database::entities::api_wallet::ApiWalletType;
+        for e in wallets {
+            let mut wallet: WalletInfo = e.into();
+            wallet.balance = balance_list
+                .get(&e.address)
+                .cloned()
+                .unwrap_or_default();
+
+            match e.api_wallet_type {
+                ApiWalletType::SubAccount => {
+                    if let Some(binding_address) = &e.binding_address
+                        && let Some(item) = list.iter_mut().find(|item| {
+                            item.withdraw_wallet
+                                .as_ref()
+                                .map(|w| &w.address == binding_address)
+                                .unwrap_or(false)
+                        })
+                    {
+                        item.recharge_wallet = Some(wallet);
+                    } else {
+                        list.push(ApiWalletItem {
+                            recharge_wallet: Some(wallet),
+                            withdraw_wallet: None,
+                        });
+                    }
+                }
+                ApiWalletType::Withdrawal => {
+                    if let Some(binding_address) = &e.binding_address
+                        && let Some(item) = list.iter_mut().find(|item| {
+                            item.recharge_wallet
+                                .as_ref()
+                                .map(|r| &r.address == binding_address)
+                                .unwrap_or(false)
+                        })
+                    {
+                        item.withdraw_wallet = Some(wallet);
+                    } else {
+                        list.push(ApiWalletItem {
+                            recharge_wallet: None,
+                            withdraw_wallet: Some(wallet),
+                        });
+                    }
+                }
+            }
+        }
+        API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
+    }
+}
+
+/// 精准更新缓存中指定钱包的名字，避免 invalidate 后全量重查 DB
+pub(crate) fn rename_wallet_in_cache(address: &str, new_name: &str) {
+    if let Some(mut list) = API_WALLET_LIST_QUERY.get_stale(API_WALLET_LIST_KEY) {
+        let mut changed = false;
+        for item in list.iter_mut() {
+            if let Some(r) = item.recharge_wallet.as_mut()
+                && r.address == address
+            {
+                r.name = new_name.to_string();
+                changed = true;
+            }
+            if let Some(w) = item.withdraw_wallet.as_mut()
+                && w.address == address
+            {
+                w.name = new_name.to_string();
+                changed = true;
+            }
+        }
+        if changed {
+            API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
+        }
+    }
 }
 
 #[cfg(test)]
