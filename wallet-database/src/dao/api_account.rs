@@ -438,7 +438,7 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        tracing::info!(
+        tracing::debug!(
             address = %address,
             chain_code = %chain_code,
             "API_ACCOUNT_QUERY::find_one_by_address_chain_code"
@@ -459,7 +459,7 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        tracing::info!(
+        tracing::debug!(
             address = %address,
             chain_code = %chain_code,
             "API_ACCOUNT_QUERY::find_one_by_address"
@@ -501,7 +501,7 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        tracing::info!(
+        tracing::debug!(
             wallet_address = %wallet_address,
             account_id,
             chain_code = %chain_code,

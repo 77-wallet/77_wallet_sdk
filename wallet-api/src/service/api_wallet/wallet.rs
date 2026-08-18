@@ -39,7 +39,6 @@ use crate::{
         service::ServiceError,
     },
     infrastructure::task_queue::{
-        CommonTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
         initialization::InitializationTask,
         task::Tasks,
@@ -994,16 +993,6 @@ impl ApiWalletService {
                 .await?;
         };
 
-        // find tron address and del permission
-
-        for uid in rest_uids {
-            let body = RecoverDataBody::new(&uid);
-
-            Tasks::new()
-                .push(CommonTask::RecoverMultisigAccountData(body))
-                .send_with_ctx(self.ctx)
-                .await?;
-        }
         Ok(())
     }
 
