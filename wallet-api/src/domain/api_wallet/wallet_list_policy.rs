@@ -2,7 +2,8 @@ use once_cell::sync::Lazy;
 use wallet_database::entities::api_wallet::ApiWalletEntity;
 
 use crate::{
-    config::runtime_defaults, error::service::ServiceError,
+    config::runtime_defaults,
+    error::service::ServiceError,
     infrastructure::protected_query::ProtectedQuery,
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList, WalletInfo},
 };
@@ -46,14 +47,10 @@ pub(crate) fn remove_wallet_from_cache(address: &str) {
     if let Some(mut list) = API_WALLET_LIST_QUERY.get_stale(API_WALLET_LIST_KEY) {
         let before = list.len();
         list.retain(|item| {
-            let recharge_match = item
-                .recharge_wallet
-                .as_ref()
-                .map_or(false, |w| w.address == address);
-            let withdraw_match = item
-                .withdraw_wallet
-                .as_ref()
-                .map_or(false, |w| w.address == address);
+            let recharge_match =
+                item.recharge_wallet.as_ref().map_or(false, |w| w.address == address);
+            let withdraw_match =
+                item.withdraw_wallet.as_ref().map_or(false, |w| w.address == address);
             !recharge_match && !withdraw_match
         });
         // 级联：移除 withdraw_wallet 被保留但 recharge_wallet 被删除的孤儿项
@@ -84,10 +81,7 @@ pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
         use wallet_database::entities::api_wallet::ApiWalletType;
         for e in wallets {
             let mut wallet: WalletInfo = e.into();
-            wallet.balance = balance_list
-                .get(&e.address)
-                .cloned()
-                .unwrap_or_default();
+            wallet.balance = balance_list.get(&e.address).cloned().unwrap_or_default();
 
             match e.api_wallet_type {
                 ApiWalletType::SubAccount => {
