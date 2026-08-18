@@ -45,24 +45,24 @@ impl AwmCmdDevChangeMsg {
                     ApiWalletRepo::find_by_address(&pool, binding_address).await?;
                 if let Some(withdraw_wallet) = withdraw_wallet {
                     AddressQueryStateRepo::delete_by_uid(&pool, &withdraw_wallet.uid).await?;
-                }
-            }
 
-            // 设备变更：批量失败该钱包所有 pending 提币订单，释放占用的 pending energy
-            let tx_pool = ctx.api_transaction_pool()?;
-            let affected = ApiWithdrawRepo::batch_fail_pending_by_uid(
-                &tx_pool,
-                &self.uid,
-                ErrCode::SDKInternalError,
-                "device takeover",
-            )
-            .await?;
-            if affected > 0 {
-                tracing::info!(
-                    uid = %self.uid,
-                    affected,
-                    "device takeover: batch failed pending withdraw orders"
-                );
+                    // 设备变更：批量失败该出款钱包所有 pending 提币订单，释放占用的 pending energy
+                    let tx_pool = ctx.api_transaction_pool()?;
+                    let affected = ApiWithdrawRepo::batch_fail_pending_by_uid(
+                        &tx_pool,
+                        &withdraw_wallet.uid,
+                        ErrCode::SDKInternalError,
+                        "device takeover",
+                    )
+                    .await?;
+                    if affected > 0 {
+                        tracing::info!(
+                            uid = %withdraw_wallet.uid,
+                            affected,
+                            "device takeover: batch failed pending withdraw orders"
+                        );
+                    }
+                }
             }
         }
 
