@@ -66,62 +66,63 @@ pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
     if wallets.is_empty() {
         return;
     }
-    if let Some(mut list) = API_WALLET_LIST_QUERY.get_stale(API_WALLET_LIST_KEY) {
-        let mut balance_list = std::collections::HashMap::new();
-        // 从现有缓存中收集余额信息，避免丢失
-        for item in list.iter() {
-            if let Some(r) = &item.recharge_wallet {
-                balance_list.insert(r.address.clone(), r.balance.clone());
-            }
-            if let Some(w) = &item.withdraw_wallet {
-                balance_list.insert(w.address.clone(), w.balance.clone());
-            }
+    let mut list: ApiWalletList = API_WALLET_LIST_QUERY
+        .get_stale(API_WALLET_LIST_KEY)
+        .unwrap_or_else(|| ApiWalletList(Vec::new()));
+    let mut balance_list = std::collections::HashMap::new();
+    // 从现有缓存中收集余额信息，避免丢失
+    for item in list.iter() {
+        if let Some(r) = &item.recharge_wallet {
+            balance_list.insert(r.address.clone(), r.balance.clone());
         }
-
-        use wallet_database::entities::api_wallet::ApiWalletType;
-        for e in wallets {
-            let mut wallet: WalletInfo = e.into();
-            wallet.balance = balance_list.get(&e.address).cloned().unwrap_or_default();
-
-            match e.api_wallet_type {
-                ApiWalletType::SubAccount => {
-                    if let Some(binding_address) = &e.binding_address
-                        && let Some(item) = list.iter_mut().find(|item| {
-                            item.withdraw_wallet
-                                .as_ref()
-                                .map(|w| &w.address == binding_address)
-                                .unwrap_or(false)
-                        })
-                    {
-                        item.recharge_wallet = Some(wallet);
-                    } else {
-                        list.push(ApiWalletItem {
-                            recharge_wallet: Some(wallet),
-                            withdraw_wallet: None,
-                        });
-                    }
-                }
-                ApiWalletType::Withdrawal => {
-                    if let Some(binding_address) = &e.binding_address
-                        && let Some(item) = list.iter_mut().find(|item| {
-                            item.recharge_wallet
-                                .as_ref()
-                                .map(|r| &r.address == binding_address)
-                                .unwrap_or(false)
-                        })
-                    {
-                        item.withdraw_wallet = Some(wallet);
-                    } else {
-                        list.push(ApiWalletItem {
-                            recharge_wallet: None,
-                            withdraw_wallet: Some(wallet),
-                        });
-                    }
-                }
-            }
+        if let Some(w) = &item.withdraw_wallet {
+            balance_list.insert(w.address.clone(), w.balance.clone());
         }
-        API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
     }
+
+    use wallet_database::entities::api_wallet::ApiWalletType;
+    for e in wallets {
+        let mut wallet: WalletInfo = e.into();
+        wallet.balance = balance_list.get(&e.address).cloned().unwrap_or_default();
+
+        match e.api_wallet_type {
+            ApiWalletType::SubAccount => {
+                if let Some(binding_address) = &e.binding_address
+                    && let Some(item) = list.iter_mut().find(|item| {
+                        item.withdraw_wallet
+                            .as_ref()
+                            .map(|w| &w.address == binding_address)
+                            .unwrap_or(false)
+                    })
+                {
+                    item.recharge_wallet = Some(wallet);
+                } else {
+                    list.push(ApiWalletItem {
+                        recharge_wallet: Some(wallet),
+                        withdraw_wallet: None,
+                    });
+                }
+            }
+            ApiWalletType::Withdrawal => {
+                if let Some(binding_address) = &e.binding_address
+                    && let Some(item) = list.iter_mut().find(|item| {
+                        item.recharge_wallet
+                            .as_ref()
+                            .map(|r| &r.address == binding_address)
+                            .unwrap_or(false)
+                    })
+                {
+                    item.withdraw_wallet = Some(wallet);
+                } else {
+                    list.push(ApiWalletItem {
+                        recharge_wallet: None,
+                        withdraw_wallet: Some(wallet),
+                    });
+                }
+            }
+        }
+    }
+    API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
 }
 
 /// 精准更新缓存中指定钱包的名字，避免 invalidate 后全量重查 DB
