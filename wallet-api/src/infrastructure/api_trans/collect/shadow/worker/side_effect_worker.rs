@@ -157,6 +157,24 @@ pub struct SideEffectWorker {
         crate::infrastructure::api_trans::resource_reservation::CollectFeeReservationManager,
 }
 
+fn matches_unrecoverable_business_error(err: &ServiceError) -> bool {
+    use crate::error::business::{
+        BusinessError,
+        api_wallet::{ApiWalletError, account::AccountError, wallet::WalletError},
+    };
+    matches!(
+        err,
+        ServiceError::Business(BusinessError::ApiWallet(api_err))
+            if matches!(
+                api_err,
+                ApiWalletError::Account(AccountError::NotFound)
+                    | ApiWalletError::Wallet(WalletError::NotFound)
+                    | ApiWalletError::Wallet(WalletError::SubAccountWalletNotBoundWithdrawalWalletAddress)
+                    | ApiWalletError::ChainConfigNotFound(_)
+            )
+    )
+}
+
 impl SideEffectWorker {
     /// 创建新的 SideEffect Worker
     pub fn new(ctx: &'static crate::context::Context, advancer: Arc<ShadowAdvancer>) -> Self {
@@ -1100,7 +1118,35 @@ impl SideEffectWorker {
         }
 
         // 解析出款地址
-        let exec_from_addr = self.resolve_withdraw_from_addr(&req).await?;
+        let exec_from_addr = match self.resolve_withdraw_from_addr(&req).await {
+            Ok(addr) => addr,
+            Err(e) => {
+                if matches_unrecoverable_business_error(&e) {
+                    error!(
+                        trade_no = %trade_no,
+                        error = %e,
+                        source = "side_effect_worker",
+                        "resolve_withdraw_from_addr failed with unrecoverable error, marking collect as failed"
+                    );
+                    let pool = self.ctx.api_transaction_pool()?;
+                    let err_msg = format!("ServiceFeeUpload failed: {}", e);
+                    #[allow(deprecated)]
+                    let cleared = ApiCollectRepo::update_api_collect_status_and_err(
+                        &pool,
+                        &trade_no,
+                        wallet_database::entities::api_collect::ApiCollectStatus::Failure,
+                        wallet_database::entities::api_collect::ErrCode::TransactionOnChainException,
+                        &err_msg,
+                    )
+                    .await?;
+                    if cleared == 0 {
+                        warn!(trade_no = %trade_no, source = "side_effect_worker", "failed to update err_code for collect");
+                    }
+                    ApiCollectRepo::clear_need_service_fee(&pool, &trade_no).await?;
+                }
+                return Err(e);
+            }
+        };
         info!(trade_no = %trade_no, exec_from_addr = %exec_from_addr, source = "side_effect_worker", "Resolved withdrawal address");
 
         // 查询主币信息
