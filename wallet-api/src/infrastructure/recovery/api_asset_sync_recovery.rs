@@ -57,6 +57,9 @@ async fn scan_and_dispatch(
 
     let mut claimed = 0usize;
     loop {
+        if ctx.is_recovery_paused() {
+            break;
+        }
         if claimed >= defaults.api_asset_sync_max_claims_per_round {
             tracing::debug!(
                 claimed = claimed,
