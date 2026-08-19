@@ -101,6 +101,10 @@ pub(crate) async fn start_wallet_unlock_session_rotation_task(
                 Ok(false) => {}
                 Err(err) => {
                     tracing::error!("wallet unlock session rotation loop failed: {:?}", err);
+                    // Backoff to break the lock contention loop: rotation fails
+                    // because DB write lock is contended by asset Workers;
+                    // retrying immediately re-acquires the lock and fails again.
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                 }
             }
         }
