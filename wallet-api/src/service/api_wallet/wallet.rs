@@ -591,6 +591,28 @@ impl ApiWalletService {
         let imported_wallet = ApiWalletRepo::find_by_uid(&pool, &uid).await?;
         match api_wallet_type {
             ApiWalletType::SubAccount => {
+                // 重新导入时，检查绑定的提币钱包是否属于当前设备
+                // 如果不属于，说明设备已被顶掉过，需要清除绑定关系，让客户端弹窗提示重新导入提币钱包
+                if let Some(wallet) = &imported_wallet {
+                    if let Some(binding_address) = wallet.binding_address.as_deref() {
+                        if let Some(withdraw_wallet) =
+                            ApiWalletRepo::find_by_address(&pool, binding_address).await?
+                        {
+                            if withdraw_wallet.sn.as_deref() != Some(sn) {
+                                tracing::info!(
+                                    uid = %uid,
+                                    binding_address = %binding_address,
+                                    "clearing stale binding: withdrawal wallet belongs to different device"
+                                );
+                                ApiWalletRepo::clear_binding_address(&pool, &wallet.address)
+                                    .await?;
+                                ApiWalletRepo::clear_binding_address(&pool, binding_address)
+                                    .await?;
+                            }
+                        }
+                    }
+                }
+
                 if let Some(info) = subaccount_bind_info {
                     ApiWalletDomain::new(self.ctx)
                         .bind_uid_with_app_id(address, &info.org_id, Some(info.app_id.as_str()))

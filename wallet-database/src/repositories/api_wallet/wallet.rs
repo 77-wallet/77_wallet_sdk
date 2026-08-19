@@ -126,6 +126,16 @@ impl ApiWalletRepo {
         .await
     }
 
+    pub async fn clear_binding_address(
+        pool: &ApiWalletDbPool,
+        address: &str,
+    ) -> Result<bool, crate::Error> {
+        Self::with_write_guard(pool, "clear_binding_address", || async {
+            Ok(ApiWalletDao::clear_binding_address(pool.write_ref(), address).await?)
+        })
+        .await
+    }
+
     pub async fn mark_init(pool: &ApiWalletDbPool, uid: &str) -> Result<bool, crate::Error> {
         Self::with_write_guard(pool, "mark_wallet_init", || async {
             Ok(ApiWalletDao::mark_init(pool.write_ref(), uid).await?)

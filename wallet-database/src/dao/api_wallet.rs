@@ -276,6 +276,26 @@ impl ApiWalletDao {
         Ok(res.rows_affected() == 1)
     }
 
+    pub async fn clear_binding_address<'a, E>(exec: E, address: &str) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_wallet SET
+                binding_address = null,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE address = ? AND status = 1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(address)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() == 1)
+    }
+
     pub async fn update_seed_and_phrase<'a, E>(
         exec: E,
         uid: &str,
