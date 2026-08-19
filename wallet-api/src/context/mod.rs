@@ -20,7 +20,10 @@ use crate::{
 };
 use std::{
     collections::HashMap,
-    sync::{Arc, Weak},
+    sync::{
+        Arc, Weak,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::sync::{Mutex, RwLock};
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
@@ -107,6 +110,7 @@ pub struct Context {
     init_api_swap: Mutex<bool>,
     expand_event_tx: Arc<RwLock<Option<ExpandEventSender>>>,
     background_task_pool: Arc<BackgroundTaskPool>,
+    recovery_paused: Arc<AtomicBool>,
 }
 
 fn active_backend_urls(config: &crate::config::Config) -> (String, String) {
@@ -296,11 +300,20 @@ impl Context {
             init_api_swap: Mutex::new(false),
             expand_event_tx: Arc::new(RwLock::new(None)),
             background_task_pool,
+            recovery_paused: Arc::new(AtomicBool::new(false)),
         })
     }
 
     pub fn get_sn(&self) -> &str {
         &self.sn
+    }
+
+    pub fn set_recovery_paused(&self, paused: bool) {
+        self.recovery_paused.store(paused, Ordering::Relaxed);
+    }
+
+    pub fn is_recovery_paused(&self) -> bool {
+        self.recovery_paused.load(Ordering::Relaxed)
     }
 
     pub fn get_client_id(&self) -> &str {

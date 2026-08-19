@@ -43,6 +43,11 @@ async fn scan_and_dispatch(
     include_stuck_running: bool,
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
+    if ctx.is_recovery_paused() {
+        tracing::debug!("资产查询恢复Worker已暂停，跳过本轮扫描");
+        return Ok(());
+    }
+
     // 每轮认领上限用于平滑恢复流量，避免恢复线程自身制造请求尖峰。
     let defaults = runtime_defaults::recovery();
     let api_pool = ctx.api_wallet_pool()?;

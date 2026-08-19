@@ -46,6 +46,22 @@ use crate::{
     response_vo::api_wallet::wallet::ApiWalletList,
 };
 
+/// RAII guard: pauses recovery Workers on creation, resumes on drop.
+struct RecoveryPauseGuard {
+    ctx: &'static Context,
+}
+impl RecoveryPauseGuard {
+    fn new(ctx: &'static Context) -> Self {
+        ctx.set_recovery_paused(true);
+        Self { ctx }
+    }
+}
+impl Drop for RecoveryPauseGuard {
+    fn drop(&mut self) {
+        self.ctx.set_recovery_paused(false);
+    }
+}
+
 pub struct ApiWalletService {
     ctx: &'static Context,
 }
@@ -906,6 +922,8 @@ impl ApiWalletService {
         self,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        // 暂停恢复 Worker，防止新的批量 INSERT 和 DELETE 竞争 SQLite 写锁
+        let _pause_guard = RecoveryPauseGuard::new(self.ctx);
         let pool = self.ctx.api_wallet_pool()?;
         let core_pool = self.ctx.core_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
