@@ -102,6 +102,10 @@ where
             key.to_string(),
             CachedValue { value: value.clone(), updated_at: Instant::now() },
         );
+        // A completed flight memoizes its result independently from the TTL cache.
+        // Drop it whenever the cache is replaced so a later stale-cache load cannot
+        // resurrect the value that preceded this write.
+        self.invalidate_flight(key);
     }
 
     pub(crate) fn mark_key_stale(&self, key: &str, fresh_ttl: Duration) {
@@ -253,5 +257,29 @@ mod tests {
             .await
             .expect("timeout should use stale cache");
         assert_eq!(stale, 9);
+    }
+
+    #[tokio::test]
+    async fn protected_query_set_discards_completed_flight_result() {
+        // Arrange: populate both the TTL cache and the completed flight result.
+        let protected = ProtectedQuery::<u32>::default();
+        let key = unique_key("protected-set-flight");
+        let initial = protected
+            .load(&key, Duration::from_secs(60), || async { Ok(1) })
+            .await
+            .expect("initial query ok");
+        assert_eq!(initial, 1);
+
+        // Act: replace the cached value, then make it stale to force another load.
+        protected.set(&key, &2);
+        assert_eq!(protected.get_fresh(&key, Duration::from_secs(60)), Some(2));
+        protected.mark_key_stale(&key, Duration::from_secs(60));
+        let refreshed = protected
+            .load(&key, Duration::from_secs(60), || async { Ok(3) })
+            .await
+            .expect("refresh query ok");
+
+        // Assert: the pre-write flight result must not resurrect value 1.
+        assert_eq!(refreshed, 3);
     }
 }
