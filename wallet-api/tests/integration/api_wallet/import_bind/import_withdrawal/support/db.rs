@@ -44,3 +44,21 @@ pub(crate) async fn persisted_import_stage(env: &harness::TestEnv, uid: &str) ->
         .expect("query wallet by uid")
         .map(|wallet| wallet.import_stage)
 }
+
+pub(crate) async fn mark_wallet_pair_on_other_device(
+    env: &harness::TestEnv,
+    recharge_address: &str,
+    withdrawal_uid: &str,
+) {
+    let pool = open_api_wallet_pool(&env.db_dir).await;
+    let withdrawal = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid)
+        .await
+        .expect("query prepared withdrawal wallet")
+        .expect("prepared withdrawal wallet should exist");
+    ApiWalletRepo::update_sn(&pool, recharge_address, "different-device-sn")
+        .await
+        .expect("move prepared recharge wallet to another device");
+    ApiWalletRepo::update_sn(&pool, &withdrawal.address, "different-device-sn")
+        .await
+        .expect("move prepared withdrawal wallet to another device");
+}

@@ -503,6 +503,8 @@ impl ApiWalletService {
         let mut subaccount_bind_info: Option<QueryUidBindInfoRes> = None;
         let mut withdrawal_recharge_address: Option<String> = None;
         let mut withdrawal_bind_info: Option<QueryUidBindInfoRes> = None;
+        let mut validated_subaccount_binding_address = binding_address.map(str::to_owned);
+        let mut stale_binding_relation_to_clear: Option<(String, String)> = None;
 
         match api_wallet_type {
             ApiWalletType::SubAccount => {
@@ -511,6 +513,32 @@ impl ApiWalletService {
                     domain.appid_import_recharge_wallet(sn, &uid).await?;
                 }
                 subaccount_bind_info = Some(info);
+
+                // Re-import normally does not carry binding_address. Snapshot the old relation
+                // before UPSERT overwrites it, then preserve it only when the withdrawal wallet
+                // was already imported on this device and the relation is complete in both
+                // directions.
+                if validated_subaccount_binding_address.is_none() {
+                    validated_subaccount_binding_address =
+                        ApiWalletRepo::find_by_address(&pool, address)
+                            .await?
+                            .and_then(|wallet| wallet.binding_address);
+                }
+
+                if let Some(withdrawal_address) = validated_subaccount_binding_address.as_deref() {
+                    let withdrawal_wallet =
+                        ApiWalletRepo::find_by_address(&pool, withdrawal_address).await?;
+                    let relation_is_current = withdrawal_wallet.as_ref().is_some_and(|wallet| {
+                        wallet.sn.as_deref() == Some(sn)
+                            && wallet.binding_address.as_deref() == Some(address.as_str())
+                    });
+
+                    if !relation_is_current {
+                        stale_binding_relation_to_clear =
+                            Some((address.to_string(), withdrawal_address.to_owned()));
+                        validated_subaccount_binding_address = None;
+                    }
+                }
             }
             ApiWalletType::Withdrawal => {
                 if let Some(binding_address) = binding_address {
@@ -518,6 +546,17 @@ impl ApiWalletService {
                         ApiWalletRepo::find_by_address(&pool, binding_address).await?;
 
                     if let Some(recharge_wallet) = recharge_wallet {
+                        let relation_is_current = recharge_wallet.sn.as_deref() == Some(sn)
+                            && recharge_wallet.binding_address.as_deref() == Some(address.as_str());
+                        if !relation_is_current {
+                            let paired_withdrawal_address = recharge_wallet
+                                .binding_address
+                                .clone()
+                                .unwrap_or_else(|| address.to_string());
+                            stale_binding_relation_to_clear =
+                                Some((recharge_wallet.address.clone(), paired_withdrawal_address));
+                        }
+
                         let info = domain.query_uid_bind_info(&recharge_wallet.uid).await?;
 
                         if !info.app_id.is_empty()
@@ -549,6 +588,21 @@ impl ApiWalletService {
 
         ApiWalletDomain::new(self.ctx).keys_init(&uid, &device, wallet_name, invite_code).await?;
 
+        if let Some((wallet_address, binding_address)) = stale_binding_relation_to_clear.as_ref() {
+            tracing::info!(
+                uid = %uid,
+                wallet_address = %wallet_address,
+                binding_address = %binding_address,
+                "clearing stale or incomplete API wallet relation during re-import"
+            );
+            ApiWalletRepo::clear_binding_relation(&pool, wallet_address, binding_address).await?;
+        }
+
+        let binding_address_to_persist = match api_wallet_type {
+            ApiWalletType::SubAccount => validated_subaccount_binding_address.as_deref(),
+            ApiWalletType::Withdrawal => binding_address,
+        };
+
         ApiWalletDomain::new(self.ctx)
             .upsert_api_wallet(
                 &uid,
@@ -558,9 +612,12 @@ impl ApiWalletService {
                 &phrase,
                 &seed,
                 api_wallet_type,
-                binding_address,
+                binding_address_to_persist,
             )
             .await?;
+        if stale_binding_relation_to_clear.is_some() {
+            crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+        }
         crate::infrastructure::unlock_session::upsert_wallet_unlock_material(
             address,
             wallet_password,
@@ -591,28 +648,6 @@ impl ApiWalletService {
         let imported_wallet = ApiWalletRepo::find_by_uid(&pool, &uid).await?;
         match api_wallet_type {
             ApiWalletType::SubAccount => {
-                // 重新导入时，检查绑定的提币钱包是否属于当前设备
-                // 如果不属于，说明设备已被顶掉过，需要清除绑定关系，让客户端弹窗提示重新导入提币钱包
-                if let Some(wallet) = &imported_wallet {
-                    if let Some(binding_address) = wallet.binding_address.as_deref() {
-                        if let Some(withdraw_wallet) =
-                            ApiWalletRepo::find_by_address(&pool, binding_address).await?
-                        {
-                            if withdraw_wallet.sn.as_deref() != Some(sn) {
-                                tracing::info!(
-                                    uid = %uid,
-                                    binding_address = %binding_address,
-                                    "clearing stale binding: withdrawal wallet belongs to different device"
-                                );
-                                ApiWalletRepo::clear_binding_address(&pool, &wallet.address)
-                                    .await?;
-                                ApiWalletRepo::clear_binding_address(&pool, binding_address)
-                                    .await?;
-                            }
-                        }
-                    }
-                }
-
                 if let Some(info) = subaccount_bind_info {
                     ApiWalletDomain::new(self.ctx)
                         .bind_uid_with_app_id(address, &info.org_id, Some(info.app_id.as_str()))
@@ -630,10 +665,39 @@ impl ApiWalletService {
                     .as_ref()
                     .map(|wallet| wallet.import_stage >= ApiWalletImportStage::Completed.as_u8())
                     .unwrap_or(false);
-                if !already_completed {
-                    if let (Some(recharge_address), Some(info)) =
-                        (withdrawal_recharge_address.as_ref(), withdrawal_bind_info.as_ref())
-                    {
+                if let (Some(recharge_address), Some(info)) =
+                    (withdrawal_recharge_address.as_ref(), withdrawal_bind_info.as_ref())
+                {
+                    let Some(recharge_wallet) =
+                        ApiWalletRepo::find_by_address(&pool, recharge_address).await?
+                    else {
+                        return Err(
+                            BusinessError::ApiWallet(
+                                ApiWalletError::Wallet(
+                                    crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletNotBoundWithdrawalWalletAddress,
+                                ),
+                            )
+                            .into(),
+                        );
+                    };
+
+                    if recharge_wallet.import_stage < ApiWalletImportStage::Completed.as_u8() {
+                        if info.bind_status {
+                            ApiWalletDomain::new(self.ctx)
+                                .bind_uid_with_app_id(
+                                    &recharge_wallet.address,
+                                    &info.org_id,
+                                    Some(info.app_id.as_str()),
+                                )
+                                .await?;
+                            ApiWalletRepo::update_import_stage(
+                                &pool,
+                                &recharge_wallet.uid,
+                                ApiWalletImportStage::Completed.as_u8(),
+                            )
+                            .await?;
+                        }
+
                         let Some(recharge_wallet) =
                             ApiWalletRepo::find_by_address(&pool, recharge_address).await?
                         else {
@@ -648,71 +712,33 @@ impl ApiWalletService {
                         };
 
                         if recharge_wallet.import_stage < ApiWalletImportStage::Completed.as_u8() {
-                            if info.bind_status {
-                                ApiWalletDomain::new(self.ctx)
-                                    .bind_uid_with_app_id(
-                                        &recharge_wallet.address,
-                                        &info.org_id,
-                                        Some(info.app_id.as_str()),
-                                    )
-                                    .await?;
-                                ApiWalletRepo::update_import_stage(
-                                    &pool,
-                                    &recharge_wallet.uid,
-                                    ApiWalletImportStage::Completed.as_u8(),
+                            return Err(
+                                BusinessError::ApiWallet(
+                                    ApiWalletError::Wallet(
+                                        crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletImportNotCompleted,
+                                    ),
                                 )
-                                .await?;
-                            }
-
-                            let Some(recharge_wallet) =
-                                ApiWalletRepo::find_by_address(&pool, recharge_address).await?
-                            else {
-                                return Err(
-                                    BusinessError::ApiWallet(
-                                        ApiWalletError::Wallet(
-                                            crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletNotBoundWithdrawalWalletAddress,
-                                        ),
-                                    )
-                                    .into(),
-                                );
-                            };
-
-                            if recharge_wallet.import_stage
-                                < ApiWalletImportStage::Completed.as_u8()
-                            {
-                                return Err(
-                                    BusinessError::ApiWallet(
-                                        ApiWalletError::Wallet(
-                                            crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletImportNotCompleted,
-                                        ),
-                                    )
-                                    .into(),
-                                );
-                            }
+                                .into(),
+                            );
                         }
+                    }
 
-                        if info.bind_status {
-                            ApiWalletDomain::new(self.ctx)
-                                .bind_uid_with_app_id(
-                                    address,
-                                    &info.org_id,
-                                    Some(info.app_id.as_str()),
-                                )
-                                .await?;
-                        }
-
+                    if info.bind_status {
                         ApiWalletDomain::new(self.ctx)
-                            .db_save_bind_data(
-                                recharge_address,
-                                address,
-                                &info.org_id,
-                                &info.app_id,
-                            )
+                            .bind_uid_with_app_id(address, &info.org_id, Some(info.app_id.as_str()))
                             .await?;
-                        ApiWalletDomain::new(self.ctx)
-                            .db_save_sn_data(recharge_address, Some(address), sn)
-                            .await?;
+                    }
 
+                    // Re-import must repair the durable two-way relation even when the wallet's
+                    // import stage was already completed before a device takeover.
+                    ApiWalletDomain::new(self.ctx)
+                        .db_save_bind_data(recharge_address, address, &info.org_id, &info.app_id)
+                        .await?;
+                    ApiWalletDomain::new(self.ctx)
+                        .db_save_sn_data(recharge_address, Some(address), sn)
+                        .await?;
+
+                    if !already_completed {
                         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
                         let chains: Vec<String> = default_chain_list
                             .iter()

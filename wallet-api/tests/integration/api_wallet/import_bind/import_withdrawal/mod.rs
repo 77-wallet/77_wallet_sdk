@@ -63,9 +63,11 @@ async fn import_withdrawal_wallet_reimport_keeps_completion_and_account_count_st
     );
 
     let first_uid = when.withdrawal_wallet_is_imported(&import).await;
+    given.wallet_pair_belongs_to_other_device(&recharge.address, &first_uid).await;
     let second_uid = when.withdrawal_wallet_is_imported(&import).await;
 
     then.reimport_keeps_completion_and_uid_stable(&first_uid, &second_uid).await;
+    then.wallets_are_bound_with_backend_fields(&second_uid, &recharge).await;
 }
 
 #[tokio::test]

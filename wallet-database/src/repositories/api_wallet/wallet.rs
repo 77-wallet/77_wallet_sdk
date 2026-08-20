@@ -136,6 +136,22 @@ impl ApiWalletRepo {
         .await
     }
 
+    pub async fn clear_binding_relation(
+        pool: &ApiWalletDbPool,
+        wallet_address: &str,
+        binding_address: &str,
+    ) -> Result<u64, crate::Error> {
+        Self::with_write_guard(pool, "clear_binding_relation", || async {
+            Ok(ApiWalletDao::clear_binding_relation(
+                pool.write_ref(),
+                wallet_address,
+                binding_address,
+            )
+            .await?)
+        })
+        .await
+    }
+
     pub async fn mark_init(pool: &ApiWalletDbPool, uid: &str) -> Result<bool, crate::Error> {
         Self::with_write_guard(pool, "mark_wallet_init", || async {
             Ok(ApiWalletDao::mark_init(pool.write_ref(), uid).await?)
@@ -407,6 +423,55 @@ mod tests {
         let got = ApiWalletRepo::find_by_address(&pool, address).await.unwrap().unwrap();
         assert_eq!(got.seed, initial_seed);
         assert_eq!(got.phrase, b"phrase".to_vec());
+    }
+
+    #[tokio::test]
+    async fn clear_binding_relation_clears_both_wallets_in_one_write() {
+        let pool = setup_api_wallet_pool("wallet_db_clear_binding_relation").await;
+        let subaccount_address = "0xapi_wallet_relation_sub";
+        let withdrawal_address = "0xapi_wallet_relation_withdrawal";
+
+        ApiWalletRepo::upsert(
+            &pool,
+            "uid_relation_sub",
+            "relation_sub",
+            subaccount_address,
+            b"phrase_sub",
+            b"seed_sub",
+            crate::entities::api_wallet::ApiWalletType::SubAccount,
+            Some(withdrawal_address),
+            "sn_relation",
+            3,
+        )
+        .await
+        .unwrap();
+        ApiWalletRepo::upsert(
+            &pool,
+            "uid_relation_withdrawal",
+            "relation_withdrawal",
+            withdrawal_address,
+            b"phrase_withdrawal",
+            b"seed_withdrawal",
+            crate::entities::api_wallet::ApiWalletType::Withdrawal,
+            Some(subaccount_address),
+            "sn_relation",
+            3,
+        )
+        .await
+        .unwrap();
+
+        let affected =
+            ApiWalletRepo::clear_binding_relation(&pool, subaccount_address, withdrawal_address)
+                .await
+                .unwrap();
+
+        assert_eq!(affected, 2);
+        let subaccount =
+            ApiWalletRepo::find_by_address(&pool, subaccount_address).await.unwrap().unwrap();
+        let withdrawal =
+            ApiWalletRepo::find_by_address(&pool, withdrawal_address).await.unwrap().unwrap();
+        assert_eq!(subaccount.binding_address, None);
+        assert_eq!(withdrawal.binding_address, None);
     }
 
     #[tokio::test]

@@ -10,7 +10,10 @@ use crate::harness::{
 };
 
 use super::{
-    db::{find_wallet, load_wallet, persisted_import_stage, seed_recharge_wallet},
+    db::{
+        find_wallet, load_wallet, mark_wallet_pair_on_other_device, persisted_import_stage,
+        seed_recharge_wallet,
+    },
     fixtures::{RechargeWalletFixture, WithdrawalImportFixture},
 };
 
@@ -65,6 +68,12 @@ pub(crate) trait WithdrawalImportGiven {
     fn backend_network_is_slow(&self) -> BackendNetworkDelayGuard;
 
     async fn recharge_wallet(&self, uid_prefix: &str, import_stage: u8) -> RechargeWalletFixture;
+
+    async fn wallet_pair_belongs_to_other_device(
+        &self,
+        recharge_address: &str,
+        withdrawal_uid: &str,
+    );
 }
 
 #[async_trait::async_trait(?Send)]
@@ -100,6 +109,15 @@ impl WithdrawalImportGiven for GivenRole<'_, WithdrawalImportScenario> {
 
     async fn recharge_wallet(&self, uid_prefix: &str, import_stage: u8) -> RechargeWalletFixture {
         seed_recharge_wallet(self.scenario().env, uid_prefix, import_stage).await
+    }
+
+    async fn wallet_pair_belongs_to_other_device(
+        &self,
+        recharge_address: &str,
+        withdrawal_uid: &str,
+    ) {
+        mark_wallet_pair_on_other_device(self.scenario().env, recharge_address, withdrawal_uid)
+            .await;
     }
 }
 
@@ -228,6 +246,8 @@ impl WithdrawalImportThen for ThenRole<'_, WithdrawalImportScenario> {
         assert_eq!(withdrawal_wallet.app_id.as_deref(), Some(APP_WITHDRAW));
         assert_eq!(recharge_wallet.merchant_id.as_deref(), Some(MERCHANT_WITHDRAW));
         assert_eq!(recharge_wallet.app_id.as_deref(), Some(APP_WITHDRAW));
+        assert_eq!(withdrawal_wallet.sn.as_deref(), Some(self.scenario().env.sn.as_str()));
+        assert_eq!(recharge_wallet.sn.as_deref(), Some(self.scenario().env.sn.as_str()));
     }
 
     async fn recharge_and_withdrawal_completed_and_bound(

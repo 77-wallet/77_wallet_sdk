@@ -8,7 +8,10 @@ use crate::harness::{
 };
 
 use super::{
-    db::{find_wallet, load_wallet, persisted_import_stage},
+    db::{
+        find_wallet, load_wallet, load_wallet_by_address, persisted_import_stage,
+        seed_bound_withdrawal_wallet,
+    },
     fixtures::SubaccountImportFixture,
 };
 
@@ -34,14 +37,22 @@ impl SubaccountImportScenario {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 pub(crate) trait SubaccountImportGiven {
     fn backend_accepts_unbound_subaccount(&self);
 
     fn backend_bind_info_query_fails(&self);
 
     fn backend_reports_withdrawal_uid_status(&self);
+
+    async fn bound_withdrawal_wallet(
+        &self,
+        subaccount_uid: &str,
+        belongs_to_current_device: bool,
+    ) -> String;
 }
 
+#[async_trait::async_trait(?Send)]
 impl SubaccountImportGiven for GivenRole<'_, SubaccountImportScenario> {
     fn backend_accepts_unbound_subaccount(&self) {
         self.scenario().env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiRaw);
@@ -60,6 +71,19 @@ impl SubaccountImportGiven for GivenRole<'_, SubaccountImportScenario> {
 
     fn backend_reports_withdrawal_uid_status(&self) {
         self.scenario().env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiWaw);
+    }
+
+    async fn bound_withdrawal_wallet(
+        &self,
+        subaccount_uid: &str,
+        belongs_to_current_device: bool,
+    ) -> String {
+        let withdrawal_sn = if belongs_to_current_device {
+            self.scenario().env.sn.as_str()
+        } else {
+            "different-device-sn"
+        };
+        seed_bound_withdrawal_wallet(self.scenario().env, subaccount_uid, withdrawal_sn).await
     }
 }
 
@@ -131,6 +155,10 @@ pub(crate) trait SubaccountImportThen {
         import: &SubaccountImportFixture,
     );
 
+    async fn wallet_relation_is_unbound(&self, subaccount_uid: &str, withdrawal_address: &str);
+
+    async fn wallet_relation_is_preserved(&self, subaccount_uid: &str, withdrawal_address: &str);
+
     fn standard_import_backend_calls_were_sent(&self);
 
     fn bind_info_failure_backend_calls_were_sent(&self);
@@ -178,6 +206,20 @@ impl SubaccountImportThen for ThenRole<'_, SubaccountImportScenario> {
     ) {
         let wallet = self.scenario().load().maybe_wallet(&import.expected_uid).await;
         self.scenario().assert().uid_status_mismatch_did_not_persist(err, wallet);
+    }
+
+    async fn wallet_relation_is_unbound(&self, subaccount_uid: &str, withdrawal_address: &str) {
+        let subaccount = self.scenario().load().wallet(subaccount_uid).await;
+        let withdrawal = load_wallet_by_address(self.scenario().env, withdrawal_address).await;
+        assert_eq!(subaccount.binding_address, None);
+        assert_eq!(withdrawal.binding_address, None);
+    }
+
+    async fn wallet_relation_is_preserved(&self, subaccount_uid: &str, withdrawal_address: &str) {
+        let subaccount = self.scenario().load().wallet(subaccount_uid).await;
+        let withdrawal = load_wallet_by_address(self.scenario().env, withdrawal_address).await;
+        assert_eq!(subaccount.binding_address.as_deref(), Some(withdrawal_address));
+        assert_eq!(withdrawal.binding_address.as_deref(), Some(subaccount.address.as_str()));
     }
 
     fn standard_import_backend_calls_were_sent(&self) {
