@@ -45,21 +45,41 @@ pub(crate) fn invalidate_api_wallet_list() {
         .mark_stale(API_WALLET_LIST_KEY, runtime_defaults::api_assets().total_cache_ttl);
 }
 
-/// 从缓存中移除指定地址的钱包，避免 invalidate 后全量重查 DB
-pub(crate) fn remove_wallet_from_cache(address: &str) {
+/// 从缓存中移除指定地址的钱包，避免 invalidate 后全量重查 DB。
+///
+/// 一个列表项可能同时包含充值和提币钱包，因此只清空实际已从 DB 删除的一侧。
+pub(crate) fn remove_wallets_from_cache(addresses: &[&str]) {
     if let Some(mut list) = API_WALLET_LIST_QUERY.get_stale(API_WALLET_LIST_KEY) {
-        let before = list.len();
-        list.retain(|item| {
-            let recharge_match =
-                item.recharge_wallet.as_ref().map_or(false, |w| w.address == address);
-            let withdraw_match =
-                item.withdraw_wallet.as_ref().map_or(false, |w| w.address == address);
-            !recharge_match && !withdraw_match
-        });
-        if list.len() != before {
+        if remove_wallets_from_list(&mut list.0, addresses) {
             API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
         }
     }
+}
+
+fn remove_wallets_from_list(list: &mut Vec<ApiWalletItem>, addresses: &[&str]) -> bool {
+    let mut changed = false;
+    for item in list.iter_mut() {
+        if item
+            .recharge_wallet
+            .as_ref()
+            .is_some_and(|wallet| addresses.contains(&wallet.address.as_str()))
+        {
+            item.recharge_wallet = None;
+            changed = true;
+        }
+        if item
+            .withdraw_wallet
+            .as_ref()
+            .is_some_and(|wallet| addresses.contains(&wallet.address.as_str()))
+        {
+            item.withdraw_wallet = None;
+            changed = true;
+        }
+    }
+    if changed {
+        list.retain(|item| item.recharge_wallet.is_some() || item.withdraw_wallet.is_some());
+    }
+    changed
 }
 
 /// 将新创建/导入的钱包追加到缓存中，避免 invalidate 后全量重查 DB
@@ -69,9 +89,12 @@ pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
     if wallets.is_empty() {
         return;
     }
-    let mut list: ApiWalletList = API_WALLET_LIST_QUERY
-        .get_stale(API_WALLET_LIST_KEY)
-        .unwrap_or_else(|| ApiWalletList(Vec::new()));
+    let Some(mut list) = API_WALLET_LIST_QUERY.get_stale(API_WALLET_LIST_KEY) else {
+        // Without an existing full snapshot, an incremental write would publish a
+        // partial list containing only the newly created/imported wallets.
+        invalidate_api_wallet_list();
+        return;
+    };
     let mut balance_list = std::collections::HashMap::new();
     for item in list.iter() {
         if let Some(r) = &item.recharge_wallet {
@@ -387,6 +410,67 @@ mod tests {
             sn: None,
             balance: Default::default(),
         }
+    }
+
+    fn make_wallet_entity(address: &str) -> wallet_database::entities::api_wallet::ApiWalletEntity {
+        use sqlx::types::chrono::Utc;
+        use wallet_database::entities::api_wallet::ApiWalletType;
+
+        wallet_database::entities::api_wallet::ApiWalletEntity {
+            id: 1,
+            name: "wallet".to_string(),
+            uid: format!("uid_{address}"),
+            address: address.to_string(),
+            phrase: Vec::new(),
+            seed: Vec::new(),
+            binding_address: None,
+            api_wallet_type: ApiWalletType::SubAccount,
+            merchant_id: None,
+            app_id: None,
+            sn: None,
+            status: 1,
+            is_init: 1,
+            import_stage: 0,
+            created_at: Utc::now(),
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn remove_withdrawal_wallet_preserves_paired_recharge_wallet() {
+        let mut list = vec![crate::response_vo::api_wallet::wallet::ApiWalletItem {
+            recharge_wallet: Some(make_wallet("recharge", "merchant")),
+            withdraw_wallet: Some(make_wallet("withdrawal", "merchant")),
+        }];
+
+        let changed = super::remove_wallets_from_list(&mut list, &["withdrawal"]);
+
+        assert!(changed);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].recharge_wallet.as_ref().unwrap().address, "recharge");
+        assert!(list[0].withdraw_wallet.is_none());
+    }
+
+    #[test]
+    fn remove_both_wallets_drops_empty_pair() {
+        let mut list = vec![crate::response_vo::api_wallet::wallet::ApiWalletItem {
+            recharge_wallet: Some(make_wallet("recharge", "merchant")),
+            withdraw_wallet: Some(make_wallet("withdrawal", "merchant")),
+        }];
+
+        let changed = super::remove_wallets_from_list(&mut list, &["recharge", "withdrawal"]);
+
+        assert!(changed);
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn add_wallets_without_full_cache_does_not_publish_partial_list() {
+        super::API_WALLET_LIST_QUERY.invalidate_key(super::API_WALLET_LIST_KEY);
+
+        super::add_wallets_to_cache(&[make_wallet_entity("new_wallet")]);
+
+        assert!(super::API_WALLET_LIST_QUERY.get_stale(super::API_WALLET_LIST_KEY).is_none());
     }
 
     #[test]

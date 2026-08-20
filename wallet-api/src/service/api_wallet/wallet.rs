@@ -961,6 +961,7 @@ impl ApiWalletService {
 
         let mut accounts = ApiAccountRepo::physical_delete_all(&pool, &[address]).await?;
 
+        let mut deleted_addresses = vec![address];
         if let Some(wallet) = &wallet
             && wallet.api_wallet_type == ApiWalletType::SubAccount
             && let Some(binding_address) = &wallet.binding_address
@@ -977,9 +978,12 @@ impl ApiWalletService {
             let withdraw_accounts =
                 ApiAccountRepo::physical_delete_all(&pool, &[binding_address]).await?;
             accounts.extend(withdraw_accounts);
+            deleted_addresses.push(binding_address);
         }
 
-        crate::domain::api_wallet::wallet_list_policy::remove_wallet_from_cache(&address);
+        crate::domain::api_wallet::wallet_list_policy::remove_wallets_from_cache(
+            &deleted_addresses,
+        );
 
         let sn = self.ctx.get_sn();
 
