@@ -59,3 +59,11 @@ pub(crate) async fn load_wallet_by_address(
         .expect("query wallet by address")
         .expect("wallet should exist")
 }
+
+pub(crate) async fn find_wallet_by_address(
+    env: &harness::TestEnv,
+    address: &str,
+) -> Option<ApiWalletEntity> {
+    let pool = open_api_wallet_pool(&env.db_dir).await;
+    ApiWalletRepo::find_by_address(&pool, address).await.expect("query wallet by address")
+}

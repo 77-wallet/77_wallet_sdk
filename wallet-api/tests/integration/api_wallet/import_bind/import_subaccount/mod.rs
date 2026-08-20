@@ -76,7 +76,7 @@ async fn import_subaccount_wallet_uid_status_mismatch_rejected_without_persist()
 
 #[tokio::test]
 #[serial(import_bind)]
-async fn reimport_subaccount_clears_stale_cross_device_wallet_relation() {
+async fn reimport_subaccount_removes_stale_cross_device_withdrawal_wallet() {
     let scenario = SubaccountImportScenario::new().await;
     let import = SubaccountImportFixture::new("salt-sub-stale-binding", "sub-wallet-stale-binding");
     let given = scenario.given();
@@ -86,11 +86,13 @@ async fn reimport_subaccount_clears_stale_cross_device_wallet_relation() {
     given.backend_accepts_unbound_subaccount();
     let uid = when.subaccount_wallet_is_imported(&import).await;
     let withdrawal_address = given.bound_withdrawal_wallet(&uid, false).await;
+    then.wallet_pair_is_cached(&uid, &withdrawal_address).await;
 
     given.backend_accepts_unbound_subaccount();
     when.subaccount_wallet_is_imported(&import).await;
 
-    then.wallet_relation_is_unbound(&uid, &withdrawal_address).await;
+    then.stale_withdrawal_wallet_is_removed(&uid, &withdrawal_address).await;
+    then.wallet_list_contains_only_reimported_subaccount(&uid, &withdrawal_address).await;
 }
 
 #[tokio::test]

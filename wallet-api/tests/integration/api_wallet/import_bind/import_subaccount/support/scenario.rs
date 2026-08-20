@@ -9,8 +9,8 @@ use crate::harness::{
 
 use super::{
     db::{
-        find_wallet, load_wallet, load_wallet_by_address, persisted_import_stage,
-        seed_bound_withdrawal_wallet,
+        find_wallet, find_wallet_by_address, load_wallet, load_wallet_by_address,
+        persisted_import_stage, seed_bound_withdrawal_wallet,
     },
     fixtures::SubaccountImportFixture,
 };
@@ -155,7 +155,19 @@ pub(crate) trait SubaccountImportThen {
         import: &SubaccountImportFixture,
     );
 
-    async fn wallet_relation_is_unbound(&self, subaccount_uid: &str, withdrawal_address: &str);
+    async fn stale_withdrawal_wallet_is_removed(
+        &self,
+        subaccount_uid: &str,
+        withdrawal_address: &str,
+    );
+
+    async fn wallet_pair_is_cached(&self, subaccount_uid: &str, withdrawal_address: &str);
+
+    async fn wallet_list_contains_only_reimported_subaccount(
+        &self,
+        subaccount_uid: &str,
+        withdrawal_address: &str,
+    );
 
     async fn wallet_relation_is_preserved(&self, subaccount_uid: &str, withdrawal_address: &str);
 
@@ -208,11 +220,63 @@ impl SubaccountImportThen for ThenRole<'_, SubaccountImportScenario> {
         self.scenario().assert().uid_status_mismatch_did_not_persist(err, wallet);
     }
 
-    async fn wallet_relation_is_unbound(&self, subaccount_uid: &str, withdrawal_address: &str) {
+    async fn stale_withdrawal_wallet_is_removed(
+        &self,
+        subaccount_uid: &str,
+        withdrawal_address: &str,
+    ) {
         let subaccount = self.scenario().load().wallet(subaccount_uid).await;
-        let withdrawal = load_wallet_by_address(self.scenario().env, withdrawal_address).await;
         assert_eq!(subaccount.binding_address, None);
-        assert_eq!(withdrawal.binding_address, None);
+        assert!(
+            find_wallet_by_address(self.scenario().env, withdrawal_address).await.is_none(),
+            "stale cross-device withdrawal wallet should be removed"
+        );
+    }
+
+    async fn wallet_pair_is_cached(&self, subaccount_uid: &str, withdrawal_address: &str) {
+        let list = self
+            .scenario()
+            .env
+            .manager
+            .get_api_wallet_list()
+            .await
+            .expect("load wallet list before reimport");
+        assert!(list.iter().any(|item| {
+            item.recharge_wallet.as_ref().is_some_and(|wallet| wallet.uid == subaccount_uid)
+                && item
+                    .withdraw_wallet
+                    .as_ref()
+                    .is_some_and(|wallet| wallet.address == withdrawal_address)
+        }));
+    }
+
+    async fn wallet_list_contains_only_reimported_subaccount(
+        &self,
+        subaccount_uid: &str,
+        withdrawal_address: &str,
+    ) {
+        let list = self
+            .scenario()
+            .env
+            .manager
+            .get_api_wallet_list()
+            .await
+            .expect("load wallet list after reimport");
+        assert!(
+            list.iter().any(|item| {
+                item.recharge_wallet.as_ref().is_some_and(|wallet| wallet.uid == subaccount_uid)
+                    && item.withdraw_wallet.is_none()
+            }),
+            "reimported subaccount should not retain the stale cached withdrawal wallet"
+        );
+        assert!(
+            list.iter().all(|item| {
+                item.withdraw_wallet
+                    .as_ref()
+                    .is_none_or(|wallet| wallet.address != withdrawal_address)
+            }),
+            "stale withdrawal wallet should not remain as a duplicate list item"
+        );
     }
 
     async fn wallet_relation_is_preserved(&self, subaccount_uid: &str, withdrawal_address: &str) {

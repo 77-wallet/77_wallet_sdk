@@ -66,10 +66,84 @@ pub struct ApiWalletService {
     ctx: &'static Context,
 }
 
+struct WalletBindingRelation {
+    wallet_address: String,
+    binding_address: String,
+    remove_binding_wallet: bool,
+}
+
+struct ReimportBindingPlan {
+    binding_address: Option<String>,
+    stale_relation: Option<WalletBindingRelation>,
+}
+
+impl ReimportBindingPlan {
+    fn from_request(binding_address: Option<&str>) -> Self {
+        Self { binding_address: binding_address.map(str::to_owned), stale_relation: None }
+    }
+}
+
 impl ApiWalletService {
     pub fn new(ctx: &'static Context) -> Self {
         Self { ctx }
     }
+
+    async fn plan_subaccount_reimport_binding(
+        pool: &wallet_database::ApiWalletDbPool,
+        subaccount_address: &str,
+        current_sn: &str,
+        requested_binding_address: Option<&str>,
+    ) -> Result<ReimportBindingPlan, ServiceError> {
+        let binding_address = match requested_binding_address {
+            Some(address) => Some(address.to_owned()),
+            None => ApiWalletRepo::find_by_address(pool, subaccount_address)
+                .await?
+                .and_then(|wallet| wallet.binding_address),
+        };
+
+        let Some(withdrawal_address) = binding_address else {
+            return Ok(ReimportBindingPlan::from_request(None));
+        };
+        let withdrawal_wallet = ApiWalletRepo::find_by_address(pool, &withdrawal_address).await?;
+        let relation_is_current = withdrawal_wallet.as_ref().is_some_and(|wallet| {
+            wallet.sn.as_deref() == Some(current_sn)
+                && wallet.binding_address.as_deref() == Some(subaccount_address)
+        });
+
+        if relation_is_current {
+            return Ok(ReimportBindingPlan {
+                binding_address: Some(withdrawal_address),
+                stale_relation: None,
+            });
+        }
+
+        Ok(ReimportBindingPlan {
+            binding_address: None,
+            stale_relation: Some(WalletBindingRelation {
+                wallet_address: subaccount_address.to_owned(),
+                binding_address: withdrawal_address,
+                remove_binding_wallet: true,
+            }),
+        })
+    }
+
+    fn stale_withdrawal_reimport_relation(
+        recharge_wallet: &wallet_database::entities::api_wallet::ApiWalletEntity,
+        withdrawal_address: &str,
+        current_sn: &str,
+    ) -> Option<WalletBindingRelation> {
+        let relation_is_current = recharge_wallet.sn.as_deref() == Some(current_sn)
+            && recharge_wallet.binding_address.as_deref() == Some(withdrawal_address);
+        (!relation_is_current).then(|| WalletBindingRelation {
+            wallet_address: recharge_wallet.address.clone(),
+            binding_address: recharge_wallet
+                .binding_address
+                .clone()
+                .unwrap_or_else(|| withdrawal_address.to_owned()),
+            remove_binding_wallet: false,
+        })
+    }
+
     pub async fn init_api_swap(&self) -> ReturnType<()> {
         if self.ctx.is_init_api_swap().await {
             tracing::warn!("init_api_swap already initialized, skip re-init");
@@ -503,8 +577,7 @@ impl ApiWalletService {
         let mut subaccount_bind_info: Option<QueryUidBindInfoRes> = None;
         let mut withdrawal_recharge_address: Option<String> = None;
         let mut withdrawal_bind_info: Option<QueryUidBindInfoRes> = None;
-        let mut validated_subaccount_binding_address = binding_address.map(str::to_owned);
-        let mut stale_binding_relation_to_clear: Option<(String, String)> = None;
+        let mut reimport_binding_plan = ReimportBindingPlan::from_request(binding_address);
 
         match api_wallet_type {
             ApiWalletType::SubAccount => {
@@ -513,32 +586,9 @@ impl ApiWalletService {
                     domain.appid_import_recharge_wallet(sn, &uid).await?;
                 }
                 subaccount_bind_info = Some(info);
-
-                // Re-import normally does not carry binding_address. Snapshot the old relation
-                // before UPSERT overwrites it, then preserve it only when the withdrawal wallet
-                // was already imported on this device and the relation is complete in both
-                // directions.
-                if validated_subaccount_binding_address.is_none() {
-                    validated_subaccount_binding_address =
-                        ApiWalletRepo::find_by_address(&pool, address)
-                            .await?
-                            .and_then(|wallet| wallet.binding_address);
-                }
-
-                if let Some(withdrawal_address) = validated_subaccount_binding_address.as_deref() {
-                    let withdrawal_wallet =
-                        ApiWalletRepo::find_by_address(&pool, withdrawal_address).await?;
-                    let relation_is_current = withdrawal_wallet.as_ref().is_some_and(|wallet| {
-                        wallet.sn.as_deref() == Some(sn)
-                            && wallet.binding_address.as_deref() == Some(address.as_str())
-                    });
-
-                    if !relation_is_current {
-                        stale_binding_relation_to_clear =
-                            Some((address.to_string(), withdrawal_address.to_owned()));
-                        validated_subaccount_binding_address = None;
-                    }
-                }
+                reimport_binding_plan =
+                    Self::plan_subaccount_reimport_binding(&pool, address, sn, binding_address)
+                        .await?;
             }
             ApiWalletType::Withdrawal => {
                 if let Some(binding_address) = binding_address {
@@ -546,16 +596,8 @@ impl ApiWalletService {
                         ApiWalletRepo::find_by_address(&pool, binding_address).await?;
 
                     if let Some(recharge_wallet) = recharge_wallet {
-                        let relation_is_current = recharge_wallet.sn.as_deref() == Some(sn)
-                            && recharge_wallet.binding_address.as_deref() == Some(address.as_str());
-                        if !relation_is_current {
-                            let paired_withdrawal_address = recharge_wallet
-                                .binding_address
-                                .clone()
-                                .unwrap_or_else(|| address.to_string());
-                            stale_binding_relation_to_clear =
-                                Some((recharge_wallet.address.clone(), paired_withdrawal_address));
-                        }
+                        reimport_binding_plan.stale_relation =
+                            Self::stale_withdrawal_reimport_relation(&recharge_wallet, address, sn);
 
                         let info = domain.query_uid_bind_info(&recharge_wallet.uid).await?;
 
@@ -588,20 +630,37 @@ impl ApiWalletService {
 
         ApiWalletDomain::new(self.ctx).keys_init(&uid, &device, wallet_name, invite_code).await?;
 
-        if let Some((wallet_address, binding_address)) = stale_binding_relation_to_clear.as_ref() {
+        if let Some(relation) = reimport_binding_plan.stale_relation.as_ref() {
             tracing::info!(
                 uid = %uid,
-                wallet_address = %wallet_address,
-                binding_address = %binding_address,
+                wallet_address = %relation.wallet_address,
+                binding_address = %relation.binding_address,
                 "clearing stale or incomplete API wallet relation during re-import"
             );
-            ApiWalletRepo::clear_binding_relation(&pool, wallet_address, binding_address).await?;
+            ApiWalletRepo::clear_binding_relation(
+                &pool,
+                &relation.wallet_address,
+                &relation.binding_address,
+            )
+            .await?;
+            if relation.remove_binding_wallet {
+                if let Some(stale_wallet) =
+                    ApiWalletRepo::find_by_address(&pool, &relation.binding_address).await?
+                {
+                    ApiWalletRepo::physical_delete(&pool, &[relation.binding_address.as_str()])
+                        .await?;
+                    AddressQueryStateRepo::delete_by_uid(&pool, &stale_wallet.uid).await?;
+                    ApiAccountRepo::physical_delete_all(
+                        &pool,
+                        &[relation.binding_address.as_str()],
+                    )
+                    .await?;
+                    crate::domain::api_wallet::wallet_list_policy::remove_wallets_from_cache(&[
+                        relation.binding_address.as_str(),
+                    ]);
+                }
+            }
         }
-
-        let binding_address_to_persist = match api_wallet_type {
-            ApiWalletType::SubAccount => validated_subaccount_binding_address.as_deref(),
-            ApiWalletType::Withdrawal => binding_address,
-        };
 
         ApiWalletDomain::new(self.ctx)
             .upsert_api_wallet(
@@ -612,10 +671,10 @@ impl ApiWalletService {
                 &phrase,
                 &seed,
                 api_wallet_type,
-                binding_address_to_persist,
+                reimport_binding_plan.binding_address.as_deref(),
             )
             .await?;
-        if stale_binding_relation_to_clear.is_some() {
+        if reimport_binding_plan.stale_relation.is_some() {
             crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
         }
         crate::infrastructure::unlock_session::upsert_wallet_unlock_material(
