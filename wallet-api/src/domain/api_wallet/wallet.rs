@@ -505,7 +505,6 @@ impl ApiWalletDomain {
         wallet_name: &str,
         invite_code: Option<String>,
     ) -> Result<(), ServiceError> {
-        let pool = self.ctx.api_wallet_pool()?;
         let status = ConfigDomain::get_keys_reset_status(self.ctx).await?;
         if let Some(status) = status
             && let Some(false) = status.status
@@ -528,7 +527,6 @@ impl ApiWalletDomain {
         );
 
         backend.old_keys_init(keys_init_req).await?;
-        ApiWalletRepo::mark_init(&pool, uid).await?;
         Ok(())
     }
 

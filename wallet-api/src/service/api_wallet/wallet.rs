@@ -354,6 +354,7 @@ impl ApiWalletService {
             &language_req,
         )?;
         ApiWalletDomain::new(self.ctx).keys_init(&uid, &device, wallet_name, invite_code).await?;
+        ApiWalletRepo::mark_init(&pool, &uid).await?;
         let domain = ApiWalletDomain::new(self.ctx);
 
         match api_wallet_type {
