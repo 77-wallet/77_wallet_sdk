@@ -353,6 +353,7 @@ impl SubaccountImportAssert for AssertRole<'_, SubaccountImportScenario> {
     fn subaccount_wallet_is_unbound_and_initialized(&self, wallet: &ApiWalletEntity, sn: &str) {
         assert_eq!(wallet.api_wallet_type as u8, ApiWalletType::SubAccount as u8);
         assert_eq!(wallet.sn.as_deref(), Some(sn));
+        assert_eq!(wallet.is_init, 1);
         assert_eq!(wallet.merchant_id.as_deref(), Some(""));
         assert_eq!(wallet.app_id.as_deref(), Some(""));
     }

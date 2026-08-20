@@ -674,6 +674,7 @@ impl ApiWalletService {
                 reimport_binding_plan.binding_address.as_deref(),
             )
             .await?;
+        ApiWalletRepo::mark_init(&pool, &uid).await?;
         if reimport_binding_plan.stale_relation.is_some() {
             crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
         }

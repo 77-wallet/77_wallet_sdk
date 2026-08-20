@@ -234,6 +234,7 @@ impl WithdrawalImportThen for ThenRole<'_, WithdrawalImportScenario> {
         let withdrawal_wallet = load_wallet(self.scenario().env, withdrawal_uid).await;
         let recharge_wallet = load_wallet(self.scenario().env, &recharge.uid).await;
         assert_eq!(withdrawal_wallet.api_wallet_type as u8, ApiWalletType::Withdrawal as u8);
+        assert_eq!(withdrawal_wallet.is_init, 1);
         assert_eq!(
             withdrawal_wallet.binding_address.as_deref(),
             Some(recharge_wallet.address.as_str())
