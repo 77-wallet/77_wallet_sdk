@@ -863,6 +863,10 @@ impl ApiWalletService {
             .await?;
 
         crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
+        crate::domain::api_wallet::wallet_list_policy::merge_wallets_in_cache(
+            &recharge_wallet.address,
+            &withdrawal_wallet.address,
+        );
 
         // let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
 

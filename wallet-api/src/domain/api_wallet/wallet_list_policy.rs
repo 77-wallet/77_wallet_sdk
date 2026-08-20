@@ -56,8 +56,6 @@ pub(crate) fn remove_wallet_from_cache(address: &str) {
                 item.withdraw_wallet.as_ref().map_or(false, |w| w.address == address);
             !recharge_match && !withdraw_match
         });
-        // 级联：移除 withdraw_wallet 被保留但 recharge_wallet 被删除的孤儿项
-        // 以及其他因级联删除产生的半空项（根据业务场景决定是否保留）
         if list.len() != before {
             API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
         }
@@ -65,6 +63,8 @@ pub(crate) fn remove_wallet_from_cache(address: &str) {
 }
 
 /// 将新创建/导入的钱包追加到缓存中，避免 invalidate 后全量重查 DB
+///
+/// push 前用 address 检查是否已存在（DB 层 address UNIQUE），防止重复导入产生重复项。
 pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
     if wallets.is_empty() {
         return;
@@ -90,7 +90,15 @@ pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
 
         match e.api_wallet_type {
             ApiWalletType::SubAccount => {
-                if let Some(binding_address) = &e.binding_address
+                // 先检查 address 是否已存在（重复导入场景）
+                if let Some(item) = list.iter_mut().find(|item| {
+                    item.recharge_wallet
+                        .as_ref()
+                        .map(|r| r.address == e.address)
+                        .unwrap_or(false)
+                }) {
+                    item.recharge_wallet = Some(wallet);
+                } else if let Some(binding_address) = &e.binding_address
                     && let Some(item) = list.iter_mut().find(|item| {
                         item.withdraw_wallet
                             .as_ref()
@@ -107,7 +115,15 @@ pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
                 }
             }
             ApiWalletType::Withdrawal => {
-                if let Some(binding_address) = &e.binding_address
+                // 先检查 address 是否已存在（重复导入场景）
+                if let Some(item) = list.iter_mut().find(|item| {
+                    item.withdraw_wallet
+                        .as_ref()
+                        .map(|w| w.address == e.address)
+                        .unwrap_or(false)
+                }) {
+                    item.withdraw_wallet = Some(wallet);
+                } else if let Some(binding_address) = &e.binding_address
                     && let Some(item) = list.iter_mut().find(|item| {
                         item.recharge_wallet
                             .as_ref()
@@ -126,6 +142,46 @@ pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
         }
     }
     API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
+}
+
+/// 绑定后将缓存中两个独立 item 合并成一个
+pub(crate) fn merge_wallets_in_cache(recharge_address: &str, withdrawal_address: &str) {
+    let mut list: ApiWalletList = API_WALLET_LIST_QUERY
+        .get_stale(API_WALLET_LIST_KEY)
+        .unwrap_or_else(|| ApiWalletList(Vec::new()));
+
+    let mut recharge_wallet = None;
+    let mut withdraw_wallet = None;
+
+    // 提取独立的 recharge item 和 withdraw item，移除原项
+    list.0.retain(|item| {
+        if let Some(r) = &item.recharge_wallet
+            && r.address == recharge_address
+            && item.withdraw_wallet.is_none()
+        {
+            recharge_wallet = Some(r.clone());
+            return false;
+        }
+        if let Some(w) = &item.withdraw_wallet
+            && w.address == withdrawal_address
+            && item.recharge_wallet.is_none()
+        {
+            withdraw_wallet = Some(w.clone());
+            return false;
+        }
+        true
+    });
+
+    if let (Some(r), Some(w)) = (recharge_wallet, withdraw_wallet) {
+        list.0.push(ApiWalletItem {
+            recharge_wallet: Some(r),
+            withdraw_wallet: Some(w),
+        });
+        API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
+    } else {
+        // 缓存中没有找到对应的独立 item，走 mark_stale 让下次读取重查 DB
+        invalidate_api_wallet_list();
+    }
 }
 
 /// 精准更新缓存中指定钱包的名字，避免 invalidate 后全量重查 DB
