@@ -73,7 +73,6 @@ pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
         .get_stale(API_WALLET_LIST_KEY)
         .unwrap_or_else(|| ApiWalletList(Vec::new()));
     let mut balance_list = std::collections::HashMap::new();
-    // 从现有缓存中收集余额信息，避免丢失
     for item in list.iter() {
         if let Some(r) = &item.recharge_wallet {
             balance_list.insert(r.address.clone(), r.balance.clone());
@@ -87,61 +86,76 @@ pub(crate) fn add_wallets_to_cache(wallets: &[ApiWalletEntity]) {
     for e in wallets {
         let mut wallet: WalletInfo = e.into();
         wallet.balance = balance_list.get(&e.address).cloned().unwrap_or_default();
+        merge_wallet_into_list(
+            &mut list.0,
+            wallet,
+            e.api_wallet_type,
+            e.binding_address.as_deref(),
+        );
+    }
+    API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
+}
 
-        match e.api_wallet_type {
-            ApiWalletType::SubAccount => {
-                // 先检查 address 是否已存在（重复导入场景）
-                if let Some(item) = list.iter_mut().find(|item| {
-                    item.recharge_wallet
-                        .as_ref()
-                        .map(|r| r.address == e.address)
-                        .unwrap_or(false)
-                }) {
-                    item.recharge_wallet = Some(wallet);
-                } else if let Some(binding_address) = &e.binding_address
-                    && let Some(item) = list.iter_mut().find(|item| {
-                        item.withdraw_wallet
-                            .as_ref()
-                            .map(|w| &w.address == binding_address)
-                            .unwrap_or(false)
-                    })
-                {
-                    item.recharge_wallet = Some(wallet);
-                } else {
-                    list.push(ApiWalletItem {
-                        recharge_wallet: Some(wallet),
-                        withdraw_wallet: None,
-                    });
-                }
+/// 4 步匹配逻辑：将钱包合并到 list 中。提取为独立函数以便单测。
+///
+/// SubAccount 分支：
+///   1. recharge address 已存在 → 覆盖（同类型重复导入）
+///   2. withdraw address 已存在 → 配对（跨类型同地址）
+///   3. binding_address 匹配 → 找配对的 Withdrawal
+///   4. push 新项
+///
+/// Withdrawal 分支：
+///   1. withdraw address 已存在 → 覆盖（同类型重复导入）
+///   2. recharge address 已存在 → 配对（跨类型同地址）
+///   3. binding_address 匹配 → 找配对的 SubAccount
+///   4. push 新项
+pub(crate) fn merge_wallet_into_list(
+    list: &mut Vec<ApiWalletItem>,
+    wallet: WalletInfo,
+    wallet_type: wallet_database::entities::api_wallet::ApiWalletType,
+    binding_address: Option<&str>,
+) {
+    use wallet_database::entities::api_wallet::ApiWalletType;
+    match wallet_type {
+        ApiWalletType::SubAccount => {
+            if let Some(item) = list.iter_mut().find(|item| {
+                item.recharge_wallet.as_ref().map(|r| r.address == wallet.address).unwrap_or(false)
+            }) {
+                item.recharge_wallet = Some(wallet);
+            } else if let Some(item) = list.iter_mut().find(|item| {
+                item.withdraw_wallet.as_ref().map(|w| w.address == wallet.address).unwrap_or(false)
+            }) {
+                item.recharge_wallet = Some(wallet);
+            } else if let Some(ba) = binding_address
+                && let Some(item) = list.iter_mut().find(|item| {
+                    item.withdraw_wallet.as_ref().map(|w| &w.address == ba).unwrap_or(false)
+                })
+            {
+                item.recharge_wallet = Some(wallet);
+            } else {
+                list.push(ApiWalletItem { recharge_wallet: Some(wallet), withdraw_wallet: None });
             }
-            ApiWalletType::Withdrawal => {
-                // 先检查 address 是否已存在（重复导入场景）
-                if let Some(item) = list.iter_mut().find(|item| {
-                    item.withdraw_wallet
-                        .as_ref()
-                        .map(|w| w.address == e.address)
-                        .unwrap_or(false)
-                }) {
-                    item.withdraw_wallet = Some(wallet);
-                } else if let Some(binding_address) = &e.binding_address
-                    && let Some(item) = list.iter_mut().find(|item| {
-                        item.recharge_wallet
-                            .as_ref()
-                            .map(|r| &r.address == binding_address)
-                            .unwrap_or(false)
-                    })
-                {
-                    item.withdraw_wallet = Some(wallet);
-                } else {
-                    list.push(ApiWalletItem {
-                        recharge_wallet: None,
-                        withdraw_wallet: Some(wallet),
-                    });
-                }
+        }
+        ApiWalletType::Withdrawal => {
+            if let Some(item) = list.iter_mut().find(|item| {
+                item.withdraw_wallet.as_ref().map(|w| w.address == wallet.address).unwrap_or(false)
+            }) {
+                item.withdraw_wallet = Some(wallet);
+            } else if let Some(item) = list.iter_mut().find(|item| {
+                item.recharge_wallet.as_ref().map(|r| r.address == wallet.address).unwrap_or(false)
+            }) {
+                item.withdraw_wallet = Some(wallet);
+            } else if let Some(ba) = binding_address
+                && let Some(item) = list.iter_mut().find(|item| {
+                    item.recharge_wallet.as_ref().map(|r| &r.address == ba).unwrap_or(false)
+                })
+            {
+                item.withdraw_wallet = Some(wallet);
+            } else {
+                list.push(ApiWalletItem { recharge_wallet: None, withdraw_wallet: Some(wallet) });
             }
         }
     }
-    API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
 }
 
 /// 绑定后将缓存中两个独立 item 合并成一个
@@ -173,10 +187,7 @@ pub(crate) fn merge_wallets_in_cache(recharge_address: &str, withdrawal_address:
     });
 
     if let (Some(r), Some(w)) = (recharge_wallet, withdraw_wallet) {
-        list.0.push(ApiWalletItem {
-            recharge_wallet: Some(r),
-            withdraw_wallet: Some(w),
-        });
+        list.0.push(ApiWalletItem { recharge_wallet: Some(r), withdraw_wallet: Some(w) });
         API_WALLET_LIST_QUERY.set(API_WALLET_LIST_KEY, &list);
     } else {
         // 缓存中没有找到对应的独立 item，走 mark_stale 让下次读取重查 DB
@@ -362,5 +373,146 @@ mod tests {
             .await
             .expect("timeout should return stale empty list");
         assert!(stale.is_empty());
+    }
+
+    fn make_wallet(
+        address: &str,
+        name: &str,
+    ) -> crate::response_vo::api_wallet::wallet::WalletInfo {
+        crate::response_vo::api_wallet::wallet::WalletInfo {
+            address: address.to_string(),
+            uid: format!("uid_{}", address),
+            name: name.to_string(),
+            app_id: None,
+            sn: None,
+            balance: Default::default(),
+        }
+    }
+
+    #[test]
+    fn merge_cross_type_same_address_merges_instead_of_duplicating() {
+        use wallet_database::entities::api_wallet::ApiWalletType;
+
+        // 场景：先导入 SubAccount(addr=X)，再导入 Withdrawal(addr=X)
+        // 期望：只有 1 个 item，包含 recharge 和 withdraw
+        let mut list = Vec::new();
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_X", "商户1"),
+            ApiWalletType::SubAccount,
+            None,
+        );
+        assert_eq!(list.len(), 1);
+        assert!(list[0].recharge_wallet.is_some());
+        assert!(list[0].withdraw_wallet.is_none());
+
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_X", "商户11"),
+            ApiWalletType::Withdrawal,
+            None,
+        );
+        assert_eq!(list.len(), 1, "should merge, not duplicate");
+        assert!(list[0].recharge_wallet.is_some());
+        assert!(list[0].withdraw_wallet.is_some());
+        assert_eq!(list[0].recharge_wallet.as_ref().unwrap().name, "商户1");
+        assert_eq!(list[0].withdraw_wallet.as_ref().unwrap().name, "商户11");
+    }
+
+    #[test]
+    fn merge_same_type_same_address_updates_existing() {
+        use wallet_database::entities::api_wallet::ApiWalletType;
+
+        // 场景：重复导入相同 SubAccount（不同 name）
+        let mut list = Vec::new();
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_X", "商户1"),
+            ApiWalletType::SubAccount,
+            None,
+        );
+        assert_eq!(list.len(), 1);
+
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_X", "商户11"),
+            ApiWalletType::SubAccount,
+            None,
+        );
+        assert_eq!(list.len(), 1, "should update, not duplicate");
+        assert_eq!(list[0].recharge_wallet.as_ref().unwrap().name, "商户11");
+    }
+
+    #[test]
+    fn merge_cross_type_reverse_order_merges() {
+        use wallet_database::entities::api_wallet::ApiWalletType;
+
+        // 场景：先导入 Withdrawal(addr=X)，再导入 SubAccount(addr=X)
+        let mut list = Vec::new();
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_X", "商户11"),
+            ApiWalletType::Withdrawal,
+            None,
+        );
+        assert_eq!(list.len(), 1);
+        assert!(list[0].withdraw_wallet.is_some());
+        assert!(list[0].recharge_wallet.is_none());
+
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_X", "商户1"),
+            ApiWalletType::SubAccount,
+            None,
+        );
+        assert_eq!(list.len(), 1, "should merge, not duplicate");
+        assert!(list[0].recharge_wallet.is_some());
+        assert!(list[0].withdraw_wallet.is_some());
+    }
+
+    #[test]
+    fn merge_different_addresses_create_separate_items() {
+        use wallet_database::entities::api_wallet::ApiWalletType;
+
+        let mut list = Vec::new();
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_X", "商户1"),
+            ApiWalletType::SubAccount,
+            None,
+        );
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_Y", "商户2"),
+            ApiWalletType::Withdrawal,
+            None,
+        );
+        assert_eq!(list.len(), 2, "different addresses should create separate items");
+    }
+
+    #[test]
+    fn merge_binding_address_matches_pairing() {
+        use wallet_database::entities::api_wallet::ApiWalletType;
+
+        // 场景：先导入 Withdrawal(addr=Y)，再导入 SubAccount(addr=X, binding=Y)
+        // SubAccount 应通过 binding_address 找到 Withdrawal 并配对
+        let mut list = Vec::new();
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_Y", "提币钱包"),
+            ApiWalletType::Withdrawal,
+            None,
+        );
+        assert_eq!(list.len(), 1);
+
+        crate::domain::api_wallet::wallet_list_policy::merge_wallet_into_list(
+            &mut list,
+            make_wallet("addr_X", "子账户钱包"),
+            ApiWalletType::SubAccount,
+            Some("addr_Y"),
+        );
+        assert_eq!(list.len(), 1, "binding_address should pair them");
+        assert!(list[0].recharge_wallet.is_some());
+        assert!(list[0].withdraw_wallet.is_some());
     }
 }
