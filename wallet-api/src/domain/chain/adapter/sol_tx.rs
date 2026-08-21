@@ -53,7 +53,7 @@ pub(super) async fn estimate_swap(
         .similar_transaction(&payer, &instructions.ins, Some(instructions.alts.clone()))
         .await?;
     if res.value.err.is_some() {
-        // tracing::error!("swap simulate error: {:?}", res);
+        tracing::error!("swap simulate error: {:?}", res);
         // let _res =
         //     FrontendNotifyEvent::send_debug(&wallet_utils::serde_func::serde_to_value(&res.value)?)
         //         .await;
