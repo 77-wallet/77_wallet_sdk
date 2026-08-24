@@ -858,7 +858,18 @@ impl ApiWalletService {
 
         crate::domain::api_wallet::wallet_list_policy::invalidate_api_wallet_list();
         if let Ok(Some(entity)) = ApiWalletRepo::find_by_uid(&pool, &uid).await {
-            crate::domain::api_wallet::wallet_list_policy::add_wallets_to_cache(&[entity]);
+            let paired_wallet = match entity.binding_address.as_deref() {
+                Some(binding_address) => {
+                    ApiWalletRepo::find_by_address(&pool, binding_address).await.ok().flatten()
+                }
+                None => None,
+            };
+            let mut refreshed_wallets = Vec::with_capacity(2);
+            if let Some(paired_wallet) = paired_wallet {
+                refreshed_wallets.push(paired_wallet);
+            }
+            refreshed_wallets.push(entity);
+            crate::domain::api_wallet::wallet_list_policy::add_wallets_to_cache(&refreshed_wallets);
         }
 
         Ok(uid)

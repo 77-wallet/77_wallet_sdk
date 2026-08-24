@@ -436,6 +436,19 @@ mod tests {
         }
     }
 
+    fn make_bound_wallet_entity(
+        address: &str,
+        wallet_type: wallet_database::entities::api_wallet::ApiWalletType,
+        binding_address: &str,
+        app_id: &str,
+    ) -> wallet_database::entities::api_wallet::ApiWalletEntity {
+        let mut entity = make_wallet_entity(address);
+        entity.api_wallet_type = wallet_type;
+        entity.binding_address = Some(binding_address.to_string());
+        entity.app_id = Some(app_id.to_string());
+        entity
+    }
+
     #[test]
     fn remove_withdrawal_wallet_preserves_paired_recharge_wallet() {
         let mut list = vec![crate::response_vo::api_wallet::wallet::ApiWalletItem {
@@ -471,6 +484,47 @@ mod tests {
         super::add_wallets_to_cache(&[make_wallet_entity("new_wallet")]);
 
         assert!(super::API_WALLET_LIST_QUERY.get_stale(super::API_WALLET_LIST_KEY).is_none());
+    }
+
+    #[test]
+    fn refreshing_bound_pair_replaces_stale_recharge_app_id() {
+        use wallet_database::entities::api_wallet::ApiWalletType;
+
+        let mut list = vec![crate::response_vo::api_wallet::wallet::ApiWalletItem {
+            recharge_wallet: Some(make_wallet("recharge", "merchant")),
+            withdraw_wallet: None,
+        }];
+        let recharge = make_bound_wallet_entity(
+            "recharge",
+            ApiWalletType::SubAccount,
+            "withdrawal",
+            "bound-app-id",
+        );
+        let withdrawal = make_bound_wallet_entity(
+            "withdrawal",
+            ApiWalletType::Withdrawal,
+            "recharge",
+            "bound-app-id",
+        );
+
+        for entity in [&recharge, &withdrawal] {
+            super::merge_wallet_into_list(
+                &mut list,
+                entity.into(),
+                entity.api_wallet_type,
+                entity.binding_address.as_deref(),
+            );
+        }
+
+        assert_eq!(list.len(), 1);
+        assert_eq!(
+            list[0].recharge_wallet.as_ref().and_then(|wallet| wallet.app_id.as_deref()),
+            Some("bound-app-id")
+        );
+        assert_eq!(
+            list[0].withdraw_wallet.as_ref().and_then(|wallet| wallet.app_id.as_deref()),
+            Some("bound-app-id")
+        );
     }
 
     #[test]
