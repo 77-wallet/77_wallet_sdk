@@ -851,8 +851,13 @@ GROUP BY all_data.wallet_address,all_data.account_id
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::debug!(
+        tracing::info!(
+            metric = "api_wallet_total_assets_v2_query",
+            wallet_address = wallet_address.unwrap_or("all"),
+            account_id = ?account_id,
+            chain_code = chain_code.unwrap_or("all"),
             elapsed_ms = start.elapsed().as_millis(),
+            ok = res.is_ok(),
             "ApiAssetsDao: get_api_wallet_total_assets_v2"
         );
         res

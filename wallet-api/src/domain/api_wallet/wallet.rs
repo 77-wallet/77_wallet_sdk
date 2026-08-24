@@ -796,12 +796,15 @@ impl ApiWalletDomain {
     pub async fn get_api_wallet_list(
         &self,
     ) -> Result<ApiWalletList, crate::error::service::ServiceError> {
+        let load_start = std::time::Instant::now();
         let list = super::wallet_list_policy::load_api_wallet_list(|| async {
             self.get_api_wallet_list_uncached().await
         })
         .await?;
         tracing::info!(
             flow = "api_wallet_list_bind_probe",
+            metric = "api_wallet_list_load",
+            elapsed_ms = load_start.elapsed().as_millis(),
             wallet_pair_count = list.len(),
             complete_pair_count = list
                 .iter()
