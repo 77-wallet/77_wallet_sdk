@@ -796,10 +796,28 @@ impl ApiWalletDomain {
     pub async fn get_api_wallet_list(
         &self,
     ) -> Result<ApiWalletList, crate::error::service::ServiceError> {
-        super::wallet_list_policy::load_api_wallet_list(|| async {
+        let list = super::wallet_list_policy::load_api_wallet_list(|| async {
             self.get_api_wallet_list_uncached().await
         })
-        .await
+        .await?;
+        tracing::info!(
+            flow = "api_wallet_list_bind_probe",
+            wallet_pair_count = list.len(),
+            complete_pair_count = list
+                .iter()
+                .filter(|item| item.recharge_wallet.is_some() && item.withdraw_wallet.is_some())
+                .count(),
+            recharge_app_id_count = list
+                .iter()
+                .filter(|item| item
+                    .recharge_wallet
+                    .as_ref()
+                    .and_then(|wallet| wallet.app_id.as_deref())
+                    .is_some_and(|app_id| !app_id.is_empty()))
+                .count(),
+            "API wallet list returned to caller"
+        );
+        Ok(list)
     }
 
     async fn get_api_wallet_list_uncached(
@@ -829,7 +847,15 @@ impl ApiWalletDomain {
             );
         }
 
-        Ok(Self::build_api_wallet_list(&wallets, &balance_list, true))
+        let list = Self::build_api_wallet_list(&wallets, &balance_list, true);
+        tracing::info!(
+            flow = "api_wallet_list_bind_probe",
+            source = "database",
+            wallet_row_count = wallets.len(),
+            wallet_pair_count = list.len(),
+            "API wallet list rebuilt from database"
+        );
+        Ok(list)
     }
 
     pub async fn get_api_wallet_list_light(

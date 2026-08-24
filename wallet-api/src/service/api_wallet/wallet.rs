@@ -583,6 +583,14 @@ impl ApiWalletService {
         match api_wallet_type {
             ApiWalletType::SubAccount => {
                 let info = domain.query_uid_bind_info(&uid).await?;
+                tracing::info!(
+                    flow = "api_wallet_import_bind_probe",
+                    wallet_type = "subaccount",
+                    bind_status = info.bind_status,
+                    app_id_present = !info.app_id.is_empty(),
+                    org_id_present = !info.org_id.is_empty(),
+                    "backend bind info received before subaccount persistence"
+                );
                 if info.bind_status {
                     domain.appid_import_recharge_wallet(sn, &uid).await?;
                 }
@@ -601,6 +609,14 @@ impl ApiWalletService {
                             Self::stale_withdrawal_reimport_relation(&recharge_wallet, address, sn);
 
                         let info = domain.query_uid_bind_info(&recharge_wallet.uid).await?;
+                        tracing::info!(
+                            flow = "api_wallet_import_bind_probe",
+                            wallet_type = "withdrawal",
+                            bind_status = info.bind_status,
+                            app_id_present = !info.app_id.is_empty(),
+                            org_id_present = !info.org_id.is_empty(),
+                            "backend bind info received before withdrawal persistence"
+                        );
 
                         if !info.app_id.is_empty()
                             && !domain
@@ -799,6 +815,31 @@ impl ApiWalletService {
                         .db_save_sn_data(recharge_address, Some(address), sn)
                         .await?;
 
+                    let persisted_recharge =
+                        ApiWalletRepo::find_by_address(&pool, recharge_address).await?;
+                    let persisted_withdrawal =
+                        ApiWalletRepo::find_by_address(&pool, address).await?;
+                    tracing::info!(
+                        flow = "api_wallet_import_bind_probe",
+                        recharge_app_id_present = persisted_recharge
+                            .as_ref()
+                            .and_then(|wallet| wallet.app_id.as_deref())
+                            .is_some_and(|app_id| !app_id.is_empty()),
+                        withdrawal_app_id_present = persisted_withdrawal
+                            .as_ref()
+                            .and_then(|wallet| wallet.app_id.as_deref())
+                            .is_some_and(|app_id| !app_id.is_empty()),
+                        relation_is_symmetric = persisted_recharge
+                            .as_ref()
+                            .and_then(|wallet| wallet.binding_address.as_deref())
+                            == Some(address)
+                            && persisted_withdrawal
+                                .as_ref()
+                                .and_then(|wallet| wallet.binding_address.as_deref())
+                                == Some(recharge_address.as_str()),
+                        "paired wallet state persisted after withdrawal import"
+                    );
+
                     if !already_completed {
                         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
                         let chains: Vec<String> = default_chain_list
@@ -869,6 +910,18 @@ impl ApiWalletService {
                 refreshed_wallets.push(paired_wallet);
             }
             refreshed_wallets.push(entity);
+            tracing::info!(
+                flow = "api_wallet_import_bind_probe",
+                refreshed_wallet_count = refreshed_wallets.len(),
+                refreshed_app_id_count = refreshed_wallets
+                    .iter()
+                    .filter(|wallet| wallet
+                        .app_id
+                        .as_deref()
+                        .is_some_and(|app_id| !app_id.is_empty()))
+                    .count(),
+                "refreshing imported wallet list cache from persisted entities"
+            );
             crate::domain::api_wallet::wallet_list_policy::add_wallets_to_cache(&refreshed_wallets);
         }
 
