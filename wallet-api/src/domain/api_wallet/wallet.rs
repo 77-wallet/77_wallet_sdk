@@ -1,7 +1,10 @@
 use crate::{
     context::{CONTEXT, Context, WalletUnlockMaterial, WalletUnlockSession},
     domain::{
-        api_wallet::unlock::{SeedEnvelopeCodec, WalletUnlockSessionCodec},
+        api_wallet::{
+            assets::ApiAssetsDomain,
+            unlock::{SeedEnvelopeCodec, WalletUnlockSessionCodec},
+        },
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
@@ -24,10 +27,7 @@ use wallet_crypto::{
 };
 use wallet_database::{
     entities::{api_wallet::ApiWalletType, device::DeviceEntity},
-    repositories::{
-        api_wallet::{assets::ApiAssetsRepo, wallet::ApiWalletRepo},
-        wallet::WalletRepo,
-    },
+    repositories::{api_wallet::wallet::ApiWalletRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::{
     request::api_wallet::{
@@ -828,26 +828,13 @@ impl ApiWalletDomain {
     ) -> Result<ApiWalletList, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
-        let currency = ConfigDomain::get_currency(self.ctx).await?;
         let mut balance_list = HashMap::new();
 
         for wallet in &wallets {
-            let total = ApiAssetsRepo::get_api_wallet_total_assets_v2(
-                &pool,
-                Some(&wallet.address),
-                None,
-                None,
-            )
-            .await?;
-            balance_list.insert(
-                wallet.address.clone(),
-                crate::response_vo::standard_wallet::account::BalanceInfo {
-                    amount: total.total_coins_quantity,
-                    currency: currency.clone(),
-                    unit_price: None,
-                    fiat_value: Some(total.total_amount),
-                },
-            );
+            let balance =
+                ApiAssetsDomain::get_api_wallet_assets(self.ctx, Some(&wallet.address), None, None)
+                    .await?;
+            balance_list.insert(wallet.address.clone(), balance);
         }
 
         let list = Self::build_api_wallet_list(&wallets, &balance_list, true);
