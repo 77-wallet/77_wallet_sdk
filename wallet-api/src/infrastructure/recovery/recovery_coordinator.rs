@@ -1,4 +1,11 @@
-use std::{collections::HashMap, sync::Mutex, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 
 use tokio::{sync::Notify, time::Instant};
 
@@ -7,7 +14,13 @@ const DEFAULT_FOREGROUND_LEASE: Duration = Duration::from_secs(120);
 #[derive(Debug, Default)]
 struct RecoveryState {
     globally_paused: bool,
-    foreground: HashMap<String, Instant>,
+    foreground: HashMap<String, ForegroundEntry>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ForegroundEntry {
+    lease_id: u64,
+    expires_at: Instant,
 }
 
 /// Central admission policy for API-wallet recovery work.
@@ -21,6 +34,33 @@ pub struct RecoveryCoordinator {
     state: Mutex<RecoveryState>,
     changed: Notify,
     foreground_lease: Duration,
+    next_lease_id: AtomicU64,
+}
+
+/// A provisional foreground lease held while an import is being validated.
+///
+/// Dropping an uncommitted lease removes the priority immediately. Committing
+/// it leaves the wallet prioritized for the coordinator's normal timed lease.
+pub struct ForegroundImportLease<'a> {
+    coordinator: &'a RecoveryCoordinator,
+    uid: String,
+    lease_id: u64,
+    committed: bool,
+}
+
+impl ForegroundImportLease<'_> {
+    pub fn commit(mut self) {
+        self.coordinator.renew_wallet(&self.uid, self.lease_id);
+        self.committed = true;
+    }
+}
+
+impl Drop for ForegroundImportLease<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            self.coordinator.remove_wallet(&self.uid, self.lease_id);
+        }
+    }
 }
 
 impl Default for RecoveryCoordinator {
@@ -35,6 +75,7 @@ impl RecoveryCoordinator {
             state: Mutex::new(RecoveryState::default()),
             changed: Notify::new(),
             foreground_lease,
+            next_lease_id: AtomicU64::new(1),
         }
     }
 
@@ -47,21 +88,36 @@ impl RecoveryCoordinator {
         self.state.lock().expect("recovery coordinator mutex poisoned").globally_paused
     }
 
-    /// Registers or renews a wallet's foreground import lease.
-    pub fn prioritize_wallet(&self, uid: &str) {
-        self.state
-            .lock()
-            .expect("recovery coordinator mutex poisoned")
-            .foreground
-            .insert(uid.to_owned(), Instant::now() + self.foreground_lease);
+    /// Starts foreground priority before backend import validation.
+    pub fn begin_wallet_import<'a>(&'a self, uid: &str) -> ForegroundImportLease<'a> {
+        let lease_id = self.next_lease_id.fetch_add(1, Ordering::Relaxed);
+        self.state.lock().expect("recovery coordinator mutex poisoned").foreground.insert(
+            uid.to_owned(),
+            ForegroundEntry { lease_id, expires_at: Instant::now() + self.foreground_lease },
+        );
+        self.changed.notify_waiters();
+        ForegroundImportLease { coordinator: self, uid: uid.to_owned(), lease_id, committed: false }
+    }
+
+    fn renew_wallet(&self, uid: &str, lease_id: u64) {
+        let mut state = self.state.lock().expect("recovery coordinator mutex poisoned");
+        if let Some(entry) =
+            state.foreground.get_mut(uid).filter(|entry| entry.lease_id == lease_id)
+        {
+            entry.expires_at = Instant::now() + self.foreground_lease;
+        }
+        self.changed.notify_waiters();
+    }
+
+    fn remove_wallet(&self, uid: &str, lease_id: u64) {
+        let mut state = self.state.lock().expect("recovery coordinator mutex poisoned");
+        if state.foreground.get(uid).is_some_and(|entry| entry.lease_id == lease_id) {
+            state.foreground.remove(uid);
+        }
         self.changed.notify_waiters();
     }
 
     /// Waits for admission at a safe task/page boundary.
-    ///
-    /// `wallet_uid = None` represents foreground work that is affected only by
-    /// the destructive global pause. Recovery work supplies its wallet UID and
-    /// additionally yields to foreground-wallet leases.
     pub async fn wait_for_turn(&self, wallet_uid: Option<&str>) {
         loop {
             let notified = self.changed.notified();
@@ -70,7 +126,7 @@ impl RecoveryCoordinator {
             let wait_until = {
                 let now = Instant::now();
                 let mut state = self.state.lock().expect("recovery coordinator mutex poisoned");
-                state.foreground.retain(|_, expires_at| *expires_at > now);
+                state.foreground.retain(|_, entry| entry.expires_at > now);
 
                 if state.globally_paused {
                     None
@@ -80,7 +136,14 @@ impl RecoveryCoordinator {
                 {
                     return;
                 } else {
-                    Some(state.foreground.values().copied().min().expect("foreground is not empty"))
+                    Some(
+                        state
+                            .foreground
+                            .values()
+                            .map(|entry| entry.expires_at)
+                            .min()
+                            .expect("foreground is not empty"),
+                    )
                 }
             };
 
@@ -112,8 +175,7 @@ mod recovery_coordinator_tests {
     #[tokio::test]
     async fn recovery_coordinator_allows_foreground_wallet() {
         let coordinator = RecoveryCoordinator::new(Duration::from_secs(1));
-        coordinator.prioritize_wallet("new-wallet");
-
+        coordinator.begin_wallet_import("new-wallet").commit();
         tokio::time::timeout(
             Duration::from_millis(20),
             coordinator.wait_for_turn(Some("new-wallet")),
@@ -125,15 +187,13 @@ mod recovery_coordinator_tests {
     #[tokio::test]
     async fn recovery_coordinator_waits_for_unrelated_wallet() {
         let coordinator = Arc::new(RecoveryCoordinator::new(Duration::from_secs(1)));
-        coordinator.prioritize_wallet("new-wallet");
-
+        coordinator.begin_wallet_import("new-wallet").commit();
         let waiting = {
             let coordinator = Arc::clone(&coordinator);
             tokio::spawn(async move { coordinator.wait_for_turn(Some("old-wallet")).await })
         };
         tokio::time::sleep(Duration::from_millis(20)).await;
         assert!(!waiting.is_finished());
-
         coordinator.finish_foreground_wallet("new-wallet");
         tokio::time::timeout(Duration::from_millis(100), waiting)
             .await
@@ -144,16 +204,14 @@ mod recovery_coordinator_tests {
     #[tokio::test]
     async fn recovery_coordinator_global_pause_blocks_foreground_wallet() {
         let coordinator = Arc::new(RecoveryCoordinator::new(Duration::from_secs(1)));
-        coordinator.prioritize_wallet("new-wallet");
+        coordinator.begin_wallet_import("new-wallet").commit();
         coordinator.set_globally_paused(true);
-
         let waiting = {
             let coordinator = Arc::clone(&coordinator);
             tokio::spawn(async move { coordinator.wait_for_turn(Some("new-wallet")).await })
         };
         tokio::time::sleep(Duration::from_millis(20)).await;
         assert!(!waiting.is_finished());
-
         coordinator.set_globally_paused(false);
         tokio::time::timeout(Duration::from_millis(100), waiting)
             .await
@@ -164,9 +222,8 @@ mod recovery_coordinator_tests {
     #[tokio::test]
     async fn recovery_coordinator_allows_multiple_foreground_wallets() {
         let coordinator = RecoveryCoordinator::new(Duration::from_secs(1));
-        coordinator.prioritize_wallet("recharge-wallet");
-        coordinator.prioritize_wallet("withdraw-wallet");
-
+        coordinator.begin_wallet_import("recharge-wallet").commit();
+        coordinator.begin_wallet_import("withdraw-wallet").commit();
         for uid in ["recharge-wallet", "withdraw-wallet"] {
             tokio::time::timeout(Duration::from_millis(20), coordinator.wait_for_turn(Some(uid)))
                 .await
@@ -177,13 +234,25 @@ mod recovery_coordinator_tests {
     #[tokio::test]
     async fn recovery_coordinator_expires_stale_foreground_lease() {
         let coordinator = RecoveryCoordinator::new(Duration::from_millis(20));
-        coordinator.prioritize_wallet("abandoned-import");
-
+        coordinator.begin_wallet_import("abandoned-import").commit();
         tokio::time::timeout(
             Duration::from_millis(100),
             coordinator.wait_for_turn(Some("old-wallet")),
         )
         .await
         .expect("stale foreground lease should expire");
+    }
+
+    #[tokio::test]
+    async fn recovery_coordinator_releases_failed_import_priority() {
+        let coordinator = RecoveryCoordinator::new(Duration::from_secs(1));
+        let lease = coordinator.begin_wallet_import("invalid-wallet");
+        drop(lease);
+        tokio::time::timeout(
+            Duration::from_millis(20),
+            coordinator.wait_for_turn(Some("existing-wallet")),
+        )
+        .await
+        .expect("failed import should release priority immediately");
     }
 }

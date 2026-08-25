@@ -492,6 +492,12 @@ impl ApiWalletService {
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
 
+        // Acquire foreground priority before backend/type/binding validation so
+        // unrelated recovery cannot start another large page during preflight.
+        // Any validation error drops this provisional lease immediately.
+        let foreground_lease = self.ctx.recovery_coordinator().begin_wallet_import(&uid);
+        self.ctx.recovery_coordinator().wait_for_turn(Some(&uid)).await;
+
         // 检查钱包类型和后端是否一致，不一致就报错
         let status = ApiWalletDomain::new(self.ctx).check_keys_uid(&uid).await?;
         let domain = ApiWalletDomain::new(self.ctx);
@@ -546,8 +552,9 @@ impl ApiWalletService {
 
         // Stop unrelated paged recovery from starting another DB-heavy batch
         // while this valid foreground import is being persisted.
-        self.ctx.recovery_coordinator().prioritize_wallet(&uid);
-        self.ctx.recovery_coordinator().wait_for_turn(Some(&uid)).await;
+        // Validation succeeded: retain priority for the import's initialization
+        // and deferred recovery work.
+        foreground_lease.commit();
 
         let seed = seed.clone();
         let initialize_root_keystore_start = std::time::Instant::now();
