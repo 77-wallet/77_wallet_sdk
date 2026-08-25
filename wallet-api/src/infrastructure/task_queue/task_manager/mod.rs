@@ -11,7 +11,7 @@ use dispatcher::{Dispatcher, PriorityTask, TaskSender};
 use rand::Rng as _;
 use std::{collections::BTreeMap, sync::Arc};
 use wallet_database::{
-    entities::task_queue::TaskQueueEntity,
+    entities::task_queue::{KnownTaskName, TaskName, TaskQueueEntity},
     repositories::{device::DeviceRepo, task_queue::TaskQueueRepo},
 };
 use wallet_transport_backend::{
@@ -21,6 +21,10 @@ use wallet_utils::{RetryableError as _, error::RetryPolicy};
 
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
+
+fn delete_after_success(task_name: &TaskName) -> bool {
+    matches!(task_name, TaskName::Known(KnownTaskName::CreateApiAccountDeferred))
+}
 
 fn is_rpc_service_unavailable(error: &ServiceError) -> bool {
     crate::infrastructure::chain_rpc_guard::ChainRpcErrorContext::from_display(error)
@@ -355,6 +359,19 @@ impl TaskManager {
 
         TaskQueueRepo::task_done(&pool, &id).await?;
 
+        // This recovery task persists a large batch payload but has no remote
+        // redelivery/deduplication semantics. Mark Done first so a cleanup
+        // failure can never cause already-executed work to run again.
+        if delete_after_success(&task_entity.task_name)
+            && let Err(err) = TaskQueueRepo::delete_task(&pool, &id).await
+        {
+            tracing::warn!(
+                task_id = %id,
+                error = %err,
+                "failed to delete completed ephemeral recovery task"
+            );
+        }
+
         if task_type == TaskType::Mqtt {
             let handles = ctx.get_handles_arc().await?;
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
@@ -368,8 +385,17 @@ impl TaskManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_rpc_service_unavailable, next_retry_delay_ms};
+    use super::{delete_after_success, is_rpc_service_unavailable, next_retry_delay_ms};
     use crate::error::{service::ServiceError, system::SystemError};
+    use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
+
+    #[test]
+    fn only_deferred_api_account_recovery_is_deleted_after_success() {
+        assert!(delete_after_success(&TaskName::Known(KnownTaskName::CreateApiAccountDeferred,)));
+        assert!(!delete_after_success(&TaskName::Known(KnownTaskName::QueryCoinPrice)));
+        assert!(!delete_after_success(&TaskName::Known(KnownTaskName::ApiWalletAcctChange)));
+        assert!(!delete_after_success(&TaskName::Unknown("future-task".to_string())));
+    }
 
     #[test]
     fn rpc_503_uses_bounded_exponential_backoff() {
