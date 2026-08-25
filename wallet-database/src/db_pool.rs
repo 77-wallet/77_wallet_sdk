@@ -72,13 +72,31 @@ macro_rules! impl_split_pool_wrapper {
                 let wait_start = Instant::now();
                 let guard = self.0.write_gate.clone().lock_owned().await;
                 let wait_ms = wait_start.elapsed().as_secs_f64() * 1000.0;
-                tracing::info!(
-                    metric = "writer_gate_wait_ms",
-                    db_pool = stringify!($name),
-                    op = %op,
-                    value_ms = %wait_ms,
-                    "writer gate acquired"
-                );
+                if wait_ms >= 1_000.0 {
+                    tracing::warn!(
+                        metric = "writer_gate_wait_ms",
+                        db_pool = stringify!($name),
+                        op = %op,
+                        value_ms = %wait_ms,
+                        "writer gate wait was slow"
+                    );
+                } else if wait_ms >= 100.0 {
+                    tracing::info!(
+                        metric = "writer_gate_wait_ms",
+                        db_pool = stringify!($name),
+                        op = %op,
+                        value_ms = %wait_ms,
+                        "writer gate wait was noticeable"
+                    );
+                } else {
+                    tracing::debug!(
+                        metric = "writer_gate_wait_ms",
+                        db_pool = stringify!($name),
+                        op = %op,
+                        value_ms = %wait_ms,
+                        "writer gate acquired"
+                    );
+                }
                 guard
             }
 
