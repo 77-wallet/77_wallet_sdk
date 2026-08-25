@@ -76,6 +76,18 @@ impl TaskManager {
 
         let pool = self.ctx.task_pool()?;
         TaskQueueRepo::delete_tasks_with_request_body_like(&pool, SEND_MSG_CONFIRM).await?;
+        let deleted_recovery_tasks = TaskQueueRepo::delete_done_by_task_name(
+            &pool,
+            TaskName::Known(KnownTaskName::CreateApiAccountDeferred),
+        )
+        .await?;
+        if deleted_recovery_tasks > 0 {
+            tracing::info!(
+                deleted_count = deleted_recovery_tasks,
+                task_name = KnownTaskName::CreateApiAccountDeferred.as_ref(),
+                "deleted completed ephemeral recovery tasks"
+            );
+        }
         let ctx = self.ctx;
 
         tokio::spawn(async move {

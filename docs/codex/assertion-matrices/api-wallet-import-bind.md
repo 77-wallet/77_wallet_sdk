@@ -91,6 +91,21 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   foreground lease expires instead of blocking recovery permanently. A global
   pause has precedence over foreground-wallet admission.
 
+### Ephemeral Recovery Task Retention
+
+- Layer: SQLite repository regression plus task-manager completion policy unit coverage.
+- Entrypoint:
+
+  ```text
+  wallet-database::dao::task_queue::tests::delete_done_by_task_name_preserves_other_names_and_statuses
+  task_manager::tests::only_deferred_api_account_recovery_is_deleted_after_success
+  ```
+
+- DB facts: only Done `CreateApiAccountDeferred` rows are deleted; matching Pending/Failed rows
+  and unrelated Done MQTT rows remain.
+- Invariant: successful large recovery payloads are ephemeral, while unfinished retry payloads and
+  MQTT/JPush deduplication records remain durable.
+
 ### Bind Relation
 
 - Layer: integration.
