@@ -570,7 +570,7 @@ impl EndpointHandler for SpecialHandler {
                 let mut req =
                     wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
                 ctx.recovery_coordinator().wait_for_turn(Some(&req.uid)).await;
-                tracing::info!(
+                tracing::debug!(
                     "[PERF] QUERY_ADDRESS_LIST start: uid={}, chain_code={}",
                     req.uid,
                     req.chain_code
@@ -578,7 +578,7 @@ impl EndpointHandler for SpecialHandler {
                 let lock_key = query_address_list_lock_key(&req.uid, &req.chain_code);
                 let query_lock = query_address_list_lock(&lock_key);
                 let _lock_guard = query_lock.lock().await;
-                tracing::info!(
+                tracing::debug!(
                     "[PERF] QUERY_ADDRESS_LIST: deserialized request in {:?}, uid={}, chain_code={}",
                     start_deserialize.elapsed(),
                     req.uid,
@@ -626,7 +626,7 @@ impl EndpointHandler for SpecialHandler {
 
                 // 设置请求页码
                 req.page_num = start_page as i32;
-                tracing::info!(
+                tracing::debug!(
                     "[PERF] QUERY_ADDRESS_LIST: checked query state in {:?}, uid={}, chain_code={}, start_page={}",
                     start_check_state.elapsed(),
                     req.uid,
@@ -637,9 +637,10 @@ impl EndpointHandler for SpecialHandler {
                 // 4. 调用后端查询地址列表
                 let start_backend_query = Instant::now();
                 let res = backend.query_used_address_list(&req).await?;
-                tracing::info!(
+                let backend_query_elapsed = start_backend_query.elapsed();
+                tracing::debug!(
                     "[PERF] QUERY_ADDRESS_LIST: backend query in {:?}, uid={}, chain_code={}, total_elements={}",
-                    start_backend_query.elapsed(),
+                    backend_query_elapsed,
                     req.uid,
                     req.chain_code,
                     res.total_elements
@@ -666,11 +667,11 @@ impl EndpointHandler for SpecialHandler {
                 .await?;
 
                 let list = res.content;
-                tracing::info!("query_used_address_list req: {:?}", req);
+                tracing::debug!("query_used_address_list req: {:?}", req);
                 tracing::debug!("query_used_address_list list: {:?}", list);
 
                 let mut done = 0;
-                tracing::info!("查询地址列表： total_elements: {}", res.total_elements);
+                tracing::debug!("查询地址列表： total_elements: {}", res.total_elements);
 
                 // 5. 处理地址列表
                 let start_batch_process = Instant::now();
@@ -722,7 +723,7 @@ impl EndpointHandler for SpecialHandler {
                 let need_recover: std::collections::HashSet<i32> =
                     backend_indices_set.difference(&local_indices_set).cloned().collect();
 
-                tracing::info!(
+                tracing::debug!(
                     "地址处理分析：后端索引数={}, 本地索引数={}, 需要恢复={}",
                     backend_indices.len(),
                     local_indices.len(),
@@ -761,7 +762,7 @@ impl EndpointHandler for SpecialHandler {
                     .await?;
 
                     done += addresses_to_recover.len();
-                    tracing::info!(
+                    tracing::debug!(
                         "[PERF] QUERY_ADDRESS_LIST: recovered {} addresses in {:?}, uid={}, chain_code={}",
                         addresses_to_recover.len(),
                         start_recover.elapsed(),
@@ -785,7 +786,7 @@ impl EndpointHandler for SpecialHandler {
                 {
                     tracing::warn!("Failed to enqueue address recovery progress: {}", e);
                 }
-                tracing::info!(
+                tracing::debug!(
                     "[PERF] QUERY_ADDRESS_LIST: enqueued recovery notify in {:?}, uid={}, done={}, total={}, page={}, last={}",
                     start_send_notify.elapsed(),
                     req.uid,
@@ -795,16 +796,17 @@ impl EndpointHandler for SpecialHandler {
                     res.last
                 );
 
-                tracing::info!("查询地址列表：处理完成，共恢复 {} 个地址", need_recover.len());
-                tracing::info!(
+                tracing::debug!("查询地址列表：处理完成，共恢复 {} 个地址", need_recover.len());
+                let batch_process_elapsed = start_batch_process.elapsed();
+                tracing::debug!(
                     "[PERF] QUERY_ADDRESS_LIST: batch processing completed in {:?}, uid={}, chain_code={}, done={}",
-                    start_batch_process.elapsed(),
+                    batch_process_elapsed,
                     req.uid,
                     req.chain_code,
                     done
                 );
 
-                tracing::info!("查询地址列表： create_api_account done: done: {done}");
+                tracing::debug!("查询地址列表： create_api_account done: done: {done}");
 
                 // 9. 更新进度 - 成功处理本页后推进 last_page / Done（必须在资产查询任务持久化后）
                 let start_update_progress = Instant::now();
@@ -836,7 +838,7 @@ impl EndpointHandler for SpecialHandler {
                             )
                         })?;
 
-                    tracing::info!(
+                    tracing::debug!(
                         "[PERF] QUERY_ADDRESS_LIST: updating progress in {:?}, uid={}, chain_code={}, next_page={}",
                         start_update_progress.elapsed(),
                         req.uid,
@@ -867,7 +869,7 @@ impl EndpointHandler for SpecialHandler {
                             "failed to send HintScan event"
                         );
                     } else {
-                        tracing::info!(
+                        tracing::debug!(
                             "Sent HintScan event for uid={}, chain_code={}",
                             req.uid,
                             req.chain_code
@@ -875,19 +877,26 @@ impl EndpointHandler for SpecialHandler {
                     }
                 }
 
-                tracing::info!("地址同步完成: uid={}, chain_code={}", req.uid, req.chain_code);
-                tracing::info!(
+                tracing::debug!("地址同步完成: uid={}, chain_code={}", req.uid, req.chain_code);
+                tracing::debug!(
                     "[PERF] QUERY_ADDRESS_LIST: processed pagination in {:?}, uid={}, chain_code={}",
                     start_update_progress.elapsed(),
                     req.uid,
                     req.chain_code
                 );
                 tracing::info!(
-                    "[PERF] QUERY_ADDRESS_LIST end: total_time={:?}, uid={}, chain_code={}, done={}",
-                    start_total.elapsed(),
-                    req.uid,
-                    req.chain_code,
-                    done
+                    metric = "query_address_list_page",
+                    uid = %req.uid,
+                    chain_code = %req.chain_code,
+                    page = res.number,
+                    recovered_count = need_recover.len(),
+                    done = done,
+                    total_elements = res.total_elements,
+                    last = res.last,
+                    backend_ms = backend_query_elapsed.as_secs_f64() * 1000.0,
+                    batch_ms = batch_process_elapsed.as_secs_f64() * 1000.0,
+                    total_ms = start_total.elapsed().as_secs_f64() * 1000.0,
+                    "address-list page completed"
                 );
             }
             endpoint::api_wallet::QUERY_ASSET_LIST => {

@@ -148,7 +148,7 @@ impl EventBuffer {
         let chain_code = data.chain_code.clone();
         let token_address = data.token_address.clone();
 
-        tracing::info!("{} 资产同步事件入队: {}", self.name, data_desc.as_str());
+        tracing::debug!("{} 资产同步事件入队: {}", self.name, data_desc.as_str());
 
         let mut buf = self.buffer.lock().unwrap();
         let was_empty = buf.is_empty();
@@ -161,7 +161,7 @@ impl EventBuffer {
             }
         }
 
-        tracing::info!(
+        tracing::debug!(
             "{} EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, {}",
             self.name,
             added_count,
@@ -170,7 +170,7 @@ impl EventBuffer {
         );
 
         if was_empty && !buf.is_empty() {
-            tracing::info!("{} 资产同步缓冲区从空变为非空，唤醒 drain 任务", self.name);
+            tracing::debug!("{} 资产同步缓冲区从空变为非空，唤醒 drain 任务", self.name);
             self.notifier.notify_one();
         }
     }
@@ -257,7 +257,7 @@ impl InnerEventHandle {
                 tracing::info!("inner_event receiver started");
                 while let Some(event) = rx.recv().await {
                     let event_desc = event.describe();
-                    tracing::info!("inner_event receiver got event: {}", event_desc);
+                    tracing::debug!("inner_event receiver got event: {}", event_desc);
 
                     let result = std::panic::AssertUnwindSafe(async {
                         Self::dispatch_event(event, &normal_buf, &api_high_buf, &api_low_buf);
@@ -303,7 +303,7 @@ impl InnerEventHandle {
     }
 
     pub(crate) fn send(&self, event: InnerEvent) -> Result<(), ServiceError> {
-        tracing::info!("发送 inner_event: {}", event.describe());
+        tracing::debug!("发送 inner_event: {}", event.describe());
         self.inner_event_sender
             .send(event)
             .map_err(|e| crate::error::system::SystemError::ChannelSendFailed(e.to_string()))?;

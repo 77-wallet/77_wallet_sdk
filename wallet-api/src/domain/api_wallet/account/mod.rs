@@ -1567,11 +1567,14 @@ impl ApiAccountDomain {
                 accounts.iter().any(|a| a.api_wallet_type == ApiWalletType::Withdrawal);
             let page_size =
                 if is_withdrawal { WITHDRAWAL_PAGE_SIZE } else { SUB_ACCOUNT_PAGE_SIZE };
+            let first_index = indices.first().copied();
+            let last_index = indices.last().copied();
             tracing::info!(
                 uid = %data.api_wallet_uid,
                 chain_code = %data.chain_code,
                 indices_count = indices.len(),
-                indices = ?indices,
+                first_index = ?first_index,
+                last_index = ?last_index,
                 page_size = page_size,
                 is_withdrawal = is_withdrawal,
                 "Expand notify: enqueue created indices after asset init"
