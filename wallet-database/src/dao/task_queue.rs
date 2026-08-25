@@ -348,6 +348,22 @@ impl TaskQueueDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    /// Deletes completed rows for one exact task name.
+    pub async fn delete_done_by_task_name<'a, E>(
+        exec: E,
+        task_name: TaskName,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query("DELETE FROM task_queue WHERE task_name = ? AND status = 2")
+            .bind(task_name)
+            .execute(exec)
+            .await
+            .map(|result| result.rows_affected())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn delete_old<'a, E>(exec: E, day: u16) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -473,5 +489,70 @@ impl TaskQueueDao {
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TaskQueueDao;
+    use crate::entities::task_queue::{KnownTaskName, TaskName};
+
+    #[tokio::test]
+    async fn delete_done_by_task_name_preserves_other_names_and_statuses() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("open in-memory task database");
+        sqlx::query(
+            "CREATE TABLE task_queue (
+                id TEXT PRIMARY KEY,
+                task_name TEXT NOT NULL,
+                request_body TEXT NOT NULL,
+                type INTEGER NOT NULL,
+                retry_times INTEGER NOT NULL DEFAULT 0,
+                status INTEGER NOT NULL,
+                err_msg TEXT,
+                remark TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("create task_queue");
+
+        for (id, task_name, status) in [
+            ("done-recovery", TaskName::Known(KnownTaskName::CreateApiAccountDeferred), 2),
+            ("pending-recovery", TaskName::Known(KnownTaskName::CreateApiAccountDeferred), 0),
+            ("failed-recovery", TaskName::Known(KnownTaskName::CreateApiAccountDeferred), 3),
+            ("done-mqtt", TaskName::Known(KnownTaskName::ApiWalletAcctChange), 2),
+        ] {
+            sqlx::query(
+                "INSERT INTO task_queue
+                 (id, task_name, request_body, type, status, created_at)
+                 VALUES (?, ?, 'large-body', 1, ?, '2026-08-25T00:00:00Z')",
+            )
+            .bind(id)
+            .bind(task_name)
+            .bind(status)
+            .execute(&pool)
+            .await
+            .expect("insert task fixture");
+        }
+
+        let deleted = TaskQueueDao::delete_done_by_task_name(
+            &pool,
+            TaskName::Known(KnownTaskName::CreateApiAccountDeferred),
+        )
+        .await
+        .expect("delete completed recovery tasks");
+
+        assert_eq!(deleted, 1);
+        let remaining: Vec<String> = sqlx::query_scalar("SELECT id FROM task_queue ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .expect("list remaining tasks");
+        assert_eq!(remaining, vec!["done-mqtt", "failed-recovery", "pending-recovery"]);
     }
 }

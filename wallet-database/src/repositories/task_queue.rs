@@ -114,6 +114,13 @@ impl TaskQueueRepo {
         Ok(TaskQueueDao::delete(pool.write_ref(), id).await?)
     }
 
+    pub async fn delete_done_by_task_name(
+        pool: &TaskDbPool,
+        task_name: TaskName,
+    ) -> Result<u64, crate::Error> {
+        TaskQueueDao::delete_done_by_task_name(pool.write_ref(), task_name).await
+    }
+
     pub async fn done_task_queue(pool: &TaskDbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.read_ref(), Some(2), None).await?)
     }
