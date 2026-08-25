@@ -67,6 +67,12 @@ pub(crate) struct CreateAccountDeferredData {
     is_last_page: bool, // ⭐ 添加：是否最后一页
 }
 
+impl CreateAccountDeferredData {
+    pub(crate) fn recovery_uid(&self) -> Option<&str> {
+        self.is_recover.then_some(self.api_wallet_uid.as_str())
+    }
+}
+
 #[derive(Debug)]
 struct ExpandProgressMsg {
     uid: String,

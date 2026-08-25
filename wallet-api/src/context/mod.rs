@@ -14,16 +14,13 @@ use crate::{
         // asset_calc::actor_model::AssetCalcActorManager,
         cache::SharedCache,
         expand_address::event::ExpandEventSender,
-        recovery::pool::BackgroundTaskPool,
+        recovery::{pool::BackgroundTaskPool, recovery_coordinator::RecoveryCoordinator},
     },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
 use std::{
     collections::HashMap,
-    sync::{
-        Arc, Weak,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, Weak},
 };
 use tokio::sync::{Mutex, RwLock};
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
@@ -110,7 +107,7 @@ pub struct Context {
     init_api_swap: Mutex<bool>,
     expand_event_tx: Arc<RwLock<Option<ExpandEventSender>>>,
     background_task_pool: Arc<BackgroundTaskPool>,
-    recovery_paused: Arc<AtomicBool>,
+    recovery_coordinator: Arc<RecoveryCoordinator>,
 }
 
 fn active_backend_urls(config: &crate::config::Config) -> (String, String) {
@@ -300,7 +297,7 @@ impl Context {
             init_api_swap: Mutex::new(false),
             expand_event_tx: Arc::new(RwLock::new(None)),
             background_task_pool,
-            recovery_paused: Arc::new(AtomicBool::new(false)),
+            recovery_coordinator: Arc::new(RecoveryCoordinator::default()),
         })
     }
 
@@ -309,11 +306,15 @@ impl Context {
     }
 
     pub fn set_recovery_paused(&self, paused: bool) {
-        self.recovery_paused.store(paused, Ordering::Relaxed);
+        self.recovery_coordinator.set_globally_paused(paused);
     }
 
     pub fn is_recovery_paused(&self) -> bool {
-        self.recovery_paused.load(Ordering::Relaxed)
+        self.recovery_coordinator.is_globally_paused()
+    }
+
+    pub(crate) fn recovery_coordinator(&self) -> &RecoveryCoordinator {
+        &self.recovery_coordinator
     }
 
     pub fn get_client_id(&self) -> &str {

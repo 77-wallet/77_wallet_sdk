@@ -77,6 +77,7 @@ impl TaskTrait for CommonTask {
                 FrontendNotifyEvent::new(data).send_with_ctx(ctx).await?;
             }
             CommonTask::CreateApiAccountDeferred(data) => {
+                ctx.recovery_coordinator().wait_for_turn(data.recovery_uid()).await;
                 ApiAccountDomain::create_api_account_deferred_with_ctx(ctx, data.clone()).await?;
             }
         }

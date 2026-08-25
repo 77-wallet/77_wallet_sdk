@@ -569,6 +569,7 @@ impl EndpointHandler for SpecialHandler {
                 let start_deserialize = Instant::now();
                 let mut req =
                     wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
+                ctx.recovery_coordinator().wait_for_turn(Some(&req.uid)).await;
                 tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST start: uid={}, chain_code={}",
                     req.uid,

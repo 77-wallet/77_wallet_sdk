@@ -543,6 +543,12 @@ impl ApiWalletService {
                 }
             }
         }
+
+        // Stop unrelated paged recovery from starting another DB-heavy batch
+        // while this valid foreground import is being persisted.
+        self.ctx.recovery_coordinator().prioritize_wallet(&uid);
+        self.ctx.recovery_coordinator().wait_for_turn(Some(&uid)).await;
+
         let seed = seed.clone();
         let initialize_root_keystore_start = std::time::Instant::now();
 

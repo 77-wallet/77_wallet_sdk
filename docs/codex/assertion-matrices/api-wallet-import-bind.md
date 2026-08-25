@@ -74,6 +74,23 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: withdrawal import must not persist a wallet or initialize keys when
   app-id usage validation fails.
 
+### Foreground Import Recovery Priority
+
+- Layer: unit.
+- Entrypoint:
+
+  ```text
+  infrastructure::recovery::recovery_coordinator::recovery_coordinator_tests
+  ```
+
+- Runtime facts: a valid API-wallet import registers its UID before foreground
+  persistence; address-list pages and deferred recovery tasks wait before doing
+  unrelated recovery work.
+- Invariant: foreground recharge and withdrawal UIDs proceed immediately,
+  unrelated recovery yields without holding a DB transaction, and an abandoned
+  foreground lease expires instead of blocking recovery permanently. A global
+  pause has precedence over foreground-wallet admission.
+
 ### Bind Relation
 
 - Layer: integration.
