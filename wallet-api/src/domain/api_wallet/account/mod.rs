@@ -55,6 +55,18 @@ use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 
 pub(crate) struct ApiAccountDomain {}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExistingAccountCheck {
+    CheckEach,
+    PrefilteredMissing,
+}
+
+impl ExistingAccountCheck {
+    fn is_required(self) -> bool {
+        matches!(self, Self::CheckEach)
+    }
+}
+
 /// 延迟执行数据结构
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub(crate) struct CreateAccountDeferredData {
@@ -1345,6 +1357,68 @@ impl ApiAccountDomain {
         is_last_page: bool, // ⭐ 添加：是否最后一页
         current_page: i64,  // ⭐ 添加：当前页码
     ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
+        Self::create_api_account_with_existing_check(
+            ctx,
+            wallet_address,
+            chains,
+            input_indices,
+            name,
+            is_default_name,
+            api_wallet_type,
+            batch_id,
+            is_recover,
+            is_last_page,
+            current_page,
+            ExistingAccountCheck::CheckEach,
+        )
+        .await
+    }
+
+    /// Recover indices that were already compared with the local database in one batch.
+    ///
+    /// This entry point is intentionally narrow: callers must pass only indices returned by the
+    /// backend/local set difference. The account upsert remains the final idempotency guard.
+    pub(crate) async fn recover_prefiltered_missing_accounts_with_ctx(
+        ctx: &'static Context,
+        wallet_address: &str,
+        chain_code: String,
+        input_indices: &[i32],
+        api_wallet_type: ApiWalletType,
+        is_last_page: bool,
+        current_page: i64,
+    ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
+        Self::create_api_account_with_existing_check(
+            ctx,
+            wallet_address,
+            vec![chain_code],
+            input_indices,
+            "账户",
+            true,
+            api_wallet_type,
+            None,
+            true,
+            is_last_page,
+            current_page,
+            ExistingAccountCheck::PrefilteredMissing,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn create_api_account_with_existing_check(
+        ctx: &'static Context,
+        wallet_address: &str,
+        chains: Vec<String>,
+        input_indices: &[i32],
+        name: &str,
+        is_default_name: bool,
+        api_wallet_type: ApiWalletType,
+        batch_id: Option<String>,
+        is_recover: bool,
+        is_last_page: bool,
+        current_page: i64,
+        existing_account_check: ExistingAccountCheck,
+    ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
         tracing::info!("➡️ Before core");
         let core_results = Self::create_api_account_core_with_ctx(
             ctx,
@@ -1358,6 +1432,7 @@ impl ApiAccountDomain {
             is_recover,
             is_last_page, // ⭐ 传递：是否最后一页
             current_page, // ⭐ 传递：当前页码
+            existing_account_check,
         )
         .await?;
         tracing::info!("⬅️ After core");
@@ -1402,6 +1477,7 @@ impl ApiAccountDomain {
         is_recover: bool,
         is_last_page: bool, // ⭐ 添加：是否最后一页
         _current_page: i64, // ⭐ 添加：当前页码（不再在此处推进地址查询状态）
+        existing_account_check: ExistingAccountCheck,
     ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
         let pool = ctx.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
@@ -1431,17 +1507,19 @@ impl ApiAccountDomain {
 
                 // 检查索引是否已经存在
                 tracing::debug!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "检查索引是否已经存在");
-                let exists = ApiAccountRepo::exists_address(
-                    &pool,
-                    wallet_address,
-                    &chain_code,
-                    account_index_map.account_id,
-                )
-                .await?;
+                if existing_account_check.is_required() {
+                    let exists = ApiAccountRepo::exists_address(
+                        &pool,
+                        wallet_address,
+                        &chain_code,
+                        account_index_map.account_id,
+                    )
+                    .await?;
 
-                if exists {
-                    tracing::debug!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "索引已存在，跳过");
-                    continue;
+                    if exists {
+                        tracing::debug!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "索引已存在，跳过");
+                        continue;
+                    }
                 }
                 let code: ChainCode = chain_code.as_str().try_into()?;
                 let address_types = WalletDomain::address_type_by_chain(code);
@@ -1815,6 +1893,12 @@ mod test {
     use super::*;
     use alloy::signers::local::PrivateKeySigner;
     use wallet_crypto::{EncryptedJsonDecryptor, KeystoreJsonDecryptor};
+
+    #[test]
+    fn prefiltered_missing_indices_skip_per_account_lookup() {
+        assert!(!ExistingAccountCheck::PrefilteredMissing.is_required());
+        assert!(ExistingAccountCheck::CheckEach.is_required());
+    }
 
     fn mk_chain_state(last_notified_page: i32) -> AddressRecoveryChainState {
         AddressRecoveryChainState {

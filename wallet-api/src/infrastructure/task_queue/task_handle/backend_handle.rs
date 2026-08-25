@@ -746,16 +746,12 @@ impl EndpointHandler for SpecialHandler {
                         addresses_to_recover.iter().map(|addr| addr.index).collect();
 
                     // 调用优化后的create_api_account，使用快速路径+慢速路径模式
-                    ApiAccountDomain::create_api_account_with_ctx(
+                    ApiAccountDomain::recover_prefiltered_missing_accounts_with_ctx(
                         ctx,
                         &wallet.address,
-                        vec![req.chain_code.to_string()],
+                        req.chain_code.to_string(),
                         &input_indices,
-                        "账户",
-                        true, // is_default_name
                         wallet.api_wallet_type,
-                        None,              // batch_id
-                        true,              // is_recover - 恢复模式
                         res.last,          // ⭐ 新传参：是否最后一页
                         res.number as i64, // ⭐ 新传参：当前页码
                     )
