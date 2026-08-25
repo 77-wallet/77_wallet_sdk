@@ -131,4 +131,46 @@ mod tests {
             assert_eq!(exists, 1, "{table} should be created in api_resource.db");
         }
     }
+
+    #[tokio::test]
+    async fn api_wallet_migration_drops_redundant_asset_index() {
+        let dir = crate::repositories::test_helper::make_temp_dir(
+            "api_wallet_drop_redundant_asset_index",
+        );
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        let redundant_index_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type = 'index' AND name = ?",
+        )
+        .bind("api_assets_symbol_address_chain_idx")
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        assert_eq!(redundant_index_count, 0);
+
+        let unique_index_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type = 'index' AND name = ?",
+        )
+        .bind("api_assets_symbol_address_chain_token_idx")
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        assert_eq!(unique_index_count, 1);
+
+        let insert = || {
+            sqlx::query(
+                r#"
+INSERT INTO api_assets (
+    name, symbol, decimals, address, token_address, protocol, chain_code,
+    status, is_multisig, balance, created_at
+) VALUES ('Ether', 'ETH', 18, 'address-1', '', NULL, 'eth', 1, 0, '0', CURRENT_TIMESTAMP)
+"#,
+            )
+        };
+
+        insert().execute(pool.as_ref()).await.unwrap();
+        let duplicate = insert().execute(pool.as_ref()).await;
+        assert!(duplicate.is_err(), "the unique asset key must remain enforced");
+    }
 }
