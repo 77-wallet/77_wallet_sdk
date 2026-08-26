@@ -173,4 +173,22 @@ INSERT INTO api_assets (
         let duplicate = insert().execute(pool.as_ref()).await;
         assert!(duplicate.is_err(), "the unique asset key must remain enforced");
     }
+
+    #[tokio::test]
+    async fn api_wallet_migration_creates_nonzero_asset_total_index() {
+        let dir =
+            crate::repositories::test_helper::make_temp_dir("api_wallet_nonzero_asset_total_index");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        let index_sql: String =
+            sqlx::query_scalar("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?")
+                .bind("api_assets_nonzero_wallet_total_idx")
+                .fetch_one(pool.as_ref())
+                .await
+                .unwrap();
+
+        assert!(index_sql.contains("address, chain_code, token_address, balance"));
+        assert!(index_sql.contains("WHERE status = 1 AND balance != '0'"));
+    }
 }

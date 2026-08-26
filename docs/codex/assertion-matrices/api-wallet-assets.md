@@ -38,6 +38,27 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   behavior so repeated subaccount-list polling cannot fan out into duplicate
   list queries under batch collect load.
 
+### Large-Wallet Total Reads Start From Nonzero Assets
+
+- Layer: component.
+- Entrypoint:
+
+  ```text
+  wallet-database/src/dao/api_assets.rs
+  api_wallet_total_assets_v3_uses_sparse_nonzero_assets
+
+  wallet-database/src/lib.rs
+  api_wallet_migration_creates_nonzero_asset_total_index
+  ```
+
+- Backend: none; tests use a migrated temporary SQLite database.
+- DB facts: active and inactive accounts, active and inactive chains, zero,
+  nonzero, disabled, and unrelated-wallet assets are seeded.
+- Invariant: V3 wallet totals scan the partial nonzero-asset covering index and
+  still return only active, nonzero assets belonging to the requested active
+  wallet/account/chain. Zero-balance assets remain persisted and are not
+  removed or skipped during creation.
+
 ### Account Change Syncs API Wallet Token By Address
 
 - Layer: integration.

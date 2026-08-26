@@ -879,21 +879,21 @@ SELECT
     a.balance,
     a.chain_code,
     a.token_address
-FROM api_account acc INDEXED BY api_account_wallet_status_idx
-JOIN api_chain c
-    ON c.chain_code = acc.chain_code
-    AND c.status = 1
-JOIN api_assets a INDEXED BY api_assets_join_cover_idx
-    ON a.address = acc.address
+FROM api_assets a INDEXED BY api_assets_nonzero_wallet_total_idx
+CROSS JOIN api_account acc INDEXED BY api_account_address_chain_code_idx
+    ON acc.address = a.address
     AND a.chain_code = acc.chain_code
-    AND a.status = 1
-WHERE acc.wallet_address =
+CROSS JOIN api_chain c INDEXED BY api_chain_chain_code_idx
+    ON c.chain_code = a.chain_code
+WHERE a.status = 1
+    AND a.balance != '0'
+    AND acc.wallet_address =
 "#,
         );
 
         qb.push_bind(wallet_address);
         qb.push(" AND acc.status = 1");
-        qb.push(" AND a.balance != '0'");
+        qb.push(" AND c.status = 1");
 
         if let Some(account_id) = account_id {
             qb.push(" AND acc.account_id = ").push_bind(account_id);
@@ -1186,6 +1186,87 @@ mod tests {
                 .unwrap();
 
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn api_wallet_total_assets_v3_uses_sparse_nonzero_assets() {
+        let dir = make_temp_dir("wallet_db_api_assets_v3_sparse_nonzero");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+
+        sqlx::query(
+            r#"
+INSERT INTO api_chain (name, chain_code, protocols, main_symbol, status, created_at)
+VALUES
+    ('Ethereum', 'eth', '[]', 'ETH', 1, CURRENT_TIMESTAMP),
+    ('Solana', 'sol', '[]', 'SOL', 0, CURRENT_TIMESTAMP);
+
+INSERT INTO api_account (
+    account_id, name, address, address_type, wallet_address, chain_code, uid,
+    api_wallet_type, status, is_init, created_at
+) VALUES
+    (1, 'target', 'target-active', '', 'wallet-target', 'eth', 'uid-target', 1, 1, 1, CURRENT_TIMESTAMP),
+    (2, 'inactive', 'target-inactive', '', 'wallet-target', 'eth', 'uid-target', 1, 0, 1, CURRENT_TIMESTAMP),
+    (1, 'disabled-chain', 'target-sol', '', 'wallet-target', 'sol', 'uid-target', 1, 1, 1, CURRENT_TIMESTAMP),
+    (1, 'other', 'other-active', '', 'wallet-other', 'eth', 'uid-other', 1, 1, 1, CURRENT_TIMESTAMP);
+
+INSERT INTO api_assets (
+    name, symbol, decimals, address, token_address, chain_code, status, balance, created_at
+) VALUES
+    ('Target', 'TGT', 18, 'target-active', 'token-live', 'eth', 1, '12', CURRENT_TIMESTAMP),
+    ('Zero', 'ZERO', 18, 'target-active', 'token-zero', 'eth', 1, '0', CURRENT_TIMESTAMP),
+    ('Disabled', 'OFF', 18, 'target-active', 'token-off', 'eth', 0, '99', CURRENT_TIMESTAMP),
+    ('Inactive account', 'INA', 18, 'target-inactive', 'token-ina', 'eth', 1, '77', CURRENT_TIMESTAMP),
+    ('Disabled chain', 'SOL', 9, 'target-sol', 'token-sol', 'sol', 1, '66', CURRENT_TIMESTAMP),
+    ('Other wallet', 'OTH', 18, 'other-active', 'token-other', 'eth', 1, '88', CURRENT_TIMESTAMP);
+"#,
+        )
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+        let rows =
+            ApiAssetsDao::get_api_wallet_total_assets_v3(&mut *conn, "wallet-target", None, None)
+                .await
+                .unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].balance, "12");
+        assert_eq!(rows[0].chain_code, "eth");
+        assert_eq!(rows[0].token_address, "token-live");
+
+        let filtered = ApiAssetsDao::get_api_wallet_total_assets_v3(
+            &mut *conn,
+            "wallet-target",
+            Some(2),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(filtered.is_empty());
+
+        let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(
+            r#"
+EXPLAIN QUERY PLAN
+SELECT a.balance, a.chain_code, a.token_address
+FROM api_assets a INDEXED BY api_assets_nonzero_wallet_total_idx
+CROSS JOIN api_account acc INDEXED BY api_account_address_chain_code_idx
+    ON acc.address = a.address AND a.chain_code = acc.chain_code
+CROSS JOIN api_chain c INDEXED BY api_chain_chain_code_idx
+    ON c.chain_code = a.chain_code
+WHERE a.status = 1 AND a.balance != '0'
+    AND acc.wallet_address = 'wallet-target'
+    AND acc.status = 1
+    AND c.status = 1
+"#,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .unwrap();
+        assert!(plan.iter().any(|(_, _, _, detail)| {
+            detail.contains("SCAN a USING COVERING INDEX api_assets_nonzero_wallet_total_idx")
+        }));
     }
 }
 
