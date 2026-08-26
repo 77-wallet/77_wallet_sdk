@@ -95,16 +95,49 @@ impl EthTx {
         format!("0x{}", hex::encode(&raw[..n]))
     }
 
-    fn resolve_gas_oracle_prices(gas_oracle: &GasOracle) -> Result<(String, String), ServiceError> {
-        let propose_gas_price = gas_oracle.propose_gas_price.clone().ok_or(
-            crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::GasOracle,
-            ),
-        )?;
-        let fast_gas_price =
-            gas_oracle.fast_gas_price.clone().unwrap_or_else(|| propose_gas_price.clone());
+    fn gas_oracle_error() -> ServiceError {
+        crate::error::business::BusinessError::ApiWallet(
+            crate::error::business::api_wallet::ApiWalletError::GasOracle,
+        )
+        .into()
+    }
 
-        Ok((propose_gas_price, fast_gas_price))
+    /// Build the metadata-free API Wallet EVM fee using the same propose-tier
+    /// semantics as the stable fee quote path.
+    ///
+    /// `propose_gas_price` is a total gas price (base + priority), not a base
+    /// fee. `fast_gas_price` is another total-price tier and must not be added
+    /// to propose as if it were a priority fee.
+    fn fee_setting_from_gas_oracle(
+        gas_oracle: &GasOracle,
+        gas_limit: u64,
+    ) -> Result<FeeSetting, ServiceError> {
+        let base_fee = unit::convert_to_u256(
+            gas_oracle.suggest_base_fee.as_deref().ok_or_else(Self::gas_oracle_error)?,
+            eth::consts::ETH_GWEI,
+        )?;
+        let propose_total = unit::convert_to_u256(
+            gas_oracle.propose_gas_price.as_deref().ok_or_else(Self::gas_oracle_error)?,
+            eth::consts::ETH_GWEI,
+        )?;
+        let mut priority_fee =
+            propose_total.checked_sub(base_fee).ok_or_else(Self::gas_oracle_error)?;
+
+        let mut max_fee_per_gas = propose_total * U256::from(12) / U256::from(10);
+        let scale = U256::from(10).pow(U256::from(8)); // 0.1 gwei
+        max_fee_per_gas = ((max_fee_per_gas + (scale - U256::from(1))) / scale) * scale;
+        max_fee_per_gas = max_fee_per_gas.max(propose_total);
+
+        if priority_fee == U256::ZERO {
+            priority_fee = U256::from(10_000);
+        }
+
+        Ok(FeeSetting {
+            base_fee,
+            max_priority_fee_per_gas: priority_fee,
+            max_fee_per_gas,
+            gas_limit: U256::from(gas_limit),
+        })
     }
 
     async fn estimate_swap(
@@ -266,16 +299,7 @@ impl EthTx {
 
         tracing::info!("transfer -------------------{} 16", rc.consume);
         let gas_oracle = self.gas_oracle().await?;
-        let (propose_gas_price, fast_gas_price) = Self::resolve_gas_oracle_prices(&gas_oracle)?;
-        let base_fee = unit::convert_to_u256(&propose_gas_price, 9)?;
-        let priority_fee = unit::convert_to_u256(&fast_gas_price, 9)?;
-        let max_fee = base_fee + priority_fee;
-        Ok(FeeSetting {
-            base_fee,
-            max_priority_fee_per_gas: priority_fee,
-            max_fee_per_gas: max_fee,
-            gas_limit: U256::from(rc.consume),
-        })
+        Self::fee_setting_from_gas_oracle(&gas_oracle, rc.consume as u64)
     }
     /// ETH 从请求参数metadata中获取fee_setting
     /// 获取失败则重新计算fee_setting
@@ -476,7 +500,10 @@ impl Tx for EthTx {
             NetworkKind::Mainnet => fee_setting,
             _ => self.provider.get_fee(trans_req.clone()).await?,
         };
-        let fee = fee_setting.transaction_fee();
+        // Automatic API Wallet raw builds must fund the signed EIP-1559
+        // maximum, because nodes validate balance against
+        // gas_limit * max_fee_per_gas.
+        let fee = fee_setting.gas_limit * fee_setting.max_fee_per_gas;
 
         let transfer_params = self
             .provider
@@ -998,32 +1025,36 @@ impl Tx for EthTx {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
-    fn resolve_gas_oracle_prices_falls_back_to_propose_when_fast_is_missing() {
+    fn metadata_free_fee_uses_propose_total_instead_of_adding_fast_total() {
         let oracle = GasOracle {
             safe_gas_price: None,
             propose_gas_price: Some("10".to_string()),
-            fast_gas_price: None,
+            fast_gas_price: Some("12".to_string()),
             suggest_base_fee: Some("8".to_string()),
             gas_used_ratio: None,
         };
 
-        let (propose, fast) = EthTx::resolve_gas_oracle_prices(&oracle).unwrap();
-        assert_eq!(propose, "10");
-        assert_eq!(fast, "10");
+        let fee = EthTx::fee_setting_from_gas_oracle(&oracle, 21_000).unwrap();
+
+        assert_eq!(fee.base_fee, U256::from(8_000_000_000_u64));
+        assert_eq!(fee.max_priority_fee_per_gas, U256::from(2_000_000_000_u64));
+        assert_eq!(fee.max_fee_per_gas, U256::from(12_000_000_000_u64));
+        assert_eq!(fee.gas_limit, U256::from(21_000_u64));
     }
 
     #[test]
-    fn resolve_gas_oracle_prices_rejects_missing_propose() {
+    fn metadata_free_fee_rejects_oracle_without_base_fee() {
         let oracle = GasOracle {
             safe_gas_price: None,
-            propose_gas_price: None,
+            propose_gas_price: Some("10".to_string()),
             fast_gas_price: Some("10".to_string()),
-            suggest_base_fee: Some("8".to_string()),
+            suggest_base_fee: None,
             gas_used_ratio: None,
         };
 
-        let err = EthTx::resolve_gas_oracle_prices(&oracle).unwrap_err();
+        let err = EthTx::fee_setting_from_gas_oracle(&oracle, 21_000).unwrap_err();
         assert!(matches!(
             err,
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(

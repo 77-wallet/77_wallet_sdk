@@ -1477,3 +1477,27 @@ scanner entrypoints.
 - Invariant: repeated evaluation of one order is idempotent, concurrent orders
   cannot reserve more than the observed funding balance, and no database schema
   is required.
+
+### Collect ETH Signed Maximum Fee Admission
+
+- Layer: unit.
+- Entrypoints:
+
+  ```text
+  src/domain/api_wallet/adapter/eth_tx.rs
+  metadata_free_fee_uses_propose_total_instead_of_adding_fast_total
+
+  src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  ethereum_collect_fee_admission_uses_propose_max_fee_only
+  ```
+
+- Fee facts: metadata-free API Wallet ETH builds interpret `proposeGasPrice` as
+  the total propose-tier gas price and derive priority from `suggestBaseFee`;
+  `fastGasPrice` is not added as a second total price.
+- Admission: collect compares native balance with the propose tier's maximum
+  fee, then rechecks the signed maximum before persisting broadcastable facts.
+- Failure: an insufficient signed maximum reopens the existing service-fee
+  cycle and does not persist `raw_tx` or `tx_hash`.
+- Invariant: ordinary-wallet fee selection and transfer paths remain unchanged,
+  while API Wallet ETH collect cannot pass an estimate-only balance check and
+  fail later at node admission solely because max fee was omitted.
