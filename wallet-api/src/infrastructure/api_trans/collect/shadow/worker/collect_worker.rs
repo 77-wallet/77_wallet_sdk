@@ -2855,15 +2855,16 @@ impl ShadowCollectWorker {
         info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee, source = "shadow_worker_v2", "Built transfer raw transaction successfully");
 
         // The fee quote and raw build are separate RPC/oracle observations.
-        // Recheck the signed ETH maximum before persisting broadcastable facts
+        // Recheck the signed EVM maximum before persisting broadcastable facts
         // so a later, higher maxFeePerGas re-enters the service-fee cycle
         // instead of failing at node admission.
-        if req.chain_code == ChainCode::Ethereum.to_string() {
+        let final_fee_chain = ChainCode::try_from(req.chain_code.as_str())?;
+        if matches!(final_fee_chain, ChainCode::Ethereum | ChainCode::BnbSmartChain) {
             let main_coin = ApiChainTransDomain::main_coin(self.ctx, &req.chain_code).await?;
             let latest_balance = self
                 .query_balance(
                     &req.from_addr,
-                    ChainCode::Ethereum,
+                    final_fee_chain,
                     AssetTokenKey::Native,
                     main_coin.decimals,
                 )
@@ -2879,7 +2880,7 @@ impl ShadowCollectWorker {
                     signed_max_fee = %signed_max_fee,
                     stage = "build.final_fee_check",
                     source = "shadow_worker_v2",
-                    "Signed ETH maximum fee exceeds latest balance; reopening service fee cycle"
+                    "Signed EVM maximum fee exceeds latest balance; reopening service fee cycle"
                 );
                 let affected = self.invalidate_build_attempt_after_fee_check_failure(&req).await?;
                 self.fee_reservations.release(&req.trade_no);
@@ -3716,7 +3717,7 @@ impl ShadowCollectWorker {
     }
 
     /// 估算手续费
-    fn ethereum_propose_max_fee(fee: &str) -> Result<String, ServiceError> {
+    fn evm_propose_max_fee(fee: &str) -> Result<String, ServiceError> {
         let res: FeeDetailsVo<EthereumFeeDetails> = wallet_utils::serde_func::serde_from_str(fee)?;
         let propose = res.data.into_iter().find(|item| item.types == "propose").ok_or(
             crate::error::business::BusinessError::ApiWallet(
@@ -3777,16 +3778,7 @@ impl ShadowCollectWorker {
                 let res: CommonFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
                 res.estimate_fee.amount.to_string()
             }
-            ChainCode::Ethereum => Self::ethereum_propose_max_fee(&fee)?,
-            ChainCode::BnbSmartChain => {
-                let res: FeeDetailsVo<EthereumFeeDetails> =
-                    wallet_utils::serde_func::serde_from_str(&fee)?;
-                let mut amount: f64 = 0.0;
-                for it in res.data {
-                    amount = amount + it.estimate_fee.amount;
-                }
-                amount.to_string()
-            }
+            ChainCode::Ethereum | ChainCode::BnbSmartChain => Self::evm_propose_max_fee(&fee)?,
             ChainCode::Litecoin => todo!(),
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),
@@ -4524,7 +4516,7 @@ mod tests {
     };
 
     #[test]
-    fn ethereum_collect_fee_admission_uses_propose_max_fee_only() {
+    fn evm_collect_fee_admission_uses_propose_max_fee_only() {
         let response = serde_json::json!({
             "default": "propose",
             "data": [
@@ -4549,7 +4541,7 @@ mod tests {
             ]
         });
 
-        let amount = ShadowCollectWorker::ethereum_propose_max_fee(&response.to_string())
+        let amount = ShadowCollectWorker::evm_propose_max_fee(&response.to_string())
             .expect("select propose max fee");
 
         assert_eq!(amount, "0.0000036");
