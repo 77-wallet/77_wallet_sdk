@@ -163,6 +163,37 @@ impl ApiAccountDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn count_by_wallet_address_up_to<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+        limit: i64,
+    ) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+            "SELECT COUNT(*) FROM (SELECT 1 FROM api_account INDEXED BY api_account_wallet_status_idx WHERE wallet_address = ",
+        );
+        qb.push_bind(wallet_address);
+        qb.push(" AND status = 1");
+        if let Some(account_id) = account_id {
+            qb.push(" AND account_id = ").push_bind(account_id);
+        }
+        if let Some(chain_code) = chain_code {
+            qb.push(" AND chain_code = ").push_bind(chain_code);
+        }
+        qb.push(" LIMIT ").push_bind(limit.max(0));
+        qb.push(")");
+
+        qb.build_query_as::<(i64,)>()
+            .fetch_one(exec)
+            .await
+            .map(|(count,)| count)
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn count_by_status<'a, E>(exec: E, status: i32) -> Result<i64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

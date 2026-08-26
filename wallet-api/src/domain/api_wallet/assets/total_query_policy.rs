@@ -26,6 +26,18 @@ fn wallet_total_assets_query_key(
     wallet_total_assets_v3_lock_key(wallet_part, account_id, chain_code)
 }
 
+fn whole_wallet_count_limit(
+    account_id: Option<u32>,
+    chain_code: Option<&str>,
+    small_wallet_address_threshold: i64,
+) -> Option<i64> {
+    if account_id.is_none() && chain_code.is_none() {
+        Some(small_wallet_address_threshold.saturating_add(1))
+    } else {
+        None
+    }
+}
+
 pub(super) fn invalidate_wallet_total_assets_cache(wallet_address: &str) -> usize {
     let defaults = runtime_defaults::api_assets();
     let keys =
@@ -106,15 +118,34 @@ impl ApiAssetsDomain {
 
         load_total_assets_with_cache(&cache_key, fresh_ttl, || async move {
             if let Some(wallet_address) = wallet_address {
-            let pool = ctx.api_wallet_pool()?;
+                let pool = ctx.api_wallet_pool()?;
                 let count_start = std::time::Instant::now();
-                let address_count = ApiAccountRepo::count_by_wallet_address(
-                    &pool,
-                    wallet_address,
+                let count_limit = whole_wallet_count_limit(
                     account_id,
                     chain_code,
-                )
-                .await
+                    small_wallet_address_threshold,
+                );
+                let address_count = match count_limit {
+                    Some(limit) => {
+                        ApiAccountRepo::count_by_wallet_address_up_to(
+                            &pool,
+                            wallet_address,
+                            None,
+                            None,
+                            limit,
+                        )
+                        .await
+                    }
+                    None => {
+                        ApiAccountRepo::count_by_wallet_address(
+                            &pool,
+                            wallet_address,
+                            account_id,
+                            chain_code,
+                        )
+                        .await
+                    }
+                }
                 .unwrap_or(small_wallet_address_threshold + 1);
                 tracing::debug!(
                     metric = "api_assets_wallet_account_count_ms",
@@ -123,6 +154,7 @@ impl ApiAssetsDomain {
                     account_id = ?account_id,
                     chain_code = ?chain_code,
                     address_count,
+                    count_limit = ?count_limit,
                     elapsed_ms = count_start.elapsed().as_millis(),
                     "wallet total assets account count finished"
                 );
@@ -228,11 +260,19 @@ mod tests {
         response_vo::standard_wallet::account::BalanceInfo,
     };
 
-    use super::load_total_assets_with_cache;
+    use super::{load_total_assets_with_cache, whole_wallet_count_limit};
 
     fn unique_key(prefix: &str) -> String {
         let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
         format!("{prefix}-{ts}")
+    }
+
+    #[test]
+    fn whole_wallet_count_is_bounded_but_filtered_counts_remain_exact() {
+        assert_eq!(whole_wallet_count_limit(None, None, 200), Some(201));
+        assert_eq!(whole_wallet_count_limit(Some(7), None, 200), None);
+        assert_eq!(whole_wallet_count_limit(None, Some("eth"), 200), None);
+        assert_eq!(whole_wallet_count_limit(Some(7), Some("eth"), 200), None);
     }
 
     #[tokio::test]

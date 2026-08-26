@@ -49,6 +49,12 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
   wallet-database/src/lib.rs
   api_wallet_migration_creates_nonzero_asset_total_index
+
+  wallet-database/src/repositories/api_wallet/account.rs
+  count_by_wallet_address_up_to_stops_at_limit
+
+  wallet-api/src/domain/api_wallet/assets/total_query_policy.rs
+  whole_wallet_count_is_bounded_but_filtered_counts_remain_exact
   ```
 
 - Backend: none; tests use a migrated temporary SQLite database.
@@ -57,7 +63,9 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: V3 wallet totals scan the partial nonzero-asset covering index and
   still return only active, nonzero assets belonging to the requested active
   wallet/account/chain. Zero-balance assets remain persisted and are not
-  removed or skipped during creation.
+  removed or skipped during creation. Whole-wallet V2/V3 routing scans at most
+  threshold plus one active account, while account- or chain-filtered routing
+  retains exact-count behavior.
 
 ### Account Change Syncs API Wallet Token By Address
 

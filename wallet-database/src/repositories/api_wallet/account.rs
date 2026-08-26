@@ -277,6 +277,23 @@ impl ApiAccountRepo {
         .await
     }
 
+    pub async fn count_by_wallet_address_up_to(
+        pool: &ApiWalletDbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+        limit: i64,
+    ) -> Result<i64, crate::Error> {
+        ApiAccountDao::count_by_wallet_address_up_to(
+            pool.read_ref(),
+            wallet_address,
+            account_id,
+            chain_code,
+            limit,
+        )
+        .await
+    }
+
     pub async fn list(pool: &ApiWalletDbPool) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         ApiAccountDao::account_list(pool.read_ref(), None, None, None, vec![], None).await
     }
@@ -551,6 +568,52 @@ mod tests {
         .await
         .unwrap();
         assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn count_by_wallet_address_up_to_stops_at_limit() {
+        let pool = setup_api_wallet_pool("wallet_db_api_account_bounded_count").await;
+        let wallet_address = "0xapi_account_wallet_count";
+        let other_wallet = "0xapi_account_wallet_count_other";
+
+        let accounts = vec![
+            make_account_vo(1, "0xcount_eth_1", wallet_address, "eth"),
+            make_account_vo(2, "0xcount_eth_2", wallet_address, "eth"),
+            make_account_vo(3, "0xcount_eth_3", wallet_address, "eth"),
+            make_account_vo(4, "0xcount_bnb_1", wallet_address, "bnb"),
+            make_account_vo(5, "0xcount_bnb_2", wallet_address, "bnb"),
+            make_account_vo(6, "0xcount_inactive", wallet_address, "eth"),
+            make_account_vo(1, "0xcount_other", other_wallet, "eth"),
+        ];
+        ApiAccountRepo::upsert_account_multi(&pool, accounts).await.unwrap();
+        sqlx::query("UPDATE api_account SET status = 0 WHERE address = ?")
+            .bind("0xcount_inactive")
+            .execute(pool.write_ref())
+            .await
+            .unwrap();
+
+        let capped =
+            ApiAccountRepo::count_by_wallet_address_up_to(&pool, wallet_address, None, None, 3)
+                .await
+                .unwrap();
+        assert_eq!(capped, 3);
+
+        let below_limit =
+            ApiAccountRepo::count_by_wallet_address_up_to(&pool, wallet_address, None, None, 10)
+                .await
+                .unwrap();
+        assert_eq!(below_limit, 5);
+
+        let chain_filtered = ApiAccountRepo::count_by_wallet_address_up_to(
+            &pool,
+            wallet_address,
+            None,
+            Some("bnb"),
+            10,
+        )
+        .await
+        .unwrap();
+        assert_eq!(chain_filtered, 2);
     }
 
     #[tokio::test]
