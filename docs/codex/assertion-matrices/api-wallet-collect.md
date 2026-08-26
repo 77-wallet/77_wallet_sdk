@@ -145,6 +145,31 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
   conflicting cooldown classes; the DB predicate still suppresses a delayed
   wakeup after the order reaches a final state.
 
+### Collect EVM Uncertain Transaction Preservation
+
+- Layer: collect worker regression plus Recover flow behavior.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  broadcast_uncertain_timeout_helper_trips_after_five_minutes
+  evm_uncertain_future_nonce_preserves_original_transaction_identity
+  evm_uncertain_next_nonce_rebroadcasts_identical_raw_once
+  evm_uncertain_consumed_nonce_is_not_rebroadcast
+  ```
+
+- Success: a visible receipt continues through the existing Recover success
+  path.
+- Recovery: after the five-minute uncertain timeout, a future-nonce EVM
+  transaction retains its original raw transaction, hash, and nonce. When its
+  nonce exactly matches the chain's pending nonce, the identical raw transaction
+  may be rebroadcast once without rebuilding or changing its hash.
+- Failure: a consumed or already-retried nonce is preserved for observation and
+  is not broadcast again. EVM timeout never force-aligns the order nonce or
+  marks the order failed; SOL and TRON policies are unchanged.
+- Invariant: a database retry decision cannot erase the identity of an EVM
+  transaction that may still exist in a node mempool and later be mined.
+
 ### Collect Local Delegation Fast Path
 
 - Layer: unit plus existing local-delegation component coverage.

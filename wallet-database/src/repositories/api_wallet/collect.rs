@@ -618,6 +618,14 @@ impl ApiCollectRepo {
             .await
     }
 
+    /// 原子放行一次 EVM uncertain 原始交易重播；不修改 raw/hash/nonce。
+    pub async fn arm_uncertain_same_raw_rebroadcast_once(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::arm_uncertain_same_raw_rebroadcast_once(pool.write_ref(), trade_no).await
+    }
+
     /// 清理不确定态追踪字段（广播可见/链上确认后）
     pub async fn clear_broadcast_uncertain_tracking(
         pool: &ApiTransactionDbPool,

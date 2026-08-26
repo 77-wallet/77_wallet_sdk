@@ -2356,6 +2356,46 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
+    /// Atomically release one uncertain EVM collect for an identical-raw rebroadcast.
+    ///
+    /// The CAS preserves raw_tx, tx_hash, and nonce. It can win only once for the
+    /// current transaction lifecycle, so a crash or concurrent Recover cannot
+    /// expose a second automatic rebroadcast.
+    pub async fn arm_uncertain_same_raw_rebroadcast_once<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND raw_tx IS NOT NULL
+              AND tx_hash IS NOT NULL
+              AND last_broadcast_at IS NULL
+              AND broadcast_uncertain_since_at IS NOT NULL
+              AND COALESCE(broadcast_uncertain_rebroadcast_count, 0) = 0
+              AND transaction_time IS NULL
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND finished_at IS NULL
+              AND err_code IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     /// Clear uncertain tracking facts when the tx lifecycle reaches a stronger fact.
     pub async fn clear_broadcast_uncertain_tracking<'a, E>(
         exec: E,
@@ -4180,6 +4220,77 @@ mod tests {
         assert!(rec.broadcast_uncertain_since_at.is_none());
         assert_eq!(rec.broadcast_uncertain_retry_count, 0);
         assert!(rec.broadcast_uncertain_last_checked_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn arm_uncertain_same_raw_rebroadcast_once_is_atomic_and_idempotent() {
+        let dir = make_temp_dir("wallet_db_api_collect_arm_same_raw_rebroadcast");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "eth",
+            None,
+            "ETH",
+            "C_ARM_SAME_RAW_REBROADCAST",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET raw_tx = 'raw-28',
+                 tx_hash = 'hash-28',
+                 nonce = 28,
+                 last_broadcast_at = NULL,
+                 broadcast_uncertain_since_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 broadcast_uncertain_retry_count = 7,
+                 broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 broadcast_uncertain_rebroadcast_count = 0
+             WHERE trade_no = ?",
+        )
+        .bind("C_ARM_SAME_RAW_REBROADCAST")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let first = ApiCollectDao::arm_uncertain_same_raw_rebroadcast_once(
+            pool.as_ref(),
+            "C_ARM_SAME_RAW_REBROADCAST",
+        )
+        .await
+        .unwrap();
+        let second = ApiCollectDao::arm_uncertain_same_raw_rebroadcast_once(
+            pool.as_ref(),
+            "C_ARM_SAME_RAW_REBROADCAST",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(first, 1);
+        assert_eq!(second, 0);
+
+        let rec =
+            ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), "C_ARM_SAME_RAW_REBROADCAST")
+                .await
+                .unwrap();
+        assert_eq!(rec.raw_tx.as_deref(), Some("raw-28"));
+        assert_eq!(rec.tx_hash.as_deref(), Some("hash-28"));
+        assert_eq!(rec.nonce, 28);
+        assert!(rec.broadcast_uncertain_since_at.is_none());
+        assert_eq!(rec.broadcast_uncertain_retry_count, 0);
+        assert!(rec.broadcast_uncertain_last_checked_at.is_none());
+        assert_eq!(rec.broadcast_uncertain_rebroadcast_count, 1);
     }
 
     #[tokio::test]

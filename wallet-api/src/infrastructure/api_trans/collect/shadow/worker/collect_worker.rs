@@ -149,6 +149,13 @@ enum TronMissingPoolsRecoveryAction {
     Rebroadcast,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EvmUncertainNonceAction {
+    PreserveFutureNonce,
+    RebroadcastSameRaw,
+    PreserveConsumedNonce,
+}
+
 /// Shadow Worker
 /// 纯执行型、无状态假设、可随时 kill -9 的 Worker
 ///
@@ -212,7 +219,6 @@ impl ShadowCollectWorker {
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
-    const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
     const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
     const BUILD_SLOT_STALE_SECS: i64 = 30;
 
@@ -273,6 +279,22 @@ impl ShadowCollectWorker {
             Self::EVM_UNCERTAIN_TIMEOUT_SECS,
             now,
         )
+    }
+
+    fn evm_uncertain_nonce_action(
+        chain_nonce: u64,
+        order_nonce: u64,
+        can_rebroadcast_same_raw: bool,
+    ) -> EvmUncertainNonceAction {
+        match chain_nonce.cmp(&order_nonce) {
+            std::cmp::Ordering::Less => EvmUncertainNonceAction::PreserveFutureNonce,
+            std::cmp::Ordering::Equal if can_rebroadcast_same_raw => {
+                EvmUncertainNonceAction::RebroadcastSameRaw
+            }
+            std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => {
+                EvmUncertainNonceAction::PreserveConsumedNonce
+            }
+        }
     }
 
     fn should_throttle_evm_uncertain_recover(req: &ApiCollectEntity, now: DateTime<Utc>) -> bool {
@@ -2402,124 +2424,72 @@ impl ShadowCollectWorker {
                 }
 
                 let local_nonce_for_log = refreshed.nonce as u64;
-                let mut chain_nonce_for_log: Option<u64> = None;
-                let mut reconcile_reason_label = "already_reconciled";
+                let chain_nonce =
+                    ApiTransDomain::nonce(&self.ctx, &refreshed.from_addr, &refreshed.chain_code)
+                        .await?;
+                let can_rebroadcast_same_raw = refreshed.last_broadcast_at.is_none()
+                    && refreshed.broadcast_uncertain_rebroadcast_count == 0;
 
-                if refreshed.broadcast_uncertain_reconciled_at.is_none() {
-                    warn!(
-                        trade_no = %refreshed.trade_no,
-                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
-                        nonce = refreshed.nonce,
-                        uncertain_duration_sec = elapsed_secs,
-                        source = "shadow_worker_v2",
-                        "EVM uncertain timeout reached; running nonce reconcile"
-                    );
-
-                    let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                    let chain_nonce = ApiTransDomain::nonce(
-                        &self.ctx,
-                        &refreshed.from_addr,
-                        &refreshed.chain_code,
-                    )
-                    .await?;
-                    chain_nonce_for_log = Some(chain_nonce);
-
-                    if chain_nonce < local_nonce_for_log {
-                        let gap = local_nonce_for_log.saturating_sub(chain_nonce);
+                match Self::evm_uncertain_nonce_action(
+                    chain_nonce,
+                    local_nonce_for_log,
+                    can_rebroadcast_same_raw,
+                ) {
+                    EvmUncertainNonceAction::PreserveFutureNonce => {
                         warn!(
                             trade_no = %refreshed.trade_no,
-                            from_addr = %refreshed.from_addr,
                             tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
                             chain_nonce = %chain_nonce,
-                            local_nonce = %local_nonce_for_log,
-                            gap = %gap,
+                            order_nonce = %local_nonce_for_log,
+                            uncertain_duration_sec = elapsed_secs,
+                            decision = "preserve_future_nonce",
                             source = "shadow_worker_v2",
-                            "EVM uncertain nonce-gap detected; forcing local nonce to chain nonce"
+                            "EVM uncertain transaction has a future nonce; keep original transaction"
                         );
-                        let _aligned_chain_next = nonce_engine
-                            .force_align_to_chain_next_nonce(
-                                &refreshed.from_addr,
-                                &refreshed.chain_code,
-                                ReconcileReason::Other("evm_uncertain_nonce_gap".to_string()),
-                            )
-                            .await?;
-                        reconcile_reason_label = "nonce_gap";
-                    } else {
-                        nonce_engine.trigger_reconcile_with_reason(
-                            &refreshed.from_addr,
-                            &refreshed.chain_code,
-                            ReconcileReason::Other("evm_uncertain_timeout".to_string()),
-                            true,
-                        );
-                        reconcile_reason_label = "generic_uncertain";
                     }
-                    let _ = ApiCollectRepo::mark_broadcast_uncertain_reconciled(
-                        &self.ctx.api_transaction_pool()?,
-                        &refreshed.trade_no,
-                    )
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
-                }
-
-                if refreshed.broadcast_uncertain_rebroadcast_count
-                    < Self::EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT
-                {
-                    warn!(
-                        trade_no = %refreshed.trade_no,
-                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
-                        nonce = refreshed.nonce,
-                        reason = reconcile_reason_label,
-                        chain_nonce = ?chain_nonce_for_log,
-                        local_nonce = %local_nonce_for_log,
-                        decision = "rebuild_retry_once",
-                        source = "shadow_worker_v2",
-                        "EVM uncertain reconcile decision"
-                    );
-                    let rows = ApiCollectRepo::invalidate_raw_tx_for_rebroadcast(
-                        &self.ctx.api_transaction_pool()?,
-                        &refreshed.trade_no,
-                        None,
-                    )
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
-                    if rows > 0 {
-                        let _ = ApiCollectRepo::mark_broadcast_uncertain_rebroadcast_attempted(
+                    EvmUncertainNonceAction::RebroadcastSameRaw => {
+                        warn!(
+                            trade_no = %refreshed.trade_no,
+                            tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                            chain_nonce = %chain_nonce,
+                            order_nonce = %local_nonce_for_log,
+                            uncertain_duration_sec = elapsed_secs,
+                            decision = "rebroadcast_same_raw",
+                            source = "shadow_worker_v2",
+                            "EVM uncertain transaction is the next nonce; retrying the identical raw transaction"
+                        );
+                        let rows = ApiCollectRepo::arm_uncertain_same_raw_rebroadcast_once(
                             &self.ctx.api_transaction_pool()?,
                             &refreshed.trade_no,
                         )
                         .await
                         .map_err(|e| ServiceError::Database(e.into()))?;
-                        self.advancer.try_advance(&refreshed.trade_no).await;
+                        if rows > 0 {
+                            self.advancer.try_advance(&refreshed.trade_no).await;
+                        } else {
+                            info!(
+                                trade_no = %refreshed.trade_no,
+                                tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                                decision = "same_raw_rebroadcast_cas_lost",
+                                source = "shadow_worker_v2",
+                                "EVM identical-raw rebroadcast was already armed or transaction state advanced"
+                            );
+                        }
                     }
-                    return Ok(());
+                    EvmUncertainNonceAction::PreserveConsumedNonce => {
+                        warn!(
+                            trade_no = %refreshed.trade_no,
+                            tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                            chain_nonce = %chain_nonce,
+                            order_nonce = %local_nonce_for_log,
+                            uncertain_duration_sec = elapsed_secs,
+                            decision = "preserve_consumed_nonce",
+                            source = "shadow_worker_v2",
+                            "EVM uncertain nonce is no longer safely rebroadcastable; keep original transaction for recovery"
+                        );
+                    }
                 }
-
-                warn!(
-                    trade_no = %refreshed.trade_no,
-                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
-                    nonce = refreshed.nonce,
-                    uncertain_duration_sec = elapsed_secs,
-                    reconcile_done = %refreshed.broadcast_uncertain_reconciled_at.is_some(),
-                    rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
-                    source = "shadow_worker_v2",
-                    "EVM uncertain exhausted; auto fail order"
-                );
-
-                let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
-                    &self.ctx.api_transaction_pool()?,
-                    &refreshed.trade_no,
-                    ApiCollectStatus::SendingTxFailed,
-                    Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE,
-                    "EVM broadcast uncertain timeout after 5m; same-rpc tx not visible; reconcile+1 retry exhausted",
-                )
-                .await
-                .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %refreshed.trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark EVM uncertain timeout auto-fail");
-                    ServiceError::Database(db_err.into())
-                })?;
-                if rows_affected > 0 {
-                    self.advancer.try_advance(&refreshed.trade_no).await;
-                }
+                return Ok(());
             }
             Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
                 match Self::tron_missing_pools_recovery_action(&req) {
@@ -4459,8 +4429,8 @@ impl ShadowCollectWorker {
 #[cfg(test)]
 mod tests {
     use super::{
-        ResourceBudget, ResourceGateSnapshot, ResourceReservationDecision, ShadowCollectWorker,
-        TronMissingPoolsRecoveryAction, WithdrawResourceReservationManager,
+        EvmUncertainNonceAction, ResourceBudget, ResourceGateSnapshot, ResourceReservationDecision,
+        ShadowCollectWorker, TronMissingPoolsRecoveryAction, WithdrawResourceReservationManager,
     };
     use crate::{
         context::api_wallet_backend::ApiWalletBackend,
@@ -6297,6 +6267,34 @@ oss:
         req.broadcast_uncertain_since_at = Some(Utc::now() - chrono::TimeDelta::minutes(5));
 
         assert!(ShadowCollectWorker::should_auto_fail_broadcast_uncertain(&req, Utc::now()));
+    }
+
+    #[test]
+    fn evm_uncertain_future_nonce_preserves_original_transaction_identity() {
+        assert_eq!(
+            ShadowCollectWorker::evm_uncertain_nonce_action(28, 29, true),
+            EvmUncertainNonceAction::PreserveFutureNonce
+        );
+    }
+
+    #[test]
+    fn evm_uncertain_next_nonce_rebroadcasts_identical_raw_once() {
+        assert_eq!(
+            ShadowCollectWorker::evm_uncertain_nonce_action(28, 28, true),
+            EvmUncertainNonceAction::RebroadcastSameRaw
+        );
+        assert_eq!(
+            ShadowCollectWorker::evm_uncertain_nonce_action(28, 28, false),
+            EvmUncertainNonceAction::PreserveConsumedNonce
+        );
+    }
+
+    #[test]
+    fn evm_uncertain_consumed_nonce_is_not_rebroadcast() {
+        assert_eq!(
+            ShadowCollectWorker::evm_uncertain_nonce_action(30, 29, true),
+            EvmUncertainNonceAction::PreserveConsumedNonce
+        );
     }
 }
 #[test]
