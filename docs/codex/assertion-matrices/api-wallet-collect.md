@@ -170,6 +170,28 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: a database retry decision cannot erase the identity of an EVM
   transaction that may still exist in a node mempool and later be mined.
 
+### Collect Single Service-Fee Cycle Terminal Guard
+
+- Layer: collect worker regression.
+- Entrypoint:
+
+  ```text
+  src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs
+  evm_token_collect_fee_shortage_after_fee_cycle_terminates
+  evm_native_collect_fee_shortage_after_fee_cycle_terminates
+  sol_token_collect_fee_shortage_after_fee_cycle_terminates
+  tron_token_collect_fee_shortage_after_fee_cycle_terminates
+  tron_native_collect_fee_shortage_after_fee_cycle_terminates
+  ```
+
+- Recovery: the first fee shortage still enters the existing service-fee
+  cycle.
+- Failure: after fee upload and fee-result ACK have both completed, a remaining
+  collect fee shortage becomes terminal `BalanceInsufficient`, independent of
+  chain and native/token asset type.
+- Invariant: a collect cannot request a second fee payment or loop through
+  rebuild-only invalidation after its single fee cycle.
+
 ### Collect Local Delegation Fast Path
 
 - Layer: unit plus existing local-delegation component coverage.
@@ -1465,10 +1487,16 @@ scanner entrypoints.
 - Invariant: `service_fee_uploaded_at` means the fee transfer was requested;
   only the additional `tx_fee_res_ack_sent_at` fact completes the fee-order
   handshake.
+- Tests: `sol_token_collect_fee_shortage_after_fee_cycle_terminates`,
+  `evm_token_collect_fee_shortage_after_fee_cycle_terminates`,
+  `evm_native_collect_fee_shortage_after_fee_cycle_terminates`, and
+  `tron_native_collect_fee_shortage_after_fee_cycle_terminates`.
+- Invariant: once the single fee-order handshake is complete, any subsequent
+  explicit collect fee shortage is terminal regardless of chain or native/token
+  asset type; it must not clear the build and loop or request another fee payment.
 - Test: `completed_fee_balance_shortage_cools_down_before_build_retry`
-- Invariant: after a completed fee-order handshake, a still-insufficient TRON
-  balance cannot re-enter BuildTx for 30 seconds. The persisted `updated_at`
-  cooldown keeps scanner and direct advancement restart-safe without a new field.
+- Invariant: after a completed fee-order handshake, any still-insufficient
+  collect balance is terminal and cannot re-enter BuildTx.
 
 ### Collect Broadcast Guard Admission
 

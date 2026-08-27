@@ -430,12 +430,8 @@ impl ShadowCollectWorker {
         req.service_fee_uploaded_at.is_some() && req.tx_fee_res_ack_sent_at.is_some()
     }
 
-    fn should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
-        req: &ApiCollectEntity,
-    ) -> bool {
-        shared_mechanism::is_sol_chain(&req.chain_code)
-            && req.token_addr.is_contract()
-            && Self::service_fee_cycle_completed(req)
+    fn should_terminal_fail_fee_shortage_after_completed_fee_cycle(req: &ApiCollectEntity) -> bool {
+        Self::service_fee_cycle_completed(req)
     }
 
     fn is_solana_rent_exempt_reserve_balance_error(
@@ -3489,24 +3485,19 @@ impl ShadowCollectWorker {
     /// Fee 不足时的构建回退策略。
     ///
     /// - 首次手续费不足：继续打回 `need_service_fee = true`
-    /// - fee cycle 已完成后再次构建失败：只清理 `raw_tx/tx_hash`
-    ///   并保留 fee facts，避免把单子重新卡进等待手续费结果的死循环
+    /// - fee cycle 已完成后仍然手续费不足：终止订单，不再补费或重建
     pub async fn invalidate_build_attempt_after_fee_check_failure(
         &self,
         req: &ApiCollectEntity,
     ) -> Result<u64, ServiceError> {
-        let fee_cycle_completed = Self::service_fee_cycle_completed(req);
-
-        if Self::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
-            req,
-        ) {
+        if Self::should_terminal_fail_fee_shortage_after_completed_fee_cycle(req) {
             info!(
                 trade_no = %req.trade_no,
                 chain_code = %req.chain_code,
                 service_fee_uploaded_at = ?req.service_fee_uploaded_at,
                 tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
                 source = "shadow_worker_v2",
-                "Token collect fee shortage after completed fee cycle; marking collect as terminal failure"
+                "Collect fee shortage after the single completed fee cycle; marking collect as terminal failure"
             );
 
             let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
@@ -3514,7 +3505,7 @@ impl ShadowCollectWorker {
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
                 ErrCode::BalanceInsufficient,
-                "token collect fee shortage after completed fee cycle",
+                "collect fee shortage after the single completed fee cycle",
             )
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
@@ -3523,27 +3514,9 @@ impl ShadowCollectWorker {
                 trade_no = %req.trade_no,
                 rows_affected = %rows_affected,
                 source = "shadow_worker_v2",
-                "Marked token collect as terminal failure after completed fee cycle"
+                "Marked collect as terminal failure after the single completed fee cycle"
             );
             return Ok(0);
-        }
-
-        if fee_cycle_completed {
-            info!(
-                trade_no = %req.trade_no,
-                service_fee_uploaded_at = ?req.service_fee_uploaded_at,
-                tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
-                source = "shadow_worker_v2",
-                "Fee cycle already completed; using rebuild-only invalidation after fee check failure"
-            );
-
-            return ApiCollectRepo::invalidate_raw_tx_for_rebuild(
-                &self.ctx.api_transaction_pool()?,
-                &req.trade_no,
-                Some(ApiCollectStatus::InsufficientBalance),
-            )
-            .await
-            .map_err(|e| ServiceError::Database(e.into()));
         }
 
         info!(
@@ -6181,9 +6154,34 @@ oss:
         req.service_fee_uploaded_at = Some(Utc::now());
         req.tx_fee_res_ack_sent_at = Some(Utc::now());
 
-        assert!(
-            ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
-        );
+        assert!(ShadowCollectWorker::should_terminal_fail_fee_shortage_after_completed_fee_cycle(
+            &req
+        ));
+    }
+
+    #[test]
+    fn evm_token_collect_fee_shortage_after_fee_cycle_terminates() {
+        let mut req = base_collect();
+        req.chain_code = "eth".to_string();
+        req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
+
+        assert!(ShadowCollectWorker::should_terminal_fail_fee_shortage_after_completed_fee_cycle(
+            &req
+        ));
+    }
+
+    #[test]
+    fn evm_native_collect_fee_shortage_after_fee_cycle_terminates() {
+        let mut req = base_collect();
+        req.chain_code = "eth".to_string();
+        req.token_addr = AssetTokenKey::Native;
+        req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
+
+        assert!(ShadowCollectWorker::should_terminal_fail_fee_shortage_after_completed_fee_cycle(
+            &req
+        ));
     }
 
     #[test]
@@ -6205,21 +6203,35 @@ oss:
         req.token_addr = AssetTokenKey::Contract("token".to_string());
         req.service_fee_uploaded_at = Some(Utc::now());
 
-        assert!(
-            !ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
-        );
+        assert!(!ShadowCollectWorker::should_terminal_fail_fee_shortage_after_completed_fee_cycle(
+            &req
+        ));
     }
 
     #[test]
-    fn tron_native_collect_fee_shortage_after_fee_cycle_does_not_use_token_terminal_rule() {
+    fn tron_token_collect_fee_shortage_after_fee_cycle_terminates() {
+        let mut req = base_collect();
+        req.chain_code = "tron".to_string();
+        req.token_addr = AssetTokenKey::Contract("token".to_string());
+        req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
+
+        assert!(ShadowCollectWorker::should_terminal_fail_fee_shortage_after_completed_fee_cycle(
+            &req
+        ));
+    }
+
+    #[test]
+    fn tron_native_collect_fee_shortage_after_fee_cycle_terminates() {
         let mut req = base_collect();
         req.chain_code = "tron".to_string();
         req.token_addr = AssetTokenKey::Native;
         req.service_fee_uploaded_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now());
 
-        assert!(
-            !ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
-        );
+        assert!(ShadowCollectWorker::should_terminal_fail_fee_shortage_after_completed_fee_cycle(
+            &req
+        ));
     }
 
     #[test]
