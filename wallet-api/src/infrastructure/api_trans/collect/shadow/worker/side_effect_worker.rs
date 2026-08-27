@@ -1623,24 +1623,7 @@ impl SideEffectWorker {
                 }
                 amount.to_string()
             }
-            ChainCode::Ethereum => {
-                let res: crate::response_vo::FeeDetailsVo<crate::response_vo::EthereumFeeDetails> =
-                    wallet_utils::serde_func::serde_from_str(&fee)?;
-                let mut amount: f64 = 0.0;
-                for it in res.data {
-                    amount = amount + it.estimate_fee.amount;
-                }
-                amount.to_string()
-            }
-            ChainCode::BnbSmartChain => {
-                let res: crate::response_vo::FeeDetailsVo<crate::response_vo::EthereumFeeDetails> =
-                    wallet_utils::serde_func::serde_from_str(&fee)?;
-                let mut amount: f64 = 0.0;
-                for it in res.data {
-                    amount = amount + it.estimate_fee.amount;
-                }
-                amount.to_string()
-            }
+            ChainCode::Ethereum | ChainCode::BnbSmartChain => super::evm_propose_max_fee(&fee)?,
             ChainCode::Litecoin => todo!(),
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),

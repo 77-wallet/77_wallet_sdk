@@ -51,8 +51,7 @@ use crate::{
     infrastructure::nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     request::api_wallet::trans::ApiTransferReq,
     response_vo::{
-        CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails,
-        api_wallet::transaction::ApiWalletResourceConsume,
+        CommonFeeDetails, TronFeeDetails, api_wallet::transaction::ApiWalletResourceConsume,
     },
 };
 
@@ -3659,18 +3658,6 @@ impl ShadowCollectWorker {
         Ok(amount)
     }
 
-    /// 估算手续费
-    fn evm_propose_max_fee(fee: &str) -> Result<String, ServiceError> {
-        let res: FeeDetailsVo<EthereumFeeDetails> = wallet_utils::serde_func::serde_from_str(fee)?;
-        let propose = res.data.into_iter().find(|item| item.types == "propose").ok_or(
-            crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::GasOracle,
-            ),
-        )?;
-
-        Ok(propose.max_fee.amount.to_string())
-    }
-
     pub(crate) async fn estimate_fee(
         &self,
         from: &str,
@@ -3721,7 +3708,7 @@ impl ShadowCollectWorker {
                 let res: CommonFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
                 res.estimate_fee.amount.to_string()
             }
-            ChainCode::Ethereum | ChainCode::BnbSmartChain => Self::evm_propose_max_fee(&fee)?,
+            ChainCode::Ethereum | ChainCode::BnbSmartChain => super::evm_propose_max_fee(&fee)?,
             ChainCode::Litecoin => todo!(),
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),
@@ -4459,7 +4446,7 @@ mod tests {
     };
 
     #[test]
-    fn evm_collect_fee_admission_uses_propose_max_fee_only() {
+    fn evm_collect_fee_paths_use_propose_max_fee_only() {
         let response = serde_json::json!({
             "default": "propose",
             "data": [
@@ -4484,7 +4471,7 @@ mod tests {
             ]
         });
 
-        let amount = ShadowCollectWorker::evm_propose_max_fee(&response.to_string())
+        let amount = super::super::evm_propose_max_fee(&response.to_string())
             .expect("select propose max fee");
 
         assert_eq!(amount, "0.0000036");

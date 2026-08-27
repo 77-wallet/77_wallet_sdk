@@ -192,6 +192,15 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: a collect cannot request a second fee payment or loop through
   rebuild-only invalidation after its single fee cycle.
 
+### Collect EVM Service-Fee Estimate Alignment
+
+- Test: `evm_collect_fee_paths_use_propose_max_fee_only`.
+- Build admission and service-fee upload both parse ETH/BSC estimates from the
+  `propose.max_fee` entry.
+- Invariant: the service-fee request cannot use the lower summed
+  `estimate_fee.amount` value while BuildTx requires the propose maximum.
+- Boundary: ordinary-wallet and non-EVM estimation remain unchanged.
+
 ### Collect Local Delegation Fast Path
 
 - Layer: unit plus existing local-delegation component coverage.
