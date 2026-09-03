@@ -370,7 +370,7 @@ impl AppService {
         let key = MinValueSwitchConfig::get_key(&symbol, &sn);
 
         match ConfigRepo::find_by_key(&key, &pool).await? {
-            Some(r) => Ok(Some(MinValueSwitchConfig::try_from(r.value)?)),
+            Some(config) => Ok(Some(MinValueSwitchConfig::try_from(config.value)?)),
             None => Ok(None),
         }
     }

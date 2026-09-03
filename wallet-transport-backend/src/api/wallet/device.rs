@@ -3,9 +3,9 @@ use serde_json::json;
 use crate::{
     api::BackendApi,
     consts::endpoint::{
-        DEVICE_BIND_ADDRESS, DEVICE_DELETE, DEVICE_INIT, DEVICE_UNBIND_ADDRESS,
-        DEVICE_UPDATE_APP_ID, KEYS_RESET, KEYS_UPDATE_WALLET_NAME, KEYS_V2_INIT,
-        old_wallet::OLD_KEYS_V2_INIT,
+        DEVICE_BIND_ADDRESS, DEVICE_DELETE, DEVICE_INIT, DEVICE_QUERY_SEND_MSG_AMOUNT,
+        DEVICE_UNBIND_ADDRESS, DEVICE_UPDATE_APP_ID, KEYS_RESET, KEYS_UPDATE_WALLET_NAME,
+        KEYS_V2_INIT, old_wallet::OLD_KEYS_V2_INIT,
     },
     response::response::BackendResponse,
     response_vo::app::MinValueConfigResp,
@@ -143,7 +143,7 @@ impl BackendApi {
         });
 
         self.client
-            .post("device/querySendMsgAmount")
+            .post(DEVICE_QUERY_SEND_MSG_AMOUNT)
             .json(req)
             .send::<BackendResponse>()
             .await?

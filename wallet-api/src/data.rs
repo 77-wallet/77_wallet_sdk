@@ -58,7 +58,7 @@ pub(crate) async fn init_some_data(
     //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
     let sn = ctx.get_sn();
-    domain::app::config::ConfigDomain::fetch_min_config(ctx, &sn).await?;
+    let fetch_min_value_config_req = min_value_config_task(sn)?;
 
     let device = DeviceRepo::get_device_info(core_pool, sn).await?;
 
@@ -79,10 +79,41 @@ pub(crate) async fn init_some_data(
         .push(BackendApiTask::BackendApi(token_query_rates_req))
         .push(BackendApiTask::BackendApi(set_official_website_req))
         .push(BackendApiTask::BackendApi(set_app_install_download_req))
+        .push(BackendApiTask::BackendApi(fetch_min_value_config_req))
         .send_with_ctx(ctx)
         .await?;
 
     Ok(())
+}
+
+fn min_value_config_task(
+    sn: &str,
+) -> Result<BackendApiTaskData, crate::error::service::ServiceError> {
+    BackendApiTaskData::new(
+        wallet_transport_backend::consts::endpoint::DEVICE_QUERY_SEND_MSG_AMOUNT,
+        &serde_json::json!({ "sn": sn }),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn min_value_config_sync_uses_persistent_backend_task_endpoint() {
+        // Arrange
+        let sn = "device-sn";
+
+        // Act
+        let task = min_value_config_task(sn).expect("build min-value config task");
+
+        // Assert
+        assert_eq!(
+            task.endpoint,
+            wallet_transport_backend::consts::endpoint::DEVICE_QUERY_SEND_MSG_AMOUNT
+        );
+        assert_eq!(task.body, serde_json::json!({ "sn": sn }));
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -31,6 +31,7 @@ pub mod endpoint {
     pub const UPLOAD_PERMISSION_TRANS: &str = "permission/uploadTrans";
 
     pub const DEVICE_INIT: &str = "device/init";
+    pub const DEVICE_QUERY_SEND_MSG_AMOUNT: &str = "device/querySendMsgAmount";
     pub const DEVICE_DELETE: &str = "device/delete";
     /// 这个接口现在后端什么也不做
     pub const DEVICE_UNBIND_ADDRESS: &str = "device/unBindAddress";

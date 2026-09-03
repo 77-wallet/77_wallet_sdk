@@ -249,6 +249,9 @@ impl EndpointHandler for SpecialHandler {
         // let mut repo = wallet_database::factory::RepositoryFactory::repo(core_pool.into_inner());
         let sn = ctx.get_sn();
         match endpoint {
+            endpoint::DEVICE_QUERY_SEND_MSG_AMOUNT => {
+                ConfigDomain::fetch_min_config(ctx, sn).await?;
+            }
             endpoint::DEVICE_INIT => {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
                 res?;
