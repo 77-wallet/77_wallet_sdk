@@ -58,7 +58,7 @@ pub(crate) async fn init_some_data(
     //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
     let sn = ctx.get_sn();
-    let _ = domain::app::config::ConfigDomain::fetch_min_config(ctx, &sn).await;
+    domain::app::config::ConfigDomain::fetch_min_config(ctx, &sn).await?;
 
     let device = DeviceRepo::get_device_info(core_pool, sn).await?;
 
