@@ -194,11 +194,17 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 
 ### Collect EVM Service-Fee Estimate Alignment
 
-- Test: `evm_collect_fee_paths_use_propose_max_fee_only`.
+- Tests: `evm_collect_fee_paths_use_propose_max_fee_only` and
+  `evm_collect_fee_paths_do_not_fallback_to_display_rounded_max_fee`.
 - Build admission and service-fee upload both parse ETH/BSC estimates from the
-  `propose.max_fee` entry.
+  propose-tier `feeSetting.gasLimit * feeSetting.maxFeePerGas` integer facts.
+- Regression: the displayed `maxFee.amount` may be rounded to eight decimal
+  places; fee upload and BuildTx admission retain the exact signed maximum.
+- Failure: malformed exact fee-setting facts fail the operation instead of
+  falling back to a lower display-rounded amount.
 - Invariant: the service-fee request cannot use the lower summed
-  `estimate_fee.amount` value while BuildTx requires the propose maximum.
+  `estimate_fee.amount` value or a display-rounded maximum while BuildTx
+  requires the exact propose maximum.
 - Boundary: ordinary-wallet and non-EVM estimation remain unchanged.
 
 ### Collect Local Delegation Fast Path

@@ -4459,8 +4459,13 @@ mod tests {
                 {
                     "type": "propose",
                     "estimateFee": balance_info("0.000003"),
-                    "maxFee": balance_info("0.0000036"),
-                    "feeSetting": ethereum_fee_setting()
+                    "maxFee": balance_info("0.00000698"),
+                    "feeSetting": {
+                        "gasLimit": 23_277,
+                        "baseFee": "1",
+                        "priorityFee": "1",
+                        "maxFeePerGas": "300000000"
+                    }
                 },
                 {
                     "type": "fast",
@@ -4474,7 +4479,30 @@ mod tests {
         let amount = super::super::evm_propose_max_fee(&response.to_string())
             .expect("select propose max fee");
 
-        assert_eq!(amount, "0.0000036");
+        assert_eq!(amount, "0.0000069831");
+    }
+
+    #[test]
+    fn evm_collect_fee_paths_do_not_fallback_to_display_rounded_max_fee() {
+        let response = serde_json::json!({
+            "default": "propose",
+            "data": [{
+                "type": "propose",
+                "estimateFee": balance_info("0.000003"),
+                "maxFee": balance_info("0.00000698"),
+                "feeSetting": {
+                    "gasLimit": 23_277,
+                    "baseFee": "1",
+                    "priorityFee": "1",
+                    "maxFeePerGas": "invalid"
+                }
+            }]
+        });
+
+        let err = super::super::evm_propose_max_fee(&response.to_string())
+            .expect_err("invalid exact maximum fee must fail");
+
+        assert!(err.to_string().contains("invalid"), "unexpected error: {err}");
     }
 
     fn balance_info(amount: &str) -> serde_json::Value {
