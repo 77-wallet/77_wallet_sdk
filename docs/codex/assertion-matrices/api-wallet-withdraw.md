@@ -623,3 +623,12 @@ scanner entrypoints.
   no second upload.
 - Concurrent TX ACK execution, integration:
   same `trade_no` can produce at most one backend ACK.
+
+### Shared nonce alignment safety (2026-09-07)
+
+Pre-broadcast alignment now preserves the monotonic allocation floor and reports
+unresolved reservations rather than rewinding it. The existing withdrawal caller
+keeps broadcasting its original signed transaction on alignment error; this batch
+changes its diagnostic wording, not that policy. Shared allocator regressions in
+transfer_nonce cover preservation, concurrency, upward progress and RPC/freeze
+failures. No automatic gap fill or replacement transaction is introduced.

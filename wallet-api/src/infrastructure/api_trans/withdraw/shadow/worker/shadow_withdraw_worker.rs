@@ -2074,7 +2074,7 @@ impl ShadowWithdrawWorker {
                                 local_nonce = %fresh_withdraw.nonce,
                                 gap = %gap,
                                 source = "shadow_withdraw_worker",
-                                "EVM pre-broadcast nonce-gap detected; best-effort force align"
+                                "EVM pre-broadcast nonce-gap detected; check floor while preserving signed transaction"
                             );
 
                             let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
@@ -2092,7 +2092,7 @@ impl ShadowWithdrawWorker {
                                     trade_no = %fresh_withdraw.trade_no,
                                     error = %e,
                                     source = "shadow_withdraw_worker",
-                                    "Best-effort nonce force-align failed; continue broadcast"
+                                    "Nonce alignment unavailable or gap unresolved; preserve original nonce and continue broadcast"
                                 );
                             }
                             info!(

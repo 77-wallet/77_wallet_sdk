@@ -118,3 +118,91 @@ async fn collect_nonce_concurrent_allocations_remain_unique() -> anyhow::Result<
     scenario.then_nonce_floor_and_queries_are(3, 2).await;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn nonce_alignment_preserves_reserved_nonces() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(9));
+    for expected in 9..=11 {
+        assert_eq!(scenario.when_collect_nonce_is_allocated().await?, expected);
+    }
+
+    let alignment = scenario.when_nonce_alignment_runs().await;
+    let next = scenario.when_collect_nonce_is_allocated().await?;
+
+    assert_eq!(next, 12, "alignment must not reissue reserved nonce 9");
+    assert!(alignment.unwrap_err().to_string().contains("nonce_gap_requires_recovery"));
+    scenario.then_nonce_floor_and_queries_are(12, 5).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn nonce_alignment_and_allocation_preserve_reservations() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(9));
+    assert_eq!(scenario.when_collect_nonce_is_allocated().await?, 9);
+
+    let (alignment, allocation) = tokio::join!(
+        scenario.when_nonce_alignment_runs(),
+        scenario.when_collect_nonce_is_allocated(),
+    );
+
+    assert_eq!(allocation?, 10);
+    assert!(alignment.unwrap_err().to_string().contains("nonce_gap_requires_recovery"));
+    assert_eq!(scenario.when_collect_nonce_is_allocated().await?, 11);
+    scenario.then_nonce_floor_and_queries_are(11, 4).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn nonce_alignment_advances_floor_without_reserving() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(9));
+
+    assert_eq!(scenario.when_nonce_alignment_runs().await?, 9);
+
+    scenario.then_nonce_floor_and_queries_are(8, 1).await;
+    assert_eq!(scenario.when_collect_nonce_is_allocated().await?, 9);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn nonce_alignment_rpc_failure_preserves_floor() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(None);
+
+    let error = scenario.when_nonce_alignment_runs().await.unwrap_err();
+
+    assert!(error.to_string().contains("simulated nonce RPC failure"));
+    scenario.then_nonce_floor_and_queries_are(0, 1).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn nonce_alignment_frozen_address_does_not_query_or_mutate() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(9));
+    scenario.given_nonce_allocation_frozen(true);
+
+    let result = scenario.when_nonce_alignment_runs().await;
+    scenario.given_nonce_allocation_frozen(false);
+
+    assert!(result.unwrap_err().to_string().contains("frozen"));
+    scenario.then_nonce_floor_and_queries_are(0, 0).await;
+    Ok(())
+}

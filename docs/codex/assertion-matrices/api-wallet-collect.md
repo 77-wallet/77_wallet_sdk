@@ -1667,3 +1667,13 @@ scanner entrypoints.
 - Receipt scenarios use isolated databases under target/ and a test-only Context
   without actor handles. Explicit scanner/worker execution retains strict HTTP
   request-count assertions without racing the manager startup warm scan.
+
+### Nonce alignment safety (2026-09-07)
+
+Shared nonce alignment no longer overwrites the allocation counter with a lower
+pending observation. A local floor ahead of the chain observation produces
+`nonce_gap_requires_recovery`; collect pre-build propagates this rather than
+claiming successful repair and reallocating a consumed reservation. Existing
+collect_recovery success, uncertain/conflict and missing-hash cases remain the
+flow regression suite. Allocation interleaving tests live in transfer_nonce.
+Real nonce holes may remain blocked until transaction-aware recovery is added.

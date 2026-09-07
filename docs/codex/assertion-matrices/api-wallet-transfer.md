@@ -74,3 +74,20 @@ scanner entrypoints.
 - Transfer idempotency:
   retry behavior should not double-send a transaction after a successful chain
   response.
+
+## Nonce alignment reservation safety (2026-09-07)
+
+- `nonce_alignment_preserves_reserved_nonces`: reserve 9, 10, 11; an RPC next
+  nonce of 9 must not rewind the floor or reissue 9. Alignment reports
+  `nonce_gap_requires_recovery`; subsequent allocation returns 12.
+- `nonce_alignment_and_allocation_preserve_reservations`: concurrent alignment
+  and allocation preserve outstanding reservation 9 and allocate 10, then 11.
+- `nonce_alignment_advances_floor_without_reserving`: upward chain progress
+  advances the last-used floor to next-1, leaving the next nonce available.
+- `nonce_alignment_rpc_failure_preserves_floor`: failed observation does not
+  mutate allocation state or send a transaction.
+- `nonce_alignment_frozen_address_does_not_query_or_mutate`: frozen alignment
+  fails before RPC/DB mutation. The test releases its manual freeze afterward.
+- All cases use the existing fake transaction adapter and real nonce repository;
+  assert persisted floor and RPC count. Signed-transaction recovery and automatic
+  gap filling are not claimed by these allocator tests.

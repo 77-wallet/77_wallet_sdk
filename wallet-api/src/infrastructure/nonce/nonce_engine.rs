@@ -480,9 +480,11 @@ impl NonceEngine {
         }
     }
 
-    /// 强制将本地 nonce 对齐到链上 next nonce（精确覆盖 DB last_used）
+    /// Reconcile the allocation floor without releasing existing reservations.
     ///
-    /// 仅用于 recover timeout + nonce gap 场景，避免本地 nonce 长期前冲。
+    /// The legacy name is retained for callers. A pending count cannot prove
+    /// that signed or in-flight transactions are safe to discard. Gaps require
+    /// transaction-aware recovery; never repair them by rewinding this counter.
     pub async fn force_align_to_chain_next_nonce(
         &self,
         address: &str,
@@ -490,12 +492,10 @@ impl NonceEngine {
         reason: ReconcileReason,
     ) -> Result<u64, ServiceError> {
         if self.is_frozen(address, chain) {
-            info!(
-                address = %address,
-                chain = %chain,
-                source = "nonce_engine",
-                "Address is frozen, but continuing force-align"
-            );
+            return Err(ServiceError::Parameter(format!(
+                "Address {} on chain {} is frozen",
+                address, chain
+            )));
         }
 
         // 从链上获取 next nonce（pending 语义）
@@ -507,12 +507,23 @@ impl NonceEngine {
 
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
         let pool = self.ctx.api_transaction_pool()?;
-        let old_db_nonce = ApiNonceRepo::get_api_nonce_optional(&pool, address, chain)
+        // Atomic MAX is essential: a read followed by an exact write could
+        // erase a reservation made while the RPC query was in flight.
+        let local_last = ApiNonceRepo::set_nonce_floor(&pool, address, chain, target_last)
             .await
             .map_err(ServiceError::Database)?;
-        let _ = ApiNonceRepo::set_nonce_exact(&pool, address, chain, target_last)
-            .await
-            .map_err(ServiceError::Database)?;
+        if local_last > target_last {
+            warn!(
+                observability_event = "nonce_gap_requires_recovery",
+                address,
+                chain,
+                chain_next,
+                local_last,
+                source = "nonce_engine",
+                "Preserve local nonce reservations; transaction-aware gap recovery required"
+            );
+            return Err(ServiceError::Parameter("nonce_gap_requires_recovery".into()));
+        }
 
         let key = (address.to_string(), chain.to_string());
         self.last_reconcile.insert(key, std::time::Instant::now());
@@ -522,10 +533,10 @@ impl NonceEngine {
             chain = %chain,
             chain_next = %chain_next,
             target_last = %target_last,
-            old_db_nonce = ?old_db_nonce,
+            local_last,
             reason = ?reason,
             source = "nonce_engine",
-            "NonceEngine force-align nonce to chain next (exact)"
+            "NonceEngine alignment advanced allocation floor without releasing reservations"
         );
 
         Ok(chain_next)

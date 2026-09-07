@@ -2783,7 +2783,7 @@ impl ShadowCollectWorker {
         };
         // 🔓 锁在这里已经释放
 
-        // ====== phase 1.5: 锁外 · EVM nonce-gap 前置纠偏（单次最多一次） ======
+        // ====== phase 1.5: 锁外 · EVM nonce-gap 前置检查（禁止回退已分配 nonce） ======
         if shared_mechanism::is_evm_chain(&req.chain_code) {
             let chain_nonce =
                 ApiTransDomain::nonce(&self.ctx, &req.from_addr, &req.chain_code).await?;
@@ -2798,7 +2798,7 @@ impl ShadowCollectWorker {
                     local_nonce = %old_nonce,
                     gap = %gap,
                     source = "shadow_worker_v2",
-                    "EVM pre-build nonce-gap detected; forcing local nonce to chain nonce"
+                    "EVM pre-build nonce-gap detected; checking allocation floor without releasing reservations"
                 );
 
                 let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;

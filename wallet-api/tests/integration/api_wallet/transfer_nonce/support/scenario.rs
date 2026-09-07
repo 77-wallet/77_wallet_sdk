@@ -296,3 +296,27 @@ impl TransferNonceScenario {
         );
     }
 }
+
+impl TransferNonceScenario {
+    pub(crate) async fn when_nonce_alignment_runs(&self) -> Result<u64, ServiceError> {
+        use wallet_api::infrastructure::nonce::nonce_engine::{
+            ReconcileReason, get_nonce_engine_with_ctx,
+        };
+        let engine = get_nonce_engine_with_ctx(self.env.manager.ctx())?;
+        let address = self.from_addr.borrow().clone();
+        engine.force_align_to_chain_next_nonce(&address, "bnb", ReconcileReason::Manual).await
+    }
+
+    pub(crate) fn given_nonce_allocation_frozen(&self, frozen: bool) {
+        use wallet_api::infrastructure::nonce::nonce_engine::{
+            FreezeReason, get_nonce_engine_with_ctx,
+        };
+        let engine = get_nonce_engine_with_ctx(self.env.manager.ctx()).unwrap();
+        let address = self.from_addr.borrow().clone();
+        if frozen {
+            engine.freeze(&address, "bnb", FreezeReason::Manual);
+        } else {
+            engine.unfreeze(&address, "bnb", FreezeReason::Manual);
+        }
+    }
+}
