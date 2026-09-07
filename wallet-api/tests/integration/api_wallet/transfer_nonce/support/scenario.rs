@@ -340,3 +340,15 @@ impl TransferNonceScenario {
         .await
     }
 }
+
+impl TransferNonceScenario {
+    pub(crate) async fn when_collect_fee_nonce_is_allocated(&self) -> Result<u64, ServiceError> {
+        let address = self.from_addr.borrow().clone();
+        wallet_api::testkit::collect_fee::allocate_collect_fee_nonce(
+            self.env.manager.ctx(),
+            &address,
+            "bnb",
+        )
+        .await
+    }
+}

@@ -214,3 +214,21 @@ mod tests {
         assert_eq!(params.value, "1.0");
     }
 }
+
+/// Exercise collect-fee BuildTx's real allocation method without signing.
+pub async fn allocate_collect_fee_nonce(
+    ctx: &'static Context,
+    address: &str,
+    chain: &str,
+) -> Result<u64, ServiceError> {
+    use crate::infrastructure::api_trans::collect_fee::{
+        legacy::AddressLockManager,
+        shadow::{ScannerConfig, ShadowScanner},
+    };
+    use std::sync::Arc;
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let scanner = Arc::new(ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None));
+    ShadowFeeWorker::new(ctx, Arc::new(AddressLockManager::new()), scanner)
+        .get_nonce(address, chain)
+        .await
+}

@@ -643,7 +643,7 @@ impl ShadowFeeWorker {
 
         // ====== phase 1: 锁内 · 快速检查 ======
         // ⚠️ 锁内禁止任何网络调用、sleep、await RPC
-        let nonce = {
+        let (nonce_address, nonce_chain) = {
             // 5. 获取地址锁，保护地址级并发
             let _addr_guard = self.address_locks.acquire(&fee.from_addr).await;
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired address lock");
@@ -660,14 +660,14 @@ impl ShadowFeeWorker {
                 return Ok(());
             }
 
-            // 7. 获取并更新 nonce
-            // ⚠️ nonce 获取必须在锁内，确保同一地址的 nonce 串行化
-            let nonce = self.get_nonce(&fresh_fee.from_addr, &fresh_fee.chain_code).await?;
-            info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce");
-
-            nonce
+            (fresh_fee.from_addr, fresh_fee.chain_code)
         };
         // 🔓 锁在这里已经释放
+
+        // Chain observation belongs outside the address lock. The database
+        // allocator atomically reserves unique nonces across sending flows.
+        let nonce = self.get_nonce(&nonce_address, &nonce_chain).await?;
+        info!(trade_no = %trade_no, nonce, source = "shadow_fee_worker", "Retrieved nonce");
 
         // 先占位 build slot，防止同一 trade_no 在构建期间被重复推进。
         let build_slot_rows =
@@ -998,24 +998,14 @@ impl ShadowFeeWorker {
 
     /// Allocate nonce for transaction.
     ///
-    /// ⚠️ NONCE INVARIANT:
-    /// - EVM nonce is an irreversible, monotonic fact once allocated.
-    /// - Once this function returns, the nonce is considered CONSUMED,
-    ///   regardless of whether build/broadcast succeeds or fails.
-    /// - Nonce MUST NOT be rolled back under any circumstances.
-    /// - Any retry MUST allocate a NEW nonce.
-    ///
-    /// This matches EVM semantics:
-    /// nonce = count of sent (confirmed OR pending) transactions.
-    ///
-    /// ⚠️ DO NOT:
-    /// - read nonce then +1
-    /// - fallback to chain nonce
-    /// - attempt to "reuse" nonce on failure
-    ///
-    /// Violating any of the above will cause nonce duplication
-    /// under concurrency or restart scenarios.
-    async fn get_nonce(&self, from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
+    /// Observe chain next nonce before atomic reservation. Allocation is not
+    /// proof of chain inclusion; failed observations reserve nothing. Existing
+    /// signed transactions keep their nonce/hash during uncertain recovery.
+    pub(crate) async fn get_nonce(
+        &self,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<u64, ServiceError> {
         info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_fee_worker", "Getting nonce");
         let chain: ChainCode = chain_code.try_into()?;
 
@@ -1030,7 +1020,7 @@ impl ShadowFeeWorker {
                 use crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx;
 
                 let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
+                let nonce = nonce_engine.allocate_nonce_synced(from_addr, chain_code).await?;
                 info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce using NonceEngine");
                 Ok(nonce as u64)
             }

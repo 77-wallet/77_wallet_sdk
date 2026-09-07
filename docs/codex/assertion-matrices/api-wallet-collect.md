@@ -1677,3 +1677,24 @@ claiming successful repair and reallocating a consumed reservation. Existing
 collect_recovery success, uncertain/conflict and missing-hash cases remain the
 flow regression suite. Allocation interleaving tests live in transfer_nonce.
 Real nonce holes may remain blocked until transaction-aware recovery is added.
+
+### Collect-fee chain-aware allocation (batch 2c)
+
+Collect-fee ETH/BNB get_nonce now observes chain next before atomic reservation.
+BuildTx reads the fresh sender/chain under its address lock, then performs the
+RPC-backed allocation outside that lock. Existing build-slot/broadcast policies
+remain unchanged. Tests use the existing BNB fixture and the real fee worker's
+allocation method through testkit (no signing or live sends):
+- `collect_fee_nonce_syncs_chain_progress`: chain next 9 then 15 produces matching
+  reservations and persisted floor, with one observation per allocation.
+- `collect_fee_nonce_rpc_failure_recovers_without_reservation`: RPC failure leaves
+  floor unchanged; retry observes chain and reserves 9, without broadcasting.
+- `collect_fee_nonce_shared_senders_remain_unique`: concurrent fee/withdraw/collect
+  allocation returns 9/10/11, with all three paths observing chain state.
+Allocation-step tests do not replace full-chain emulator acceptance.
+
+Batch 2c validation: 19 nonce integration tests pass. Expanded collect_fee suite
+has 8 passes and 2 existing failures (completed fee-cycle update row count and
+ETH fee upload amount); a HEAD fee-worker comparison reproduces the same failures.
+No test was skipped or weakened; expanded suite acceptance remains outstanding.
+See target/collect-fee-nonce-flow{,-baseline}.log.
