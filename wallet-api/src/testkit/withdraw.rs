@@ -193,3 +193,24 @@ fn withdraw_intent_summary(intent: WithdrawIntent) -> (String, String) {
         }
     }
 }
+
+/// Exercise the same allocator used by withdrawal BuildTx, without signing.
+pub async fn allocate_withdraw_nonce(
+    ctx: &'static Context,
+    address: &str,
+    chain: &str,
+) -> Result<u64, ServiceError> {
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let scanner = Arc::new(WithdrawShadowScanner::new(
+        ctx,
+        WithdrawShadowScannerConfig {
+            scan_interval: std::time::Duration::from_secs(60),
+            max_items_per_scan: 8,
+            max_fee_estimate_per_scan: 4,
+            max_resource_gate_per_scan: 4,
+        },
+        intent_tx,
+        None,
+    ));
+    ShadowWithdrawWorker::new(ctx, scanner).get_nonce(address, chain).await
+}

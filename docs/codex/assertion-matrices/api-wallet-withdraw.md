@@ -632,3 +632,18 @@ keeps broadcasting its original signed transaction on alignment error; this batc
 changes its diagnostic wording, not that policy. Shared allocator regressions in
 transfer_nonce cover preservation, concurrency, upward progress and RPC/freeze
 failures. No automatic gap fill or replacement transaction is introduced.
+
+### Withdrawal chain-aware nonce allocation (batch 2b)
+
+Withdrawal BuildTx's real get_nonce method now uses chain-aware atomic allocation
+for ETH/BNB. Existing signed transaction and broadcast policies are unchanged.
+The transfer_nonce suite uses the existing BNB fixture, fake chain observations
+and real nonce repository through a testkit withdrawal worker allocation entrypoint:
+- `withdrawal_nonce_syncs_chain_progress`: local last=0; observations 9 then 15
+  must allocate 9 then 15, persist 15 and issue two RPC observations.
+- `withdrawal_nonce_rpc_failure_recovers_without_reservation`: failed observation
+  does not allocate or send; a subsequent successful observation allocates 9.
+- `withdrawal_nonce_concurrent_collect_keeps_reservations_unique`: concurrent
+  collect/withdraw allocation observes chain next and returns unique 9/10.
+These are allocation-step integration tests, not full withdrawal signing,
+broadcast, receipt or real-network acceptance. No live transactions were sent.

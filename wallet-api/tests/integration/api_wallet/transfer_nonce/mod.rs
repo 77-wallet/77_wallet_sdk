@@ -246,3 +246,58 @@ async fn ordinary_transfer_nonce_rpc_failure_recovers_without_sending() -> anyho
     scenario.then_transfer_nonces_and_floor_are(&[9], 9).await;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_nonce_syncs_chain_progress() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(9));
+
+    let first = scenario.when_withdrawal_nonce_is_allocated().await?;
+    scenario.given_chain_next_nonce(Some(15));
+    let second = scenario.when_withdrawal_nonce_is_allocated().await?;
+
+    assert_eq!([first, second], [9, 15]);
+    scenario.then_nonce_floor_and_queries_are(15, 2).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_nonce_rpc_failure_recovers_without_reservation() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(None);
+
+    let error = scenario.when_withdrawal_nonce_is_allocated().await.unwrap_err();
+
+    assert!(error.to_string().contains("simulated nonce RPC failure"));
+    scenario.then_nonce_floor_and_queries_are(0, 1).await;
+    scenario.given_chain_next_nonce(Some(9));
+    assert_eq!(scenario.when_withdrawal_nonce_is_allocated().await?, 9);
+    scenario.then_nonce_floor_and_queries_are(9, 2).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_nonce_concurrent_collect_keeps_reservations_unique() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(9));
+
+    let (withdraw, collect) = tokio::join!(
+        scenario.when_withdrawal_nonce_is_allocated(),
+        scenario.when_collect_nonce_is_allocated(),
+    );
+
+    let mut allocated = [withdraw?, collect? as u64];
+    allocated.sort();
+    assert_eq!(allocated, [9, 10]);
+    scenario.then_nonce_floor_and_queries_are(10, 2).await;
+    Ok(())
+}

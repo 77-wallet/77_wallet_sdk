@@ -1823,8 +1823,8 @@ impl ShadowWithdrawWorker {
             )));
         }
 
-        // ====== phase 1: 快速检查 ======
-        // ⚠️ 禁止任何网络调用、sleep、await RPC
+        // ====== phase 1: 事实检查与 nonce 分配 ======
+        // EVM 分配会查询链上 nonce；RPC 失败必须在签名之前返回。
         let nonce = {
             // 🔒 必须重新读取，确保基于最新状态做决策
             // ⚠️ 只读"裁决字段"，不做任何业务推断
@@ -2017,8 +2017,8 @@ impl ShadowWithdrawWorker {
         // 1. 从数据库中获取提币交易信息
         let withdraw = self.get_withdraw_entity(trade_no).await?;
 
-        // ====== phase 1: 快速检查 ======
-        // ⚠️ 禁止任何网络调用、sleep、await RPC
+        // ====== phase 1: 事实检查与 nonce 分配 ======
+        // EVM 分配会查询链上 nonce；RPC 失败必须在签名之前返回。
         {
             // 🔒 必须重新读取，确保基于最新状态做决策
             // ⚠️ 只读"裁决字段"，不做任何业务推断
@@ -2278,24 +2278,15 @@ impl ShadowWithdrawWorker {
 
     /// Allocate nonce for transaction.
     ///
-    /// ⚠️ NONCE INVARIANT:
-    /// - EVM nonce is an irreversible, monotonic fact once allocated.
-    /// - Once this function returns, the nonce is considered CONSUMED,
-    ///   regardless of whether build/broadcast succeeds or fails.
-    /// - Nonce MUST NOT be rolled back under any circumstances.
-    /// - Any retry MUST allocate a NEW nonce.
-    ///
-    /// This matches EVM semantics:
-    /// nonce = count of sent (confirmed OR pending) transactions.
-    ///
-    /// ⚠️ DO NOT:
-    /// - read nonce then +1
-    /// - fallback to chain nonce
-    /// - attempt to "reuse" nonce on failure
-    ///
-    /// Violating any of the above will cause nonce duplication
-    /// under concurrency or restart scenarios.
-    async fn get_nonce(&self, from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
+    /// Observe chain next nonce before reserving via an atomic DB increment.
+    /// A reservation is not proof of chain inclusion. Build/broadcast failure
+    /// must not rewind it; recovery of an existing signed transaction preserves
+    /// its original nonce and hash. RPC failure must not allocate from stale data.
+    pub(crate) async fn get_nonce(
+        &self,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<u64, ServiceError> {
         info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_withdraw_worker", "Getting nonce");
         let chain: ChainCode = chain_code.try_into()?;
 
@@ -2310,7 +2301,7 @@ impl ShadowWithdrawWorker {
                 use crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx;
 
                 let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
+                let nonce = nonce_engine.allocate_nonce_synced(from_addr, chain_code).await?;
                 info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_withdraw_worker", "Retrieved nonce using NonceEngine");
                 Ok(nonce as u64)
             }
