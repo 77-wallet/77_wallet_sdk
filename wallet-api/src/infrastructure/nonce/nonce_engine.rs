@@ -26,6 +26,12 @@ pub enum NonceErrorKind {
     NonceTooHigh,
     /// Nonce 已使用
     NonceAlreadyUsed,
+    /// Node has already seen this transaction; this does not prove inclusion.
+    AlreadyKnown,
+    /// Replacement fee does not meet the node's bump requirement.
+    ReplacementUnderpriced,
+    /// Transaction fee is below the node's admission threshold.
+    TransactionUnderpriced,
     /// 链上数据不一致
     ChainDataInconsistent,
     /// 其他 Nonce 相关错误
@@ -78,12 +84,29 @@ impl ChainErrorNormalizer {
     pub fn normalize(error: &str) -> NonceErrorKind {
         let error_lower = error.to_lowercase();
 
+        if error_lower.contains("replacement transaction underpriced") {
+            return NonceErrorKind::ReplacementUnderpriced;
+        }
+        if error_lower.contains("transaction underpriced") {
+            return NonceErrorKind::TransactionUnderpriced;
+        }
+
+        // Match complete words so "unknown transaction" is not a duplicate.
+        let words: Vec<_> = error_lower
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .collect();
+        if words
+            .windows(2)
+            .any(|pair| pair == ["known", "transaction"] || pair == ["already", "known"])
+        {
+            return NonceErrorKind::AlreadyKnown;
+        }
+
         // 检测 nonce too low 相关错误
         if error_lower.contains("nonce too low")
             || error_lower.contains("nonce is too low")
             || error_lower.contains("invalid nonce: too low")
-            || error_lower.contains("replacement transaction underpriced")
-            || error_lower.contains("transaction underpriced")
         {
             return NonceErrorKind::NonceTooLow;
         }
@@ -100,8 +123,6 @@ impl ChainErrorNormalizer {
         if error_lower.contains("nonce already used")
             || error_lower.contains("nonce has already been used")
             || error_lower.contains("invalid nonce: already used")
-            || error_lower.contains("known transaction")
-            || error_lower.contains("already known")
         {
             return NonceErrorKind::NonceAlreadyUsed;
         }
@@ -761,7 +782,11 @@ impl NonceEngine {
                 );
                 Ok(())
             }
-            NonceErrorKind::Other(_) => Err(ServiceError::Parameter(error.to_string())),
+            // Visibility is not nonce consumption; fee rejection cannot repair a nonce.
+            NonceErrorKind::AlreadyKnown => Ok(()),
+            NonceErrorKind::ReplacementUnderpriced
+            | NonceErrorKind::TransactionUnderpriced
+            | NonceErrorKind::Other(_) => Err(ServiceError::Parameter(error.to_string())),
         }
     }
 
@@ -883,34 +908,5 @@ pub fn get_nonce_engine_with_ctx(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{ChainErrorNormalizer, NonceErrorKind};
-
-    #[test]
-    fn normalize_replacement_transaction_underpriced_as_nonce_too_low() {
-        assert_eq!(
-            ChainErrorNormalizer::normalize("replacement transaction underpriced"),
-            NonceErrorKind::NonceTooLow
-        );
-    }
-
-    #[test]
-    fn normalize_transaction_underpriced_as_nonce_too_low() {
-        assert_eq!(
-            ChainErrorNormalizer::normalize("transaction underpriced"),
-            NonceErrorKind::NonceTooLow
-        );
-    }
-
-    #[test]
-    fn normalize_known_transaction_and_already_known_as_nonce_already_used() {
-        assert_eq!(
-            ChainErrorNormalizer::normalize("known transaction"),
-            NonceErrorKind::NonceAlreadyUsed
-        );
-        assert_eq!(
-            ChainErrorNormalizer::normalize("already known"),
-            NonceErrorKind::NonceAlreadyUsed
-        );
-    }
-}
+#[path = "nonce_error_tests.rs"]
+mod tests;

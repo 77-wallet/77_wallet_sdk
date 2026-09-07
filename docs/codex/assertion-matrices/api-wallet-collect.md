@@ -1705,3 +1705,21 @@ has 8 passes and 2 existing failures (completed fee-cycle update row count and
 ETH fee upload amount); a HEAD fee-worker comparison reproduces the same failures.
 No test was skipped or weakened; expanded suite acceptance remains outstanding.
 See target/collect-fee-nonce-flow{,-baseline}.log.
+
+
+### Nonce error semantics and broadcast visibility
+
+- `fee_errors_are_not_consumed_nonces` distinguishes replacement underpricing,
+  generic underpricing, consumed nonce and future nonce.
+- `nonce_fee_rejections_preserve_reservation_without_chain_repair` verifies fee
+  rejection stays an error, SQLite reservation stays at 9 and no extra nonce RPC
+  or broadcast occurs even when chain next is configured to 50.
+- `nonce_known_transaction_preserves_reservation_without_chain_repair` verifies
+  node visibility does not advance the reservation or query chain state.
+- Shared broadcast classification accepts bare `already known` with local facts;
+  `unknown transaction` and fee rejection imply neither acceptance, nonce repair,
+  nor raw rebuild. This does not prove receipt confirmation or implement fee bumps.
+- Boundary: worker terminal/retry policy and existing nonce-too-low recovery remain
+  unchanged. Historical network identity migration remains a separate batch.
+- Fee contract follow-up: the previously recorded 8/2 collect_fee suite limitation
+  was resolved in 5edd9c40; all 10 collect_fee tests passed.

@@ -352,3 +352,16 @@ impl TransferNonceScenario {
         .await
     }
 }
+
+impl TransferNonceScenario {
+    pub(crate) async fn when_nonce_error_is_handled(
+        &self,
+        error: &str,
+    ) -> Result<(), ServiceError> {
+        let engine = wallet_api::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(
+            self.env.manager.ctx(),
+        )?;
+        let address = self.from_addr.borrow().clone();
+        engine.handle_nonce_error(&address, "bnb", error).await
+    }
+}

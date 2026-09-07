@@ -357,3 +357,38 @@ async fn collect_fee_nonce_shared_senders_remain_unique() -> anyhow::Result<()> 
     scenario.then_nonce_floor_and_queries_are(11, 3).await;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn nonce_fee_rejections_preserve_reservation_without_chain_repair() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(9));
+    assert_eq!(scenario.when_collect_nonce_is_allocated().await?, 9);
+    scenario.given_chain_next_nonce(Some(50));
+
+    for error in ["replacement transaction underpriced", "transaction underpriced"] {
+        let result = scenario.when_nonce_error_is_handled(error).await;
+        assert!(result.is_err(), "fee rejection must remain an error");
+        scenario.then_nonce_floor_and_queries_are(9, 1).await;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn nonce_known_transaction_preserves_reservation_without_chain_repair() -> anyhow::Result<()>
+{
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(9));
+    assert_eq!(scenario.when_collect_nonce_is_allocated().await?, 9);
+    scenario.given_chain_next_nonce(Some(50));
+
+    scenario.when_nonce_error_is_handled("already known").await?;
+
+    scenario.then_nonce_floor_and_queries_are(9, 1).await;
+    Ok(())
+}

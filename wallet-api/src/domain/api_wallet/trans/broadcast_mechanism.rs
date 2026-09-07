@@ -54,8 +54,9 @@ pub(crate) fn is_duplicate_broadcast_error(err: &ServiceError) -> bool {
     // - "Transaction simulation failed: This transn has already been processed"
     //
     // These indicate the tx is already accepted/seen by the node; treat broadcast as idempotent.
-    (s.contains("transaction") && (s.contains("already exists") || s.contains("already known")))
-        || s.contains("known transaction")
+    use crate::infrastructure::nonce::nonce_engine::{ChainErrorNormalizer, NonceErrorKind};
+    matches!(ChainErrorNormalizer::normalize(&s), NonceErrorKind::AlreadyKnown)
+        || (s.contains("transaction") && s.contains("already exists"))
         || s.contains("dup transaction")
         || s.contains("duplicate transaction")
         || s.contains("already been processed")
@@ -347,6 +348,33 @@ pub(crate) fn classify_broadcast_failure(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn evm_error_classification_does_not_invent_broadcast_acceptance() {
+        for message in [
+            "transaction underpriced",
+            "replacement transaction underpriced",
+            "unknown transaction",
+        ] {
+            let error = ServiceError::Parameter(message.into());
+            let decision = classify_broadcast_failure(
+                &error,
+                BroadcastFailureFacts::broadcast_stage("eth", true, true, false),
+            );
+            assert_eq!(decision, BroadcastFailureDecision::Unhandled, "{message}");
+            assert!(decision.accepted_reason().is_none());
+            assert!(decision.raw_rebuild_reason().is_none());
+            assert!(!decision.should_fail_after_nonce_self_heal());
+        }
+        let error = ServiceError::Parameter("already known".into());
+        assert_eq!(
+            classify_broadcast_failure(
+                &error,
+                BroadcastFailureFacts::broadcast_stage("eth", true, true, false),
+            ),
+            BroadcastFailureDecision::MarkBroadcastExecutedForDuplicate
+        );
+    }
 
     #[test]
     fn duplicate_processed_should_be_treated_as_duplicate() {
