@@ -51,3 +51,70 @@ async fn api_wallet_transfer_nonce_failure_keeps_reserved_nonce() -> anyhow::Res
 
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn collect_nonce_skips_consumed_chain_nonce() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(2));
+
+    let nonce = scenario.when_collect_nonce_is_allocated().await?;
+
+    assert_eq!(nonce, 2);
+    scenario.then_nonce_floor_and_queries_are(2, 1).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_nonce_stale_chain_response_preserves_local_reservations() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(2));
+    assert_eq!(scenario.when_collect_nonce_is_allocated().await?, 2);
+    scenario.given_chain_next_nonce(Some(0));
+
+    let nonce = scenario.when_collect_nonce_is_allocated().await?;
+
+    assert_eq!(nonce, 3);
+    scenario.then_nonce_floor_and_queries_are(3, 2).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_nonce_rpc_failure_does_not_reserve_nonce() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(None);
+
+    let error = scenario.when_collect_nonce_is_allocated().await.unwrap_err();
+
+    assert!(error.to_string().contains("simulated nonce RPC failure"));
+    scenario.then_nonce_floor_and_queries_are(0, 1).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_nonce_concurrent_allocations_remain_unique() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given_chain_next_nonce(Some(2));
+
+    let (first, second) = tokio::join!(
+        scenario.when_collect_nonce_is_allocated(),
+        scenario.when_collect_nonce_is_allocated(),
+    );
+
+    let mut nonces = [first?, second?];
+    nonces.sort();
+    assert_eq!(nonces, [2, 3]);
+    scenario.then_nonce_floor_and_queries_are(3, 2).await;
+    Ok(())
+}

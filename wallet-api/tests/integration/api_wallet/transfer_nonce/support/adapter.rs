@@ -18,6 +18,8 @@ use wallet_database::entities::asset_token_key::AssetTokenKey;
 #[derive(Default)]
 struct RecordingAdapterState {
     recorded_nonces: Mutex<Vec<u64>>,
+    nonce_response: Mutex<Option<u64>>,
+    nonce_queries: AtomicUsize,
     call_count: AtomicUsize,
     first_entered: AtomicBool,
     fail_transfer: AtomicBool,
@@ -33,7 +35,17 @@ pub(crate) struct RecordingEthAdapter {
 
 impl RecordingEthAdapter {
     pub(crate) fn new() -> Self {
-        Self { state: Arc::new(RecordingAdapterState::default()) }
+        let state = RecordingAdapterState::default();
+        *state.nonce_response.lock().unwrap() = Some(0);
+        Self { state: Arc::new(state) }
+    }
+
+    pub(crate) fn set_nonce_response(&self, response: Option<u64>) {
+        *self.state.nonce_response.lock().unwrap() = response;
+    }
+
+    pub(crate) fn nonce_queries(&self) -> usize {
+        self.state.nonce_queries.load(Ordering::SeqCst)
     }
 
     pub(crate) fn fail_on_transfer(&self) {
@@ -81,7 +93,12 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
     }
 
     async fn nonce(&self, _addr: &str) -> Result<u64, ServiceError> {
-        Ok(0)
+        self.state.nonce_queries.fetch_add(1, Ordering::SeqCst);
+        self.state
+            .nonce_response
+            .lock()
+            .unwrap()
+            .ok_or_else(|| ServiceError::Parameter("simulated nonce RPC failure".into()))
     }
 
     async fn block_num(&self) -> Result<u64, ChainError> {

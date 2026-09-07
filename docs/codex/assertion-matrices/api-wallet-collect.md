@@ -1570,3 +1570,18 @@ scanner entrypoints.
 - Invariant: ordinary-wallet fee selection and transfer paths remain unchanged,
   while API Wallet ETH and BSC collect cannot pass an estimate-only balance
   check and fail later at node admission solely because max fee was omitted.
+
+## EVM collect nonce floor before build
+
+- Entry: `cargo test -p wallet-api --features integration-tests --test mod collect_nonce`.
+- Tests: `collect_nonce_skips_consumed_chain_nonce`,
+  `collect_nonce_stale_chain_response_preserves_local_reservations`,
+  `collect_nonce_rpc_failure_does_not_reserve_nonce`,
+  `collect_nonce_concurrent_allocations_remain_unique`.
+- Build allocation uses a fake chain adapter and real SQLite nonce repository.
+- DB facts: local last-used 0 plus chain next 2 reserves 2, not consumed nonce 1;
+  subsequent stale chain next 0 reserves 3, never rolling back reservations.
+- External calls: each allocation queries chain nonce; RPC failure reserves
+  nothing and allocation never invokes transfer. Concurrent callers reserve distinct nonces.
+- Scope: new EVM collect builds only. Existing raw/hash recovery remains unchanged;
+  missing receipt plus consumed pending nonce is not proof of chain failure.

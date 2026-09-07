@@ -294,6 +294,52 @@ impl NonceEngine {
         }
     }
 
+    /// Allocate for collect after observing the chain's current next nonce.
+    pub async fn allocate_nonce_synced(
+        &self,
+        address: &str,
+        chain: &str,
+    ) -> Result<i32, ServiceError> {
+        if self.is_frozen(address, chain) {
+            return Err(ServiceError::Parameter(format!(
+                "Address {} on chain {} is frozen",
+                address, chain
+            )));
+        }
+
+        // Incident: another transaction consumed nonce 1 while collect's local
+        // last-used value was 0. A local-only increment reused the consumed nonce.
+        // Query failure must not fall back to the stale local allocation.
+        let chain_next = ApiTransDomain::nonce(self.ctx, address, chain).await?;
+        let chain_next = i32::try_from(chain_next).map_err(|_| {
+            ServiceError::Parameter("chain nonce exceeds supported allocation range".into())
+        })?;
+        let target_last = i64::from(chain_next) - 1;
+        let pool = self.ctx.api_transaction_pool()?;
+        let local_last =
+            wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::set_nonce_floor(
+                &pool,
+                address,
+                chain,
+                target_last,
+            )
+            .await
+            .map_err(ServiceError::Database)?;
+        info!(
+            address,
+            chain,
+            chain_next,
+            local_last,
+            source = "nonce_engine",
+            "Collect nonce floor synced before allocation"
+        );
+
+        // set_nonce_floor is monotonic; allocation remains a separate atomic
+        // increment. Concurrent reservations and older RPC responses cannot
+        // lower the floor or hand out the same nonce.
+        self.allocate_nonce(address, chain).await
+    }
+
     /// 获取地址级 transfer gate，确保同地址转账串行执行
     pub async fn acquire_transfer_gate(&self, address: &str, chain: &str) -> OwnedSemaphorePermit {
         let key = (address.to_string(), chain.to_string());

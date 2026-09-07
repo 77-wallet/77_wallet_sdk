@@ -272,3 +272,27 @@ impl TransferNonceAssert for AssertRole<'_, TransferNonceScenario> {
         assert_eq!(recorded_nonces, [1]);
     }
 }
+
+impl TransferNonceScenario {
+    pub(crate) fn given_chain_next_nonce(&self, next: Option<u64>) {
+        self.adapter.set_nonce_response(next);
+    }
+
+    pub(crate) async fn when_collect_nonce_is_allocated(&self) -> Result<i32, ServiceError> {
+        let engine = wallet_api::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(
+            self.env.manager.ctx(),
+        )?;
+        let address = self.from_addr.borrow().clone();
+        engine.allocate_nonce_synced(&address, "bnb").await
+    }
+
+    pub(crate) async fn then_nonce_floor_and_queries_are(&self, floor: i64, queries: usize) {
+        let address = self.from_addr.borrow().clone();
+        assert_eq!(load_bnb_nonce_floor(self.env, &address).await.unwrap(), floor);
+        assert_eq!(self.adapter.nonce_queries(), queries);
+        assert!(
+            self.adapter.recorded_nonces().is_empty(),
+            "allocation must not send a transaction"
+        );
+    }
+}

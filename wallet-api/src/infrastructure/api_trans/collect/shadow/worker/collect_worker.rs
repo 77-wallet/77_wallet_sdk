@@ -3874,7 +3874,7 @@ impl ShadowCollectWorker {
                 // Any refactor breaking this invariant will cause nonce duplication.
 
                 let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
+                let nonce = nonce_engine.allocate_nonce_synced(from_addr, chain_code).await?;
                 info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_worker_v2", "Retrieved nonce using NonceEngine");
                 Ok(nonce as u64)
             }
