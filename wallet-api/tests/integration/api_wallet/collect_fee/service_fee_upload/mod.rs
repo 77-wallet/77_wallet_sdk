@@ -45,7 +45,7 @@ async fn collect_service_fee_upload_includes_solana_recipient_ata_rent_when_miss
 
 #[serial]
 #[tokio::test]
-async fn collect_eth_service_fee_upload_uses_estimated_fee_without_multiplier() {
+async fn collect_eth_service_fee_upload_uses_exact_propose_maximum() {
     let scenario = CollectServiceFeeUploadScenario::new().await;
     let given = scenario.given();
     let when = scenario.when();
@@ -54,9 +54,13 @@ async fn collect_eth_service_fee_upload_uses_estimated_fee_without_multiplier() 
     let _guard = given.eth_fee_adapter(100_000_000_000_000_000u128, 0.000015);
     let upload = given.eth_service_fee_upload_waiting().await;
 
-    when.service_fee_is_uploaded(&upload, "eth service fee upload should use the estimated fee")
-        .await;
+    when.service_fee_is_uploaded(
+        &upload,
+        "eth service fee upload should use the exact propose maximum",
+    )
+    .await;
 
     then.payload_routes_reverse_transfer(&upload);
-    then.payload_amount_is(&upload, 0.000015, "estimated ETH fee");
+    // Fixture: 23,100 gas × 2 gwei = 0.0000462 ETH; estimate/display amounts differ.
+    then.payload_amount_is(&upload, 0.0000462, "exact propose maximum ETH fee");
 }

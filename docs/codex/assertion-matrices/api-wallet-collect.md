@@ -192,8 +192,15 @@ Rules source: `docs/codex/testing.md` and `docs/codex/testing-strategy.md`.
 - Invariant: a collect cannot request a second fee payment or loop through
   rebuild-only invalidation after its single fee cycle.
 
+- Integration: `collect_build_fee_failure_after_completed_cycle_records_terminal_failure`
+  verifies no reopened cycle (return 0), persisted `BalanceInsufficient`, unchanged
+  fee upload/ACK timestamps and transaction payload, and no chain confirmation.
+
 ### Collect EVM Service-Fee Estimate Alignment
 
+- Integration: `collect_eth_service_fee_upload_uses_exact_propose_maximum`
+  checks the uploaded amount is 0.0000462 ETH (23,100 gas × 2 gwei), distinct
+  from both fixture estimate and display maximum amounts.
 - Tests: `evm_collect_fee_paths_use_propose_max_fee_only` and
   `evm_collect_fee_paths_do_not_fallback_to_display_rounded_max_fee`.
 - Build admission and service-fee upload both parse ETH/BSC estimates from the

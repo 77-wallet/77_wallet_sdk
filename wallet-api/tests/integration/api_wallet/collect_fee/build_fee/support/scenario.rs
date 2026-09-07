@@ -1,6 +1,7 @@
 use wallet_api::testkit::collect::shadow_collect_check_fee;
 use wallet_database::{
-    ApiTransactionDbPool, SqliteContext, entities::api_collect::ApiCollectEntity,
+    ApiTransactionDbPool, SqliteContext,
+    entities::api_collect::{ApiCollectEntity, ErrCode},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
 
@@ -132,6 +133,8 @@ pub(crate) trait CollectBuildFeeThen {
 
     fn one_row_was_affected(&self, affected: u64);
 
+    fn fee_cycle_is_not_reopened(&self, affected: u64);
+
     async fn fee_cycle_is_reopened(&self, collect: &ApiCollectEntity);
 
     async fn completed_fee_cycle_facts_are_preserved(&self, collect: &ApiCollectEntity);
@@ -147,6 +150,10 @@ impl CollectBuildFeeThen for ThenRole<'_, CollectBuildFeeScenario> {
         self.scenario().assert().one_row_was_affected(affected);
     }
 
+    fn fee_cycle_is_not_reopened(&self, affected: u64) {
+        self.scenario().assert().fee_cycle_is_not_reopened(affected);
+    }
+
     async fn fee_cycle_is_reopened(&self, collect: &ApiCollectEntity) {
         let persisted = self.scenario().load().collect(&collect.trade_no).await;
         self.scenario().assert().fee_cycle_is_reopened(&persisted);
@@ -154,7 +161,7 @@ impl CollectBuildFeeThen for ThenRole<'_, CollectBuildFeeScenario> {
 
     async fn completed_fee_cycle_facts_are_preserved(&self, collect: &ApiCollectEntity) {
         let persisted = self.scenario().load().collect(&collect.trade_no).await;
-        self.scenario().assert().completed_fee_cycle_facts_are_preserved(&persisted);
+        self.scenario().assert().completed_fee_cycle_facts_are_preserved(collect, &persisted);
     }
 }
 
@@ -177,9 +184,15 @@ trait CollectBuildFeeAssert {
 
     fn one_row_was_affected(&self, affected: u64);
 
+    fn fee_cycle_is_not_reopened(&self, affected: u64);
+
     fn fee_cycle_is_reopened(&self, persisted: &ApiCollectEntity);
 
-    fn completed_fee_cycle_facts_are_preserved(&self, persisted: &ApiCollectEntity);
+    fn completed_fee_cycle_facts_are_preserved(
+        &self,
+        original: &ApiCollectEntity,
+        persisted: &ApiCollectEntity,
+    );
 }
 
 impl CollectBuildFeeAssert for AssertRole<'_, CollectBuildFeeScenario> {
@@ -191,6 +204,10 @@ impl CollectBuildFeeAssert for AssertRole<'_, CollectBuildFeeScenario> {
         assert_eq!(affected, 1);
     }
 
+    fn fee_cycle_is_not_reopened(&self, affected: u64) {
+        assert_eq!(affected, 0, "terminal failure must not reopen the fee cycle");
+    }
+
     fn fee_cycle_is_reopened(&self, persisted: &ApiCollectEntity) {
         assert_eq!(persisted.need_service_fee, Some(true));
         assert!(persisted.service_fee_uploaded_at.is_none());
@@ -198,12 +215,25 @@ impl CollectBuildFeeAssert for AssertRole<'_, CollectBuildFeeScenario> {
         assert!(persisted.tx_hash.is_none());
     }
 
-    fn completed_fee_cycle_facts_are_preserved(&self, persisted: &ApiCollectEntity) {
+    fn completed_fee_cycle_facts_are_preserved(
+        &self,
+        original: &ApiCollectEntity,
+        persisted: &ApiCollectEntity,
+    ) {
         assert_eq!(persisted.need_service_fee, Some(false));
-        assert!(persisted.service_fee_uploaded_at.is_some());
-        assert!(persisted.tx_fee_res_ack_sent_at.is_some());
-        assert!(persisted.raw_tx.is_none());
-        assert!(persisted.tx_hash.is_none());
+        assert!(original.service_fee_uploaded_at.is_some());
+        assert!(original.tx_fee_res_ack_sent_at.is_some());
+        assert_eq!(persisted.service_fee_uploaded_at, original.service_fee_uploaded_at);
+        assert_eq!(persisted.tx_fee_res_ack_sent_at, original.tx_fee_res_ack_sent_at);
+        assert_eq!(persisted.ever_needed_service_fee, original.ever_needed_service_fee);
+        assert_eq!(persisted.raw_tx, original.raw_tx);
+        assert_eq!(persisted.tx_hash, original.tx_hash);
+        assert_eq!(persisted.err_code, Some(ErrCode::BalanceInsufficient));
+        assert_eq!(
+            persisted.err_msg.as_deref(),
+            Some("collect fee shortage after the single completed fee cycle")
+        );
+        assert!(persisted.transaction_time.is_none());
     }
 }
 

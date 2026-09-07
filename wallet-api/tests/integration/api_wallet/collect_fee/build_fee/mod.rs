@@ -37,7 +37,7 @@ async fn collect_build_fee_failure_reopens_fee_cycle_on_first_insufficient_balan
 
 #[serial]
 #[tokio::test]
-async fn collect_build_fee_failure_preserves_completed_fee_cycle_facts() {
+async fn collect_build_fee_failure_after_completed_cycle_records_terminal_failure() {
     let scenario = CollectBuildFeeScenario::new().await;
     let given = scenario.given();
     let when = scenario.when();
@@ -61,6 +61,6 @@ async fn collect_build_fee_failure_preserves_completed_fee_cycle_facts() {
 
     let affected = when.build_attempt_is_invalidated(&collect).await;
 
-    then.one_row_was_affected(affected);
+    then.fee_cycle_is_not_reopened(affected);
     then.completed_fee_cycle_facts_are_preserved(&collect).await;
 }
