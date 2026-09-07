@@ -909,7 +909,8 @@ impl ApiCollectDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
-              AND (tx_hash IS NULL OR tx_hash = $2)
+              AND trim($2) <> ''
+              AND (tx_hash IS NULL OR trim(tx_hash) = '' OR tx_hash = $2)
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -1385,6 +1386,46 @@ impl ApiCollectDao {
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn record_finalized_nonce_conflict<'a, E>(
+        exec: E,
+        trade_no: &str,
+        expected_tx_hash: &str,
+        chain_code: &str,
+        from_addr: &str,
+        nonce: i32,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let result = sqlx::query(
+            r#"UPDATE api_collect
+            SET status = ?, err_code = ?, err_msg = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ? AND chain_code = ?
+                AND lower(trim(from_addr)) = lower(?)
+                AND lower(trim(tx_hash)) = lower(?) AND nonce = ?
+                AND raw_tx IS NOT NULL
+                AND transaction_time IS NULL AND err_code IS NULL
+                AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL
+                AND result_ack_sent_at IS NULL
+                AND status NOT IN (4, 6, 7, 8, 9, 10)
+            "#,
+        )
+        .bind(ApiCollectStatus::SendingTxFailed)
+        .bind(ErrCode::TransactionOnChainException)
+        .bind(err_msg)
+        .bind(trade_no)
+        .bind(chain_code)
+        .bind(from_addr)
+        .bind(expected_tx_hash)
+        .bind(nonce)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result.rows_affected())
     }
 
     pub async fn mark_unexecuted_expired<'a, E>(

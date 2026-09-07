@@ -182,6 +182,21 @@ pub trait Tx: Any {
         hash: &str,
     ) -> Result<Option<wallet_chain_interact::QueryTransactionResult>, wallet_chain_interact::Error>;
 
+    /// Return evidence only for a different transaction included in a finalized block.
+    /// Unsupported chains/providers must leave the original transaction uncertain.
+    async fn finalized_nonce_conflict(
+        &self,
+        _chain_code: &str,
+        _address: &str,
+        _nonce: i32,
+        _original_hash: &str,
+    ) -> Result<
+        Option<wallet_database::repositories::api_wallet::collect::FinalizedCollectNonceConflict>,
+        crate::error::service::ServiceError,
+    > {
+        Ok(None)
+    }
+
     /// Probe the node for Solana-like visibility signals.
     ///
     /// Default implementation returns `None` so non-Solana chains keep the

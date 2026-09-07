@@ -2472,6 +2472,48 @@ impl ShadowCollectWorker {
                         }
                     }
                     EvmUncertainNonceAction::PreserveConsumedNonce => {
+                        if let Ok(nonce) = i32::try_from(refreshed.nonce)
+                            && nonce >= 0
+                            && chain_nonce > local_nonce_for_log
+                        {
+                            let proof = async {
+                                let adapter =
+                                    ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+                                        self.ctx,
+                                        &refreshed.chain_code,
+                                    )
+                                    .await?;
+                                adapter
+                                    .finalized_nonce_conflict(
+                                        &refreshed.chain_code,
+                                        &refreshed.from_addr,
+                                        nonce,
+                                        refreshed.tx_hash.as_deref().unwrap_or_default(),
+                                    )
+                                    .await
+                            }
+                            .await;
+                            match proof {
+                                Ok(Some(evidence)) => {
+                                    let rows = ApiCollectRepo::record_finalized_nonce_conflict(
+                                        &self.ctx.api_transaction_pool()?,
+                                        &refreshed.trade_no,
+                                        refreshed.tx_hash.as_deref().unwrap_or_default(),
+                                        &evidence,
+                                    )
+                                    .await?;
+                                    if rows > 0 {
+                                        self.advancer.try_advance(&refreshed.trade_no).await;
+                                    }
+                                    return Ok(());
+                                }
+                                Ok(None) => {}
+                                Err(err) => warn!(
+                                    trade_no = %refreshed.trade_no, error = %err,
+                                    "Finalized nonce conflict probe unavailable; preserve original transaction"
+                                ),
+                            }
+                        }
                         warn!(
                             trade_no = %refreshed.trade_no,
                             tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),

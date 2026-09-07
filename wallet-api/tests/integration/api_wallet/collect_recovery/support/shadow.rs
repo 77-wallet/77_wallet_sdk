@@ -16,8 +16,7 @@ use wallet_database::{
 };
 
 use crate::harness::{
-    AssertRole, CountRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, ensure_env,
-    open_api_wallet_pool,
+    AssertRole, CountRole, GivenRole, LoadRole, SeedRole, ThenRole, WhenRole, open_api_wallet_pool,
 };
 
 use super::{
@@ -33,20 +32,133 @@ pub(crate) struct ShadowCollectRecoveryScenario {
     db_dir: PathBuf,
     query_count: RefCell<Option<Arc<AtomicUsize>>>,
     adapter_guard: RefCell<Option<TronRecoverProbeGuard>>,
+    conflict_count: Arc<AtomicUsize>,
 }
 
 impl ShadowCollectRecoveryScenario {
     pub(crate) async fn new() -> Self {
-        let env = ensure_env().await;
-        let ctx = env.manager.ctx();
-        let core_pool = open_api_wallet_pool(&env.db_dir).await;
+        // Recovery needs chain/DB context, not an unlocked wallet. Share the same
+        // transaction test context as this flow's scanner scenarios.
+        let ctx = wallet_api::testkit::context::api_trans_test_ctx().await;
+        let db_dir = ctx.get_global_dirs().db_dir.clone();
+        let core_pool = open_api_wallet_pool(&db_dir).await;
         ensure_sol_main_coin(&core_pool).await;
 
         Self {
             ctx,
-            db_dir: env.db_dir.clone(),
+            db_dir,
             query_count: RefCell::new(None),
             adapter_guard: RefCell::new(None),
+            conflict_count: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    pub(crate) async fn given_evm_uncertain_collect(
+        &self,
+        fixture: &CollectRecoveryFixture,
+        missing_receipt: bool,
+        proof: Option<bool>,
+    ) {
+        use wallet_database::{
+            entities::{api_coin::ApiCoinData, asset_token_key::AssetTokenKey},
+            repositories::api_wallet::coin::ApiCoinRepo,
+        };
+        let core = open_api_wallet_pool(&self.db_dir).await;
+        let now = Utc::now();
+        ApiCoinRepo::upsert_multi_coin(
+            &core,
+            vec![ApiCoinData::new(
+                Some("Ethereum".to_owned()),
+                "ETH",
+                "eth",
+                AssetTokenKey::Native,
+                Some("0".to_owned()),
+                None,
+                18,
+                1,
+                1,
+                1,
+                now,
+                Some(now),
+            )],
+        )
+        .await
+        .expect("seed ETH native coin");
+        let pool = self.collect_pool().await;
+        seed_tron_collect(&pool, fixture).await;
+        sqlx::query(
+            "UPDATE api_collect SET chain_code='eth',
+            from_addr='0x08932ba7a633FdEA40Dfd68afab610340e6375BF', nonce=1,
+            raw_tx='original-signed-raw', tx_hash=?, err_code=NULL, err_msg=NULL,
+            transaction_time=NULL, finished_at=NULL, tx_exec_receipt_uploaded_at=NULL,
+            last_broadcast_at=strftime('%Y-%m-%dT%H:%M:%SZ','now','-15 minutes'),
+            broadcast_uncertain_since_at=strftime('%Y-%m-%dT%H:%M:%SZ','now','-15 minutes'),
+            broadcast_uncertain_last_checked_at=NULL, broadcast_uncertain_retry_count=0
+            WHERE trade_no=?",
+        )
+        .bind(&fixture.tx_hash)
+        .bind(&fixture.trade_no)
+        .execute(pool.as_ref())
+        .await
+        .expect("seed expired uncertain EVM collect");
+        let queries = Arc::new(AtomicUsize::new(0));
+        let guard = super::adapters::install_evm_recover_probe(
+            &fixture.tx_hash,
+            missing_receipt,
+            proof,
+            queries.clone(),
+            self.conflict_count.clone(),
+        );
+        self.query_count.replace(Some(queries));
+        self.adapter_guard.replace(Some(guard));
+    }
+
+    pub(crate) async fn then_evm_recovery_facts(
+        &self,
+        fixture: &CollectRecoveryFixture,
+        conflict: bool,
+        confirmed: bool,
+    ) {
+        let pool = self.collect_pool().await;
+        let row = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &fixture.trade_no)
+            .await
+            .expect("read recovered EVM collect");
+        assert_eq!(row.tx_hash.as_deref(), Some(fixture.tx_hash.as_str()));
+        assert_eq!(row.raw_tx.as_deref(), Some("original-signed-raw"));
+        assert_eq!(row.nonce, 1);
+        assert_eq!(row.transaction_time.is_some(), confirmed);
+        assert_eq!(row.err_code.is_some(), conflict);
+        assert!(row.finished_at.is_none());
+        assert!(row.tx_exec_receipt_uploaded_at.is_none());
+        assert_eq!(self.query_count.borrow().as_ref().unwrap().load(Ordering::Relaxed), 1);
+        assert_eq!(self.conflict_count.load(Ordering::Relaxed), usize::from(!confirmed));
+        let receipt = ApiCollectRepo::scan_need_tx_exec_receipt_upload(&pool, 10_000)
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.trade_no == fixture.trade_no);
+        assert_eq!(receipt, conflict || confirmed);
+        if conflict {
+            assert_eq!(row.status, ApiCollectStatus::SendingTxFailed);
+            assert!(row.err_msg.as_deref().unwrap().contains(&format!("0x{}", "22".repeat(32))));
+            assert!(
+                !ApiCollectRepo::scan_need_recover(&pool, 10_000)
+                    .await
+                    .unwrap()
+                    .iter()
+                    .any(|r| r.trade_no == fixture.trade_no)
+            );
+            assert!(
+                !ApiCollectRepo::scan_can_broadcast(&pool, 10_000)
+                    .await
+                    .unwrap()
+                    .iter()
+                    .any(|r| r.trade_no == fixture.trade_no)
+            );
+        } else if !confirmed {
+            assert_eq!(row.status, ApiCollectStatus::SendingTx);
+            assert!(row.err_msg.is_none());
+            assert!(row.broadcast_uncertain_retry_count > 0);
         }
     }
 

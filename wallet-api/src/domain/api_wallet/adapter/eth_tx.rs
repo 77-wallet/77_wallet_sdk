@@ -1,3 +1,6 @@
+#[path = "eth_nonce_conflict.rs"]
+mod nonce_conflict;
+
 use crate::{
     context::Context,
     domain::{
@@ -421,6 +424,38 @@ impl Tx for EthTx {
 
     async fn query_tx_res(&self, hash: &str) -> Result<Option<QueryTransactionResult>, Error> {
         self.chain.query_tx_res(hash).await
+    }
+
+    async fn finalized_nonce_conflict(
+        &self,
+        chain_code: &str,
+        address: &str,
+        nonce: i32,
+        original_hash: &str,
+    ) -> Result<
+        Option<wallet_database::repositories::api_wallet::collect::FinalizedCollectNonceConflict>,
+        ServiceError,
+    > {
+        let client = RpcClient::new(
+            &self.rpc_url_for_log,
+            self.rpc_header_for_query.clone(),
+            Some(std::time::Duration::from_secs(TIME_OUT)),
+        )?;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(TIME_OUT),
+            nonce_conflict::probe(chain_code, address, nonce, original_hash, |method, params| {
+                let client = &client;
+                async move {
+                    Ok(client
+                        .invoke_request::<_, Value>(
+                            JsonRpcParams::default().method(method).params(params),
+                        )
+                        .await?)
+                }
+            }),
+        )
+        .await
+        .map_err(|_| ServiceError::Timeout)?
     }
 
     async fn query_tx_seen_on_node(&self, hash: &str) -> Result<bool, ServiceError> {

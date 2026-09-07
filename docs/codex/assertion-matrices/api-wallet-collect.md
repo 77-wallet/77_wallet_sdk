@@ -1585,3 +1585,59 @@ scanner entrypoints.
   nothing and allocation never invokes transfer. Concurrent callers reserve distinct nonces.
 - Scope: new EVM collect builds only. Existing raw/hash recovery remains unchanged;
   missing receipt plus consumed pending nonce is not proof of chain failure.
+
+## Finalized conflicting nonce: conditional database fact (batch 2a)
+
+- Entrypoint: `cargo test -p wallet-database collect_nonce_conflict`.
+- Component tests use temporary SQLite and the production repository/DAO.
+- `collect_nonce_conflict_records_failure_without_replacing_transaction`:
+  persist original hash/raw/nonce and finalized conflicting hash/block evidence;
+  error enables receipt upload but excludes build, broadcast and recovery scans.
+  No chain timestamp or finished timestamp is invented. Duplicate calls affect zero rows.
+- `collect_nonce_conflict_cannot_overwrite_advanced_or_replaced_order`: confirmation,
+  receipt-upload, finish, prior error, terminal status, or changed hash/nonce/sender/chain
+  prevent all mutation (full row equality asserted).
+- `collect_nonce_conflict_rejects_same_hash_and_malformed_evidence`: same original
+  hash and malformed identity/finality metadata cannot become failure facts.
+- `collect_nonce_conflict_concurrent_reports_commit_once`: concurrent attempts
+  persist exactly one terminal error fact. No external calls occur in this DB API.
+- Caller must independently verify different-transaction inclusion in a finalized
+  block. Metadata validation here is not verification of blockchain finality.
+  The API worker integration below supplies independently queried finalized evidence.
+
+
+### Finalized EVM nonce conflict recovery (API batch 2b)
+
+- `collect_recover_finalized_nonce_conflict_enters_failure_receipt_without_resend`:
+  expired uncertain EVM collect + advanced nonce + different finalized transaction
+  enters failure receipt scan; original raw/hash/nonce remain intact, no fabricated
+  confirmation/finish/upload, and broadcast/recover scans exclude the failed row.
+- `collect_recover_missing_or_unavailable_finalized_proof_preserves_original`:
+  missing proof or RPC timeout leaves status/error/identity unchanged, records an
+  observation retry, and does not enqueue a failure receipt or send a transaction.
+- `collect_recover_confirmed_original_never_checks_nonce_conflict`: confirmed
+  original follows normal receipt recovery and performs no conflict lookup.
+- Adapter `eth_tx::nonce_conflict::tests`: a historical nonce search only locates
+  the candidate block. Different hash + exact sender/nonce + block inclusion + a
+  stable finalized anchor are required; pending-only progress, original inclusion,
+  malformed/missing/mismatched results and inconsistent anchors emit no proof.
+  RPC errors remain observation errors. Whole probe has a 30-second timeout and
+  at most 64 historical state queries. Providers without finalized/historical or
+  EIP-1898 state support leave the collect uncertain for subsequent recovery.
+- All tests use fake RPC/chain boundaries and temporary local databases; no live
+  transaction is broadcast, rebuilt, or retried by conflict recovery.
+
+### Recovery confirmation hash backfill (database batch 2c)
+
+- `collect_recover_hash_completes_missing_or_matching_identity_once`: NULL, empty,
+  space-only and exact matching stored hashes accept a nonblank confirmed hash;
+  chain time and receipt eligibility are persisted, raw/nonce preserved, uncertain
+  observations cleared. Duplicate confirmation leaves the full row unchanged.
+- `collect_recover_hash_preserves_replaced_or_confirmed_rows`: different nonempty
+  hashes and already confirmed rows reject the update with full-row equality.
+- `collect_recover_hash_rejects_blank_confirmation_identity`: empty/space-only
+  incoming hashes cannot create confirmation facts or mutate the row.
+- The existing API `collect_recover_backfills_missing_tx_hash_before_receipt_upload`
+  regression remains enabled and validates worker recovery through receipt scanning.
+- Validation: all 3 database regressions and all 7 API `collect_recovery` cases
+  pass offline, with no skipped backfill case. The batch 2b limitation is resolved.

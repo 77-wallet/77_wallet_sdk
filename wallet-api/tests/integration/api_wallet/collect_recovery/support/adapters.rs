@@ -29,6 +29,10 @@ struct CollectTronRecoverProbeAdapter {
     resource_consume: String,
     transaction_time_ms: u128,
     block_height: u128,
+    missing_receipt: bool,
+    chain_nonce: u64,
+    conflict_response: Option<bool>,
+    conflict_count: Arc<AtomicUsize>,
 }
 
 #[async_trait::async_trait]
@@ -52,7 +56,7 @@ impl Tx for CollectTronRecoverProbeAdapter {
     }
 
     async fn nonce(&self, _addr: &str) -> Result<u64, wallet_api::error::service::ServiceError> {
-        Ok(0)
+        Ok(self.chain_nonce)
     }
 
     async fn block_num(&self) -> Result<u64, wallet_chain_interact::Error> {
@@ -68,6 +72,9 @@ impl Tx for CollectTronRecoverProbeAdapter {
             hook();
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
+        if self.missing_receipt {
+            return Ok(None);
+        }
         Ok(Some(QueryTransactionResult::new(
             self.tx_hash.clone(),
             self.transaction_fee,
@@ -76,6 +83,33 @@ impl Tx for CollectTronRecoverProbeAdapter {
             2,
             self.block_height,
         )))
+    }
+
+    async fn finalized_nonce_conflict(
+        &self,
+        chain_code: &str,
+        address: &str,
+        nonce: i32,
+        _original_hash: &str,
+    ) -> Result<
+        Option<wallet_database::repositories::api_wallet::collect::FinalizedCollectNonceConflict>,
+        wallet_api::error::service::ServiceError,
+    > {
+        self.conflict_count.fetch_add(1, Ordering::Relaxed);
+        match self.conflict_response {
+            None => Err(wallet_api::error::service::ServiceError::Timeout),
+            Some(false) => Ok(None),
+            Some(true) => Ok(Some(
+                wallet_database::repositories::api_wallet::collect::FinalizedCollectNonceConflict {
+                    chain_code: chain_code.to_owned(),
+                    from_addr: address.to_owned(),
+                    nonce,
+                    conflicting_tx_hash: format!("0x{}", "22".repeat(32)),
+                    block_hash: format!("0x{}", "aa".repeat(32)),
+                    block_number: 99,
+                },
+            )),
+        }
     }
 
     async fn token_symbol(&self, _token: &str) -> Result<String, wallet_chain_interact::Error> {
@@ -168,6 +202,10 @@ pub(crate) fn install_collect_tron_recover_probe_adapter(
         resource_consume: resource_consume.to_string(),
         transaction_time_ms,
         block_height,
+        missing_receipt: false,
+        chain_nonce: 0,
+        conflict_response: Some(false),
+        conflict_count: Arc::new(AtomicUsize::new(0)),
     });
     let tx_adapter: Arc<dyn Tx + Send + Sync> = adapter;
     set_test_transaction_adapter_override(&chain_code, tx_adapter);
@@ -188,4 +226,30 @@ pub(crate) fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
     let bill = BillResourceConsume::new_tron(0, 0);
     serde_json::to_string(&RawTx::Tron(raw, bill, "0".to_string()))
         .expect("serialize expired tron raw tx")
+}
+
+// Configurable chain boundary shared by finalized conflict recovery scenarios.
+pub(crate) fn install_evm_recover_probe(
+    tx_hash: &str,
+    missing_receipt: bool,
+    conflict_response: Option<bool>,
+    query_count: Arc<AtomicUsize>,
+    conflict_count: Arc<AtomicUsize>,
+) -> TronRecoverProbeGuard {
+    let chain_code = "eth".to_owned();
+    let adapter = Arc::new(CollectTronRecoverProbeAdapter {
+        query_count,
+        query_hook: None,
+        tx_hash: tx_hash.to_owned(),
+        transaction_fee: 0.0001,
+        resource_consume: "{}".to_owned(),
+        transaction_time_ms: 1_700_000_000_000,
+        block_height: 99,
+        missing_receipt,
+        chain_nonce: 2,
+        conflict_response,
+        conflict_count,
+    });
+    set_test_transaction_adapter_override(&chain_code, adapter);
+    TronRecoverProbeGuard { chain_code }
 }

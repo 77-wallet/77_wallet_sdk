@@ -24,6 +24,19 @@ use crate::{
     },
 };
 
+/// A different transaction with the same sender/nonce in a finalized EVM block.
+/// The caller must verify inclusion and finality through chain RPC before calling
+/// `record_finalized_nonce_conflict`. A pending nonce is NOT this evidence.
+#[derive(Debug, serde::Serialize)]
+pub struct FinalizedCollectNonceConflict {
+    pub chain_code: String,
+    pub from_addr: String,
+    pub nonce: i32,
+    pub conflicting_tx_hash: String,
+    pub block_hash: String,
+    pub block_number: u64,
+}
+
 pub struct ApiCollectRepo;
 
 impl ApiCollectRepo {
@@ -599,6 +612,49 @@ impl ApiCollectRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_broadcast_uncertain_attempt(pool.write_ref(), trade_no).await
+    }
+
+    /// Record a verified conflict only while the original transaction is unresolved.
+    /// Returns zero if another worker advanced/replaced the order. Never rebuilds
+    /// or changes transaction identity; existing receipt-upload scanning reports it.
+    pub async fn record_finalized_nonce_conflict(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        expected_tx_hash: &str,
+        evidence: &FinalizedCollectNonceConflict,
+    ) -> Result<u64, crate::Error> {
+        let is_hex = |value: &str, len: usize| {
+            value.len() == len
+                && value.starts_with("0x")
+                && value[2..].bytes().all(|b| b.is_ascii_hexdigit())
+        };
+        if !matches!(evidence.chain_code.as_str(), "eth" | "bnb")
+            || evidence.nonce < 0
+            || evidence.block_number == 0
+            || !is_hex(&evidence.from_addr, 42)
+            || !is_hex(expected_tx_hash, 66)
+            || !is_hex(&evidence.conflicting_tx_hash, 66)
+            || !is_hex(&evidence.block_hash, 66)
+            || expected_tx_hash.eq_ignore_ascii_case(&evidence.conflicting_tx_hash)
+        {
+            return Err(crate::Error::Other(
+                "Invalid finalized collect nonce conflict evidence".into(),
+            ));
+        }
+        let evidence_json =
+            serde_json::to_string(evidence).map_err(|e| crate::Error::Other(e.to_string()))?;
+        let message =
+            format!("EVM nonce consumed by another finalized transaction: {evidence_json}");
+        ApiCollectDao::record_finalized_nonce_conflict(
+            pool.write_ref(),
+            trade_no,
+            expected_tx_hash,
+            &evidence.chain_code,
+            &evidence.from_addr,
+            evidence.nonce,
+            &message,
+        )
+        .await
     }
 
     /// 标记已执行不确定态超时 reconcile（每个生命周期最多一次）
@@ -1624,3 +1680,11 @@ mod tests {
         assert!(still_released.resource_gate_released_at.is_some());
     }
 }
+
+#[cfg(test)]
+#[path = "collect_nonce_conflict_tests.rs"]
+mod collect_nonce_conflict_tests;
+
+#[cfg(test)]
+#[path = "collect_recover_hash_tests.rs"]
+mod collect_recover_hash_tests;

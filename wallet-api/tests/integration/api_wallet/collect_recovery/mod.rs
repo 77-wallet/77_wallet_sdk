@@ -70,3 +70,50 @@ async fn collect_scanner_recovers_broadcast_visible_pending_result() {
     db.then_scanner_emits_recover_only(labels);
     db.then_recoverable_row_stays_pending(&fixture).await;
 }
+
+#[tokio::test]
+#[serial]
+async fn collect_recover_finalized_nonce_conflict_enters_failure_receipt_without_resend() {
+    let scenario = ShadowCollectRecoveryScenario::new().await;
+    let fixture = CollectRecoveryFixture {
+        trade_no: "evm-finalized-conflict".to_owned(),
+        tx_hash: format!("0x{}", "11".repeat(32)),
+    };
+    scenario.given_evm_uncertain_collect(&fixture, true, Some(true)).await;
+
+    scenario.when().recover_runs(&fixture).await;
+
+    scenario.then_evm_recovery_facts(&fixture, true, false).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_recover_missing_or_unavailable_finalized_proof_preserves_original() {
+    for proof in [Some(false), None] {
+        let scenario = ShadowCollectRecoveryScenario::new().await;
+        let fixture = CollectRecoveryFixture {
+            trade_no: format!("evm-no-proof-{proof:?}"),
+            tx_hash: format!("0x{}", "11".repeat(32)),
+        };
+        scenario.given_evm_uncertain_collect(&fixture, true, proof).await;
+
+        scenario.when().recover_runs(&fixture).await;
+
+        scenario.then_evm_recovery_facts(&fixture, false, false).await;
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_recover_confirmed_original_never_checks_nonce_conflict() {
+    let scenario = ShadowCollectRecoveryScenario::new().await;
+    let fixture = CollectRecoveryFixture {
+        trade_no: "evm-confirmed-original".to_owned(),
+        tx_hash: format!("0x{}", "11".repeat(32)),
+    };
+    scenario.given_evm_uncertain_collect(&fixture, false, Some(true)).await;
+
+    scenario.when().recover_runs(&fixture).await;
+
+    scenario.then_evm_recovery_facts(&fixture, false, true).await;
+}
