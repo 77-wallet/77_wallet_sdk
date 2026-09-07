@@ -320,3 +320,11 @@ impl TransferNonceScenario {
         }
     }
 }
+
+impl TransferNonceScenario {
+    pub(crate) async fn then_transfer_nonces_and_floor_are(&self, expected: &[u64], floor: i64) {
+        assert_eq!(self.adapter.recorded_nonces(), expected);
+        let address = self.from_addr.borrow().clone();
+        assert_eq!(load_bnb_nonce_floor(self.env, &address).await.unwrap(), floor);
+    }
+}

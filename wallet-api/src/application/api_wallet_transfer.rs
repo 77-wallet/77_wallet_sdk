@@ -123,7 +123,7 @@ impl ApiTransferApplication {
 
     async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
         let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-        let nonce = nonce_engine.allocate_nonce(from_addr, chain_code).await?;
+        let nonce = nonce_engine.allocate_nonce_synced(from_addr, chain_code).await?;
         Ok(nonce as i64)
     }
 

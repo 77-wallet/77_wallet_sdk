@@ -206,3 +206,43 @@ async fn nonce_alignment_frozen_address_does_not_query_or_mutate() -> anyhow::Re
     scenario.then_nonce_floor_and_queries_are(0, 0).await;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_nonce_syncs_external_chain_progress() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(9));
+
+    let first = scenario.when().transfer_starts().await??;
+    scenario.given_chain_next_nonce(Some(15));
+    let second = scenario.when().transfer_starts().await??;
+
+    assert_eq!(first, format!("0x{:064x}", 9));
+    assert_eq!(second, format!("0x{:064x}", 15));
+    scenario.then_transfer_nonces_and_floor_are(&[9, 15], 15).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_nonce_rpc_failure_recovers_without_sending() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(None);
+
+    let result = scenario.when().transfer_starts().await?;
+
+    assert!(result.unwrap_err().to_string().contains("simulated nonce RPC failure"));
+    scenario.then_nonce_floor_and_queries_are(0, 1).await;
+
+    scenario.given_chain_next_nonce(Some(9));
+    let hash = scenario.when().transfer_starts().await??;
+    assert_eq!(hash, format!("0x{:064x}", 9));
+    scenario.then_transfer_nonces_and_floor_are(&[9], 9).await;
+    Ok(())
+}

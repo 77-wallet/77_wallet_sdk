@@ -91,3 +91,17 @@ scanner entrypoints.
 - All cases use the existing fake transaction adapter and real nonce repository;
   assert persisted floor and RPC count. Signed-transaction recovery and automatic
   gap filling are not claimed by these allocator tests.
+
+## Ordinary EVM transfer chain-aware allocation (batch 2a)
+
+The ordinary ETH/BNB transfer entrypoint now queries chain next nonce before
+atomic allocation, within its existing per-address transfer gate.
+- `ordinary_transfer_nonce_syncs_external_chain_progress`: with local last=0,
+  real transfer orchestration passes nonce 9 then 15 to the fake chain sender as
+  external chain state advances; verifies returned hashes, sender calls and DB floor.
+- `ordinary_transfer_nonce_rpc_failure_recovers_without_sending`: nonce RPC error
+  leaves the floor unchanged and sends nothing; a later successful observation
+  permits the same transfer path to send with nonce 9, proving the gate releases.
+- Existing same-address serialization and post-allocation transfer-failure tests
+  remain enabled. This batch does not change withdrawal/collect-fee entrypoints,
+  address normalization, replacement policy or reservation release semantics.
