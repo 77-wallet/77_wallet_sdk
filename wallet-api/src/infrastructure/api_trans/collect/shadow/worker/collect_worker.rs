@@ -2502,6 +2502,16 @@ impl ShadowCollectWorker {
                                         &evidence,
                                     )
                                     .await?;
+                                    info!(
+                                        observability_event = "collect_finalized_nonce_conflict",
+                                        trade_no = %refreshed.trade_no,
+                                        from_addr = %refreshed.from_addr,
+                                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                                        conflicting_tx_hash = %evidence.conflicting_tx_hash,
+                                        block_number = evidence.block_number,
+                                        nonce, rows,
+                                        "Finalized nonce conflict persistence completed"
+                                    );
                                     if rows > 0 {
                                         self.advancer.try_advance(&refreshed.trade_no).await;
                                     }
@@ -2509,7 +2519,11 @@ impl ShadowCollectWorker {
                                 }
                                 Ok(None) => {}
                                 Err(err) => warn!(
-                                    trade_no = %refreshed.trade_no, error = %err,
+                                    observability_event = "collect_nonce_conflict_probe_unavailable",
+                                    trade_no = %refreshed.trade_no,
+                                    from_addr = %refreshed.from_addr,
+                                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                                    nonce, error = %err,
                                     "Finalized nonce conflict probe unavailable; preserve original transaction"
                                 ),
                             }
@@ -2520,6 +2534,8 @@ impl ShadowCollectWorker {
                             chain_nonce = %chain_nonce,
                             order_nonce = %local_nonce_for_log,
                             uncertain_duration_sec = elapsed_secs,
+                            observability_event = "collect_nonce_conflict_unresolved",
+                            from_addr = %refreshed.from_addr,
                             decision = "preserve_consumed_nonce",
                             source = "shadow_worker_v2",
                             "EVM uncertain nonce is no longer safely rebroadcastable; keep original transaction for recovery"

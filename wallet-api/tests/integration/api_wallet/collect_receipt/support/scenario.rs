@@ -28,6 +28,7 @@ use super::{
 pub(crate) struct CollectReceiptScenario {
     env: &'static WorkerTestEnv,
     collect_pool: ApiTransactionDbPool,
+    ctx: &'static wallet_api::Context,
 }
 
 impl CollectReceiptScenario {
@@ -35,9 +36,138 @@ impl CollectReceiptScenario {
         let env = ensure_worker_env().await;
         env.recorder.reset();
 
-        let collect_pool = open_collect_pool(env).await;
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../target/collect-receipt")
+            .join(format!("{}-{}", std::process::id(), uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let dirs = wallet_api::dirs::Dirs::new(root.to_str().unwrap()).unwrap();
+        let config = wallet_api::config::Config::new(&format!(
+            r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "{url}"
+  test_url: "{url}"
+  prod_url: "{url}"
+aggregate_api:
+  dev_url: "{url}"
+  test_url: "{url}"
+  prod_url: "{url}"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#,
+            url = env.backend_url
+        ))
+        .unwrap();
+        let ctx = Box::leak(Box::new(
+            wallet_api::Context::new_without_handles_for_test(dirs, config).await.unwrap(),
+        ));
+        let collect_pool = SqliteContext::new(
+            &ctx.get_global_dirs().db_dir.to_string_lossy(),
+            Some("api_transaction.db"),
+        )
+        .await
+        .unwrap()
+        .into_transaction_db_pool()
+        .unwrap();
+        Self { env, collect_pool, ctx }
+    }
 
-        Self { env, collect_pool }
+    pub(crate) async fn given_finalized_conflict(&self, fixture: &CollectReceiptFixture) {
+        use wallet_database::repositories::api_wallet::collect::FinalizedCollectNonceConflict;
+        insert_collect(
+            &self.collect_pool,
+            &fixture.trade_no,
+            &fixture.from_addr,
+            &fixture.receipt_to_addr,
+            ApiCollectStatus::SendingTx,
+        )
+        .await;
+        sqlx::query(
+            "UPDATE api_collect SET chain_code='eth', nonce=1, raw_tx='original-raw',
+            tx_hash=?, order_ack_sent_at=datetime('now'), last_broadcast_at=datetime('now'),
+            transaction_time=NULL WHERE trade_no=?",
+        )
+        .bind(&fixture.tx_hash)
+        .bind(&fixture.trade_no)
+        .execute(self.collect_pool.as_ref())
+        .await
+        .unwrap();
+        let evidence = FinalizedCollectNonceConflict {
+            chain_code: "eth".into(),
+            from_addr: fixture.from_addr.trim().into(),
+            nonce: 1,
+            conflicting_tx_hash: format!("0x{}", "22".repeat(32)),
+            block_hash: format!("0x{}", "aa".repeat(32)),
+            block_number: 99,
+        };
+        assert_eq!(
+            ApiCollectRepo::record_finalized_nonce_conflict(
+                &self.collect_pool,
+                &fixture.trade_no,
+                &fixture.tx_hash,
+                &evidence
+            )
+            .await
+            .unwrap(),
+            1
+        );
+    }
+
+    pub(crate) fn given_backend_rejects_receipt(&self) {
+        self.env.recorder.fail_next_api_backend_call(500, "temporary backend failure");
+    }
+
+    pub(crate) async fn when_receipt_upload_fails(&self, fixture: &CollectReceiptFixture) {
+        assert!(
+            upload_collect_tx_exec_receipt_via_worker(self.ctx, &fixture.trade_no).await.is_err()
+        );
+    }
+
+    pub(crate) async fn then_conflict_receipt(
+        &self,
+        fixture: &CollectReceiptFixture,
+        uploaded: bool,
+        calls: usize,
+    ) {
+        let row =
+            ApiCollectRepo::get_api_collect_by_trade_no(&self.collect_pool, &fixture.trade_no)
+                .await
+                .unwrap();
+        assert_eq!(row.tx_hash.as_deref(), Some(fixture.tx_hash.as_str()));
+        assert_eq!(row.raw_tx.as_deref(), Some("original-raw"));
+        assert_eq!(row.nonce, 1);
+        assert!(row.transaction_time.is_none());
+        assert!(row.err_code.is_some());
+        assert_eq!(row.tx_exec_receipt_uploaded_at.is_some(), uploaded);
+        assert_eq!(row.finished_at.is_some(), uploaded);
+        let requests = self.env.recorder.snapshot();
+        let receipts: Vec<_> = requests
+            .iter()
+            .filter(|r| r.path.contains("awallet/aw/trans/executeComplete"))
+            .collect();
+        assert_eq!(receipts.len(), calls);
+        for receipt in receipts {
+            let payload = decrypt_captured_api_backend_body(&receipt.body);
+            assert_eq!(payload["tradeNo"], fixture.trade_no);
+            assert_eq!(payload["hash"], fixture.tx_hash);
+            assert_eq!(payload["status"], "FAIL");
+            assert!(
+                payload["remark"].as_str().unwrap().contains(&format!("0x{}", "22".repeat(32)))
+            );
+        }
+        let needs_upload =
+            ApiCollectRepo::scan_need_tx_exec_receipt_upload(&self.collect_pool, 10000)
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.trade_no == fixture.trade_no);
+        assert_eq!(needs_upload, !uploaded);
     }
 
     fn seed(&self) -> SeedRole<'_, Self> {
@@ -157,7 +287,7 @@ pub(crate) trait CollectReceiptWhen {
 #[async_trait::async_trait(?Send)]
 impl CollectReceiptWhen for WhenRole<'_, CollectReceiptScenario> {
     async fn worker_uploads_receipt(&self, fixture: &CollectReceiptFixture) {
-        upload_collect_tx_exec_receipt_via_worker(self.scenario().env.ctx(), &fixture.trade_no)
+        upload_collect_tx_exec_receipt_via_worker(self.scenario().ctx, &fixture.trade_no)
             .await
             .expect("upload tx exec receipt should succeed");
     }
@@ -165,14 +295,14 @@ impl CollectReceiptWhen for WhenRole<'_, CollectReceiptScenario> {
     async fn direct_backend_uploads_receipt(&self, fixture: &CollectReceiptFixture) {
         let req = fixture.receipt_entity();
 
-        upload_collect_tx_exec_receipt_via_backend(self.scenario().env.ctx(), &req, &req.trade_no)
+        upload_collect_tx_exec_receipt_via_backend(self.scenario().ctx, &req, &req.trade_no)
             .await
             .expect("direct backend upload should succeed");
     }
 
     async fn scanner_dispatches_receipt(&self) -> Option<String> {
         scan_and_dispatch_collect_tx_exec_receipt_once(
-            self.scenario().env.ctx(),
+            self.scenario().ctx,
             self.scenario().collect_pool.clone(),
         )
         .await
@@ -323,14 +453,6 @@ impl CollectReceiptAssert for AssertRole<'_, CollectReceiptScenario> {
     ) {
         assert_eq!(dispatched_trade_no.as_deref(), Some(fixture.trade_no.as_str()));
     }
-}
-
-async fn open_collect_pool(env: &WorkerTestEnv) -> ApiTransactionDbPool {
-    let collect_pool_ctx =
-        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
-            .await
-            .expect("open api transaction sqlite");
-    collect_pool_ctx.into_transaction_db_pool().expect("transaction pool")
 }
 
 async fn current_backend_url() -> Option<String> {

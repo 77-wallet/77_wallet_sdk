@@ -1641,3 +1641,29 @@ scanner entrypoints.
   regression remains enabled and validates worker recovery through receipt scanning.
 - Validation: all 3 database regressions and all 7 API `collect_recovery` cases
   pass offline, with no skipped backfill case. The batch 2b limitation is resolved.
+
+### Production-shaped conflict and failure receipt verification (API batch 2d)
+
+- Finalized nonce probe trims surrounding sender whitespace before RPC and
+  identity validation; `finalized_inclusion_proves_different_transaction_consumed_nonce`
+  includes a padded sender matching production logs. Recovery fixtures persist
+  padded senders and return canonical evidence, exercising DB identity matching.
+- `collect_finalized_conflict_receipt_finishes_once_without_replacing_hash`: real
+  conflict fact -> worker -> mock HTTP executeComplete sends FAIL and original
+  hash with conflicting hash in remark. Upload/finish facts persist only after
+  acknowledgement, repeated worker execution sends no second receipt.
+- `collect_finalized_conflict_receipt_retries_backend_failure_before_finishing`:
+  backend rejection retains original raw/hash/nonce and failure receipt eligibility;
+  retry succeeds and ends the order without inventing chain confirmation.
+- Live verification is separate: logged production RPC returns HTTP 401 without
+  authentication; admin browser renders only its title. Neither establishes RPC
+  capability support or actual production backend/UI acceptance.
+- Recovery emits structured `collect_finalized_nonce_conflict`,
+  `collect_nonce_conflict_probe_unavailable` and `collect_nonce_conflict_unresolved`
+  events with order/address/hash/nonce context (and elapsed time for unresolved).
+  These are log signals; no production Grafana alert rule or notification route
+  has been created by this change.
+
+- Receipt scenarios use isolated databases under target/ and a test-only Context
+  without actor handles. Explicit scanner/worker execution retains strict HTTP
+  request-count assertions without racing the manager startup warm scan.

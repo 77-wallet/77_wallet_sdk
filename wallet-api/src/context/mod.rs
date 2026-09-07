@@ -124,6 +124,15 @@ fn active_backend_urls(config: &crate::config::Config) -> (String, String) {
 }
 
 impl Context {
+    /// Isolated integration context; callers explicitly drive workflow steps.
+    #[cfg(any(test, feature = "integration-tests"))]
+    pub async fn new_without_handles_for_test(
+        dirs: Dirs,
+        config: crate::config::Config,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        Self::new("collect_receipt_test", "unittest", dirs, None, config).await
+    }
+
     async fn new(
         sn: &str,
         device_type: &str,

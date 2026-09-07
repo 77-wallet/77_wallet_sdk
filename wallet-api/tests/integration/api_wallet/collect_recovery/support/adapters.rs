@@ -102,7 +102,7 @@ impl Tx for CollectTronRecoverProbeAdapter {
             Some(true) => Ok(Some(
                 wallet_database::repositories::api_wallet::collect::FinalizedCollectNonceConflict {
                     chain_code: chain_code.to_owned(),
-                    from_addr: address.to_owned(),
+                    from_addr: address.trim().to_owned(),
                     nonce,
                     conflicting_tx_hash: format!("0x{}", "22".repeat(32)),
                     block_hash: format!("0x{}", "aa".repeat(32)),

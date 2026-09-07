@@ -88,3 +88,40 @@ async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
     then.receipt_upload_is_persisted(&fixture).await;
     then.receipt_payload_uses_execution_facts(&fixture).await;
 }
+
+fn finalized_conflict_fixture(prefix: &str) -> CollectReceiptFixture {
+    let mut fixture = CollectReceiptFixture::new(prefix);
+    fixture.from_addr = format!(" 0x{} ", "ab".repeat(20));
+    fixture.tx_hash = format!("0x{}", "11".repeat(32));
+    fixture
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_finalized_conflict_receipt_finishes_once_without_replacing_hash() {
+    let scenario = CollectReceiptScenario::new().await;
+    let fixture = finalized_conflict_fixture("conflict_receipt");
+    scenario.given_finalized_conflict(&fixture).await;
+
+    scenario.when().worker_uploads_receipt(&fixture).await;
+    scenario.when().worker_uploads_receipt(&fixture).await;
+
+    scenario.then_conflict_receipt(&fixture, true, 1).await;
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_finalized_conflict_receipt_retries_backend_failure_before_finishing() {
+    let scenario = CollectReceiptScenario::new().await;
+    let fixture = finalized_conflict_fixture("conflict_receipt_retry");
+    scenario.given_finalized_conflict(&fixture).await;
+    scenario.given_backend_rejects_receipt();
+
+    scenario.when_receipt_upload_fails(&fixture).await;
+
+    scenario.then_conflict_receipt(&fixture, false, 1).await;
+
+    scenario.when().worker_uploads_receipt(&fixture).await;
+
+    scenario.then_conflict_receipt(&fixture, true, 2).await;
+}

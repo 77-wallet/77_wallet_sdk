@@ -27,6 +27,7 @@ where
     F: Fn(&'static str, Vec<Value>) -> Fut,
     Fut: Future<Output = Result<Value, ServiceError>>,
 {
+    let address = address.trim();
     if !matches!(chain_code, "eth" | "bnb")
         || nonce < 0
         || !hex(address, 20)
@@ -173,10 +174,13 @@ mod tests {
     ) -> (Result<Option<FinalizedCollectNonceConflict>, ServiceError>, usize) {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let recorded = calls.clone();
-        let result = probe("eth", ADDRESS, 1, &format!("0x{}", "11".repeat(32)), |method, params| {
+        let probe_address =
+            if mode == "padded" { format!(" {ADDRESS} ") } else { ADDRESS.to_owned() };
+        let result = probe("eth", &probe_address, 1, &format!("0x{}", "11".repeat(32)), |method, params| {
             recorded.lock().unwrap().push((method, params.clone()));
             let value = match method {
                 "eth_getTransactionCount" if params[1].is_object() => {
+                    assert_eq!(params[0], ADDRESS);
                     assert_eq!(params[1]["requireCanonical"], true);
                     json!(if mode == "pending_only" { "0x1" } else { "0x2" })
                 }
@@ -222,12 +226,15 @@ mod tests {
 
     #[tokio::test]
     async fn finalized_inclusion_proves_different_transaction_consumed_nonce() {
-        let (result, calls) = run("conflict").await;
-        let evidence = result.unwrap().unwrap();
-        assert_eq!(evidence.nonce, 1);
-        assert_eq!(evidence.block_number, 8);
-        assert_eq!(evidence.conflicting_tx_hash, format!("0x{}", "22".repeat(32)));
-        assert!(calls <= 13);
+        for mode in ["conflict", "padded"] {
+            let (result, calls) = run(mode).await;
+            let evidence = result.unwrap().unwrap();
+            assert_eq!(evidence.nonce, 1);
+            assert_eq!(evidence.block_number, 8);
+            assert_eq!(evidence.conflicting_tx_hash, format!("0x{}", "22".repeat(32)));
+            assert!(calls <= 13);
+            assert_eq!(evidence.from_addr, ADDRESS);
+        }
     }
 
     #[tokio::test]

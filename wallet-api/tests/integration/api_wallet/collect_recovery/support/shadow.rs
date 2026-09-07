@@ -88,7 +88,7 @@ impl ShadowCollectRecoveryScenario {
         seed_tron_collect(&pool, fixture).await;
         sqlx::query(
             "UPDATE api_collect SET chain_code='eth',
-            from_addr='0x08932ba7a633FdEA40Dfd68afab610340e6375BF', nonce=1,
+            from_addr=' 0x08932ba7a633FdEA40Dfd68afab610340e6375BF ', nonce=1,
             raw_tx='original-signed-raw', tx_hash=?, err_code=NULL, err_msg=NULL,
             transaction_time=NULL, finished_at=NULL, tx_exec_receipt_uploaded_at=NULL,
             last_broadcast_at=strftime('%Y-%m-%dT%H:%M:%SZ','now','-15 minutes'),
