@@ -214,3 +214,122 @@ async fn self_transfer_concurrent_identical_retries_write_one_record() {
     );
     assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "eth").await.unwrap(), 4);
 }
+
+fn receipt(success: bool) -> SelfTransferReceipt<'static> {
+    SelfTransferReceipt {
+        trade_no: "ordinary-4",
+        chain_code: "eth",
+        tx_hash: "hash-4",
+        success,
+        transaction_time: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+        block_height: "1234",
+        transaction_fee: "0.00002",
+        resource_consume: "21000",
+    }
+}
+
+#[tokio::test]
+async fn self_transfer_receipt_finishes_success_and_failure_without_nonce_reuse() {
+    for success in [true, false] {
+        let pool = setup_api_transaction_pool("self_transfer_receipt").await;
+        ApiWithdrawRepo::persist_signed_self_transfer(&pool, &signed()).await.unwrap();
+
+        assert!(
+            ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt(success)).await.unwrap()
+        );
+
+        let confirmed = row(&pool).await;
+        assert_eq!(
+            confirmed.status,
+            if success { ApiWithdrawStatus::Success } else { ApiWithdrawStatus::Failure }
+        );
+        assert_eq!(confirmed.transaction_time, Some(receipt(success).transaction_time));
+        assert_eq!(confirmed.block_height.as_deref(), Some("1234"));
+        assert_eq!(confirmed.transaction_fee, "0.00002");
+        assert_eq!(confirmed.resource_consume, "21000");
+        assert_eq!(confirmed.chain_success_at.is_some(), success);
+        assert_eq!(confirmed.chain_failed_at.is_some(), !success);
+        assert!(confirmed.finished_at.is_some());
+        assert!(confirmed.broadcast_uncertain_since_at.is_none());
+        assert!(confirmed.tx_ack_sent_at.is_none());
+        assert!(confirmed.tx_res_ack_sent_at.is_none());
+        assert!(confirmed.tx_exec_receipt_uploaded_at.is_none());
+        assert_eq!(confirmed.raw_tx.as_deref(), Some("signed-bytes-4"));
+        assert_eq!(confirmed.tx_hash.as_deref(), Some("hash-4"));
+        assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "eth").await.unwrap(), 4);
+        assert!(
+            ApiWithdrawRepo::pending_self_transfers_for_sender(&pool, "sender", "eth")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            !ApiWithdrawRepo::mark_self_transfer_accepted(&pool, "ordinary-4", "hash-4")
+                .await
+                .unwrap()
+        );
+    }
+}
+
+#[tokio::test]
+async fn self_transfer_receipt_rejects_wrong_identity_and_backend_withdrawal() {
+    let pool = setup_api_transaction_pool("self_transfer_receipt_identity").await;
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &signed()).await.unwrap();
+    let mut wrong = receipt(true);
+    wrong.tx_hash = "other-hash";
+    assert!(!ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &wrong).await.unwrap());
+    wrong = receipt(true);
+    wrong.chain_code = "bnb";
+    assert!(!ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &wrong).await.unwrap());
+    wrong = receipt(true);
+    wrong.trade_no = "other-order";
+    assert!(!ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &wrong).await.unwrap());
+    sqlx::query("UPDATE api_withdraws SET trade_type = 1").execute(pool.write_ref()).await.unwrap();
+    assert!(!ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt(true)).await.unwrap());
+    let unchanged = row(&pool).await;
+    assert!(unchanged.transaction_time.is_none());
+    assert!(unchanged.finished_at.is_none());
+    assert!(unchanged.broadcast_uncertain_since_at.is_some());
+    assert_eq!(unchanged.transaction_fee, "0.001");
+}
+
+#[tokio::test]
+async fn self_transfer_receipt_concurrent_retry_and_opposite_result_cannot_overwrite() {
+    let pool = setup_api_transaction_pool("self_transfer_receipt_retry").await;
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &signed()).await.unwrap();
+    let fact = receipt(true);
+    let (a, b) = tokio::join!(
+        ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &fact),
+        ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &fact),
+    );
+    assert_ne!(a.unwrap(), b.unwrap(), "exactly one caller records the receipt");
+    let original = row(&pool).await;
+    assert!(!ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt(false)).await.unwrap());
+    let final_row = row(&pool).await;
+    assert_eq!(final_row.status, ApiWithdrawStatus::Success);
+    assert_eq!(final_row.finished_at, original.finished_at);
+    assert_eq!(final_row.chain_success_at, original.chain_success_at);
+    assert!(final_row.chain_failed_at.is_none());
+}
+
+#[tokio::test]
+async fn self_transfer_receipt_terminal_write_failure_rolls_back_then_recovers() {
+    let pool = setup_api_transaction_pool("self_transfer_receipt_rollback").await;
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &signed()).await.unwrap();
+    sqlx::query("CREATE TRIGGER reject_finish BEFORE UPDATE OF finished_at ON api_withdraws BEGIN SELECT RAISE(ABORT, 'injected finish failure'); END")
+        .execute(pool.write_ref()).await.unwrap();
+
+    assert!(ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt(true)).await.is_err());
+
+    let unchanged = row(&pool).await;
+    assert_eq!(unchanged.status, ApiWithdrawStatus::Init);
+    assert!(unchanged.transaction_time.is_none());
+    assert!(unchanged.chain_success_at.is_none());
+    assert!(unchanged.finished_at.is_none());
+    assert!(unchanged.broadcast_uncertain_since_at.is_some());
+    assert_eq!(unchanged.transaction_fee, "0.001");
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "eth").await.unwrap(), 4);
+    sqlx::query("DROP TRIGGER reject_finish").execute(pool.write_ref()).await.unwrap();
+    assert!(ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt(true)).await.unwrap());
+    assert!(row(&pool).await.finished_at.is_some());
+}

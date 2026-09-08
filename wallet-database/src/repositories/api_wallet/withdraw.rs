@@ -34,7 +34,7 @@ use crate::{
         api_trade_type::ApiTradeType,
         api_withdraw::{
             ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
-            SignedSelfTransfer, WithdrawCreatedFact, WithdrawFailureStage,
+            SelfTransferReceipt, SignedSelfTransfer, WithdrawCreatedFact, WithdrawFailureStage,
         },
         asset_token_key::AssetTokenKey,
     },
@@ -110,6 +110,32 @@ impl ApiWithdrawRepo {
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::pending_self_transfers_for_sender(pool.read_ref(), from_addr, chain_code)
             .await
+    }
+
+    /// Persist an observed receipt and finish the ordinary lifecycle atomically.
+    /// False means identity/state did not match (including an already terminal
+    /// record). This never runs backend withdrawal status/ACK recomputation.
+    pub async fn confirm_self_transfer_receipt(
+        pool: &ApiTransactionDbPool,
+        receipt: &SelfTransferReceipt<'_>,
+    ) -> Result<bool, crate::Error> {
+        if !matches!(receipt.chain_code, "eth" | "bnb")
+            || receipt.tx_hash.is_empty()
+            || receipt.block_height.is_empty()
+            || receipt.transaction_fee.is_empty()
+        {
+            return Err(crate::Error::Other("invalid ordinary transfer receipt".into()));
+        }
+        let mut tx =
+            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        if ApiWithdrawDao::confirm_self_transfer_receipt(&mut *tx, receipt).await? == 0 {
+            return Ok(false);
+        }
+        if ApiWithdrawDao::mark_chain_finished(&mut *tx, receipt.trade_no).await? != 1 {
+            return Err(crate::Error::Other("ordinary transfer completion conflict".into()));
+        }
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(true)
     }
 
     pub async fn list_api_withdraw(

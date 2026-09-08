@@ -29,6 +29,19 @@ pub struct SignedSelfTransfer<'a> {
     pub notes: Option<&'a str>,
 }
 
+/// Receipt already observed for the exact signed ordinary EVM transaction.
+/// A missing/uncertain RPC result must never be converted into this fact.
+pub struct SelfTransferReceipt<'a> {
+    pub trade_no: &'a str,
+    pub chain_code: &'a str,
+    pub tx_hash: &'a str,
+    pub success: bool,
+    pub transaction_time: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+    pub block_height: &'a str,
+    pub transaction_fee: &'a str,
+    pub resource_consume: &'a str,
+}
+
 #[derive(Debug)]
 pub struct WithdrawCreatedFact {
     pub uid: Option<String>,

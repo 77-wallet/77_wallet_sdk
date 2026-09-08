@@ -7,7 +7,7 @@ use crate::{
         api_trade_type::ApiTradeType,
         api_withdraw::{
             ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
-            SignedSelfTransfer, WithdrawCreatedFact, WithdrawFailureStage,
+            SelfTransferReceipt, SignedSelfTransfer, WithdrawCreatedFact, WithdrawFailureStage,
         },
     },
     pagination::Pagination,
@@ -111,6 +111,51 @@ impl ApiWithdrawDao {
         .fetch_all(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// Record a receipt only for the same signed SelfWithdraw. The repository
+    /// completes the terminal fact in the same transaction via mark_chain_finished.
+    pub async fn confirm_self_transfer_receipt<'a, E>(
+        exec: E,
+        receipt: &SelfTransferReceipt<'_>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let status =
+            if receipt.success { ApiWithdrawStatus::Success } else { ApiWithdrawStatus::Failure };
+        let rows = sqlx::query(
+            r#"UPDATE api_withdraws SET
+            status = ?, transaction_time = ?, block_height = ?,
+            transaction_fee = ?, resource_consume = ?,
+            chain_success_at = CASE WHEN ? THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE NULL END,
+            chain_failed_at = CASE WHEN ? THEN NULL ELSE strftime('%Y-%m-%dT%H:%M:%SZ','now') END,
+            broadcast_uncertain_since_at = NULL,
+            broadcast_uncertain_retry_count = 0,
+            broadcast_uncertain_last_checked_at = NULL,
+            broadcast_uncertain_reconciled_at = NULL,
+            broadcast_uncertain_rebroadcast_count = 0,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+            WHERE trade_no = ? AND tx_hash = ? AND chain_code = ?
+              AND trade_type = 4 AND chain_code IN ('eth','bnb')
+              AND raw_tx IS NOT NULL AND raw_tx != ''
+              AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
+              AND chain_success_at IS NULL AND chain_failed_at IS NULL"#,
+        )
+        .bind(status)
+        .bind(receipt.transaction_time)
+        .bind(receipt.block_height)
+        .bind(receipt.transaction_fee)
+        .bind(receipt.resource_consume)
+        .bind(receipt.success)
+        .bind(receipt.success)
+        .bind(receipt.trade_no)
+        .bind(receipt.tx_hash)
+        .bind(receipt.chain_code)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(rows.rows_affected())
     }
 
     pub async fn all_api_withdraw<'a, E>(

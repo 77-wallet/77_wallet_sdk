@@ -197,3 +197,31 @@ No automatic rebroadcast or recovery worker yet. A failure before signed facts
 are persisted can still leave a reserved nonce with no recoverable raw, and must
 not be auto-released. Tests use a fake BNB adapter and real SQLite; full process
 restart and real ETH/BNB RPC acceptance remain separate acceptance work.
+
+
+## SelfWithdraw observed receipt completion (database batch 4)
+
+`SelfTransferReceipt` belongs to entities; `ApiWithdrawDao` applies the guarded
+receipt update; `ApiWithdrawRepo::confirm_self_transfer_receipt` wraps receipt
+and existing `mark_chain_finished` writes in one transaction. No backend status
+recomputation or ACK is performed. Only signed SelfWithdraw ETH/BNB rows matching
+trade number, hash and chain with no prior receipt/terminal/error fact qualify.
+The caller must supply an actually observed receipt; absence/RPC failure is not
+an input to this method.
+
+SQLite component cases in `repositories/api_wallet/withdraw/self_transfer_tests.rs`:
+- `self_transfer_receipt_finishes_success_and_failure_without_nonce_reuse`:
+  receipt success/failure records the matching terminal flag, block/time and
+  actual fee, clears uncertainty and leaves raw/hash/nonce intact. Pending lookup
+  no longer includes the record; backend ACK fields remain empty.
+- `self_transfer_receipt_rejects_wrong_identity_and_backend_withdrawal`:
+  mismatched hash, chain, trade number and backend trade type cannot be updated.
+- `self_transfer_receipt_concurrent_retry_and_opposite_result_cannot_overwrite`:
+  one concurrent caller writes; duplicate/opposite results preserve terminal facts.
+- `self_transfer_receipt_terminal_write_failure_rolls_back_then_recovers`:
+  injected finish-write failure rolls back receipt/status/fee changes. Removing
+  the failure permits retry without losing signed data or rewinding the nonce.
+
+Validation: `cargo test -p wallet-database --lib self_transfer` (10 passing cases).
+This batch supplies persistence only. API query/recovery integration, receipt
+observation policy and identical-raw rebroadcast remain subsequent work.
