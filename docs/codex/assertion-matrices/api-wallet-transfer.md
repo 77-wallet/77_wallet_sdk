@@ -128,3 +128,41 @@ Offline fake chain and real SQLite; no production transaction or migration.
 A stale node may conservatively block a legitimate next transfer. Signed raw/hash
 persistence, restart recovery, identical-raw retry and atomic cross-flow allocation
 are separate batches. This change does not repair an existing nonce gap.
+
+
+## SelfWithdraw durable facts (2026-09-08, database batch 2)
+
+Component entrypoint: `wallet-database/src/repositories/api_wallet/withdraw/self_transfer_tests.rs`.
+The test module is attached to `ApiWithdrawRepo`. `SignedSelfTransfer` lives in
+`entities/api_withdraw.rs`; SQL lives in `ApiWithdrawDao`;
+`persist_signed_self_transfer`, `mark_self_transfer_accepted` and
+`pending_self_transfers_for_sender` are repository entrypoints. Transaction
+coordination and identity validation remain in the repository. These methods
+do not invoke the backend withdrawal status recomputation. There is no separate
+`self_transfer` production module.
+Real temporary SQLite with migrations, no backend or RPC calls.
+
+- `self_transfer_survives_reopen_and_acceptance_is_not_confirmation`: signed
+  nonce/hash/raw survive pool close and reopen; pre-send uncertainty exists.
+  Backend withdrawal broadcast/recovery scans exclude the ordinary record.
+  Only matching-hash acceptance clears uncertainty, without confirmation or ACK.
+  Repeating persistence after acceptance does not restore uncertainty.
+- `self_transfer_conflicting_retry_preserves_original_and_nonce_floor`: changed
+  bytes/nonce under the same trade number are rejected. Identical retry preserves
+  a higher nonce floor instead of rewinding it.
+- `self_transfer_nonce_write_failure_rolls_back_signed_record`: failure injected
+  after the record insert rolls back the complete transaction and leaves the old
+  counter intact. A later retry succeeds after the failure is removed.
+- `self_transfer_isolates_sender_chain_trade_type_and_terminal_rows`: pending
+  lookup and acceptance cannot advance backend withdrawals or terminal records;
+  sender and chain filters isolate ordinary work.
+- `self_transfer_bnb_zero_nonce_and_invalid_input`: BNB nonce zero is valid;
+  non-EVM/negative nonce/empty raw are rejected without reserving a nonce.
+- `self_transfer_concurrent_identical_retries_write_one_record`: duplicate
+  concurrent persistence creates one durable intent and does not increment nonce.
+
+Command: `cargo test -p wallet-database --lib self_transfer`.
+No migration and no API wiring in this batch. The caller must provide a stable
+trade number and validated signed payload before broadcast. The early uncertainty
+marker is conservative: it does not assert that an RPC was sent. Pending lookup
+returns signed, unfinished records; reconciliation policy remains a later batch.

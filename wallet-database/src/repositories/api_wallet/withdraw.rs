@@ -26,7 +26,7 @@
 
 use crate::{
     ApiTransactionDbPool,
-    dao::api_withdraw::ApiWithdrawDao,
+    dao::{api_nonce::ApiNonceDao, api_withdraw::ApiWithdrawDao},
     entities::{
         api_resource_gate::{
             ApiResourceBlockReason, ApiResourceDependencyType, ApiResourceGateResult,
@@ -34,7 +34,7 @@ use crate::{
         api_trade_type::ApiTradeType,
         api_withdraw::{
             ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
-            WithdrawCreatedFact, WithdrawFailureStage,
+            SignedSelfTransfer, WithdrawCreatedFact, WithdrawFailureStage,
         },
         asset_token_key::AssetTokenKey,
     },
@@ -44,6 +44,74 @@ use crate::{
 pub struct ApiWithdrawRepo;
 
 impl ApiWithdrawRepo {
+    /// Atomically save the signed intent and preserve the nonce floor. An
+    /// identical retry is a no-op; a trade number must never acquire new bytes.
+    /// Uncertainty starts before the caller's RPC, covering a crash during send.
+    pub async fn persist_signed_self_transfer(
+        pool: &ApiTransactionDbPool,
+        input: &SignedSelfTransfer<'_>,
+    ) -> Result<(), crate::Error> {
+        if !matches!(input.chain_code, "eth" | "bnb")
+            || input.nonce < 0
+            || input.trade_no.is_empty()
+            || input.tx_hash.is_empty()
+            || input.raw_tx.is_empty()
+            || input.from_addr.is_empty()
+            || input.to_addr.is_empty()
+        {
+            return Err(crate::Error::Other("invalid signed ordinary EVM transfer".into()));
+        }
+        let mut tx =
+            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        ApiWithdrawDao::insert_signed_self_transfer(&mut *tx, input).await?;
+        let row = ApiWithdrawDao::get_api_withdraw_by_trade_no(
+            &mut *tx,
+            input.trade_no,
+            ApiTradeType::SelfWithdraw,
+        )
+        .await?;
+        if row.trade_type != ApiTradeType::SelfWithdraw
+            || row.uid != input.uid
+            || row.name != input.name
+            || row.from_addr != input.from_addr
+            || row.to_addr != input.to_addr
+            || row.chain_code != input.chain_code
+            || row.token_addr != input.token_addr
+            || row.symbol != input.symbol
+            || row.value != input.value
+            || row.nonce != input.nonce
+            || row.tx_hash.as_deref() != Some(input.tx_hash)
+            || row.raw_tx.as_deref() != Some(input.raw_tx)
+            || row.transaction_fee != input.transaction_fee
+            || row.notes.as_deref() != input.notes
+        {
+            return Err(crate::Error::Other("ordinary transfer identity conflict".into()));
+        }
+        ApiNonceDao::upsert_nonce_floor(&mut *tx, input.from_addr, input.chain_code, input.nonce)
+            .await?;
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// Record node acceptance only; never infer chain confirmation or backend ACK.
+    /// False means an already accepted row or a rejected identity/state transition.
+    pub async fn mark_self_transfer_accepted(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<bool, crate::Error> {
+        ApiWithdrawDao::mark_self_transfer_accepted(pool.write_ref(), trade_no, tx_hash).await
+    }
+
+    /// Signed ordinary records still awaiting confirmation, including uncertainty.
+    pub async fn pending_self_transfers_for_sender(
+        pool: &ApiTransactionDbPool,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::pending_self_transfers_for_sender(pool.read_ref(), from_addr, chain_code)
+            .await
+    }
+
     pub async fn list_api_withdraw(
         pool: &ApiTransactionDbPool,
         uid: &str,
@@ -2378,3 +2446,7 @@ mod tests {
         assert!(still_released.resource_gate_released_at.is_some());
     }
 }
+
+#[cfg(test)]
+#[path = "withdraw/self_transfer_tests.rs"]
+mod self_transfer_tests;

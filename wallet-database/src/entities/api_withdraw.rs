@@ -11,6 +11,24 @@ use crate::{
 use serde::Deserializer;
 use std::fmt::Display;
 
+/// Signed bytes are deliberately excluded from Debug/log output.
+pub struct SignedSelfTransfer<'a> {
+    pub trade_no: &'a str,
+    pub uid: &'a str,
+    pub name: &'a str,
+    pub from_addr: &'a str,
+    pub to_addr: &'a str,
+    pub chain_code: &'a str,
+    pub token_addr: AssetTokenKey,
+    pub symbol: &'a str,
+    pub value: &'a str,
+    pub nonce: i64,
+    pub tx_hash: &'a str,
+    pub raw_tx: &'a str,
+    pub transaction_fee: &'a str,
+    pub notes: Option<&'a str>,
+}
+
 #[derive(Debug)]
 pub struct WithdrawCreatedFact {
     pub uid: Option<String>,

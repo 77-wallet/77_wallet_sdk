@@ -7,7 +7,7 @@ use crate::{
         api_trade_type::ApiTradeType,
         api_withdraw::{
             ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
-            WithdrawCreatedFact, WithdrawFailureStage,
+            SignedSelfTransfer, WithdrawCreatedFact, WithdrawFailureStage,
         },
     },
     pagination::Pagination,
@@ -23,6 +23,96 @@ pub(crate) struct ApiWithdrawDao;
 
 #[allow(dead_code)]
 impl ApiWithdrawDao {
+    /// Insert ordinary signed facts without entering the backend withdrawal flow.
+    /// The repository owns the transaction and validates any conflicting identity.
+    pub async fn insert_signed_self_transfer<'a, E>(
+        exec: E,
+        input: &SignedSelfTransfer<'_>,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query(
+            r#"INSERT INTO api_withdraws
+            (trade_no, uid, name, from_addr, to_addr, chain_code, token_addr,
+             symbol, value, nonce, tx_hash, raw_tx, transaction_fee, notes,
+             validate, trade_type, init_status, status, building_at,
+             broadcast_uncertain_since_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 4, 0, 0,
+                strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+            ON CONFLICT(trade_no) DO NOTHING"#,
+        )
+        .bind(input.trade_no)
+        .bind(input.uid)
+        .bind(input.name)
+        .bind(input.from_addr)
+        .bind(input.to_addr)
+        .bind(input.chain_code)
+        .bind(&input.token_addr)
+        .bind(input.symbol)
+        .bind(input.value)
+        .bind(input.nonce)
+        .bind(input.tx_hash)
+        .bind(input.raw_tx)
+        .bind(input.transaction_fee)
+        .bind(input.notes)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
+    }
+
+    pub async fn mark_self_transfer_accepted<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let rows = sqlx::query(
+            r#"UPDATE api_withdraws SET
+            last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+            broadcast_uncertain_since_at = NULL,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+            WHERE trade_no = ? AND tx_hash = ? AND trade_type = 4
+              AND chain_code IN ('eth','bnb') AND raw_tx IS NOT NULL
+              AND last_broadcast_at IS NULL AND transaction_time IS NULL
+              AND finished_at IS NULL AND err_code IS NULL
+              AND chain_success_at IS NULL AND chain_failed_at IS NULL"#,
+        )
+        .bind(trade_no)
+        .bind(tx_hash)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(rows.rows_affected() == 1)
+    }
+
+    pub async fn pending_self_transfers_for_sender<'a, E>(
+        exec: E,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as(
+            r#"SELECT * FROM api_withdraws WHERE from_addr = ? AND chain_code = ?
+            AND trade_type = 4 AND chain_code IN ('eth','bnb') AND raw_tx IS NOT NULL
+            AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
+            AND chain_success_at IS NULL AND chain_failed_at IS NULL
+            ORDER BY nonce, id"#,
+        )
+        .bind(from_addr)
+        .bind(chain_code)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn all_api_withdraw<'a, E>(
         exec: E,
         uid: &str,
