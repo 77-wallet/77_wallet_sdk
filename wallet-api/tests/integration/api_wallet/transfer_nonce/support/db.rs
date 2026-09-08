@@ -81,3 +81,33 @@ async fn open_api_transaction_pool(db_dir: &Path) -> ApiTransactionDbPool {
         .expect("open api transaction sqlite");
     sqlite.into_transaction_db_pool().expect("api transaction pool")
 }
+
+pub(crate) async fn pending_ordinary_transfers(
+    env: &harness::TestEnv,
+    address: &str,
+) -> anyhow::Result<Vec<wallet_database::entities::api_withdraw::ApiWithdrawEntity>> {
+    let pool = open_api_transaction_pool(&env.db_dir).await;
+    Ok(wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::pending_self_transfers_for_sender(&pool, address, "bnb").await?)
+}
+
+pub(crate) async fn reject_signed_persistence(
+    env: &harness::TestEnv,
+    address: &str,
+) -> anyhow::Result<()> {
+    let pool = open_api_transaction_pool(&env.db_dir).await;
+    let address = address.replace("'", "''");
+    sqlx::query(&format!("CREATE TRIGGER reject_signed_{} BEFORE INSERT ON api_withdraws WHEN NEW.from_addr = '{}' BEGIN SELECT RAISE(ABORT, 'simulated signed persistence failure'); END", uuid::Uuid::new_v4().simple(), address))
+        .execute(pool.write_ref()).await?;
+    Ok(())
+}
+
+pub(crate) async fn reject_acceptance_persistence(
+    env: &harness::TestEnv,
+    address: &str,
+) -> anyhow::Result<()> {
+    let pool = open_api_transaction_pool(&env.db_dir).await;
+    let address = address.replace("'", "''");
+    sqlx::query(&format!("CREATE TRIGGER reject_acceptance_{} BEFORE UPDATE OF last_broadcast_at ON api_withdraws WHEN NEW.from_addr = '{}' BEGIN SELECT RAISE(ABORT, 'simulated acceptance persistence failure'); END", uuid::Uuid::new_v4().simple(), address))
+        .execute(pool.write_ref()).await?;
+    Ok(())
+}

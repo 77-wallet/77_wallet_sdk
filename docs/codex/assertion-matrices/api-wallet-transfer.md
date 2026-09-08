@@ -166,3 +166,34 @@ No migration and no API wiring in this batch. The caller must provide a stable
 trade number and validated signed payload before broadcast. The early uncertainty
 marker is conservative: it does not assert that an RPC was sent. Pending lookup
 returns signed, unfinished records; reconciliation policy remains a later batch.
+
+
+## Ordinary EVM API durable broadcast (batch 3)
+
+The ordinary ETH/BNB entrypoint now builds signed raw, calls
+`ApiWithdrawRepo::persist_signed_self_transfer`, then broadcasts that same raw.
+It marks node acceptance only after visibility verification and matching hash.
+The existing signed builder stores the EIP-1559 maximum fee budget; this is not
+an actual receipt fee. Non-EVM transfer paths keep their existing implementation.
+
+- Existing same-address serialization case reads hash/nonce/raw/uncertainty via
+  a separately opened SQLite pool while the first fake broadcast is blocked.
+  Successful calls retain raw, clear uncertainty and set only node acceptance.
+- Existing failure/recovery and timeout cases now also assert exact durable raw
+  and hash. Chain nonce progress allows a new send without marking the earlier
+  uncertain transaction confirmed.
+- `ordinary_transfer_signed_persistence_failure_never_sends`: failed pre-send DB
+  insert leaves no signed row and no broadcast. Reservation remains; retry at
+  the unchanged node nonce fails closed.
+- `ordinary_transfer_invisible_submission_stays_uncertain`: a returned hash
+  without node visibility preserves uncertainty rather than reporting success.
+- `ordinary_transfer_wrong_response_hash_cannot_mark_accepted`: mismatched hash
+  does not replace the local hash or mark node acceptance.
+- `ordinary_transfer_acceptance_write_failure_preserves_signed_transaction`:
+  a DB failure after node acceptance retains raw and uncertainty for reconciliation.
+
+Validation: `cargo test -p wallet-api --test mod --features integration-tests transfer_nonce`.
+No automatic rebroadcast or recovery worker yet. A failure before signed facts
+are persisted can still leave a reserved nonce with no recoverable raw, and must
+not be auto-released. Tests use a fake BNB adapter and real SQLite; full process
+restart and real ETH/BNB RPC acceptance remain separate acceptance work.

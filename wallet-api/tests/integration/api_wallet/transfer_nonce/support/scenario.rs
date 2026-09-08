@@ -375,3 +375,55 @@ impl TransferNonceScenario {
         self.adapter.timeout_transfer();
     }
 }
+
+impl TransferNonceScenario {
+    pub(crate) fn given_transfer_is_invisible(&self) {
+        self.adapter.hide_transfer();
+    }
+    pub(crate) fn given_returned_hash_mismatches(&self) {
+        self.adapter.mismatch_hash();
+    }
+
+    pub(crate) async fn given_signed_persistence_fails(&self) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        super::db::reject_signed_persistence(self.env, &address).await
+    }
+
+    pub(crate) async fn then_durable_transfer_is(
+        &self,
+        nonce: u64,
+        accepted: bool,
+    ) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        // Reopen SQLite so the assertion does not depend on adapter/application memory.
+        let rows = super::db::pending_ordinary_transfers(self.env, &address).await?;
+        assert_eq!(rows.iter().filter(|r| r.nonce == nonce as i64).count(), 1);
+        let row = rows.iter().find(|r| r.nonce == nonce as i64).unwrap();
+        assert_eq!(row.tx_hash.as_deref(), Some(format!("0x{nonce:064x}").as_str()));
+        let raw: wallet_api::domain::api_wallet::RawTx =
+            serde_json::from_str(row.raw_tx.as_deref().expect("signed raw persisted"))?;
+        let wallet_api::domain::api_wallet::RawTx::Evm(bytes, _) = raw else {
+            panic!("expected EVM raw")
+        };
+        assert_eq!(bytes, nonce.to_be_bytes());
+        assert_eq!(row.last_broadcast_at.is_some(), accepted);
+        assert_eq!(row.broadcast_uncertain_since_at.is_some(), !accepted);
+        assert!(row.transaction_time.is_none());
+        assert!(row.chain_success_at.is_none());
+        assert!(row.finished_at.is_none());
+        Ok(())
+    }
+
+    pub(crate) async fn then_no_signed_transfer_exists(&self) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        assert!(super::db::pending_ordinary_transfers(self.env, &address).await?.is_empty());
+        Ok(())
+    }
+}
+
+impl TransferNonceScenario {
+    pub(crate) async fn given_acceptance_persistence_fails(&self) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        super::db::reject_acceptance_persistence(self.env, &address).await
+    }
+}

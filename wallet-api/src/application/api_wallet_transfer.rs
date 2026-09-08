@@ -16,7 +16,8 @@ use crate::{
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     entities::{
-        api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus,
+        api_trade_type::ApiTradeType,
+        api_withdraw::{ApiWithdrawStatus, SignedSelfTransfer},
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
@@ -62,7 +63,6 @@ impl ApiTransferApplication {
             .await;
 
         let pool = self.ctx.api_wallet_pool()?;
-        let api_transaction_pool = self.ctx.api_transaction_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
@@ -96,6 +96,62 @@ impl ApiTransferApplication {
             password: params.password.to_string(),
             nonce: nonce as u64,
         };
+        if matches!(chain_code, ChainCode::Ethereum | ChainCode::BnbSmartChain) {
+            let (tx_hash, raw, fee) =
+                ApiTransDomain::build_transfer_raw(self.ctx, req, Some(private_key)).await?;
+            let raw_json = wallet_utils::serde_func::serde_to_string(&raw)?;
+            let trade_no = uuid::Uuid::new_v4().to_string();
+            let pool = self.ctx.api_transaction_pool()?;
+            // Persist all signed facts before the first send; a timeout or crash
+            // must leave the same bytes available for later reconciliation.
+            ApiWithdrawRepo::persist_signed_self_transfer(
+                &pool,
+                &SignedSelfTransfer {
+                    trade_no: &trade_no,
+                    uid: &wallet.uid,
+                    name: &wallet.name,
+                    from_addr: &params.base.from,
+                    to_addr: &params.base.to,
+                    chain_code: &params.base.chain_code,
+                    token_addr: token_key,
+                    symbol: &params.base.symbol,
+                    value: &params.base.value,
+                    nonce,
+                    tx_hash: &tx_hash,
+                    raw_tx: &raw_json,
+                    transaction_fee: &fee,
+                    notes: params.base.notes.as_deref(),
+                },
+            )
+            .await?;
+            let response = ApiTransDomain::broadcast_transfer(
+                self.ctx,
+                &params.base.chain_code,
+                raw,
+                Some(&tx_hash),
+            )
+            .await?;
+            let Some(response) = response else {
+                return Err(ServiceError::Parameter(format!(
+                    "transfer_broadcast_uncertain: tx_hash={tx_hash}"
+                )));
+            };
+            if !response.tx_hash.eq_ignore_ascii_case(&tx_hash) {
+                return Err(ServiceError::Parameter(format!(
+                    "transfer_broadcast_hash_mismatch: expected={tx_hash}"
+                )));
+            }
+            if !ApiWithdrawRepo::mark_self_transfer_accepted(&pool, &trade_no, &tx_hash).await? {
+                return Err(ServiceError::Parameter(format!(
+                    "transfer_acceptance_persistence_conflict: tx_hash={tx_hash}"
+                )));
+            }
+            if let Some(request_id) = &params.base.request_resource_id {
+                let _ = self.ctx.get_global_backend_api().delegate_complete(request_id).await;
+            }
+            return Ok(TransactionResult { tx_hash });
+        }
+
         let res = ApiTransDomain::transfer_with_ctx(self.ctx, req, Some(private_key)).await?;
         self.record_transfer(params, token_key, nonce, &wallet.uid, &wallet.name, &res).await?;
         Ok(TransactionResult { tx_hash: res.tx_hash })

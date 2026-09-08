@@ -24,6 +24,8 @@ struct RecordingAdapterState {
     first_entered: AtomicBool,
     fail_transfer: AtomicBool,
     timeout_transfer: AtomicBool,
+    invisible_transfer: AtomicBool,
+    mismatch_hash: AtomicBool,
     block_first: AtomicBool,
     release_first: Notify,
     entered_notify: Notify,
@@ -58,6 +60,14 @@ impl RecordingEthAdapter {
         self.state.timeout_transfer.store(false, Ordering::SeqCst);
     }
 
+    pub(crate) fn hide_transfer(&self) {
+        self.state.invisible_transfer.store(true, Ordering::SeqCst);
+    }
+
+    pub(crate) fn mismatch_hash(&self) {
+        self.state.mismatch_hash.store(true, Ordering::SeqCst);
+    }
+
     pub(crate) fn timeout_transfer(&self) {
         self.state.timeout_transfer.store(true, Ordering::SeqCst);
     }
@@ -85,6 +95,39 @@ impl RecordingEthAdapter {
 
     pub(crate) fn release_first(&self) {
         self.state.release_first.notify_waiters();
+    }
+    async fn send_nonce(
+        &self,
+        nonce: u64,
+    ) -> Result<wallet_api::domain::chain::TransferResp, ServiceError> {
+        let call_idx = self.state.call_count.fetch_add(1, Ordering::SeqCst);
+        {
+            let mut nonces = self.state.recorded_nonces.lock().expect("nonce lock");
+            nonces.push(nonce);
+        }
+
+        if call_idx == 0 && self.state.block_first.load(Ordering::SeqCst) {
+            self.state.first_entered.store(true, Ordering::SeqCst);
+            self.state.entered_notify.notify_waiters();
+            self.state.release_first.notified().await;
+        }
+
+        if self.state.timeout_transfer.load(Ordering::SeqCst) {
+            return Err(ServiceError::Timeout);
+        }
+        if self.state.fail_transfer.load(Ordering::SeqCst) {
+            return Err(ServiceError::Parameter("simulated transfer failure".to_string()));
+        }
+
+        self.set_nonce_response(Some(nonce + 1));
+        Ok(wallet_api::domain::chain::TransferResp::new(
+            if self.state.mismatch_hash.load(Ordering::SeqCst) {
+                "wrong-hash".into()
+            } else {
+                format!("0x{:064x}", nonce)
+            },
+            "0".to_string(),
+        ))
     }
 }
 
@@ -147,30 +190,7 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
         _private_key: wallet_chain_interact::types::ChainPrivateKey,
     ) -> Result<wallet_api::domain::chain::TransferResp, ServiceError> {
-        let call_idx = self.state.call_count.fetch_add(1, Ordering::SeqCst);
-        {
-            let mut nonces = self.state.recorded_nonces.lock().expect("nonce lock");
-            nonces.push(params.nonce);
-        }
-
-        if call_idx == 0 && self.state.block_first.load(Ordering::SeqCst) {
-            self.state.first_entered.store(true, Ordering::SeqCst);
-            self.state.entered_notify.notify_waiters();
-            self.state.release_first.notified().await;
-        }
-
-        if self.state.timeout_transfer.load(Ordering::SeqCst) {
-            return Err(ServiceError::Timeout);
-        }
-        if self.state.fail_transfer.load(Ordering::SeqCst) {
-            return Err(ServiceError::Parameter("simulated transfer failure".to_string()));
-        }
-
-        self.set_nonce_response(Some(params.nonce + 1));
-        Ok(wallet_api::domain::chain::TransferResp::new(
-            format!("0x{:064x}", params.nonce),
-            "0".to_string(),
-        ))
+        self.send_nonce(params.nonce).await
     }
 
     async fn estimate_fee(
@@ -183,17 +203,31 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
 
     async fn build_transfer_raw(
         &self,
-        _params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
+        params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
         _private_key: wallet_chain_interact::types::ChainPrivateKey,
     ) -> Result<(String, wallet_api::domain::api_wallet::RawTx, String), ServiceError> {
-        unimplemented!()
+        Ok((
+            format!("0x{:064x}", params.nonce),
+            wallet_api::domain::api_wallet::RawTx::Evm(
+                params.nonce.to_be_bytes().to_vec(),
+                U256::ZERO,
+            ),
+            "0".to_string(),
+        ))
     }
 
     async fn broadcast_transfer(
         &self,
-        _raw: wallet_api::domain::api_wallet::RawTx,
+        raw: wallet_api::domain::api_wallet::RawTx,
     ) -> Result<wallet_api::domain::chain::TransferResp, ServiceError> {
-        unimplemented!()
+        let wallet_api::domain::api_wallet::RawTx::Evm(bytes, _) = raw else {
+            panic!("expected EVM raw")
+        };
+        self.send_nonce(u64::from_be_bytes(bytes.try_into().unwrap())).await
+    }
+
+    async fn query_tx_seen_on_node(&self, _hash: &str) -> Result<bool, ServiceError> {
+        Ok(!self.state.invisible_transfer.load(Ordering::SeqCst))
     }
 }
 

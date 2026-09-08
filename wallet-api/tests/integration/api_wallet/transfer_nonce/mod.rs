@@ -21,6 +21,7 @@ async fn api_wallet_transfer_nonce_lock_keeps_same_address_requests_serial() -> 
 
     let first = when.transfer_starts();
     then.first_transfer_has_entered().await;
+    scenario.then_durable_transfer_is(1, false).await?;
 
     let second = when.transfer_starts();
     then.only_first_nonce_is_recorded_while_second_waits().await;
@@ -28,6 +29,8 @@ async fn api_wallet_transfer_nonce_lock_keeps_same_address_requests_serial() -> 
     when.first_transfer_is_released();
 
     then.serial_transfer_results_are(first, second).await?;
+    scenario.then_durable_transfer_is(1, true).await?;
+    scenario.then_durable_transfer_is(2, true).await?;
 
     Ok(())
 }
@@ -409,11 +412,14 @@ async fn ordinary_transfer_uncertain_nonce_blocks_next_allocation() -> anyhow::R
     assert!(first.to_string().contains("simulated transfer failure"));
     assert!(second.to_string().contains("nonce_gap_requires_recovery"));
     scenario.then_transfer_nonces_and_floor_are(&[4], 4).await;
+    scenario.then_durable_transfer_is(4, false).await?;
 
     scenario.given_transfer_can_succeed();
     scenario.given_chain_next_nonce(Some(5));
     assert_eq!(scenario.when().transfer_starts().await??, format!("0x{:064x}", 5));
     scenario.then_transfer_nonces_and_floor_are(&[4, 5], 5).await;
+    scenario.then_durable_transfer_is(4, false).await?;
+    scenario.then_durable_transfer_is(5, true).await?;
     Ok(())
 }
 
@@ -433,5 +439,81 @@ async fn ordinary_transfer_timeout_blocks_next_allocation() -> anyhow::Result<()
     assert!(first.to_string().contains("timeout"));
     assert!(second.to_string().contains("nonce_gap_requires_recovery"));
     scenario.then_transfer_nonces_and_floor_are(&[4], 4).await;
+    scenario.then_durable_transfer_is(4, false).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_signed_persistence_failure_never_sends() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(4));
+    scenario.given_signed_persistence_fails().await?;
+
+    let error = scenario.when().transfer_fails().await;
+    let retry = scenario.when().transfer_fails().await;
+
+    assert!(error.to_string().contains("simulated signed persistence failure"));
+    assert!(retry.to_string().contains("nonce_gap_requires_recovery"));
+    scenario.then_transfer_nonces_and_floor_are(&[], 4).await;
+    scenario.then_no_signed_transfer_exists().await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_invisible_submission_stays_uncertain() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(4));
+    scenario.given_transfer_is_invisible();
+
+    let error = scenario.when().transfer_fails().await;
+
+    assert!(error.to_string().contains("transfer_broadcast_uncertain"));
+    scenario.then_transfer_nonces_and_floor_are(&[4], 4).await;
+    scenario.then_durable_transfer_is(4, false).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_wrong_response_hash_cannot_mark_accepted() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(4));
+    scenario.given_returned_hash_mismatches();
+
+    let error = scenario.when().transfer_fails().await;
+
+    assert!(error.to_string().contains("transfer_broadcast_hash_mismatch"));
+    scenario.then_transfer_nonces_and_floor_are(&[4], 4).await;
+    scenario.then_durable_transfer_is(4, false).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_acceptance_write_failure_preserves_signed_transaction()
+-> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(4));
+    scenario.given_acceptance_persistence_fails().await?;
+
+    let error = scenario.when().transfer_fails().await;
+
+    assert!(error.to_string().contains("simulated acceptance persistence failure"));
+    scenario.then_transfer_nonces_and_floor_are(&[4], 4).await;
+    scenario.then_durable_transfer_is(4, false).await?;
     Ok(())
 }
