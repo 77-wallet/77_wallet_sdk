@@ -21,6 +21,7 @@ struct RecordingAdapterState {
     recorded_raw: Mutex<Vec<Vec<u8>>>,
     build_calls: AtomicUsize,
     canonical_hash: AtomicBool,
+    nonce_sender: Mutex<Option<String>>,
     visibility_error: AtomicBool,
 
     receipt_behavior: Mutex<Option<(String, i8)>>,
@@ -62,7 +63,8 @@ impl RecordingEthAdapter {
         self.state.receipt_queries.load(Ordering::SeqCst)
     }
 
-    pub(crate) fn canonical_rebroadcast_fixture(&self) {
+    pub(crate) fn canonical_rebroadcast_fixture(&self, sender: &str) {
+        *self.state.nonce_sender.lock().unwrap() = Some(sender.to_owned());
         self.state.canonical_hash.store(true, Ordering::SeqCst);
         self.state.invisible_transfer.store(true, Ordering::SeqCst);
     }
@@ -193,7 +195,13 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         Ok(U256::ZERO)
     }
 
-    async fn nonce(&self, _addr: &str) -> Result<u64, ServiceError> {
+    async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
+        // Shared SQLite retains other scenarios; their sender state is unknown.
+        if self.state.nonce_sender.lock().unwrap().as_deref().is_some_and(|sender| sender != addr) {
+            return Err(ServiceError::Parameter(
+                "nonce fixture has no state for this sender".into(),
+            ));
+        }
         self.state.nonce_queries.fetch_add(1, Ordering::SeqCst);
         self.state
             .nonce_response

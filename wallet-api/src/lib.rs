@@ -1,3 +1,5 @@
+// Nested transfer/observer futures need deeper Send trait resolution.
+#![recursion_limit = "256"]
 //#![feature(try_trait_v2)]
 #![allow(unreachable_code)]
 #![allow(clippy::too_many_arguments)]

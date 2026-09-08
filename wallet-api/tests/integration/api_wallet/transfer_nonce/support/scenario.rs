@@ -531,7 +531,7 @@ impl TransferNonceScenario {
 
 impl TransferNonceScenario {
     pub(crate) fn given_rebroadcast_fixture(&self) {
-        self.adapter.canonical_rebroadcast_fixture();
+        self.adapter.canonical_rebroadcast_fixture(&self.from_addr.borrow());
     }
     pub(crate) fn given_node_visibility(&self, visible: bool, error: bool) {
         self.adapter.set_visibility(visible, error);

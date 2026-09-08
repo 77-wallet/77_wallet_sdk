@@ -306,3 +306,19 @@ Validation commands:
 No live ETH/BNB RPC, full mobile process restart or production recovery is claimed.
 The budget counts recovery attempts; the existing transport's authentication retry
 may make more than one network call within an attempt.
+
+
+## Async future compiler depth
+
+Library and integration test crate roots set `recursion_limit = "256"` so the
+compiler can resolve `Send` for nested transfer and observer futures. This changes
+compiler analysis only, not runtime retry counts, timeouts or stack limits.
+Validation uses `cargo test -p wallet-api --test mod --features integration-tests
+ordinary_transfer_` and checks its build output for absence of
+`recursion_depth_exceeding_limit` / `overflow evaluating the requirement`.
+The existing cases cover durable submission, receipt observation, cancellation
+and bounded replay with fake chain calls and real SQLite.
+
+Replay fixtures bind nonce responses to their own sender. Unknown senders fail
+observation rather than inheriting the active scenario's nonce, since the shared
+SQLite scan can include earlier scenarios' still-pending signed transactions.

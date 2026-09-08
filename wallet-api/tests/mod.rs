@@ -1,3 +1,5 @@
+// Nested transfer/observer futures need deeper Send trait resolution.
+#![recursion_limit = "256"]
 #![cfg(feature = "integration-tests")]
 use std::{path::PathBuf, sync::Once};
 use tokio_stream::StreamExt;
