@@ -36,6 +36,7 @@ struct RecordingAdapterState {
     invisible_transfer: AtomicBool,
     mismatch_hash: AtomicBool,
     block_first: AtomicBool,
+    hang_send: AtomicBool,
     release_first: Notify,
     entered_notify: Notify,
 }
@@ -98,7 +99,12 @@ impl RecordingEthAdapter {
         self.state.fail_transfer.store(true, Ordering::SeqCst);
     }
 
+    pub(crate) fn hang_send(&self) {
+        self.state.hang_send.store(true, Ordering::SeqCst);
+    }
+
     pub(crate) fn allow_transfer(&self) {
+        self.state.hang_send.store(false, Ordering::SeqCst);
         self.state.fail_transfer.store(false, Ordering::SeqCst);
         self.state.timeout_transfer.store(false, Ordering::SeqCst);
     }
@@ -153,6 +159,10 @@ impl RecordingEthAdapter {
             self.state.first_entered.store(true, Ordering::SeqCst);
             self.state.entered_notify.notify_waiters();
             self.state.release_first.notified().await;
+        }
+
+        if self.state.hang_send.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
         }
 
         if self.state.timeout_transfer.load(Ordering::SeqCst) {

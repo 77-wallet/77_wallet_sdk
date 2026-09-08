@@ -322,3 +322,15 @@ and bounded replay with fake chain calls and real SQLite.
 Replay fixtures bind nonce responses to their own sender. Unknown senders fail
 observation rather than inheriting the active scenario's nonce, since the shared
 SQLite scan can include earlier scenarios' still-pending signed transactions.
+
+## Cancellation after a durable replay claim
+
+`ordinary_transfer_rebroadcast_cancellation_preserves_claim_on_restart` hangs the
+fake broadcast after its persistent claim and send entry. Shutdown cancels the
+observer promptly. A recreated observer and complete observation round preserve
+uncertainty and the spent attempt without sending during cooldown. Once aged,
+the same raw/hash/nonce is accepted, with one initial build and two spent recovery
+attempts (three sends including initial submission). Assertions read real SQLite
+and fake send bytes; this models task restart, not full mobile process death.
+
+Validation: `cargo test -p wallet-api --test mod --features integration-tests ordinary_transfer_rebroadcast_`.

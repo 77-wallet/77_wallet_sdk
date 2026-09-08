@@ -695,3 +695,40 @@ async fn ordinary_transfer_rebroadcast_rejects_corrupted_saved_raw() -> anyhow::
     scenario.then_rebroadcast_counts_are(30004, 1, 0).await?;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_rebroadcast_cancellation_preserves_claim_on_restart()
+-> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_rebroadcast_fixture();
+    scenario.given_chain_next_nonce(Some(30005));
+    scenario.given_transfer_times_out();
+    scenario.when().transfer_fails().await;
+    scenario.given_rebroadcast_cooldown_elapsed().await?;
+    scenario.given_broadcast_hangs();
+
+    let observer = scenario.when_observer_starts();
+    scenario.then_send_count_reaches(2).await;
+    scenario.then_rebroadcast_counts_are(30005, 2, 1).await?;
+    scenario.when_observer_stops(observer).await?;
+    scenario.then_durable_transfer_is(30005, false).await?;
+
+    scenario.given_transfer_can_succeed();
+    scenario.given_receipt_behavior(30005, 0);
+    let restarted = scenario.when_observer_starts();
+    scenario.then_observer_has_queried().await;
+    scenario.when_observer_stops(restarted).await?;
+    // Also complete a full observation round: cooldown must still suppress send.
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_rebroadcast_counts_are(30005, 2, 1).await?;
+
+    scenario.given_rebroadcast_cooldown_elapsed().await?;
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_rebroadcast_counts_are(30005, 3, 2).await?;
+    scenario.then_durable_transfer_is(30005, true).await?;
+    Ok(())
+}

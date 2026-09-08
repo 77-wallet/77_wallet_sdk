@@ -567,3 +567,19 @@ impl TransferNonceScenario {
         Ok(())
     }
 }
+
+impl TransferNonceScenario {
+    pub(crate) fn given_broadcast_hangs(&self) {
+        self.adapter.hang_send();
+    }
+
+    pub(crate) async fn then_send_count_reaches(&self, count: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while self.adapter.recorded_nonces().len() < count {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("observer did not reach broadcast");
+    }
+}
