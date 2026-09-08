@@ -334,3 +334,31 @@ attempts (three sends including initial submission). Assertions read real SQLite
 and fake send bytes; this models task restart, not full mobile process death.
 
 Validation: `cargo test -p wallet-api --test mod --features integration-tests ordinary_transfer_rebroadcast_`.
+
+## MQTT cannot resolve signed EVM SelfWithdraw
+
+Signed ETH/BNB SelfWithdraw execution belongs to receipt observation. Account
+change still synchronizes assets, but its legacy status update is skipped for
+these rows; `update_tx_status` repeats this exclusion atomically in SQLite, so
+arrival order or a stale read cannot overwrite nonce/hash/fee/receipt fields.
+Unsigned legacy rows retain their previous account-change path. This is not a
+chain-reorg correction mechanism; no MQTT boolean corrects an observed receipt.
+
+Database regressions:
+- `self_transfer_account_change_cannot_override_receipt_or_finish_pending`:
+  ETH/BNB message-shaped writes before, concurrent with, and after failure receipt
+  update zero rows; signed identity, nonce and actual receipt fee/block survive.
+- `self_transfer_unsigned_legacy_account_change_remains_supported`: legacy
+  unsigned status update remains supported.
+
+The shared list/detail projection prefers signed EVM chain failure/success facts
+and recognizes the observer's Success/Failure statuses. It therefore also reports
+failure for historical rows with failure facts plus MQTT narrative status 9.
+Existing observer success/failure tests now assert the public bill-detail status;
+`ordinary_transfer_observer_failure_survives_legacy_success_projection` explicitly
+reproduces the old overwrite and asserts status 3 through bill_detail.
+
+Validation: database self_transfer; API integration ordinary_transfer_observer_.
+No live account balances or simulator database are changed by the repair.
+Checkpoint results: 16 database cases, 3 observer/detail integration cases, and
+3 existing acct_change asset synchronization cases passed; formatting/diff clean.

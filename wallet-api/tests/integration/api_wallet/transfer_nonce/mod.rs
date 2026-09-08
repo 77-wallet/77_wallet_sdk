@@ -732,3 +732,24 @@ async fn ordinary_transfer_rebroadcast_cancellation_preserves_claim_on_restart()
     scenario.then_durable_transfer_is(30005, true).await?;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_observer_failure_survives_legacy_success_projection()
+-> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(20006));
+    scenario.given_transfer_times_out();
+    scenario.when().transfer_fails().await;
+    scenario.given_receipt_behavior(20006, 3);
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_receipt_is_persisted(20006, false).await?;
+
+    scenario.given_legacy_success_overwrite().await?;
+
+    scenario.then_bill_status_is(20006, 3).await?;
+    Ok(())
+}

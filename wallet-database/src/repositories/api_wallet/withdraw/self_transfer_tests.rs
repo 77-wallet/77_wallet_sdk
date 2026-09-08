@@ -448,3 +448,64 @@ async fn self_transfer_rebroadcast_acceptance_keeps_budget_across_reopen() {
     assert!(row(&pool).await.broadcast_uncertain_since_at.is_none());
     assert_eq!(row(&pool).await.broadcast_uncertain_rebroadcast_count, 1);
 }
+
+async fn legacy_account_change(pool: &ApiTransactionDbPool) -> u64 {
+    ApiWithdrawRepo::update_api_withdraw_tx_status(
+        pool,
+        "ordinary-4",
+        0,
+        "hash-4",
+        "wrong-resource",
+        "999",
+        Some(chrono::Utc::now()),
+        "999",
+        ApiWithdrawStatus::ConfirmSuccessReport,
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn self_transfer_account_change_cannot_override_receipt_or_finish_pending() {
+    for chain in ["eth", "bnb"] {
+        let pool = setup_api_transaction_pool("self_transfer_acct_guard").await;
+        let mut signed = signed();
+        signed.chain_code = chain;
+        ApiWithdrawRepo::persist_signed_self_transfer(&pool, &signed).await.unwrap();
+        assert_eq!(legacy_account_change(&pool).await, 0);
+        let pending = row(&pool).await;
+        assert!(pending.transaction_time.is_none());
+        assert_eq!(pending.nonce, 4);
+        assert_eq!(pending.transaction_fee, "0.001");
+        let mut receipt = receipt(false);
+        receipt.chain_code = chain;
+        let (confirmed, ignored) = tokio::join!(
+            ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt),
+            legacy_account_change(&pool),
+        );
+        assert!(confirmed.unwrap());
+        assert_eq!(ignored, 0);
+        assert_eq!(legacy_account_change(&pool).await, 0);
+        let failed = row(&pool).await;
+        assert_eq!(failed.status, ApiWithdrawStatus::Failure);
+        assert!(failed.chain_failed_at.is_some());
+        assert!(failed.chain_success_at.is_none());
+        assert_eq!(failed.nonce, 4);
+        assert_eq!(failed.tx_hash.as_deref(), Some("hash-4"));
+        assert_eq!(failed.raw_tx.as_deref(), Some("signed-bytes-4"));
+        assert_eq!(failed.transaction_fee, receipt.transaction_fee);
+        assert_eq!(failed.block_height.as_deref(), Some(receipt.block_height));
+    }
+}
+
+#[tokio::test]
+async fn self_transfer_unsigned_legacy_account_change_remains_supported() {
+    let pool = setup_api_transaction_pool("self_transfer_acct_legacy").await;
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &signed()).await.unwrap();
+    sqlx::query("UPDATE api_withdraws SET raw_tx = NULL WHERE trade_no = 'ordinary-4'")
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+    assert_eq!(legacy_account_change(&pool).await, 1);
+    assert_eq!(row(&pool).await.status, ApiWithdrawStatus::ConfirmSuccessReport);
+}

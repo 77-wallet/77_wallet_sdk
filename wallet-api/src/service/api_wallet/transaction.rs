@@ -629,7 +629,29 @@ impl ApiTransService {
             BillKind::Transfer
         };
         let transaction_time = bill.transaction_time.unwrap_or_else(Utc::now);
-        let status = if bill.status == ApiWithdrawStatus::ConfirmSuccessReport {
+        let signed_evm_self_transfer = bill.trade_type == ApiTradeType::SelfWithdraw
+            && matches!(bill.chain_code.as_str(), "eth" | "bnb")
+            && bill.raw_tx.as_deref().is_some_and(|raw| !raw.is_empty());
+        // Receipt facts take precedence over legacy MQTT narrative status,
+        // including rows overwritten before the account-change guard was added.
+        let receipt_status = if signed_evm_self_transfer {
+            if bill.chain_failed_at.is_some() {
+                Some(3)
+            } else if bill.chain_success_at.is_some() {
+                Some(2)
+            } else {
+                match bill.status {
+                    ApiWithdrawStatus::Success => Some(2),
+                    ApiWithdrawStatus::Failure => Some(3),
+                    _ => None,
+                }
+            }
+        } else {
+            None
+        };
+        let status = if let Some(status) = receipt_status {
+            status
+        } else if bill.status == ApiWithdrawStatus::ConfirmSuccessReport {
             2
         } else if bill.status == ApiWithdrawStatus::ConfirmFailureReport
             || bill.status == ApiWithdrawStatus::SendingTxFailed

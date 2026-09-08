@@ -1612,6 +1612,10 @@ impl ApiWithdrawDao {
                 block_height = $8,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              -- Signed EVM SelfWithdraw is completed by receipt observation;
+              -- legacy account-change status must not overwrite its signed facts.
+              AND NOT (trade_type = 4 AND chain_code IN ('eth','bnb')
+                       AND COALESCE(raw_tx, '') != '')
         "#;
 
         let res = sqlx::query(sql)

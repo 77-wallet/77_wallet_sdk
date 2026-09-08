@@ -484,6 +484,7 @@ impl TransferNonceScenario {
             1,
             "terminal rows must leave the observation scan"
         );
+        self.then_bill_status_is(nonce, if success { 2 } else { 3 }).await?;
         assert_eq!(row.transaction_fee, "0.00002");
         assert_eq!(row.block_height.as_deref(), Some("1234"));
         assert!(row.finished_at.is_some());
@@ -581,5 +582,20 @@ impl TransferNonceScenario {
         })
         .await
         .expect("observer did not reach broadcast");
+    }
+}
+
+impl TransferNonceScenario {
+    pub(crate) async fn then_bill_status_is(&self, nonce: u64, expected: i8) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        let detail =
+            self.env.manager.api_bill_detail(&self.adapter.tx_hash(nonce), &address).await?;
+        assert_eq!(detail.bill.status, expected, "bill must expose receipt outcome");
+        Ok(())
+    }
+
+    pub(crate) async fn given_legacy_success_overwrite(&self) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        super::db::overwrite_legacy_status(self.env, &address).await
     }
 }

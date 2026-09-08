@@ -147,3 +147,16 @@ pub(crate) async fn corrupt_self_transfer_raw(
         .await?;
     Ok(())
 }
+
+pub(crate) async fn overwrite_legacy_status(
+    env: &harness::TestEnv,
+    address: &str,
+) -> anyhow::Result<()> {
+    let pool = open_api_transaction_pool(&env.db_dir).await;
+    // Reproduce an old application's MQTT overwrite while retaining receipt facts.
+    sqlx::query("UPDATE api_withdraws SET status = 9 WHERE from_addr = ? AND trade_type = 4")
+        .bind(address)
+        .execute(pool.write_ref())
+        .await?;
+    Ok(())
+}
