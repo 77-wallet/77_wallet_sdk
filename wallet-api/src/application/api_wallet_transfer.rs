@@ -17,7 +17,7 @@ use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     entities::{
         api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawStatus, SignedSelfTransfer},
+        api_withdraw::{ApiWithdrawStatus, SelfTransferReceipt, SignedSelfTransfer},
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
@@ -34,6 +34,122 @@ pub(crate) struct ApiTransferApplication {
 impl ApiTransferApplication {
     pub(crate) fn new(ctx: &'static Context) -> Self {
         Self { ctx }
+    }
+
+    /// Observe persisted ordinary transfers on startup and every 30 seconds.
+    /// The owning actor cancels this loop on shutdown, including an in-flight RPC.
+    pub(crate) async fn run_self_transfer_observer(
+        &self,
+        mut shutdown: tokio::sync::broadcast::Receiver<()>,
+        period: std::time::Duration,
+    ) {
+        let offset = crate::infrastructure::runtime::time::generate_phase_offset(
+            period,
+            "SelfTransferObserver",
+        );
+        if !crate::infrastructure::runtime::time::execute_phase_offset(offset, &mut shutdown).await
+        {
+            return;
+        }
+        let mut interval = crate::infrastructure::runtime::time::new_production_interval(period);
+        loop {
+            tokio::select! {
+                biased;
+                _ = shutdown.recv() => return,
+                result = self.observe_pending_self_transfers() => {
+                    if let Err(error) = result {
+                        tracing::warn!(%error, "ordinary transfer observation round failed");
+                    }
+                }
+            }
+            tokio::select! {
+                biased;
+                _ = shutdown.recv() => return,
+                _ = interval.tick() => {}
+            }
+        }
+    }
+
+    pub(crate) async fn observe_pending_self_transfers(&self) -> Result<(), ServiceError> {
+        let pool = self.ctx.api_transaction_pool()?;
+        let mut cursor = 0;
+        loop {
+            let rows = ApiWithdrawRepo::scan_pending_self_transfers(&pool, cursor, 32).await?;
+            if rows.is_empty() {
+                return Ok(());
+            }
+            for row in rows {
+                cursor = row.id;
+                // A slow provider must not stall all later transactions forever.
+                let outcome = crate::infrastructure::runtime::time::with_timeout(
+                    std::time::Duration::from_secs(35),
+                    self.observe_self_transfer(&row),
+                )
+                .await;
+                match outcome {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        tracing::warn!(trade_no = %row.trade_no, %error, "ordinary transfer receipt remains unresolved")
+                    }
+                    Err(_) => {
+                        tracing::warn!(trade_no = %row.trade_no, "ordinary transfer receipt observation timed out")
+                    }
+                }
+            }
+        }
+    }
+
+    async fn observe_self_transfer(
+        &self,
+        row: &wallet_database::entities::api_withdraw::ApiWithdrawEntity,
+    ) -> Result<(), ServiceError> {
+        let Some(hash) = row.tx_hash.as_deref().filter(|hash| !hash.is_empty()) else {
+            return Ok(());
+        };
+        let adapter = crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory::get_transaction_adapter_with_ctx(
+            self.ctx, &row.chain_code,
+        ).await?;
+        let Some(receipt) = adapter.query_tx_res(hash).await? else {
+            return Ok(());
+        };
+        // Only an actual mined receipt is a terminal fact. Missing/pending/error
+        // observations never become failure, and nonce progress proves nothing here.
+        if !receipt.hash.eq_ignore_ascii_case(hash)
+            || !matches!(receipt.status, 2 | 3)
+            || receipt.block_height == 0
+            || receipt.transaction_time == 0
+            || !receipt.transaction_fee.is_finite()
+            || receipt.transaction_fee < 0.0
+        {
+            return Err(ServiceError::Parameter(
+                "invalid ordinary transfer receipt observation".into(),
+            ));
+        }
+        let timestamp = i64::try_from(receipt.transaction_time)
+            .ok()
+            .and_then(|seconds| chrono::DateTime::from_timestamp(seconds, 0))
+            .ok_or_else(|| ServiceError::Parameter("invalid receipt timestamp".into()))?;
+        let block_height = receipt.block_height.to_string();
+        let fee = receipt.transaction_fee.to_string();
+        let pool = self.ctx.api_transaction_pool()?;
+        let changed = ApiWithdrawRepo::confirm_self_transfer_receipt(
+            &pool,
+            &SelfTransferReceipt {
+                trade_no: &row.trade_no,
+                chain_code: &row.chain_code,
+                tx_hash: hash,
+                success: receipt.status == 2,
+                transaction_time: timestamp,
+                block_height: &block_height,
+                transaction_fee: &fee,
+                resource_consume: &receipt.resource_consume,
+            },
+        )
+        .await?;
+        if changed {
+            tracing::info!(trade_no = %row.trade_no, tx_hash = %hash, success = (receipt.status == 2), "ordinary transfer receipt persisted");
+        }
+        Ok(())
     }
 
     pub(crate) async fn transfer(

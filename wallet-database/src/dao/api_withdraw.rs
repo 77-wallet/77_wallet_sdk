@@ -113,6 +113,32 @@ impl ApiWithdrawDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    /// Stable cursor over pending signed ordinary transfers; finalizing earlier
+    /// rows must not shift later rows out of the next page.
+    pub async fn scan_pending_self_transfers<'a, E>(
+        exec: E,
+        after_id: i64,
+        limit: i64,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as(
+            r#"SELECT * FROM api_withdraws WHERE id > ?
+            AND trade_type = 4 AND chain_code IN ('eth','bnb')
+            AND raw_tx IS NOT NULL AND raw_tx != ''
+            AND tx_hash IS NOT NULL AND tx_hash != ''
+            AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
+            AND chain_success_at IS NULL AND chain_failed_at IS NULL
+            ORDER BY id LIMIT ?"#,
+        )
+        .bind(after_id)
+        .bind(limit)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     /// Record a receipt only for the same signed SelfWithdraw. The repository
     /// completes the terminal fact in the same transaction via mark_chain_finished.
     pub async fn confirm_self_transfer_receipt<'a, E>(

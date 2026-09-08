@@ -18,6 +18,9 @@ use wallet_database::entities::asset_token_key::AssetTokenKey;
 #[derive(Default)]
 struct RecordingAdapterState {
     recorded_nonces: Mutex<Vec<u64>>,
+    receipt_behavior: Mutex<Option<(String, i8)>>,
+    receipt_queries: AtomicUsize,
+
     nonce_response: Mutex<Option<u64>>,
     nonce_queries: AtomicUsize,
     call_count: AtomicUsize,
@@ -41,6 +44,17 @@ impl RecordingEthAdapter {
         let state = RecordingAdapterState::default();
         *state.nonce_response.lock().unwrap() = Some(1);
         Self { state: Arc::new(state) }
+    }
+
+    // Test modes: 0 missing, -1 RPC error, -2 blocked RPC, 2/3 terminal,
+    // 4 nonterminal response, 5 mismatched hash.
+    pub(crate) fn receipt_behavior(&self, nonce: u64, mode: i8) {
+        self.state.receipt_queries.store(0, Ordering::SeqCst);
+        *self.state.receipt_behavior.lock().unwrap() = Some((format!("0x{nonce:064x}"), mode));
+    }
+
+    pub(crate) fn receipt_queries(&self) -> usize {
+        self.state.receipt_queries.load(Ordering::SeqCst)
     }
 
     pub(crate) fn set_nonce_response(&self, response: Option<u64>) {
@@ -162,11 +176,28 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         Ok(0)
     }
 
-    async fn query_tx_res(
-        &self,
-        _hash: &str,
-    ) -> Result<Option<QueryTransactionResult>, ChainError> {
-        Ok(None)
+    async fn query_tx_res(&self, hash: &str) -> Result<Option<QueryTransactionResult>, ChainError> {
+        let behavior = self.state.receipt_behavior.lock().unwrap().clone();
+        let Some((expected, mode)) = behavior else {
+            return Ok(None);
+        };
+        if hash != expected {
+            return Ok(None);
+        }
+        self.state.receipt_queries.fetch_add(1, Ordering::SeqCst);
+        match mode {
+            0 => Ok(None),
+            -1 => Err(ChainError::Other("simulated receipt RPC failure".into())),
+            -2 => std::future::pending().await,
+            _ => Ok(Some(QueryTransactionResult::new(
+                if mode == 5 { "wrong-hash".into() } else { hash.into() },
+                0.00002,
+                "21000".into(),
+                1_700_000_000,
+                if mode == 5 { 2 } else { mode },
+                1234,
+            ))),
+        }
     }
 
     async fn token_symbol(&self, _token: &str) -> Result<String, ChainError> {

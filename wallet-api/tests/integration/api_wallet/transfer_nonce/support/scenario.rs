@@ -427,3 +427,98 @@ impl TransferNonceScenario {
         super::db::reject_acceptance_persistence(self.env, &address).await
     }
 }
+
+impl TransferNonceScenario {
+    pub(crate) fn given_receipt_behavior(&self, nonce: u64, mode: i8) {
+        self.adapter.receipt_behavior(nonce, mode);
+    }
+
+    pub(crate) async fn when_receipts_are_observed(&self) -> anyhow::Result<()> {
+        wallet_api::testkit::withdraw::observe_pending_self_transfers(self.env.manager.ctx())
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) fn when_observer_starts(
+        &self,
+    ) -> (tokio::sync::broadcast::Sender<()>, tokio::task::JoinHandle<()>) {
+        let (shutdown, rx) = tokio::sync::broadcast::channel(1);
+        let ctx = self.env.manager.ctx();
+        let handle = tokio::spawn(wallet_api::testkit::withdraw::run_self_transfer_observer(
+            ctx,
+            rx,
+            Duration::from_millis(20),
+        ));
+        (shutdown, handle)
+    }
+
+    pub(crate) async fn then_observer_has_queried(&self) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while self.adapter.receipt_queries() == 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("background observer did not query the saved hash");
+    }
+
+    pub(crate) async fn then_receipt_is_persisted(
+        &self,
+        nonce: u64,
+        success: bool,
+    ) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        let row = super::db::ordinary_transfer_by_hash(self.env, &address, nonce).await?;
+        assert_eq!(
+            row.status,
+            if success {
+                wallet_database::entities::api_withdraw::ApiWithdrawStatus::Success
+            } else {
+                wallet_database::entities::api_withdraw::ApiWithdrawStatus::Failure
+            }
+        );
+        assert_eq!(
+            self.adapter.receipt_queries(),
+            1,
+            "terminal rows must leave the observation scan"
+        );
+        assert_eq!(row.transaction_fee, "0.00002");
+        assert_eq!(row.block_height.as_deref(), Some("1234"));
+        assert!(row.finished_at.is_some());
+        assert!(row.transaction_time.is_some());
+        assert_eq!(row.chain_success_at.is_some(), success);
+        assert_eq!(row.chain_failed_at.is_some(), !success);
+        assert!(row.broadcast_uncertain_since_at.is_none());
+        assert!(row.raw_tx.is_some());
+        self.then_transfer_nonces_and_floor_are(&[nonce], nonce as i64).await;
+        Ok(())
+    }
+
+    pub(crate) async fn then_background_receipt_finishes(&self, nonce: u64) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if super::db::ordinary_transfer_by_hash(self.env, &address, nonce)
+                    .await
+                    .unwrap()
+                    .finished_at
+                    .is_some()
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await?;
+        self.then_receipt_is_persisted(nonce, true).await
+    }
+
+    pub(crate) async fn when_observer_stops(
+        &self,
+        observer: (tokio::sync::broadcast::Sender<()>, tokio::task::JoinHandle<()>),
+    ) -> anyhow::Result<()> {
+        observer.0.send(())?;
+        tokio::time::timeout(Duration::from_secs(1), observer.1).await??;
+        Ok(())
+    }
+}

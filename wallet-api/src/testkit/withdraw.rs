@@ -214,3 +214,19 @@ pub async fn allocate_withdraw_nonce(
     ));
     ShadowWithdrawWorker::new(ctx, scanner).get_nonce(address, chain).await
 }
+
+pub async fn observe_pending_self_transfers(ctx: &'static Context) -> Result<(), ServiceError> {
+    crate::application::api_wallet_transfer::ApiTransferApplication::new(ctx)
+        .observe_pending_self_transfers()
+        .await
+}
+
+pub async fn run_self_transfer_observer(
+    ctx: &'static Context,
+    shutdown: tokio::sync::broadcast::Receiver<()>,
+    period: std::time::Duration,
+) {
+    crate::application::api_wallet_transfer::ApiTransferApplication::new(ctx)
+        .run_self_transfer_observer(shutdown, period)
+        .await;
+}

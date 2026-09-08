@@ -111,3 +111,17 @@ pub(crate) async fn reject_acceptance_persistence(
         .execute(pool.write_ref()).await?;
     Ok(())
 }
+
+pub(crate) async fn ordinary_transfer_by_hash(
+    env: &harness::TestEnv,
+    address: &str,
+    nonce: u64,
+) -> anyhow::Result<wallet_database::entities::api_withdraw::ApiWithdrawEntity> {
+    let pool = open_api_transaction_pool(&env.db_dir).await;
+    Ok(wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::get_by_hash_and_owner(
+        &pool,
+        address,
+        &format!("0x{nonce:064x}"),
+    )
+    .await?)
+}

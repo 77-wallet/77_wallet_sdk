@@ -112,6 +112,19 @@ impl ApiWithdrawRepo {
             .await
     }
 
+    pub async fn scan_pending_self_transfers(
+        pool: &ApiTransactionDbPool,
+        after_id: i64,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_pending_self_transfers(
+            pool.read_ref(),
+            after_id,
+            limit.min(100) as i64,
+        )
+        .await
+    }
+
     /// Persist an observed receipt and finish the ordinary lifecycle atomically.
     /// False means identity/state did not match (including an already terminal
     /// record). This never runs backend withdrawal status/ACK recomputation.

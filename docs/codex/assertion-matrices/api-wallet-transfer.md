@@ -225,3 +225,38 @@ SQLite component cases in `repositories/api_wallet/withdraw/self_transfer_tests.
 Validation: `cargo test -p wallet-database --lib self_transfer` (10 passing cases).
 This batch supplies persistence only. API query/recovery integration, receipt
 observation policy and identical-raw rebroadcast remain subsequent work.
+
+
+## Background receipt discovery
+
+`self_transfer_scan_cursor_survives_earlier_completion` verifies bounded id-cursor
+pages do not skip a later signed record when an earlier row finishes. Zero limit
+returns nothing and backend withdrawals are excluded. Database scan caps pages
+at 100. Database checkpoint: all 11 self_transfer component cases pass.
+
+
+## Automatic ordinary EVM receipt observer (API batch B)
+
+Withdrawal actor startup owns one observer handle and stop signals/joins it.
+The application observer uses cancellable phase jitter (0–15 seconds initially),
+a production interval of 30 seconds and bounded id-cursor pages of 32. Each
+observation has a 35-second outer timeout; shutdown cancels the round immediately.
+No nonce query/allocation, signing, broadcast or backend ACK occurs in observation.
+Only an observed matching hash with status 2/3, valid mined block/time and finite
+nonnegative fee is passed to the dedicated SelfWithdraw receipt transaction.
+Missing/invalid/RPC-error results preserve the durable pending record.
+
+Integration cases (fake BNB adapter, real SQLite, existing transfer_nonce suite):
+- `ordinary_transfer_observer_preserves_uncertainty_until_valid_receipt`: missing,
+  RPC error, nonterminal status and hash mismatch remain uncertain; later receipt
+  finishes with actual fee. Repeated rounds skip terminal rows and never resend.
+- `ordinary_transfer_observer_records_onchain_failure_without_resending`: a mined
+  failed receipt sets failure without releasing/reallocating nonce or broadcasting.
+- `ordinary_transfer_background_observer_cancels_restarts_and_retries`: cancel a
+  hung query, restart observation from saved DB records, see initial missing result,
+  then finish on a later timer tick without a manual query. Test interval is 20ms;
+  production actor supplies 30s. This tests observer restart, not a full OS process
+  restart. Pending raw/hash and nonce remain available across cancellation.
+
+Validation: transfer_nonce integration target; no real RPC or automatic rebroadcast.
+App shutdown/suspension stops execution; observation resumes when its actor starts.

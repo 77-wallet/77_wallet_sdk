@@ -517,3 +517,75 @@ async fn ordinary_transfer_acceptance_write_failure_preserves_signed_transaction
     scenario.then_durable_transfer_is(4, false).await?;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_observer_preserves_uncertainty_until_valid_receipt() -> anyhow::Result<()>
+{
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(20001));
+    scenario.given_transfer_times_out();
+    scenario.when().transfer_fails().await;
+
+    for mode in [0, -1, 4, 5] {
+        scenario.given_receipt_behavior(20001, mode);
+        scenario.when_receipts_are_observed().await?;
+        scenario.then_durable_transfer_is(20001, false).await?;
+        scenario.then_transfer_nonces_and_floor_are(&[20001], 20001).await;
+    }
+    scenario.given_receipt_behavior(20001, 2);
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_receipt_is_persisted(20001, true).await?;
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_receipt_is_persisted(20001, true).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_observer_records_onchain_failure_without_resending() -> anyhow::Result<()>
+{
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(20002));
+    scenario.when().transfer_starts().await??;
+    scenario.given_receipt_behavior(20002, 3);
+
+    scenario.when_receipts_are_observed().await?;
+
+    scenario.then_receipt_is_persisted(20002, false).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_background_observer_cancels_restarts_and_retries() -> anyhow::Result<()>
+{
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(20003));
+    scenario.given_transfer_times_out();
+    scenario.when().transfer_fails().await;
+    scenario.given_receipt_behavior(20003, -2);
+
+    let blocked = scenario.when_observer_starts();
+    scenario.then_observer_has_queried().await;
+    scenario.when_observer_stops(blocked).await?;
+    scenario.then_durable_transfer_is(20003, false).await?;
+
+    scenario.given_receipt_behavior(20003, 0);
+    let restarted = scenario.when_observer_starts();
+    scenario.then_observer_has_queried().await;
+    scenario.then_durable_transfer_is(20003, false).await?;
+    scenario.given_receipt_behavior(20003, 2);
+    scenario.then_background_receipt_finishes(20003).await?;
+    scenario.when_observer_stops(restarted).await?;
+    Ok(())
+}

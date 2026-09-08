@@ -202,6 +202,7 @@ pub struct WithdrawShadowActorSystem {
     dispatcher_handle: Option<tokio::task::JoinHandle<()>>,
     diagnose_handle: Option<tokio::task::JoinHandle<()>>,
     monitor_handle: Option<tokio::task::JoinHandle<()>>,
+    self_transfer_observer_handle: Option<tokio::task::JoinHandle<()>>,
     intent_tx: mpsc::Sender<WithdrawIntent>,
     scanner: Arc<ShadowScanner>,
 }
@@ -394,6 +395,13 @@ impl WithdrawShadowActorSystem {
             }
         });
 
+        let observer_shutdown = shutdown_tx.subscribe();
+        let self_transfer_observer_handle = Some(tokio::spawn(async move {
+            crate::application::api_wallet_transfer::ApiTransferApplication::new(ctx)
+                .run_self_transfer_observer(observer_shutdown, std::time::Duration::from_secs(30))
+                .await;
+        }));
+
         Ok(Self {
             shutdown_tx,
             dispatcher_message_tx,
@@ -401,6 +409,7 @@ impl WithdrawShadowActorSystem {
             dispatcher_handle,
             diagnose_handle,
             monitor_handle,
+            self_transfer_observer_handle,
             intent_tx,
             scanner,
         })
@@ -412,6 +421,12 @@ impl WithdrawShadowActorSystem {
 
         // 发送停止信号
         let _ = self.shutdown_tx.send(());
+
+        if let Some(handle) = self.self_transfer_observer_handle.take() {
+            if let Err(error) = handle.await {
+                tracing::warn!(%error, "ordinary transfer observer join failed during stop");
+            }
+        }
 
         // 等待Actor结束
         if let Some(handle) = self.scanner_handle.take() {

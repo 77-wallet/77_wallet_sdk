@@ -333,3 +333,33 @@ async fn self_transfer_receipt_terminal_write_failure_rolls_back_then_recovers()
     assert!(ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt(true)).await.unwrap());
     assert!(row(&pool).await.finished_at.is_some());
 }
+
+#[tokio::test]
+async fn self_transfer_scan_cursor_survives_earlier_completion() {
+    let pool = setup_api_transaction_pool("self_transfer_scan").await;
+    let first = signed();
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &first).await.unwrap();
+    let mut second = signed();
+    second.trade_no = "ordinary-5";
+    second.nonce = 5;
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &second).await.unwrap();
+    let page = ApiWithdrawRepo::scan_pending_self_transfers(&pool, 0, 1).await.unwrap();
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].trade_no, "ordinary-4");
+    ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt(true)).await.unwrap();
+    let next = ApiWithdrawRepo::scan_pending_self_transfers(&pool, page[0].id, 1).await.unwrap();
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].trade_no, "ordinary-5");
+    assert!(
+        ApiWithdrawRepo::scan_pending_self_transfers(&pool, next[0].id, 1)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(ApiWithdrawRepo::scan_pending_self_transfers(&pool, 0, 0).await.unwrap().is_empty());
+    sqlx::query("UPDATE api_withdraws SET trade_type = 1 WHERE trade_no = 'ordinary-5'")
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+    assert!(ApiWithdrawRepo::scan_pending_self_transfers(&pool, 0, 10).await.unwrap().is_empty());
+}
