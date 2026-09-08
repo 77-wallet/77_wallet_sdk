@@ -79,8 +79,8 @@ impl ApiWithdrawDao {
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
             WHERE trade_no = ? AND tx_hash = ? AND trade_type = 4
               AND chain_code IN ('eth','bnb') AND raw_tx IS NOT NULL
-              AND last_broadcast_at IS NULL AND transaction_time IS NULL
-              AND finished_at IS NULL AND err_code IS NULL
+              AND (last_broadcast_at IS NULL OR broadcast_uncertain_since_at IS NOT NULL)
+              AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
               AND chain_success_at IS NULL AND chain_failed_at IS NULL"#,
         )
         .bind(trade_no)
@@ -88,6 +88,34 @@ impl ApiWithdrawDao {
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(rows.rows_affected() == 1)
+    }
+
+    /// Persist the retry budget before any network send. A cancelled attempt is
+    /// not refunded, so process restart cannot create a broadcast retry storm.
+    pub async fn claim_self_transfer_rebroadcast<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let rows = sqlx::query(r#"UPDATE api_withdraws SET
+            broadcast_uncertain_rebroadcast_count = broadcast_uncertain_rebroadcast_count + 1,
+            broadcast_uncertain_since_at = COALESCE(broadcast_uncertain_since_at, strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+            WHERE trade_no = ? AND tx_hash = ? AND raw_tx = ?
+              AND raw_tx != '' AND tx_hash != '' AND trade_type = 4 AND chain_code IN ('eth','bnb')
+              AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
+              AND chain_success_at IS NULL AND chain_failed_at IS NULL
+              AND broadcast_uncertain_rebroadcast_count < 3
+              AND julianday(COALESCE(broadcast_uncertain_last_checked_at,
+                  broadcast_uncertain_since_at, last_broadcast_at, created_at)) <= julianday('now', '-60 seconds')"#)
+            .bind(trade_no).bind(tx_hash).bind(raw_tx).execute(exec).await
+            .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(rows.rows_affected() == 1)
     }
 

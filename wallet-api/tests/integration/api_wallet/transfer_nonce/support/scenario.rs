@@ -399,7 +399,7 @@ impl TransferNonceScenario {
         let rows = super::db::pending_ordinary_transfers(self.env, &address).await?;
         assert_eq!(rows.iter().filter(|r| r.nonce == nonce as i64).count(), 1);
         let row = rows.iter().find(|r| r.nonce == nonce as i64).unwrap();
-        assert_eq!(row.tx_hash.as_deref(), Some(format!("0x{nonce:064x}").as_str()));
+        assert_eq!(row.tx_hash.as_deref(), Some(self.adapter.tx_hash(nonce).as_str()));
         let raw: wallet_api::domain::api_wallet::RawTx =
             serde_json::from_str(row.raw_tx.as_deref().expect("signed raw persisted"))?;
         let wallet_api::domain::api_wallet::RawTx::Evm(bytes, _) = raw else {
@@ -468,7 +468,9 @@ impl TransferNonceScenario {
         success: bool,
     ) -> anyhow::Result<()> {
         let address = self.from_addr.borrow().clone();
-        let row = super::db::ordinary_transfer_by_hash(self.env, &address, nonce).await?;
+        let row =
+            super::db::ordinary_transfer_by_hash(self.env, &address, &self.adapter.tx_hash(nonce))
+                .await?;
         assert_eq!(
             row.status,
             if success {
@@ -498,11 +500,15 @@ impl TransferNonceScenario {
         let address = self.from_addr.borrow().clone();
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
-                if super::db::ordinary_transfer_by_hash(self.env, &address, nonce)
-                    .await
-                    .unwrap()
-                    .finished_at
-                    .is_some()
+                if super::db::ordinary_transfer_by_hash(
+                    self.env,
+                    &address,
+                    &self.adapter.tx_hash(nonce),
+                )
+                .await
+                .unwrap()
+                .finished_at
+                .is_some()
                 {
                     break;
                 }
@@ -519,6 +525,45 @@ impl TransferNonceScenario {
     ) -> anyhow::Result<()> {
         observer.0.send(())?;
         tokio::time::timeout(Duration::from_secs(1), observer.1).await??;
+        Ok(())
+    }
+}
+
+impl TransferNonceScenario {
+    pub(crate) fn given_rebroadcast_fixture(&self) {
+        self.adapter.canonical_rebroadcast_fixture();
+    }
+    pub(crate) fn given_node_visibility(&self, visible: bool, error: bool) {
+        self.adapter.set_visibility(visible, error);
+    }
+    pub(crate) async fn given_rebroadcast_cooldown_elapsed(&self) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        super::db::age_self_transfer(self.env, &address).await
+    }
+    pub(crate) async fn given_saved_raw_corrupted(&self) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        super::db::corrupt_self_transfer_raw(self.env, &address).await
+    }
+    pub(crate) async fn then_rebroadcast_counts_are(
+        &self,
+        nonce: u64,
+        sends: usize,
+        retries: i64,
+    ) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        let row =
+            super::db::ordinary_transfer_by_hash(self.env, &address, &self.adapter.tx_hash(nonce))
+                .await?;
+        assert_eq!(row.broadcast_uncertain_rebroadcast_count as i64, retries);
+        assert_eq!(row.tx_hash.as_deref(), Some(self.adapter.tx_hash(nonce).as_str()));
+        assert!(row.finished_at.is_none());
+        assert_eq!(self.adapter.build_calls(), 1, "recovery must never sign again");
+        assert_eq!(
+            self.adapter.recorded_raw(),
+            vec![nonce.to_be_bytes().to_vec(); sends],
+            "every send must use identical bytes"
+        );
+        self.then_transfer_nonces_and_floor_are(&vec![nonce; sends], nonce as i64).await;
         Ok(())
     }
 }

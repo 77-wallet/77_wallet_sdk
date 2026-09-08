@@ -18,6 +18,11 @@ use wallet_database::entities::asset_token_key::AssetTokenKey;
 #[derive(Default)]
 struct RecordingAdapterState {
     recorded_nonces: Mutex<Vec<u64>>,
+    recorded_raw: Mutex<Vec<Vec<u8>>>,
+    build_calls: AtomicUsize,
+    canonical_hash: AtomicBool,
+    visibility_error: AtomicBool,
+
     receipt_behavior: Mutex<Option<(String, i8)>>,
     receipt_queries: AtomicUsize,
 
@@ -50,11 +55,33 @@ impl RecordingEthAdapter {
     // 4 nonterminal response, 5 mismatched hash.
     pub(crate) fn receipt_behavior(&self, nonce: u64, mode: i8) {
         self.state.receipt_queries.store(0, Ordering::SeqCst);
-        *self.state.receipt_behavior.lock().unwrap() = Some((format!("0x{nonce:064x}"), mode));
+        *self.state.receipt_behavior.lock().unwrap() = Some((self.tx_hash(nonce), mode));
     }
 
     pub(crate) fn receipt_queries(&self) -> usize {
         self.state.receipt_queries.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn canonical_rebroadcast_fixture(&self) {
+        self.state.canonical_hash.store(true, Ordering::SeqCst);
+        self.state.invisible_transfer.store(true, Ordering::SeqCst);
+    }
+    pub(crate) fn tx_hash(&self, nonce: u64) -> String {
+        if self.state.canonical_hash.load(Ordering::SeqCst) {
+            format!("{:#x}", alloy::primitives::keccak256(nonce.to_be_bytes()))
+        } else {
+            format!("0x{nonce:064x}")
+        }
+    }
+    pub(crate) fn set_visibility(&self, visible: bool, error: bool) {
+        self.state.invisible_transfer.store(!visible, Ordering::SeqCst);
+        self.state.visibility_error.store(error, Ordering::SeqCst);
+    }
+    pub(crate) fn build_calls(&self) -> usize {
+        self.state.build_calls.load(Ordering::SeqCst)
+    }
+    pub(crate) fn recorded_raw(&self) -> Vec<Vec<u8>> {
+        self.state.recorded_raw.lock().unwrap().clone()
     }
 
     pub(crate) fn set_nonce_response(&self, response: Option<u64>) {
@@ -134,11 +161,14 @@ impl RecordingEthAdapter {
         }
 
         self.set_nonce_response(Some(nonce + 1));
+        if self.state.canonical_hash.load(Ordering::SeqCst) {
+            self.state.invisible_transfer.store(false, Ordering::SeqCst);
+        }
         Ok(wallet_api::domain::chain::TransferResp::new(
             if self.state.mismatch_hash.load(Ordering::SeqCst) {
                 "wrong-hash".into()
             } else {
-                format!("0x{:064x}", nonce)
+                self.tx_hash(nonce)
             },
             "0".to_string(),
         ))
@@ -237,8 +267,9 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
         _private_key: wallet_chain_interact::types::ChainPrivateKey,
     ) -> Result<(String, wallet_api::domain::api_wallet::RawTx, String), ServiceError> {
+        self.state.build_calls.fetch_add(1, Ordering::SeqCst);
         Ok((
-            format!("0x{:064x}", params.nonce),
+            self.tx_hash(params.nonce),
             wallet_api::domain::api_wallet::RawTx::Evm(
                 params.nonce.to_be_bytes().to_vec(),
                 U256::ZERO,
@@ -254,10 +285,14 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         let wallet_api::domain::api_wallet::RawTx::Evm(bytes, _) = raw else {
             panic!("expected EVM raw")
         };
+        self.state.recorded_raw.lock().unwrap().push(bytes.clone());
         self.send_nonce(u64::from_be_bytes(bytes.try_into().unwrap())).await
     }
 
     async fn query_tx_seen_on_node(&self, _hash: &str) -> Result<bool, ServiceError> {
+        if self.state.visibility_error.load(Ordering::SeqCst) {
+            return Err(ServiceError::Timeout);
+        }
         Ok(!self.state.invisible_transfer.load(Ordering::SeqCst))
     }
 }

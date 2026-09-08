@@ -115,13 +115,35 @@ pub(crate) async fn reject_acceptance_persistence(
 pub(crate) async fn ordinary_transfer_by_hash(
     env: &harness::TestEnv,
     address: &str,
-    nonce: u64,
+    hash: &str,
 ) -> anyhow::Result<wallet_database::entities::api_withdraw::ApiWithdrawEntity> {
     let pool = open_api_transaction_pool(&env.db_dir).await;
     Ok(wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::get_by_hash_and_owner(
-        &pool,
-        address,
-        &format!("0x{nonce:064x}"),
+        &pool, address, hash,
     )
     .await?)
+}
+
+pub(crate) async fn age_self_transfer(env: &harness::TestEnv, address: &str) -> anyhow::Result<()> {
+    let pool = open_api_transaction_pool(&env.db_dir).await;
+    sqlx::query("UPDATE api_withdraws SET broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ','now','-61 seconds') WHERE from_addr = ? AND trade_type = 4")
+        .bind(address).execute(pool.write_ref()).await?;
+    Ok(())
+}
+
+pub(crate) async fn corrupt_self_transfer_raw(
+    env: &harness::TestEnv,
+    address: &str,
+) -> anyhow::Result<()> {
+    let pool = open_api_transaction_pool(&env.db_dir).await;
+    let raw = serde_json::to_string(&wallet_api::domain::api_wallet::RawTx::Evm(
+        vec![1, 2, 3],
+        alloy::primitives::U256::ZERO,
+    ))?;
+    sqlx::query("UPDATE api_withdraws SET raw_tx = ? WHERE from_addr = ? AND trade_type = 4")
+        .bind(raw)
+        .bind(address)
+        .execute(pool.write_ref())
+        .await?;
+    Ok(())
 }

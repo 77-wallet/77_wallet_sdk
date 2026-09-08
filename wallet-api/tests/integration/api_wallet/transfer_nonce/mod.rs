@@ -589,3 +589,109 @@ async fn ordinary_transfer_background_observer_cancels_restarts_and_retries() ->
     scenario.when_observer_stops(restarted).await?;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_rebroadcast_uses_saved_bytes_after_cooldown() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_rebroadcast_fixture();
+    scenario.given_chain_next_nonce(Some(30001));
+    scenario.given_transfer_times_out();
+    scenario.when().transfer_fails().await;
+    scenario.given_transfer_can_succeed();
+
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_rebroadcast_counts_are(30001, 1, 0).await?;
+    scenario.given_rebroadcast_cooldown_elapsed().await?;
+    scenario.when_receipts_are_observed().await?;
+
+    scenario.then_rebroadcast_counts_are(30001, 2, 1).await?;
+    scenario.then_durable_transfer_is(30001, true).await?;
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_rebroadcast_counts_are(30001, 2, 1).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_rebroadcast_waits_on_visibility_nonce_and_freeze() -> anyhow::Result<()>
+{
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_rebroadcast_fixture();
+    scenario.given_chain_next_nonce(Some(30002));
+    scenario.given_transfer_times_out();
+    scenario.when().transfer_fails().await;
+    scenario.given_transfer_can_succeed();
+    scenario.given_rebroadcast_cooldown_elapsed().await?;
+
+    scenario.given_node_visibility(true, false);
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_rebroadcast_counts_are(30002, 1, 0).await?;
+    scenario.given_node_visibility(false, false);
+    for next in [Some(30003), Some(30001), None] {
+        scenario.given_chain_next_nonce(next);
+        scenario.when_receipts_are_observed().await?;
+        scenario.then_rebroadcast_counts_are(30002, 1, 0).await?;
+    }
+    scenario.given_chain_next_nonce(Some(30002));
+    scenario.given_node_visibility(false, true);
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_rebroadcast_counts_are(30002, 1, 0).await?;
+    scenario.given_node_visibility(false, false);
+    scenario.given_nonce_allocation_frozen(true);
+    scenario.when_receipts_are_observed().await?;
+    scenario.given_nonce_allocation_frozen(false);
+    scenario.then_rebroadcast_counts_are(30002, 1, 0).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_rebroadcast_timeouts_consume_bounded_budget() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_rebroadcast_fixture();
+    scenario.given_chain_next_nonce(Some(30003));
+    scenario.given_transfer_times_out();
+    scenario.when().transfer_fails().await;
+
+    for retries in 1..=3 {
+        scenario.given_rebroadcast_cooldown_elapsed().await?;
+        scenario.when_receipts_are_observed().await?;
+        scenario.then_rebroadcast_counts_are(30003, retries as usize + 1, retries).await?;
+        scenario.then_durable_transfer_is(30003, false).await?;
+    }
+    scenario.given_rebroadcast_cooldown_elapsed().await?;
+    scenario.when_receipts_are_observed().await?;
+    scenario.then_rebroadcast_counts_are(30003, 4, 3).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_rebroadcast_rejects_corrupted_saved_raw() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_rebroadcast_fixture();
+    scenario.given_chain_next_nonce(Some(30004));
+    scenario.given_transfer_times_out();
+    scenario.when().transfer_fails().await;
+    scenario.given_transfer_can_succeed();
+    scenario.given_rebroadcast_cooldown_elapsed().await?;
+    scenario.given_saved_raw_corrupted().await?;
+
+    scenario.when_receipts_are_observed().await?;
+
+    scenario.then_rebroadcast_counts_are(30004, 1, 0).await?;
+    Ok(())
+}

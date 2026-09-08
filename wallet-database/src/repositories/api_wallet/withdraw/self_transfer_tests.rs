@@ -363,3 +363,88 @@ async fn self_transfer_scan_cursor_survives_earlier_completion() {
         .unwrap();
     assert!(ApiWithdrawRepo::scan_pending_self_transfers(&pool, 0, 10).await.unwrap().is_empty());
 }
+
+async fn age_rebroadcast(pool: &ApiTransactionDbPool) {
+    sqlx::query("UPDATE api_withdraws SET broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ','now','-61 seconds')")
+        .execute(pool.write_ref()).await.unwrap();
+}
+
+async fn claim_rebroadcast(pool: &ApiTransactionDbPool) -> bool {
+    ApiWithdrawRepo::claim_self_transfer_rebroadcast(pool, "ordinary-4", "hash-4", "signed-bytes-4")
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn self_transfer_rebroadcast_claim_serializes_cools_down_and_caps_retries() {
+    let pool = setup_api_transaction_pool("self_transfer_rebroadcast").await;
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &signed()).await.unwrap();
+    assert!(!claim_rebroadcast(&pool).await);
+    age_rebroadcast(&pool).await;
+    let (a, b) = tokio::join!(claim_rebroadcast(&pool), claim_rebroadcast(&pool));
+    assert_ne!(a, b);
+    assert!(!claim_rebroadcast(&pool).await);
+    assert_eq!(row(&pool).await.broadcast_uncertain_rebroadcast_count, 1);
+    for count in [2, 3] {
+        age_rebroadcast(&pool).await;
+        assert!(claim_rebroadcast(&pool).await);
+        assert_eq!(row(&pool).await.broadcast_uncertain_rebroadcast_count, count);
+    }
+    age_rebroadcast(&pool).await;
+    assert!(!claim_rebroadcast(&pool).await);
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "eth").await.unwrap(), 4);
+    assert_eq!(row(&pool).await.raw_tx.as_deref(), Some("signed-bytes-4"));
+}
+
+#[tokio::test]
+async fn self_transfer_rebroadcast_claim_guards_identity_and_terminal_state() {
+    let pool = setup_api_transaction_pool("self_transfer_rebroadcast_identity").await;
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &signed()).await.unwrap();
+    age_rebroadcast(&pool).await;
+    assert!(
+        !ApiWithdrawRepo::claim_self_transfer_rebroadcast(
+            &pool,
+            "ordinary-4",
+            "wrong",
+            "signed-bytes-4"
+        )
+        .await
+        .unwrap()
+    );
+    assert!(
+        !ApiWithdrawRepo::claim_self_transfer_rebroadcast(&pool, "ordinary-4", "hash-4", "changed")
+            .await
+            .unwrap()
+    );
+    assert_eq!(row(&pool).await.broadcast_uncertain_rebroadcast_count, 0);
+    ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt(true)).await.unwrap();
+    assert!(!claim_rebroadcast(&pool).await);
+}
+
+#[tokio::test]
+async fn self_transfer_rebroadcast_acceptance_keeps_budget_across_reopen() {
+    let dir = make_temp_dir("self_transfer_rebroadcast_reopen");
+    let pool = SqliteContext::new(&dir, Some("api_transaction.db"))
+        .await
+        .unwrap()
+        .into_transaction_db_pool()
+        .unwrap();
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &signed()).await.unwrap();
+    ApiWithdrawRepo::mark_self_transfer_accepted(&pool, "ordinary-4", "hash-4").await.unwrap();
+    age_rebroadcast(&pool).await;
+    assert!(claim_rebroadcast(&pool).await);
+    pool.read_ref().close().await;
+    pool.write_ref().close().await;
+    let pool = SqliteContext::new(&dir, Some("api_transaction.db"))
+        .await
+        .unwrap()
+        .into_transaction_db_pool()
+        .unwrap();
+    assert!(!claim_rebroadcast(&pool).await);
+    assert_eq!(row(&pool).await.broadcast_uncertain_rebroadcast_count, 1);
+    assert!(
+        ApiWithdrawRepo::mark_self_transfer_accepted(&pool, "ordinary-4", "hash-4").await.unwrap()
+    );
+    assert!(row(&pool).await.broadcast_uncertain_since_at.is_none());
+    assert_eq!(row(&pool).await.broadcast_uncertain_rebroadcast_count, 1);
+}

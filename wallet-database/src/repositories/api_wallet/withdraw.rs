@@ -102,6 +102,17 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::mark_self_transfer_accepted(pool.write_ref(), trade_no, tx_hash).await
     }
 
+    /// Claim a bounded, cooled-down resend of the exact saved signed transaction.
+    pub async fn claim_self_transfer_rebroadcast(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+    ) -> Result<bool, crate::Error> {
+        ApiWithdrawDao::claim_self_transfer_rebroadcast(pool.write_ref(), trade_no, tx_hash, raw_tx)
+            .await
+    }
+
     /// Signed ordinary records still awaiting confirmation, including uncertainty.
     pub async fn pending_self_transfers_for_sender(
         pool: &ApiTransactionDbPool,

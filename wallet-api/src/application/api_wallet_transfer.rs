@@ -103,6 +103,23 @@ impl ApiTransferApplication {
         &self,
         row: &wallet_database::entities::api_withdraw::ApiWithdrawEntity,
     ) -> Result<(), ServiceError> {
+        let engine = get_nonce_engine_with_ctx(self.ctx)?;
+        let _gate = engine.acquire_transfer_gate(&row.from_addr, &row.chain_code).await;
+        let pool = self.ctx.api_transaction_pool()?;
+        let row = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            &row.trade_no,
+            ApiTradeType::SelfWithdraw,
+        )
+        .await?;
+        if row.finished_at.is_some()
+            || row.transaction_time.is_some()
+            || row.chain_success_at.is_some()
+            || row.chain_failed_at.is_some()
+            || row.err_code.is_some()
+        {
+            return Ok(());
+        }
         let Some(hash) = row.tx_hash.as_deref().filter(|hash| !hash.is_empty()) else {
             return Ok(());
         };
@@ -110,7 +127,7 @@ impl ApiTransferApplication {
             self.ctx, &row.chain_code,
         ).await?;
         let Some(receipt) = adapter.query_tx_res(hash).await? else {
-            return Ok(());
+            return self.rebroadcast_saved_self_transfer(&row, adapter.as_ref()).await;
         };
         // Only an actual mined receipt is a terminal fact. Missing/pending/error
         // observations never become failure, and nonce progress proves nothing here.
@@ -149,6 +166,64 @@ impl ApiTransferApplication {
         if changed {
             tracing::info!(trade_no = %row.trade_no, tx_hash = %hash, success = (receipt.status == 2), "ordinary transfer receipt persisted");
         }
+        Ok(())
+    }
+
+    /// Called while holding the sender gate. Re-send only the immutable signed
+    /// bytes after independent node visibility and nonce checks, never re-sign.
+    async fn rebroadcast_saved_self_transfer(
+        &self,
+        row: &wallet_database::entities::api_withdraw::ApiWithdrawEntity,
+        adapter: &(dyn crate::domain::api_wallet::Tx + Send + Sync),
+    ) -> Result<(), ServiceError> {
+        let last_attempt = row
+            .broadcast_uncertain_last_checked_at
+            .or(row.broadcast_uncertain_since_at)
+            .or(row.last_broadcast_at)
+            .unwrap_or(row.created_at);
+        if row.broadcast_uncertain_rebroadcast_count >= 3
+            || chrono::Utc::now().signed_duration_since(last_attempt).num_seconds() < 60
+            || get_nonce_engine_with_ctx(self.ctx)?.is_frozen(&row.from_addr, &row.chain_code)
+        {
+            return Ok(());
+        }
+        let (Some(hash), Some(raw_json)) = (row.tx_hash.as_deref(), row.raw_tx.as_deref()) else {
+            return Ok(());
+        };
+        let raw: crate::domain::api_wallet::RawTx =
+            wallet_utils::serde_func::serde_from_str(raw_json)?;
+        let crate::domain::api_wallet::RawTx::Evm(bytes, _) = &raw else {
+            return Err(ServiceError::Parameter("ordinary rebroadcast requires EVM raw".into()));
+        };
+        let raw_hash = format!("{:#x}", alloy::primitives::keccak256(bytes));
+        if !hash.eq_ignore_ascii_case(&raw_hash) {
+            return Err(ServiceError::Parameter("ordinary rebroadcast raw hash mismatch".into()));
+        }
+        if adapter.query_tx_seen_on_node(hash).await? {
+            return Ok(());
+        }
+        let next = adapter.nonce(&row.from_addr).await?;
+        if i64::try_from(next).ok() != Some(row.nonce) {
+            return Ok(());
+        }
+        let pool = self.ctx.api_transaction_pool()?;
+        if !ApiWithdrawRepo::claim_self_transfer_rebroadcast(&pool, &row.trade_no, hash, raw_json)
+            .await?
+        {
+            return Ok(());
+        }
+        // The durable claim remains consumed even if shutdown interrupts the RPC.
+        let response =
+            ApiTransDomain::broadcast_transfer(self.ctx, &row.chain_code, raw, Some(hash)).await?;
+        if let Some(response) = response {
+            if !response.tx_hash.eq_ignore_ascii_case(hash) {
+                return Err(ServiceError::Parameter(
+                    "ordinary rebroadcast response hash mismatch".into(),
+                ));
+            }
+            ApiWithdrawRepo::mark_self_transfer_accepted(&pool, &row.trade_no, hash).await?;
+        }
+        tracing::info!(trade_no = %row.trade_no, tx_hash = %hash, "ordinary signed transaction rebroadcast attempted");
         Ok(())
     }
 

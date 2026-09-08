@@ -193,7 +193,7 @@ an actual receipt fee. Non-EVM transfer paths keep their existing implementation
   a DB failure after node acceptance retains raw and uncertainty for reconciliation.
 
 Validation: `cargo test -p wallet-api --test mod --features integration-tests transfer_nonce`.
-No automatic rebroadcast or recovery worker yet. A failure before signed facts
+At this historical checkpoint, no automatic rebroadcast or recovery worker was enabled; see the later observer and rebroadcast batches below. A failure before signed facts
 are persisted can still leave a reserved nonce with no recoverable raw, and must
 not be auto-released. Tests use a fake BNB adapter and real SQLite; full process
 restart and real ETH/BNB RPC acceptance remain separate acceptance work.
@@ -241,7 +241,7 @@ Withdrawal actor startup owns one observer handle and stop signals/joins it.
 The application observer uses cancellable phase jitter (0–15 seconds initially),
 a production interval of 30 seconds and bounded id-cursor pages of 32. Each
 observation has a 35-second outer timeout; shutdown cancels the round immediately.
-No nonce query/allocation, signing, broadcast or backend ACK occurs in observation.
+At the receipt-only checkpoint, observation performed no nonce query or broadcast. The rebroadcast batch below adds guarded nonce observation and identical-raw replay; allocation, signing and backend ACK remain excluded.
 Only an observed matching hash with status 2/3, valid mined block/time and finite
 nonnegative fee is passed to the dedicated SelfWithdraw receipt transaction.
 Missing/invalid/RPC-error results preserve the durable pending record.
@@ -258,5 +258,51 @@ Integration cases (fake BNB adapter, real SQLite, existing transfer_nonce suite)
   production actor supplies 30s. This tests observer restart, not a full OS process
   restart. Pending raw/hash and nonce remain available across cancellation.
 
-Validation: transfer_nonce integration target; no real RPC or automatic rebroadcast.
+Validation: transfer_nonce integration target with fake RPC; rebroadcast coverage is added below.
 App shutdown/suspension stops execution; observation resumes when its actor starts.
+
+
+## Bounded identical-raw replay (database A, API B)
+
+Scope is API/outbound-wallet manual SelfWithdraw ETH/BNB transfers, despite the
+historical `ordinary_transfer` test names. The standard wallet is not covered.
+The observer and initial submission share the sender gate; after acquiring it,
+the observer reloads the row and skips terminal/error facts. Receipt confirmation
+still takes precedence. When no receipt is returned, replay requires saved EVM
+bytes matching the saved hash, a non-frozen sender, an absent node transaction,
+and pending nonce exactly equal to the saved nonce. RPC errors or unequal nonce
+leave the record pending. Missing receipt alone is not proof of a dropped tx.
+
+Before broadcast, a guarded SQLite update claims a persistent attempt with a
+60-second cooldown and a lifetime limit of three recovery attempts. Cancellation,
+RPC timeout, acceptance and reopening the DB do not refund this budget. Only the
+saved bytes are submitted; signing and nonce allocation are not repeated. Node
+acceptance does not complete the transaction. At the cap, receipt observation
+continues, but no further automatic replay occurs.
+
+SQLite cases:
+- `self_transfer_rebroadcast_claim_serializes_cools_down_and_caps_retries`:
+  concurrent claims have one winner; fresh/cooling rows and exhausted budget skip.
+- `self_transfer_rebroadcast_claim_guards_identity_and_terminal_state`:
+  wrong identity/raw, other trade types and terminal records cannot claim.
+- `self_transfer_rebroadcast_acceptance_keeps_budget_across_reopen`:
+  re-acceptance clears uncertainty without resetting persisted retry count.
+
+Integration cases, fake BNB adapter and real SQLite:
+- `ordinary_transfer_rebroadcast_uses_saved_bytes_after_cooldown`: immediate
+  observation does not send; after cooldown it sends identical bytes with the
+  same hash/nonce and only one initial build; node acceptance is recorded.
+- `ordinary_transfer_rebroadcast_waits_on_visibility_nonce_and_freeze`: visible
+  tx, higher/lower/unavailable nonce, visibility RPC failure and freeze skip replay.
+- `ordinary_transfer_rebroadcast_timeouts_consume_bounded_budget`: timeouts spend
+  attempts, preserve signed facts/floor and stop after three recovery attempts.
+- `ordinary_transfer_rebroadcast_rejects_corrupted_saved_raw`: hash mismatch
+  prevents both claim and send.
+
+Validation commands:
+- `cargo test -p wallet-database --lib self_transfer`
+- `cargo test -p wallet-api --test mod --features integration-tests transfer_nonce`
+
+No live ETH/BNB RPC, full mobile process restart or production recovery is claimed.
+The budget counts recovery attempts; the existing transport's authentication retry
+may make more than one network call within an attempt.
