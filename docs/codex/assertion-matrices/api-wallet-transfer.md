@@ -105,3 +105,26 @@ atomic allocation, within its existing per-address transfer gate.
 - Existing same-address serialization and post-allocation transfer-failure tests
   remain enabled. This batch does not change withdrawal/collect-fee entrypoints,
   address normalization, replacement policy or reservation release semantics.
+
+
+## Ordinary transfer gap protection (2026-09-08, batch 1)
+
+- `ordinary_transfer_uncertain_nonce_blocks_next_allocation`: fake submission of
+  nonce 4 fails, chain pending next stays 4. A repeated ordinary call returns
+  `nonce_gap_requires_recovery`; nonce floor remains 4 and there is only one send.
+  When observation advances to 5, another submission succeeds with nonce 5.
+  This is allocation recovery, not proof that the original transaction succeeded.
+- `ordinary_transfer_timeout_blocks_next_allocation`: adapter timeout preserves
+  nonce reservation 4 and prevents another send/allocation while node stays at 4.
+- Existing same-address serialization test now models node pending advancing on
+  accepted sends. Both nonce 1 and nonce 2 are still returned in order.
+- Existing collect/withdraw/fee queue tests retain their allocation policy and
+  unique reservations. The gap guard applies only to ordinary ETH/BNB transfers.
+- A concurrent reservation between observation and allocation also fails closed
+  if the resulting nonce differs from the observation; its reservation is kept.
+
+Validation: `cargo test -p wallet-api --test mod --features integration-tests transfer_nonce`.
+Offline fake chain and real SQLite; no production transaction or migration.
+A stale node may conservatively block a legitimate next transfer. Signed raw/hash
+persistence, restart recovery, identical-raw retry and atomic cross-flow allocation
+are separate batches. This change does not repair an existing nonce gap.

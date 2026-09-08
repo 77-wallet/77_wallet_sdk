@@ -23,6 +23,7 @@ struct RecordingAdapterState {
     call_count: AtomicUsize,
     first_entered: AtomicBool,
     fail_transfer: AtomicBool,
+    timeout_transfer: AtomicBool,
     block_first: AtomicBool,
     release_first: Notify,
     entered_notify: Notify,
@@ -36,7 +37,7 @@ pub(crate) struct RecordingEthAdapter {
 impl RecordingEthAdapter {
     pub(crate) fn new() -> Self {
         let state = RecordingAdapterState::default();
-        *state.nonce_response.lock().unwrap() = Some(0);
+        *state.nonce_response.lock().unwrap() = Some(1);
         Self { state: Arc::new(state) }
     }
 
@@ -52,6 +53,15 @@ impl RecordingEthAdapter {
         self.state.fail_transfer.store(true, Ordering::SeqCst);
     }
 
+    pub(crate) fn allow_transfer(&self) {
+        self.state.fail_transfer.store(false, Ordering::SeqCst);
+        self.state.timeout_transfer.store(false, Ordering::SeqCst);
+    }
+
+    pub(crate) fn timeout_transfer(&self) {
+        self.state.timeout_transfer.store(true, Ordering::SeqCst);
+    }
+
     pub(crate) fn block_first_transfer(&self) {
         self.state.block_first.store(true, Ordering::SeqCst);
     }
@@ -61,12 +71,16 @@ impl RecordingEthAdapter {
     }
 
     pub(crate) async fn wait_for_first_entry(&self) {
-        loop {
-            if self.state.first_entered.load(Ordering::SeqCst) {
-                return;
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                if self.state.first_entered.load(Ordering::SeqCst) {
+                    return;
+                }
+                self.state.entered_notify.notified().await;
             }
-            self.state.entered_notify.notified().await;
-        }
+        })
+        .await
+        .expect("first transfer did not reach the adapter");
     }
 
     pub(crate) fn release_first(&self) {
@@ -145,10 +159,14 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
             self.state.release_first.notified().await;
         }
 
+        if self.state.timeout_transfer.load(Ordering::SeqCst) {
+            return Err(ServiceError::Timeout);
+        }
         if self.state.fail_transfer.load(Ordering::SeqCst) {
             return Err(ServiceError::Parameter("simulated transfer failure".to_string()));
         }
 
+        self.set_nonce_response(Some(params.nonce + 1));
         Ok(wallet_api::domain::chain::TransferResp::new(
             format!("0x{:064x}", params.nonce),
             "0".to_string(),

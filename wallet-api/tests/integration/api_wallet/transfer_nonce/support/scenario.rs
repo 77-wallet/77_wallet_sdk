@@ -365,3 +365,13 @@ impl TransferNonceScenario {
         engine.handle_nonce_error(&address, "bnb", error).await
     }
 }
+
+impl TransferNonceScenario {
+    pub(crate) fn given_transfer_can_succeed(&self) {
+        self.adapter.allow_transfer();
+    }
+
+    pub(crate) fn given_transfer_times_out(&self) {
+        self.adapter.timeout_transfer();
+    }
+}

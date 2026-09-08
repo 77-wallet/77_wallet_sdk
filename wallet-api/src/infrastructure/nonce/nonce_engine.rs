@@ -321,6 +321,26 @@ impl NonceEngine {
         address: &str,
         chain: &str,
     ) -> Result<i32, ServiceError> {
+        self.allocate_nonce_after_observation(address, chain, false).await
+    }
+
+    /// Ordinary transfers have no queued-transaction recovery owner yet. Do not
+    /// extend a local reservation that the observed node has not accounted for.
+    /// The caller holds the address transfer gate across build and broadcast.
+    pub(crate) async fn allocate_ordinary_transfer_nonce(
+        &self,
+        address: &str,
+        chain: &str,
+    ) -> Result<i32, ServiceError> {
+        self.allocate_nonce_after_observation(address, chain, true).await
+    }
+
+    async fn allocate_nonce_after_observation(
+        &self,
+        address: &str,
+        chain: &str,
+        reject_gap: bool,
+    ) -> Result<i32, ServiceError> {
         if self.is_frozen(address, chain) {
             return Err(ServiceError::Parameter(format!(
                 "Address {} on chain {} is frozen",
@@ -352,13 +372,27 @@ impl NonceEngine {
             chain_next,
             local_last,
             source = "nonce_engine",
-            "Collect nonce floor synced before allocation"
+            "Nonce floor synced before allocation"
         );
+
+        if reject_gap && local_last >= i64::from(chain_next) {
+            return Err(ServiceError::Parameter(format!(
+                "nonce_gap_requires_recovery: address={address} chain={chain} chain_next={chain_next} local_last={local_last}"
+            )));
+        }
 
         // set_nonce_floor is monotonic; allocation remains a separate atomic
         // increment. Concurrent reservations and older RPC responses cannot
         // lower the floor or hand out the same nonce.
-        self.allocate_nonce(address, chain).await
+        let allocated = self.allocate_nonce(address, chain).await?;
+        if reject_gap && allocated != chain_next {
+            // Another flow can reserve between observation and increment. Keep
+            // that reservation, but never broadcast beyond the observed gap.
+            return Err(ServiceError::Parameter(format!(
+                "nonce_gap_requires_recovery: concurrent reservation address={address} chain={chain} chain_next={chain_next} allocated={allocated}"
+            )));
+        }
+        Ok(allocated)
     }
 
     /// 获取地址级 transfer gate，确保同地址转账串行执行

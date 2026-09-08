@@ -392,3 +392,46 @@ async fn nonce_known_transaction_preserves_reservation_without_chain_repair() ->
     scenario.then_nonce_floor_and_queries_are(9, 1).await;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_uncertain_nonce_blocks_next_allocation() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().transfer_fails();
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(4));
+
+    let first = scenario.when().transfer_fails().await;
+    let second = scenario.when().transfer_fails().await;
+
+    assert!(first.to_string().contains("simulated transfer failure"));
+    assert!(second.to_string().contains("nonce_gap_requires_recovery"));
+    scenario.then_transfer_nonces_and_floor_are(&[4], 4).await;
+
+    scenario.given_transfer_can_succeed();
+    scenario.given_chain_next_nonce(Some(5));
+    assert_eq!(scenario.when().transfer_starts().await??, format!("0x{:064x}", 5));
+    scenario.then_transfer_nonces_and_floor_are(&[4, 5], 5).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_timeout_blocks_next_allocation() -> anyhow::Result<()> {
+    let scenario = TransferNonceScenario::new().await;
+    scenario.given().bnb_transfer_fixture().await?;
+    scenario.given().fake_chain_adapter();
+    scenario.given().wallet_password_cached().await;
+    scenario.given_chain_next_nonce(Some(4));
+    scenario.given_transfer_times_out();
+
+    let first = scenario.when().transfer_fails().await;
+    let second = scenario.when().transfer_fails().await;
+
+    assert!(first.to_string().contains("timeout"));
+    assert!(second.to_string().contains("nonce_gap_requires_recovery"));
+    scenario.then_transfer_nonces_and_floor_are(&[4], 4).await;
+    Ok(())
+}
