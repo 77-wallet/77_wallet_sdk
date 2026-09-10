@@ -1,5 +1,5 @@
 use crate::{
-    DbPool, any_in_collection,
+    DbPool,
     entities::bill::{
         BillEntity, BillKind, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo,
     },
@@ -10,6 +10,59 @@ use serde::Serialize;
 use sqlx::{Executor, QueryBuilder, Sqlite};
 use std::collections::HashSet;
 pub struct BillDao;
+
+struct BillListFilters<'a> {
+    addr: &'a [String],
+    chain_code: Option<&'a str>,
+    symbol: Option<&'a str>,
+    is_multisig: Option<i64>,
+    min_value: Option<f64>,
+    start: Option<i64>,
+    end: Option<i64>,
+    transfer_type: &'a [i32],
+}
+
+impl BillListFilters<'_> {
+    fn push_to<'args>(&'args self, query: &mut QueryBuilder<'args, Sqlite>) {
+        query.push(" WHERE owner IN (");
+        {
+            let mut separated = query.separated(",");
+            for address in self.addr {
+                separated.push_bind(address);
+            }
+        }
+        query.push(")");
+
+        if !self.transfer_type.is_empty() {
+            query.push(" AND tx_kind IN (");
+            {
+                let mut separated = query.separated(",");
+                for kind in self.transfer_type {
+                    separated.push_bind(kind);
+                }
+            }
+            query.push(")");
+        }
+        if let Some(chain_code) = self.chain_code {
+            query.push(" AND chain_code = ").push_bind(chain_code);
+        }
+        if let Some(is_multisig) = self.is_multisig {
+            query.push(" AND is_multisig = ").push_bind(is_multisig);
+        }
+        if let Some(symbol) = self.symbol {
+            query.push(" AND symbol = ").push_bind(symbol);
+        }
+        if let Some(start) = self.start {
+            query.push(" AND transaction_time >= ").push_bind(start);
+        }
+        if let Some(end) = self.end {
+            query.push(" AND transaction_time <= ").push_bind(end);
+        }
+        if let Some(min_value) = self.min_value {
+            query.push(" AND CAST(value as REAL) > ").push_bind(min_value);
+        }
+    }
+}
 
 impl BillDao {
     pub async fn get_one_by_hash<'a, E>(
@@ -170,41 +223,44 @@ impl BillDao {
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let mut sql = String::from("SELECT * FROM bill WHERE owner IN (");
-        let placeholders: Vec<String> = addr.iter().map(|item| format!("'{}'", item)).collect();
-        sql.push_str(&placeholders.join(","));
-        sql.push(')');
-
-        if !transfer_type.is_empty() {
-            let kinds_str = any_in_collection(transfer_type, "','");
-            sql.push_str(format!(" AND tx_kind  in ('{}')", kinds_str).as_str());
+        let mut paginate = Pagination::<BillEntity>::init(page, page_size);
+        if addr.is_empty() {
+            return Ok(paginate);
         }
 
-        if let Some(chain_code) = chain_code {
-            sql.push_str(format!(" AND chain_code = '{}'", chain_code).as_str());
-        }
-        if let Some(is_multisig) = is_multisig {
-            sql.push_str(format!(" AND is_multisig = '{}'", is_multisig).as_str());
-        }
+        let filters = BillListFilters {
+            addr,
+            chain_code,
+            symbol,
+            is_multisig,
+            min_value,
+            start,
+            end,
+            transfer_type: &transfer_type,
+        };
 
-        if let Some(symbol) = symbol {
-            sql.push_str(format!(" AND symbol = '{}'", symbol).as_str());
-        }
-        if let Some(start) = start {
-            sql.push_str(format!(" AND transaction_time >= '{}'", start).as_str());
-        }
-        if let Some(end) = end {
-            sql.push_str(format!(" AND transaction_time <= '{}'", end).as_str());
-        }
+        let mut count_query = QueryBuilder::<Sqlite>::new("SELECT count(*) FROM bill");
+        filters.push_to(&mut count_query);
+        paginate.total_count = count_query
+            .build_query_scalar::<i64>()
+            .fetch_one(pool)
+            .await
+            .map_err(|error| crate::Error::Database(error.into()))?;
 
-        if let Some(min_value) = min_value {
-            sql.push_str(format!(" AND CAST(value as REAL) > {}", min_value).as_str());
-        }
+        let mut data_query = QueryBuilder::<Sqlite>::new("SELECT * FROM bill");
+        filters.push_to(&mut data_query);
+        data_query
+            .push(" ORDER BY datetime(transaction_time, 'unixepoch') DESC LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(page * page_size);
+        paginate.data = data_query
+            .build_query_as::<BillEntity>()
+            .fetch_all(pool)
+            .await
+            .map_err(|error| crate::Error::Database(error.into()))?;
 
-        sql.push_str(" ORDER BY datetime(transaction_time, 'unixepoch') DESC");
-
-        let paginate = Pagination::<BillEntity>::init(page, page_size);
-        Ok(paginate.page(pool, &sql).await?)
+        Ok(paginate)
     }
 
     // 查询5分钟内交易状态确认中的交易(用于swap本地验证余额)
@@ -271,24 +327,26 @@ impl BillDao {
         page_size: i64,
         pool: DbPool,
     ) -> Result<Pagination<RecentBillListVo>, crate::Error> {
-        let min_value_condition = if let Some(value) = min_value {
-            format!("AND CAST(value as REAL) >= {}", value)
-        } else {
-            String::new()
-        };
-
-        let sql = format!(
+        let mut query = QueryBuilder::<Sqlite>::new(
             r#"SELECT b.* FROM bill b
             INNER JOIN (
                 SELECT from_addr, to_addr, MAX(transaction_time) AS max_time
                 FROM bill
-                WHERE owner = '{}'
-                AND chain_code = '{}'
-                AND to_addr <> '{}'
-                AND to_addr <>  ""
-                AND token = '{}'
-                {}
-                AND transfer_type = 1
+                WHERE owner = "#,
+        );
+        query
+            .push_bind(addr)
+            .push(" AND chain_code = ")
+            .push_bind(chain_code)
+            .push(" AND to_addr <> ")
+            .push_bind(addr)
+            .push(" AND to_addr <> '' AND token = ")
+            .push_bind(token);
+        if let Some(min_value) = min_value {
+            query.push(" AND CAST(value as REAL) >= ").push_bind(min_value);
+        }
+        query.push(
+            r#" AND transfer_type = 1
                 GROUP BY to_addr
             ) latest 
             ON b.from_addr = latest.from_addr 
@@ -297,15 +355,15 @@ impl BillDao {
             AND b.transfer_type = 1
             ORDER BY b.transaction_time DESC
             "#,
-            addr, chain_code, addr, token, min_value_condition
         );
-
-        let count_sql = format!(r#" SELECT count(*) FROM ({}) AS subquery;"#, sql);
 
         // 查询1000条数据作为过滤重复的数据
         let mut paginate = Pagination::<BillEntity>::init(0, 1000);
-        paginate.total_count = paginate.group_count(&count_sql, pool.as_ref()).await?;
-        paginate.data = paginate.data(&sql, pool.as_ref()).await?;
+        paginate.data = query
+            .build_query_as::<BillEntity>()
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|error| crate::Error::Database(error.into()))?;
 
         let res =
             paginate.data.iter().map(RecentBillListVo::from).collect::<Vec<RecentBillListVo>>();

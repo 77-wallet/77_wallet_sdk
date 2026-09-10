@@ -456,6 +456,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bill_repo_bill_lists_binds_text_filters_and_counts_matches() {
+        let pool = setup_core_pool("wallet_db_bill_lists_apostrophe").await;
+        let bill = BillRepo::build_bill(
+            "bill_lists_hash".to_string(),
+            "owner's address".to_string(),
+            "recipient".to_string(),
+            1.0,
+            "tron'network".to_string(),
+            "TR'X".to_string(),
+            false,
+            BillKind::Transfer,
+            String::new(),
+        );
+        BillRepo::create(bill, &pool).await.unwrap();
+
+        let page = BillRepo::bill_lists(
+            &["owner's address".to_string()],
+            Some("tron'network"),
+            Some("TR'X"),
+            Some(0),
+            None,
+            None,
+            None,
+            vec![BillKind::Transfer.to_i8() as i32],
+            0,
+            10,
+            &pool,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].hash, "bill_lists_hash");
+    }
+
+    #[tokio::test]
+    async fn bill_dao_recent_bill_binds_text_filters() {
+        let pool = setup_core_pool("wallet_db_recent_bill_apostrophe").await;
+        let bill = BillRepo::build_bill(
+            "recent_bill_hash".to_string(),
+            "owner's address".to_string(),
+            "recipient's address".to_string(),
+            1.0,
+            "tron'network".to_string(),
+            "TRX".to_string(),
+            false,
+            BillKind::Transfer,
+            String::new(),
+        );
+        BillRepo::create(bill, &pool).await.unwrap();
+
+        let page = BillDao::recent_bill(
+            "",
+            "owner's address",
+            "tron'network",
+            None,
+            0,
+            10,
+            pool.into_inner(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].tx_hash, "recent_bill_hash");
+        assert_eq!(page.data[0].address, "recipient's address");
+    }
+
+    #[tokio::test]
     async fn bill_repo_get_by_hash_opt_missing_returns_none() {
         let dir = make_temp_dir("wallet_db_bill_repo_missing");
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();

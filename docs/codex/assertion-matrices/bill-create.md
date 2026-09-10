@@ -9,6 +9,9 @@ Scope: `BillRepo::create` / `BillDao::create`, including the existing upsert.
 | Transaction rolls back | Bill remains absent | `bill_repo_tx_rollback_keeps_bill_absent` |
 | Owner contains an apostrophe | Latest matching bill is returned | `bill_repo_last_kind_bill_accepts_apostrophe_in_owner` |
 | Owner and hash contain apostrophes | Matching hash list is returned | `bill_repo_lists_by_hashs_accepts_apostrophes` |
+| Paginated text filters contain apostrophes | Matching data and total count are returned | `bill_repo_bill_lists_binds_text_filters_and_counts_matches` |
+| Recent recipient filters contain apostrophes | Matching unique recipient is returned | `bill_dao_recent_bill_binds_text_filters` |
 
-This coverage includes bill insertion and two non-pagination lookups. Dynamic
-bill filters and pagination remain outside its scope.
+This coverage includes bill insertion, two non-pagination lookups, and the main
+bill-list pagination and recent-recipient queries. Other DAOs remain outside its
+scope.
