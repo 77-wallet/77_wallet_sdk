@@ -401,15 +401,19 @@ impl TransactionService {
             } else {
                 MultisigQueueStatus::Fail
             };
-            let _ = MultisigQueueRepo::update_status_with_executor(
+            MultisigQueueRepo::update_status_with_executor(
                 &transaction.queue_id,
                 status,
                 tx.as_mut(),
             )
-            .await;
+            .await?;
         }
 
-        let _res = tx.commit().await;
+        tx.commit().await.map_err(|e| {
+            crate::error::service::ServiceError::System(crate::error::system::SystemError::Service(
+                e.to_string(),
+            ))
+        })?;
         Ok(tx_result)
     }
 
@@ -501,5 +505,70 @@ impl TransactionService {
         let pool = self.ctx.core_pool()?;
 
         Ok(BillRepo::lists_by_hashs(&owner, hashs, &pool).await?)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::TransactionService;
+    use wallet_database::{
+        SqliteContext,
+        entities::bill::{BillKind, BillStatus, SyncBillEntity},
+        repositories::bill::BillRepo,
+    };
+
+    #[tokio::test]
+    async fn pending_multisig_sync_rolls_back_when_queue_update_fails() {
+        let dir = std::env::temp_dir().join(format!(
+            "wallet_api_transaction_sync_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = SqliteContext::new(dir.to_str().unwrap(), Some("data.db")).await.unwrap();
+        let pool = db.into_core_db_pool().unwrap();
+
+        let mut new_bill = BillRepo::build_bill(
+            "tx_sync_rollback".to_string(),
+            "owner_sync_rollback".to_string(),
+            "recipient_sync_rollback".to_string(),
+            1.0,
+            "ethereum".to_string(),
+            "ETH".to_string(),
+            true,
+            BillKind::Transfer,
+            String::new(),
+        );
+        new_bill.queue_id = "queue_sync_rollback".to_string();
+        BillRepo::create(new_bill, &pool).await.unwrap();
+
+        let bill =
+            BillRepo::get_by_hash_and_owner("tx_sync_rollback", "owner_sync_rollback", &pool)
+                .await
+                .unwrap();
+        sqlx::query("DROP TABLE multisig_queue").execute(pool.write_ref()).await.unwrap();
+
+        let sync_bill = SyncBillEntity {
+            tx_update: BillRepo::build_bill_update(
+                "tx_sync_rollback".to_string(),
+                "1".to_string(),
+                1,
+                BillStatus::Success.to_i8(),
+                1,
+                String::new(),
+            ),
+            balance: "10".to_string(),
+        };
+        let tx = pool.write_ref().begin().await.unwrap();
+
+        let result = TransactionService::handle_pending_tx_status(&bill, &sync_bill, tx).await;
+
+        assert!(result.is_err());
+        let stored =
+            BillRepo::get_by_hash_and_owner("tx_sync_rollback", "owner_sync_rollback", &pool)
+                .await
+                .unwrap();
+        assert_eq!(stored.status, BillStatus::Pending.to_i8());
     }
 }
