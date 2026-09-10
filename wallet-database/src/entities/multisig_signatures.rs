@@ -30,7 +30,7 @@ impl MultisigSignatureEntities {
     }
 
     pub fn need_signed_num(&self, threshold: usize) -> usize {
-        (threshold - self.0.len()).max(0)
+        threshold.saturating_sub(self.0.len())
     }
 }
 
@@ -138,5 +138,32 @@ impl TryFrom<MultisigSignatureEntity> for NewSignatureEntity {
             status: MultisigSignatureStatus::try_from(value.status as i32)?,
             weight: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MultisigSignatureEntities, MultisigSignatureEntity};
+    use sqlx::types::chrono::Utc;
+
+    fn signature(id: i64) -> MultisigSignatureEntity {
+        MultisigSignatureEntity {
+            id,
+            queue_id: "queue".to_string(),
+            address: format!("signer-{id}"),
+            signature: "signature".to_string(),
+            status: 1,
+            created_at: Utc::now(),
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn need_signed_num_handles_threshold_boundaries() {
+        let signatures = MultisigSignatureEntities(vec![signature(1), signature(2), signature(3)]);
+
+        assert_eq!(signatures.need_signed_num(5), 2);
+        assert_eq!(signatures.need_signed_num(3), 0);
+        assert_eq!(signatures.need_signed_num(2), 0);
     }
 }
