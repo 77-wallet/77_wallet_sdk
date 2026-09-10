@@ -32,14 +32,16 @@ impl TryFrom<&MultiSignTransAccept> for NewMultisigQueueEntity {
         let signatures = value
             .signatures
             .iter()
-            .map(|s| NewSignatureEntity {
-                queue_id: value.queue.id.to_string(),
-                address: s.address.to_string(),
-                signature: s.signature.to_string(),
-                status: MultisigSignatureStatus::try_from(s.status as i32).unwrap(),
-                weight: None,
+            .map(|s| {
+                Ok(NewSignatureEntity {
+                    queue_id: value.queue.id.to_string(),
+                    address: s.address.to_string(),
+                    signature: s.signature.to_string(),
+                    status: MultisigSignatureStatus::try_from(s.status as i32)?,
+                    weight: None,
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, wallet_database::Error>>()?;
 
         Ok(Self {
             id: value.queue.id.to_string(),
@@ -59,7 +61,7 @@ impl TryFrom<&MultiSignTransAccept> for NewMultisigQueueEntity {
             fail_reason: value.queue.fail_reason.to_string(),
             signatures,
             create_at: value.queue.created_at,
-            transfer_type: BillKind::try_from(value.queue.transfer_type).unwrap(),
+            transfer_type: BillKind::try_from(value.queue.transfer_type)?,
             permission_id: value.queue.permission_id.to_string(),
         })
     }
@@ -121,5 +123,68 @@ mod test {
         let res = change.exec("1", manager.ctx).await;
         println!("{:?}", res);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn message(status: i8, transfer_type: i8) -> MultiSignTransAccept {
+        let now = chrono::Utc::now();
+        MultiSignTransAccept {
+            queue: MultisigQueueEntity {
+                id: "queue".into(),
+                from_addr: "from".into(),
+                to_addr: "to".into(),
+                value: "1".into(),
+                expiration: 0,
+                symbol: "TRX".into(),
+                chain_code: "tron".into(),
+                token_addr: Default::default(),
+                msg_hash: "hash".into(),
+                tx_hash: String::new(),
+                raw_data: String::new(),
+                status: 0,
+                notes: String::new(),
+                fail_reason: String::new(),
+                created_at: now,
+                updated_at: None,
+                account_id: "account".into(),
+                transfer_type,
+                permission_id: "permission".into(),
+            },
+            signatures: vec![MultisigSignatureEntity {
+                id: 1,
+                queue_id: "queue".into(),
+                address: "signer".into(),
+                signature: "signature".into(),
+                status,
+                created_at: now,
+                updated_at: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn valid_message_preserves_signer_and_transaction() {
+        let input = message(1, 1);
+        let output = NewMultisigQueueEntity::try_from(&input).expect("valid message");
+        assert_eq!(output.id, input.queue.id);
+        assert_eq!(output.from_addr, input.queue.from_addr);
+        assert_eq!(output.signatures[0].address, "signer");
+        assert_eq!(output.signatures[0].status.to_i8(), 1);
+    }
+
+    #[test]
+    fn invalid_signature_status_returns_error() {
+        let input = message(127, 1);
+        assert!(NewMultisigQueueEntity::try_from(&input).is_err());
+    }
+
+    #[test]
+    fn invalid_transfer_type_returns_error() {
+        let input = message(1, 127);
+        assert!(NewMultisigQueueEntity::try_from(&input).is_err());
     }
 }
