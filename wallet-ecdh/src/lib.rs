@@ -4,11 +4,9 @@ use crate::{
     error::EncryptionError,
     sign::{sign_with_derived_ecdsa, verify_derived_ecdsa_signature},
 };
-use k256::{
-    PublicKey, SecretKey, ecdh, ecdh::SharedSecret, ecdsa::Signature,
-    elliptic_curve::generic_array::GenericArray,
-};
+use k256::{PublicKey, SecretKey, ecdh, ecdh::SharedSecret, ecdsa::Signature};
 use once_cell::sync::Lazy;
+use rand_core::OsRng;
 use std::{
     str::FromStr,
     sync::{Arc, RwLock},
@@ -19,9 +17,6 @@ pub mod data;
 pub mod encryption;
 pub mod error;
 pub mod sign;
-
-const DEFAULT_SECRET_KEY_HEX: &str =
-    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 pub static GLOBAL_KEY: Lazy<Arc<ExKey>> = Lazy::new(|| {
     Arc::new(ExKey::try_new().unwrap_or_else(|err| {
@@ -39,10 +34,9 @@ pub struct ExKey {
 
 impl ExKey {
     fn try_new() -> Result<Self, EncryptionError> {
-        let secret_key_bytes = hex::decode(DEFAULT_SECRET_KEY_HEX)
-            .map_err(|_| EncryptionError::InvalidEncryptedData)?;
-        let secret_key_array = GenericArray::clone_from_slice(&secret_key_bytes);
-        let secret = SecretKey::from_bytes(&secret_key_array)?;
+        // Generate once per instance; GLOBAL_KEY reuses it for the process lifetime.
+        // Reconnecting or repeating the handshake must not rotate this key.
+        let secret = SecretKey::random(&mut OsRng);
         Ok(Self { sn: RwLock::new(String::new()), secret, shared_secret: RwLock::new(None) })
     }
 
@@ -222,3 +216,6 @@ ZXi0RberQCAp+06fOjvr+jZI5qwYGglmMkGJw49tbni6qgm4QNV6WQ==
         assert!(matches!(sign_err, crate::error::EncryptionError::InvalidSharedKey));
     }
 }
+
+#[cfg(test)]
+mod key_lifecycle_tests;

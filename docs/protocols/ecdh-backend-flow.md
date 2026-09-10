@@ -84,6 +84,11 @@ flowchart LR
 - `sn`：由上层在启动/初始化阶段写入（例如 manager 初始化）
 - `shared_secret`：在 `init_swap` 成功后写入，后续所有加密签名依赖它
 
+客户端 ECDH 私钥在 `ExKey` 创建时由 `OsRng` 随机生成。生产入口
+`GLOBAL_KEY` 在进程首次使用时创建，后续握手和 MQTT 重连复用该私钥；
+新进程生成新密钥，必须重新握手。私钥不从随包配置读取，也不持久化。
+请求/响应格式、共享密钥派生和消息加密验签格式保持不变。
+
 读取方：
 
 - `wallet-transport-backend` 请求封装与响应解包
