@@ -376,6 +376,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bill_repo_create_preserves_apostrophes_in_text_fields() {
+        let pool = setup_core_pool("wallet_db_bill_repo_apostrophe").await;
+        let mut bill = BillRepo::build_bill(
+            "tx_hash_quote".to_string(),
+            "from'address".to_string(),
+            "to'address".to_string(),
+            1.0,
+            wallet_types::constant::chain_code::TRON.to_string(),
+            "TRX".to_string(),
+            false,
+            BillKind::Transfer,
+            "recipient's note".to_string(),
+        );
+        bill.status = BillStatus::Pending.to_i8();
+
+        BillRepo::create(bill, &pool).await.unwrap();
+
+        let stored = BillRepo::get_by_hash_opt("tx_hash_quote", &pool)
+            .await
+            .unwrap()
+            .expect("bill should be stored");
+        assert_eq!(stored.from_addr, "from'address");
+        assert_eq!(stored.to_addr, "to'address");
+        assert_eq!(stored.notes, "recipient's note");
+    }
+
+    #[tokio::test]
     async fn bill_repo_get_by_hash_opt_missing_returns_none() {
         let dir = make_temp_dir("wallet_db_bill_repo_missing");
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();

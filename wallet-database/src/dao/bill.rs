@@ -394,40 +394,13 @@ impl BillDao {
         let token = tx.token.as_db_str().to_string();
         let multisig_tx = tx.get_multisig_i32();
         let extra = tx.get_extra_str()?;
-        let values = format!(
-            "('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}')",
-            tx.hash,
-            tx.chain_code,
-            symbol,
-            tx.tx_type,
-            tx.tx_kind.to_i8(),
-            owner,
-            tx.from,
-            to,
-            token,
-            tx.value,
-            tx.transaction_fee,
-            tx.resource_consume,
-            transaction_time,
-            tx.status,
-            multisig_tx,
-            tx.block_height,
-            tx.queue_id,
-            tx.notes,
-            time,
-            time,
-            signer,
-            extra
-        );
-
-        let sql = format!(
-            "insert into bill 
+        let sql = "insert into bill
             (
                 hash,chain_code,symbol,transfer_type,tx_kind,owner,from_addr,to_addr,token,value,
                 transaction_fee,resource_consume,transaction_time,status,is_multisig,block_height,queue_id,notes,
                 created_at,updated_at,signer,extra
-            ) 
-                values {}
+            )
+                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 on conflict (hash,transfer_type,owner)
                 do update set
                     status = excluded.status,
@@ -444,11 +417,31 @@ impl BillDao {
                     extra = 
                         CASE WHEN excluded.extra != '' THEN excluded.extra ELSE bill.extra END,
                     updated_at = EXCLUDED.updated_at;
-            ",
-            values
-        );
+            ";
 
-        sqlx::query(&sql)
+        sqlx::query(sql)
+            .bind(tx.hash)
+            .bind(tx.chain_code)
+            .bind(symbol)
+            .bind(tx.tx_type)
+            .bind(tx.tx_kind.to_i8())
+            .bind(owner)
+            .bind(tx.from)
+            .bind(to)
+            .bind(token)
+            .bind(tx.value)
+            .bind(tx.transaction_fee)
+            .bind(tx.resource_consume)
+            .bind(transaction_time)
+            .bind(tx.status)
+            .bind(multisig_tx)
+            .bind(tx.block_height)
+            .bind(tx.queue_id)
+            .bind(tx.notes)
+            .bind(time)
+            .bind(time)
+            .bind(signer)
+            .bind(extra)
             .execute(exec)
             .await
             .map(|_| ())
