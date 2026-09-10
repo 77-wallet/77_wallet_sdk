@@ -7,7 +7,7 @@ use crate::{
     pagination::Pagination,
 };
 use chrono::SecondsFormat;
-use sqlx::{Executor, Pool, Sqlite};
+use sqlx::{Executor, Pool, QueryBuilder, Sqlite};
 use std::sync::Arc;
 
 pub struct MultisigQueueDaoV1;
@@ -155,36 +155,42 @@ impl MultisigQueueDaoV1 {
         page_size: i64,
         pool: Arc<Pool<Sqlite>>,
     ) -> Result<Pagination<MultisigQueueSimpleEntity>, crate::DatabaseError> {
-        let mut sql = "SELECT * FROM multisig_queue".to_string();
+        let mut paginate = Pagination::<MultisigQueueSimpleEntity>::init(page, page_size);
+        let build_filters = |query: &mut QueryBuilder<'_, Sqlite>| {
+            query.push(" WHERE ");
+            if status == 2 {
+                query
+                    .push("status in (")
+                    .push_bind(MultisigQueueStatus::PendingExecution.to_i8())
+                    .push(",")
+                    .push_bind(MultisigQueueStatus::InConfirmation.to_i8())
+                    .push(")");
+            } else {
+                query.push("status = ").push_bind(status);
+            }
+            if let Some(from_addr) = from {
+                query.push(" AND from_addr = ").push_bind(from_addr.to_owned());
+            }
+            if let Some(chain) = chain_code {
+                query.push(" AND chain_code = ").push_bind(chain.to_owned());
+            }
+        };
 
-        let mut conditions = Vec::new();
-        if status == 2 {
-            conditions.push(format!(
-                "status in ({},{}) ",
-                MultisigQueueStatus::PendingExecution.to_i8(),
-                MultisigQueueStatus::InConfirmation.to_i8()
-            ));
-        } else {
-            conditions.push(format!("status = {}", status));
-        }
+        let mut count_query = QueryBuilder::<Sqlite>::new("SELECT count(*) FROM multisig_queue");
+        build_filters(&mut count_query);
+        paginate.total_count = count_query.build_query_scalar::<i64>().fetch_one(&*pool).await?;
 
-        if let Some(from_addr) = from {
-            conditions.push(format!("from_addr = '{}'", from_addr));
-        }
+        let mut data_query = QueryBuilder::<Sqlite>::new("SELECT * FROM multisig_queue");
+        build_filters(&mut data_query);
+        data_query
+            .push(" ORDER BY created_at DESC LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(page * page_size);
+        paginate.data =
+            data_query.build_query_as::<MultisigQueueSimpleEntity>().fetch_all(&*pool).await?;
 
-        if let Some(chain) = chain_code {
-            conditions.push(format!("chain_code = '{}'", chain));
-        }
-
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        sql.push_str(" ORDER BY created_at DESC");
-        let pagination = Pagination::<MultisigQueueSimpleEntity>::init(page, page_size);
-
-        pagination.page(&*pool, &sql).await
+        Ok(paginate)
     }
 
     pub async fn list_by_account_ids<'a, E>(
@@ -194,17 +200,21 @@ impl MultisigQueueDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let account_ids = crate::any_in_collection(account_ids, "','");
+        if account_ids.is_empty() {
+            return Ok(None);
+        }
 
-        let sql = format!(
-            "select * from multisig_queue where account_id in ('{}') order by created_at desc limit 1",
-            account_ids
-        );
+        let mut query =
+            QueryBuilder::<Sqlite>::new("select * from multisig_queue where account_id in (");
+        {
+            let mut separated = query.separated(",");
+            for account_id in account_ids {
+                separated.push_bind(account_id);
+            }
+        }
+        query.push(") order by created_at desc limit 1");
 
-        let res = sqlx::query_as::<_, MultisigQueueEntity>(&sql)
-            .bind(account_ids)
-            .fetch_optional(pool)
-            .await?;
+        let res = query.build_query_as::<MultisigQueueEntity>().fetch_optional(pool).await?;
 
         Ok(res)
     }
@@ -372,14 +382,22 @@ impl MultisigQueueDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = if ids.is_empty() {
-            "DELETE FROM multisig_queue RETURNING *".to_string()
+        let mut query = if ids.is_empty() {
+            QueryBuilder::<Sqlite>::new("DELETE FROM multisig_queue RETURNING *")
         } else {
-            let ids = crate::any_in_collection(ids, "','");
-            format!("DELETE FROM multisig_queue WHERE account_id IN ('{}') RETURNING *", ids)
+            let mut query =
+                QueryBuilder::<Sqlite>::new("DELETE FROM multisig_queue WHERE account_id IN (");
+            {
+                let mut separated = query.separated(",");
+                for id in ids {
+                    separated.push_bind(id);
+                }
+            }
+            query.push(") RETURNING *");
+            query
         };
 
-        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigQueueEntity>(&sql).fetch_all(exec).await?)
+        Ok(query.build_query_as::<MultisigQueueEntity>().fetch_all(exec).await?)
     }
 
     pub async fn ongoing_queue<'a, E>(

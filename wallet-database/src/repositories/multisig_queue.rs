@@ -681,4 +681,64 @@ mod tests {
         let found = MultisigQueueRepo::find_by_id(&pool, "queue_rb").await.unwrap();
         assert!(found.is_none());
     }
+
+    #[tokio::test]
+    async fn multisig_queue_repo_list_binds_address_and_chain_filters() {
+        let pool = setup_core_pool("wallet_db_multisig_queue_list_quotes").await;
+        let mut queue = build_queue("account_list", "queue_list_quotes");
+        queue.from_addr = "owner's address".to_string();
+        queue.chain_code = "tron'network".to_string();
+        MultisigQueueDaoV1::create_queue(&queue, pool.write_ref()).await.unwrap();
+
+        let page = MultisigQueueRepo::queue_list(
+            Some("owner's address"),
+            Some("tron'network"),
+            MultisigQueueStatus::PendingSignature.to_i8() as i32,
+            0,
+            10,
+            pool.clone(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].id, "queue_list_quotes");
+    }
+
+    #[tokio::test]
+    async fn multisig_queue_repo_account_id_lookup_binds_values() {
+        let pool = setup_core_pool("wallet_db_multisig_queue_account_quotes").await;
+        let queue = build_queue("account'quoted", "queue_account_quotes");
+        MultisigQueueDaoV1::create_queue(&queue, pool.write_ref()).await.unwrap();
+
+        let found = MultisigQueueRepo::list_by_account_ids(&pool, &["account'quoted".to_string()])
+            .await
+            .unwrap()
+            .expect("matching queue should be returned");
+
+        assert_eq!(found.id, "queue_account_quotes");
+    }
+
+    #[tokio::test]
+    async fn multisig_queue_repo_multi_delete_binds_account_ids() {
+        let pool = setup_core_pool("wallet_db_multisig_queue_delete_quotes").await;
+        let first = build_queue("account'quoted", "queue_delete_quotes");
+        let other = build_queue("other_account", "queue_delete_other");
+        MultisigQueueDaoV1::create_queue(&first, pool.write_ref()).await.unwrap();
+        MultisigQueueDaoV1::create_queue(&other, pool.write_ref()).await.unwrap();
+
+        let deleted = MultisigQueueRepo::physical_delete_by_account_ids(&pool, &["account'quoted"])
+            .await
+            .unwrap();
+
+        assert_eq!(deleted.len(), 1);
+        assert_eq!(deleted[0].id, "queue_delete_quotes");
+        assert!(
+            MultisigQueueRepo::find_by_id(&pool, "queue_delete_quotes").await.unwrap().is_none()
+        );
+        assert!(
+            MultisigQueueRepo::find_by_id(&pool, "queue_delete_other").await.unwrap().is_some()
+        );
+    }
 }
