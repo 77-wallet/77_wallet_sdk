@@ -5,7 +5,6 @@ use crate::{
         bill::BillDomain,
         chain::{
             adapter::{ChainAdapterFactory, TransactionAdapter, sol_tx::SYSTEM_ACCOUNT_RENT},
-            swap::SLIPPAGE,
             transaction::ChainTransDomain,
         },
         coin::{CoinDomain, TokenCurrencyGetter},
@@ -410,8 +409,8 @@ impl SwapServer {
         let (bal_in, bal_out) = self.get_bal_in_and_out(&req, amount_out).await?;
 
         // 获取滑点
-        let slippage = req.get_slippage(quote_resp.default_slippage);
-        let default_slippage = quote_resp.default_slippage as f64 / SLIPPAGE;
+        let default_slippage = quote_resp.get_slippage();
+        let slippage = req.get_slippage(default_slippage)?;
 
         // 初始化响应
         let mut res = ApiQuoteResp::new(

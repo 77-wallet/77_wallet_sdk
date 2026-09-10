@@ -1,5 +1,5 @@
 use crate::{
-    domain::chain::swap::{SLIPPAGE, evm_swap::SwapParams, get_warp_address},
+    domain::chain::swap::{evm_swap::SwapParams, get_warp_address},
     infrastructure::swap_client::{AggQuoteRequest, DexId},
 };
 use alloy::primitives::U256;
@@ -296,13 +296,70 @@ impl QuoteReq {
     }
 
     // 前端有传入的使用前端传入的，没有使用报价返回的。
-    pub fn get_slippage(&self, default_slippage: u64) -> f64 {
-        self.slippage.unwrap_or(default_slippage as f64 / SLIPPAGE)
+    pub fn get_slippage(
+        &self,
+        default_slippage: f64,
+    ) -> Result<f64, crate::error::service::ServiceError> {
+        let slippage = self.slippage.unwrap_or(default_slippage);
+        if !slippage.is_finite() || !(0.0..1.0).contains(&slippage) {
+            return Err(crate::error::service::ServiceError::Parameter(format!(
+                "slippage must be finite and in the range [0, 1), got {slippage}"
+            )));
+        }
+        Ok(slippage)
     }
 
     // 是否是进行主币之间的兑换
     pub fn is_native(&self) -> bool {
         self.token_in.token_addr.is_empty() || self.token_out.token_addr.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod slippage_tests {
+    use super::{QuoteReq, SwapTokenInfo};
+
+    fn quote(slippage: Option<f64>) -> QuoteReq {
+        QuoteReq {
+            aggregator_addr: String::new(),
+            recipient: String::new(),
+            chain_code: String::new(),
+            amount_in: "1".to_string(),
+            token_in: SwapTokenInfo {
+                symbol: "IN".to_string(),
+                decimals: 6,
+                token_addr: String::new(),
+            },
+            token_out: SwapTokenInfo {
+                symbol: "OUT".to_string(),
+                decimals: 6,
+                token_addr: String::new(),
+            },
+            dex_list: Vec::new(),
+            slippage,
+            allow_partial_fill: false,
+        }
+    }
+
+    #[test]
+    fn get_slippage_accepts_valid_custom_and_default_values() {
+        assert_eq!(quote(Some(0.0)).get_slippage(0.01).unwrap(), 0.0);
+        assert_eq!(quote(Some(0.5)).get_slippage(0.01).unwrap(), 0.5);
+        assert_eq!(quote(Some(0.9999)).get_slippage(0.01).unwrap(), 0.9999);
+        assert_eq!(quote(None).get_slippage(0.005).unwrap(), 0.005);
+    }
+
+    #[test]
+    fn get_slippage_rejects_invalid_custom_values() {
+        for slippage in [-0.01, 1.0, 1.01, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(quote(Some(slippage)).get_slippage(0.01).is_err(), "accepted {slippage}");
+        }
+    }
+
+    #[test]
+    fn get_slippage_rejects_invalid_backend_default() {
+        assert!(quote(None).get_slippage(1.0).is_err());
+        assert!(quote(None).get_slippage(f64::INFINITY).is_err());
     }
 }
 
