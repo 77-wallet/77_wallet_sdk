@@ -7,7 +7,7 @@ use crate::{
 };
 use chrono::Utc;
 use serde::Serialize;
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 use std::collections::HashSet;
 pub struct BillDao;
 
@@ -89,12 +89,22 @@ impl BillDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let kinds = crate::any_in_collection(bill_kind, "','");
-        let sql = format!(
-            "select * from bill where owner = '{}' and tx_kind in ('{}') ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1",
-            owner_address, kinds
-        );
-        sqlx::query_as::<_, BillEntity>(&sql)
+        if bill_kind.is_empty() {
+            return Ok(None);
+        }
+
+        let mut query = QueryBuilder::<Sqlite>::new("select * from bill where owner = ");
+        query.push_bind(owner_address).push(" and tx_kind in (");
+        {
+            let mut separated = query.separated(",");
+            for kind in bill_kind {
+                separated.push_bind(kind);
+            }
+        }
+        query.push(") ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1");
+
+        query
+            .build_query_as::<BillEntity>()
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -108,12 +118,22 @@ impl BillDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let hashs_str = any_in_collection(hashs, "','");
+        if hashs.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        let sql =
-            format!("select * from bill where owner = '{}' and hash in ('{}')", owner, hashs_str);
+        let mut query = QueryBuilder::<Sqlite>::new("select * from bill where owner = ");
+        query.push_bind(owner).push(" and hash in (");
+        {
+            let mut separated = query.separated(",");
+            for hash in hashs {
+                separated.push_bind(hash);
+            }
+        }
+        query.push(")");
 
-        let res = sqlx::query_as::<_, BillEntity>(&sql)
+        let res = query
+            .build_query_as::<BillEntity>()
             .fetch_all(pool)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

@@ -403,6 +403,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bill_repo_last_kind_bill_accepts_apostrophe_in_owner() {
+        let pool = setup_core_pool("wallet_db_bill_last_kind_apostrophe").await;
+        let bill = BillRepo::build_bill(
+            "last_kind_hash".to_string(),
+            "owner's address".to_string(),
+            "recipient".to_string(),
+            1.0,
+            wallet_types::constant::chain_code::TRON.to_string(),
+            "TRX".to_string(),
+            false,
+            BillKind::Transfer,
+            String::new(),
+        );
+        BillRepo::create(bill, &pool).await.unwrap();
+
+        let stored =
+            BillRepo::last_kind_bill("owner's address", vec![BillKind::Transfer.to_i8()], &pool)
+                .await
+                .unwrap()
+                .expect("matching bill should be returned");
+
+        assert_eq!(stored.hash, "last_kind_hash");
+    }
+
+    #[tokio::test]
+    async fn bill_repo_lists_by_hashs_accepts_apostrophes() {
+        let pool = setup_core_pool("wallet_db_bill_hash_list_apostrophe").await;
+        let bill = BillRepo::build_bill(
+            "hash'with'quotes".to_string(),
+            "owner's address".to_string(),
+            "recipient".to_string(),
+            1.0,
+            wallet_types::constant::chain_code::TRON.to_string(),
+            "TRX".to_string(),
+            false,
+            BillKind::Transfer,
+            String::new(),
+        );
+        BillRepo::create(bill, &pool).await.unwrap();
+
+        let stored = BillRepo::lists_by_hashs(
+            "owner's address",
+            vec!["hash'with'quotes".to_string()],
+            &pool,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].hash, "hash'with'quotes");
+    }
+
+    #[tokio::test]
     async fn bill_repo_get_by_hash_opt_missing_returns_none() {
         let dir = make_temp_dir("wallet_db_bill_repo_missing");
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
