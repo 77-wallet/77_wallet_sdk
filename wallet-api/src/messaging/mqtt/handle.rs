@@ -186,16 +186,15 @@ pub(crate) async fn exec_payload(
             )
             .await?
         }
-        BizType::AcctChange => match payload.wallet_type {
-            Some(WalletType::NormalWallet) => {
+        BizType::AcctChange => match account_change_route(payload.wallet_type.as_ref())? {
+            AccountChangeRoute::NormalWallet => {
                 exec_task::<AcctChange, _, _>(&payload, ctx, MqttTask::AcctChange).await?
             }
-            Some(WalletType::ApiRaw | WalletType::ApiWaw) => {
+            AccountChangeRoute::ApiWallet => {
                 exec_task::<ApiWalletAcctChange, _, _>(&payload, ctx, MqttTask::ApiWalletAcctChange)
                     .await?
             }
-            Some(WalletType::NotFound) => todo!(),
-            None => (),
+            AccountChangeRoute::Missing => (),
         },
         BizType::OrderMultiSignCreated => {
             exec_task::<OrderMultiSignCreated, _, _>(&payload, ctx, MqttTask::OrderMultiSignCreated)
@@ -393,6 +392,53 @@ async fn exec_verify_api_mqtt_st(
                 Err(ServiceError::Parameter("missing data".to_string()))
             }
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum AccountChangeRoute {
+    NormalWallet,
+    ApiWallet,
+    Missing,
+}
+
+fn account_change_route(
+    wallet_type: Option<&WalletType>,
+) -> Result<AccountChangeRoute, ServiceError> {
+    match wallet_type {
+        Some(WalletType::NotFound) => {
+            Err(crate::error::system::SystemError::WalletTypeNotSet.into())
+        }
+        Some(WalletType::NormalWallet) => Ok(AccountChangeRoute::NormalWallet),
+        Some(WalletType::ApiRaw | WalletType::ApiWaw) => Ok(AccountChangeRoute::ApiWallet),
+        None => Ok(AccountChangeRoute::Missing),
+    }
+}
+
+#[cfg(test)]
+mod wallet_type_tests {
+    use super::{AccountChangeRoute, account_change_route};
+    use crate::error::{service::ServiceError, system::SystemError};
+    use wallet_database::entities::task_queue::WalletType;
+
+    #[test]
+    fn account_change_not_found_wallet_type_returns_system_error() {
+        let error = account_change_route(Some(&WalletType::NotFound)).unwrap_err();
+
+        assert!(matches!(error, ServiceError::System(SystemError::WalletTypeNotSet)));
+    }
+
+    #[test]
+    fn account_change_known_and_missing_wallet_types_keep_existing_routing() {
+        assert!(matches!(
+            account_change_route(Some(&WalletType::NormalWallet)).unwrap(),
+            AccountChangeRoute::NormalWallet
+        ));
+        assert_eq!(
+            account_change_route(Some(&WalletType::ApiRaw)).unwrap(),
+            AccountChangeRoute::ApiWallet
+        );
+        assert_eq!(account_change_route(None).unwrap(), AccountChangeRoute::Missing);
     }
 }
 
