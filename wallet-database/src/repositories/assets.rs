@@ -146,9 +146,27 @@ impl AssetsRepo {
 mod tests {
     use super::AssetsRepo;
     use crate::{
-        entities::assets::AssetsId,
-        repositories::test_helper::{seed_assets, setup_core_pool},
+        entities::{api_chain::NodeBindType, assets::AssetsId, chain::ChainCreateVo},
+        repositories::{
+            chain::ChainRepo,
+            test_helper::{seed_account, seed_assets, seed_wallet, setup_core_pool},
+        },
     };
+
+    async fn seed_active_tron(pool: &crate::CoreDbPool) {
+        ChainRepo::add(
+            pool,
+            ChainCreateVo::new(
+                "Tron",
+                wallet_types::constant::chain_code::TRON,
+                &["tron".to_string()],
+                NodeBindType::AutoBackend,
+                "TRX",
+            ),
+        )
+        .await
+        .unwrap();
+    }
 
     #[tokio::test]
     async fn assets_upsert_update_and_query_consistent() {
@@ -220,5 +238,124 @@ mod tests {
             .pop()
             .unwrap();
         assert_eq!(after.balance, "7.77");
+    }
+
+    #[tokio::test]
+    async fn asset_collection_reads_bind_address_selectors() {
+        let pool = setup_core_pool("wallet_db_assets_address_bind").await;
+        seed_active_tron(&pool).await;
+        let quoted_address = "T_assets_'_quoted";
+        seed_assets(
+            &pool,
+            AssetsId::new(
+                quoted_address,
+                wallet_types::constant::chain_code::TRON,
+                Some("token_quote".to_string()).into(),
+            ),
+            "QUOTE",
+            "Quoted",
+            6,
+            "1.00",
+        )
+        .await;
+
+        let exact = AssetsRepo::get_coin_assets_in_address(
+            &pool,
+            vec![quoted_address.to_string()],
+            Some(1),
+        )
+        .await
+        .unwrap();
+        let sql_shaped = vec!["missing') OR 1=1 --".to_string()];
+        let coin = AssetsRepo::get_coin_assets_in_address(&pool, sql_shaped.clone(), Some(1))
+            .await
+            .unwrap();
+        let chain = AssetsRepo::get_chain_assets_by_address_chain_code_symbol(
+            &pool,
+            sql_shaped.clone(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let all = AssetsRepo::all_assets(&pool, sql_shaped, None, None, None).await.unwrap();
+
+        assert_eq!(exact.len(), 1);
+        assert!(coin.is_empty());
+        assert!(chain.is_empty());
+        assert!(all.is_empty());
+    }
+
+    #[tokio::test]
+    async fn all_assets_binds_chain_and_keyword_filters() {
+        let pool = setup_core_pool("wallet_db_assets_filter_bind").await;
+        seed_active_tron(&pool).await;
+        seed_assets(
+            &pool,
+            AssetsId::new(
+                "T_assets_filter",
+                wallet_types::constant::chain_code::TRON,
+                Some("token_filter".to_string()).into(),
+            ),
+            "FILTER",
+            "Filter",
+            6,
+            "1.00",
+        )
+        .await;
+
+        let by_chain = AssetsRepo::all_assets(
+            &pool,
+            vec![],
+            Some("missing' OR 1=1 --".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let by_keyword =
+            AssetsRepo::all_assets(&pool, vec![], None, Some("%' OR 1=1 --"), None).await.unwrap();
+
+        assert!(by_chain.is_empty());
+        assert!(by_keyword.is_empty());
+    }
+
+    #[tokio::test]
+    async fn joined_asset_read_binds_address_selectors() {
+        let pool = setup_core_pool("wallet_db_assets_join_bind").await;
+        seed_active_tron(&pool).await;
+        seed_wallet(&pool, "wallet_join", "uid_join", "wallet").await;
+        seed_account(
+            &pool,
+            1,
+            "T_assets_join",
+            "wallet_join",
+            wallet_types::constant::chain_code::TRON,
+        )
+        .await;
+        seed_assets(
+            &pool,
+            AssetsId::new(
+                "T_assets_join",
+                wallet_types::constant::chain_code::TRON,
+                Some("token_join".to_string()).into(),
+            ),
+            "JOIN",
+            "Join",
+            6,
+            "1.00",
+        )
+        .await;
+
+        let result = AssetsRepo::get_assets_by_address(
+            &pool,
+            vec!["missing') OR 1=1 --".to_string()],
+            Some(false),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.is_empty());
     }
 }

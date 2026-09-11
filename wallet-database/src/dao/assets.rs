@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub struct AssetsDao;
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 impl AssetsDao {
     pub async fn list<'a, E>(exec: E) -> Result<Vec<AssetsEntity>, crate::Error>
@@ -73,41 +73,34 @@ impl AssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = String::from("SELECT * FROM assets");
-
-        let mut conditions = Vec::new();
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM assets WHERE ");
         if !address.is_empty() {
-            let addresses = crate::any_in_collection(address, "','");
-            conditions.push(format!(" address IN ('{}')", addresses));
+            query.push("address IN (");
+            let mut values = query.separated(", ");
+            for item in &address {
+                values.push_bind(item);
+            }
+            values.push_unseparated(") AND ");
         }
 
-        if status.is_some() {
-            conditions.push(" status = ?".to_string());
+        if let Some(status_value) = status {
+            query.push("status = ").push_bind(status_value).push(" AND ");
         }
 
-        conditions.push(
+        query.push(
             " EXISTS (
                 SELECT 1
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )"
-            .to_string(),
+            )",
         );
 
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        let mut query = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql);
-
-        if let Some(status_value) = status {
-            query = query.bind(status_value)
-        }
-
-        // 执行查询并返回结果
-        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+        query
+            .build_query_as::<AssetsEntity>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub(crate) async fn get_assets_by_address<'a, E>(
@@ -121,81 +114,118 @@ impl AssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::any_in_collection(address, "','");
-        let base_sql = |table_name: &str| -> String {
-            format!(
-                "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code, 
-                a.token_address, a.protocol, a.status, a.balance, a.is_multisig, 
-                a.created_at, a.updated_at, acc.address_type
-                FROM assets AS a
-                JOIN {table_name} AS acc 
-                ON a.address = acc.address AND a.chain_code = acc.chain_code
-                WHERE a.status = 1 
-                    AND EXISTS (
-                        SELECT 1
-                        FROM chain
-                        WHERE chain.chain_code = a.chain_code
-                        AND chain.status = 1
-                    )"
-            )
-        };
-
-        let add_dynamic_conditions = |sql: &mut String| {
+        fn push_branch<'q>(
+            query: &mut QueryBuilder<'q, Sqlite>,
+            base: &'static str,
+            addresses: &'q [String],
+            chain_code: Option<&'q str>,
+            symbol: Option<&'q str>,
+            token_address: Option<&'q str>,
+            is_multisig: Option<bool>,
+            exclude_deleted_account: bool,
+        ) {
+            query.push(base);
             if !addresses.is_empty() {
-                sql.push_str(&format!(" AND a.address IN ('{}')", addresses));
+                query.push(" AND a.address IN (");
+                let mut values = query.separated(", ");
+                for address in addresses {
+                    values.push_bind(address);
+                }
+                values.push_unseparated(")");
             }
-            if chain_code.is_some() {
-                sql.push_str(" AND a.chain_code = ?");
+            if let Some(chain_code) = chain_code {
+                query.push(" AND a.chain_code = ").push_bind(chain_code);
             }
-            if symbol.is_some() {
-                sql.push_str(" AND a.symbol = ?");
+            if let Some(symbol) = symbol {
+                query.push(" AND a.symbol = ").push_bind(symbol);
             }
-            if token_address.is_some() {
-                sql.push_str(" AND a.token_address = ?");
+            if let Some(token_address) = token_address {
+                query.push(" AND a.token_address = ").push_bind(token_address);
             }
-            if let Some(is_multisig) = is_multisig {
-                let is_multisig_values = if is_multisig { vec![1] } else { vec![0, 2] };
-                let is_multisig_str = crate::any_in_collection(is_multisig_values, "','");
-                sql.push_str(&format!(" AND a.is_multisig IN ('{}')", is_multisig_str));
+            match is_multisig {
+                Some(true) => {
+                    query.push(" AND a.is_multisig = ").push_bind(1_i8);
+                }
+                Some(false) => {
+                    query.push(" AND a.is_multisig IN (").push_bind(0_i8);
+                    query.push(", ").push_bind(2_i8).push(")");
+                }
+                None => {}
             }
-        };
+            if exclude_deleted_account {
+                query.push(" AND acc.is_del = 0");
+            }
+        }
 
-        let sql = match is_multisig {
-            Some(true) => {
-                let mut sql = base_sql("multisig_account");
-                add_dynamic_conditions(&mut sql);
-                format!("{sql} AND acc.is_del = 0")
-            }
-            Some(false) => {
-                let mut sql = base_sql("account");
-                add_dynamic_conditions(&mut sql);
-                sql
-            }
+        const ACCOUNT_SQL: &str = "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code,
+            a.token_address, a.protocol, a.status, a.balance, a.is_multisig,
+            a.created_at, a.updated_at, acc.address_type
+            FROM assets AS a JOIN account AS acc
+            ON a.address = acc.address AND a.chain_code = acc.chain_code
+            WHERE a.status = 1 AND EXISTS (
+                SELECT 1 FROM chain
+                WHERE chain.chain_code = a.chain_code AND chain.status = 1)";
+        const MULTISIG_SQL: &str = "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code,
+            a.token_address, a.protocol, a.status, a.balance, a.is_multisig,
+            a.created_at, a.updated_at, acc.address_type
+            FROM assets AS a JOIN multisig_account AS acc
+            ON a.address = acc.address AND a.chain_code = acc.chain_code
+            WHERE a.status = 1 AND EXISTS (
+                SELECT 1 FROM chain
+                WHERE chain.chain_code = a.chain_code AND chain.status = 1)";
+
+        let mut query = QueryBuilder::<Sqlite>::new("");
+        match is_multisig {
+            Some(true) => push_branch(
+                &mut query,
+                MULTISIG_SQL,
+                &address,
+                chain_code.as_deref(),
+                symbol,
+                token_address,
+                is_multisig,
+                true,
+            ),
+            Some(false) => push_branch(
+                &mut query,
+                ACCOUNT_SQL,
+                &address,
+                chain_code.as_deref(),
+                symbol,
+                token_address,
+                is_multisig,
+                false,
+            ),
             None => {
-                let mut sql1 = base_sql("account");
-
-                let mut sql2 = base_sql("multisig_account");
-                add_dynamic_conditions(&mut sql1);
-                add_dynamic_conditions(&mut sql2);
-                format!("{sql1} UNION {sql2}")
+                push_branch(
+                    &mut query,
+                    ACCOUNT_SQL,
+                    &address,
+                    chain_code.as_deref(),
+                    symbol,
+                    token_address,
+                    is_multisig,
+                    false,
+                );
+                query.push(" UNION ");
+                push_branch(
+                    &mut query,
+                    MULTISIG_SQL,
+                    &address,
+                    chain_code.as_deref(),
+                    symbol,
+                    token_address,
+                    is_multisig,
+                    false,
+                );
             }
-        };
-
-        let mut query = sqlx::query_as::<_, AssetsEntityWithAddressType>(&sql);
-
-        if let Some(code) = chain_code {
-            query = query.bind(code);
         }
 
-        if let Some(sym) = symbol {
-            query = query.bind(sym);
-        }
-
-        if let Some(token_address) = token_address {
-            query = query.bind(token_address);
-        }
-
-        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+        query
+            .build_query_as::<AssetsEntityWithAddressType>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn get_chain_assets_by_address_chain_code_symbol<'a, E>(
@@ -208,48 +238,48 @@ impl AssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::any_in_collection(address, "','");
-        let mut sql = "SELECT * FROM assets 
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT * FROM assets
         WHERE status = 1
             AND EXISTS (
                 SELECT 1
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )"
-        .to_string();
+            )",
+        );
 
-        if !addresses.is_empty() {
-            let str = format!(" AND address in ('{}')", addresses);
-            sql.push_str(&str)
+        if !address.is_empty() {
+            query.push(" AND address IN (");
+            let mut values = query.separated(", ");
+            for item in &address {
+                values.push_bind(item);
+            }
+            values.push_unseparated(")");
         }
 
-        if chain_code.is_some() {
-            sql.push_str(" AND chain_code = ?");
+        if let Some(code) = chain_code.as_deref() {
+            query.push(" AND chain_code = ").push_bind(code);
         }
 
-        if symbol.is_some() {
-            sql.push_str(" AND symbol = ?");
+        if let Some(symbol) = symbol {
+            query.push(" AND symbol = ").push_bind(symbol);
         }
 
         if let Some(is_multisig) = is_multisig {
-            let is_multisig = if is_multisig { vec![1] } else { vec![0, 2] };
-            let is_multisig = crate::any_in_collection(is_multisig, "','");
-            let str = format!(" AND is_multisig in ('{}')", is_multisig);
-            sql.push_str(&str);
+            if is_multisig {
+                query.push(" AND is_multisig = ").push_bind(1_i8);
+            } else {
+                query.push(" AND is_multisig IN (").push_bind(0_i8);
+                query.push(", ").push_bind(2_i8).push(")");
+            }
         }
 
-        let mut query = sqlx::query_as::<_, AssetsEntity>(&sql);
-
-        if let Some(code) = chain_code {
-            query = query.bind(code);
-        }
-
-        if let Some(sym) = symbol {
-            query = query.bind(sym);
-        }
-
-        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+        query
+            .build_query_as::<AssetsEntity>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     // 获取资产
@@ -466,47 +496,41 @@ impl AssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = "select * from assets ".to_string();
-
-        let mut conditions = Vec::new();
-        conditions.push("status = 1".to_string());
-
-        conditions.push(
-            " EXISTS (
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT * FROM assets WHERE status = 1 AND EXISTS (
                 SELECT 1
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )"
-            .to_string(),
+            )",
         );
 
         if let Some(chain_code) = chain_code {
-            conditions.push(format!("chain_code = '{chain_code}'"));
+            query.push(" AND chain_code = ").push_bind(chain_code);
         }
         if let Some(keyword) = keyword {
-            conditions.push(format!("symbol LIKE '%{keyword}%'"));
+            query.push(" AND symbol LIKE ").push_bind(format!("%{keyword}%"));
         }
 
         if let Some(is_multisig) = is_multisig {
-            let is_multisig = if is_multisig { vec![1] } else { vec![0, 2] };
-            let is_multisig = crate::any_in_collection(is_multisig, "','");
-            let str = format!(" is_multisig in ('{}')", is_multisig);
-            conditions.push(str);
+            if is_multisig {
+                query.push(" AND is_multisig = ").push_bind(1_i8);
+            } else {
+                query.push(" AND is_multisig IN (").push_bind(0_i8);
+                query.push(", ").push_bind(2_i8).push(")");
+            }
         }
 
         if !addr.is_empty() {
-            let str = format!("address in ('{}')", addr.join("','"));
-            conditions.push(str)
+            query.push(" AND address IN (");
+            let mut values = query.separated(", ");
+            for address in &addr {
+                values.push_bind(address);
+            }
+            values.push_unseparated(")");
         }
 
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        let query = sqlx::query_as::<_, AssetsEntity>(&sql);
-        let result = query.fetch_all(exec).await;
+        let result = query.build_query_as::<AssetsEntity>().fetch_all(exec).await;
 
         result.map_err(|e| crate::Error::Database(e.into()))
     }
