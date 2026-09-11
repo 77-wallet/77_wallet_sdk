@@ -17,6 +17,24 @@ fn sql_quote(s: &str) -> String {
     s.replace('\'', "''")
 }
 
+fn build_api_coin_list_query(
+    symbol: Option<String>,
+    chain_code: Option<String>,
+    is_default: Option<u8>,
+) -> QueryBuilder<'static, Sqlite> {
+    let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM api_coin WHERE is_del = 0");
+    if let Some(symbol) = symbol {
+        query.push(" AND symbol = ").push_bind(symbol);
+    }
+    if let Some(chain_code) = chain_code {
+        query.push(" AND chain_code = ").push_bind(chain_code);
+    }
+    if let Some(is_default) = is_default {
+        query.push(" AND is_default = ").push_bind(is_default);
+    }
+    query
+}
+
 impl ApiCoinDao {
     pub async fn upsert_multi_coin<'a, E>(
         tx: E,
@@ -73,28 +91,8 @@ impl ApiCoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = "SELECT * FROM api_coin WHERE is_del = 0".to_string();
-
-        let mut conditions = Vec::new();
-
-        if let Some(symbol) = symbol {
-            conditions.push(format!("symbol = '{symbol}'"));
-        }
-
-        if let Some(chain_code) = chain_code {
-            conditions.push(format!("chain_code = '{chain_code}'"));
-        }
-
-        if let Some(is_default) = is_default {
-            conditions.push(format!("is_default = {is_default}"));
-        }
-
-        if !conditions.is_empty() {
-            sql.push_str(" AND ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        sqlx::query_as::<sqlx::Sqlite, ApiCoinEntity>(&sql)
+        build_api_coin_list_query(symbol, chain_code, is_default)
+            .build_query_as::<ApiCoinEntity>()
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -109,28 +107,8 @@ impl ApiCoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = "SELECT * FROM api_coin WHERE is_del = 0".to_string();
-
-        let mut conditions = Vec::new();
-
-        if let Some(symbol) = symbol {
-            conditions.push(format!("symbol = '{symbol}'"));
-        }
-
-        if let Some(chain_code) = chain_code {
-            conditions.push(format!("chain_code = '{chain_code}'"));
-        }
-
-        if let Some(is_default) = is_default {
-            conditions.push(format!("is_default = {is_default}"));
-        }
-
-        if !conditions.is_empty() {
-            sql.push_str(" AND ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        sqlx::query_as::<sqlx::Sqlite, ApiCoinEntity>(&sql)
+        build_api_coin_list_query(symbol, chain_code, is_default)
+            .build_query_as::<ApiCoinEntity>()
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

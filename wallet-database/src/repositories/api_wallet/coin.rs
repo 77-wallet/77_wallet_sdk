@@ -269,6 +269,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_coin_lists_filter_exact_values() {
+        let pool = setup_api_wallet_pool("wallet_db_api_coin_list_exact").await;
+        ApiCoinRepo::upsert_multi_coin(
+            &pool,
+            vec![make_coin("eth", "0xeth".into(), "1"), make_coin("sol", "sol-token".into(), "2")],
+        )
+        .await
+        .unwrap();
+
+        let coins = ApiCoinDao::list_v2(
+            pool.read_ref(),
+            Some("USDT".to_string()),
+            Some("sol".to_string()),
+            Some(1),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(coins.len(), 1);
+        assert_eq!(coins[0].chain_code, "sol");
+    }
+
+    #[tokio::test]
+    async fn api_coin_lists_treat_sql_shaped_values_as_data() {
+        let pool = setup_api_wallet_pool("wallet_db_api_coin_list_bind").await;
+        ApiCoinRepo::upsert_multi_coin(
+            &pool,
+            vec![make_coin("eth", "0xeth".into(), "1"), make_coin("sol", "sol-token".into(), "2")],
+        )
+        .await
+        .unwrap();
+
+        let by_chain =
+            ApiCoinDao::list_v2(pool.read_ref(), None, Some("sol' OR 1=1 --".to_string()), Some(1))
+                .await
+                .unwrap();
+        assert!(by_chain.is_empty());
+
+        let by_symbol =
+            ApiCoinDao::list(pool.read_ref(), Some("USDT' OR 1=1 --".to_string()), None, Some(1))
+                .await
+                .unwrap();
+        assert!(by_symbol.is_empty());
+    }
+
+    #[tokio::test]
     async fn coin_repo_tx_rollback_keeps_price_unchanged() {
         let pool = setup_api_wallet_pool("wallet_db_api_coin_rollback").await;
         let chain = wallet_types::constant::chain_code::ETHEREUM;
