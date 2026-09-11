@@ -407,6 +407,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn hot_coin_list_excludes_exact_coin_and_updates_total_count() {
+        let pool = prepare_sol_coin_pool().await;
+        let exclude = vec![CoinId::new("sol", "SOL", AssetTokenKey::Native)];
+
+        let page = CoinRepo::hot_coin_list_symbol_not_in(
+            &pool,
+            &exclude,
+            Some("sol".to_string()),
+            None,
+            0,
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].symbol, "USDT");
+    }
+
+    #[tokio::test]
+    async fn hot_coin_list_treats_sql_shaped_chain_as_data() {
+        let pool = prepare_sol_coin_pool().await;
+
+        let page = CoinRepo::hot_coin_list_symbol_not_in(
+            &pool,
+            &[],
+            Some("sol' OR 1=1 --".to_string()),
+            None,
+            0,
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 0);
+        assert!(page.data.is_empty());
+    }
+
+    #[tokio::test]
     async fn coin_repo_main_coin_missing_chain_returns_not_found() {
         let pool = prepare_sol_coin_pool().await;
         let err = CoinRepo::main_coin("tron", &pool).await.unwrap_err();

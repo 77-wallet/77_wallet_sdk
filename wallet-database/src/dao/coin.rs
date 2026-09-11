@@ -13,11 +13,6 @@ use sqlx::{
 };
 use std::{collections::HashSet, sync::Arc};
 
-// 最简单的转义：把单引号 ' 变成 ''（SQLite 字面量安全写法）
-fn sql_quote(s: &str) -> String {
-    s.replace('\'', "''")
-}
-
 fn push_coin_list_page_filters<'a>(
     query: &mut QueryBuilder<'a, Sqlite>,
     chain_code: Option<&'a str>,
@@ -39,6 +34,31 @@ fn push_coin_list_page_filters<'a>(
 
     if let Some(keyword) = keyword {
         query.push(" AND symbol LIKE ").push_bind(format!("%{keyword}%"));
+    }
+}
+
+fn push_excluded_coin_page_filters<'a>(
+    query: &mut QueryBuilder<'a, Sqlite>,
+    exclude: &'a [CoinId],
+    chain_code: Option<&'a str>,
+    keyword: Option<&'a str>,
+) {
+    if let Some(chain_code) = chain_code {
+        query.push(" AND chain_code = ").push_bind(chain_code);
+    }
+
+    if let Some(keyword) = keyword {
+        query.push(" AND symbol LIKE ").push_bind(format!("%{keyword}%"));
+    }
+
+    if !exclude.is_empty() {
+        query.push(" AND (symbol, chain_code, token_address) NOT IN ");
+        query.push_tuples(exclude, |mut tuple, coin_id| {
+            tuple
+                .push_bind(&coin_id.symbol)
+                .push_bind(&coin_id.chain_code)
+                .push_bind(coin_id.token_address.as_db_str());
+        });
     }
 }
 
@@ -267,42 +287,31 @@ impl CoinDao {
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let mut sql = String::from("SELECT * FROM coin WHERE is_del = 0 AND status = 1");
+        let base = " FROM coin WHERE is_del = 0 AND status = 1";
+        let chain_code = chain_code.as_deref();
 
-        if let Some(chain_code) = chain_code {
-            sql.push_str(&format!(" AND chain_code = '{}'", chain_code));
-        }
-        // 关键词（LIKE）
-        if let Some(kw) = keyword {
-            sql.push_str(&format!(" AND symbol LIKE '%{}%'", sql_quote(kw)));
-        }
+        let mut count_query = QueryBuilder::<Sqlite>::new(format!("SELECT COUNT(*){base}"));
+        push_excluded_coin_page_filters(&mut count_query, exclude, chain_code, keyword);
+        let total_count = count_query
+            .build_query_scalar::<i64>()
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
 
-        // 排除三元组（严格匹配你的主键顺序）
-        if !exclude.is_empty() {
-            // 生成 ('SYM','CHAIN','TOKEN'),(...)
-            let tuples = exclude
-                .iter()
-                .map(|id| {
-                    format!(
-                        "('{}','{}','{}')",
-                        sql_quote(&id.symbol),
-                        sql_quote(&id.chain_code),
-                        sql_quote(id.token_address.as_db_str())
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
+        let mut data_query = QueryBuilder::<Sqlite>::new(format!("SELECT *{base}"));
+        push_excluded_coin_page_filters(&mut data_query, exclude, chain_code, keyword);
+        data_query
+            .push(" ORDER BY updated_at DESC, created_at DESC LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(page * page_size);
+        let data = data_query
+            .build_query_as::<CoinEntity>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
 
-            sql.push_str(" AND (symbol, chain_code, token_address) NOT IN (");
-            sql.push_str(&tuples);
-            sql.push(')');
-        }
-
-        // 排序 + 分页（你原来就有的 paginate）
-        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
-
-        let paginate = Pagination::<CoinEntity>::init(page, page_size);
-        Ok(paginate.page(exec, &sql).await?)
+        Ok(Pagination { page, page_size, total_count, data })
     }
 
     pub async fn coin_list_page(
