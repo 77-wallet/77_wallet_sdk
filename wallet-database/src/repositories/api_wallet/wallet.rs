@@ -246,6 +246,23 @@ mod tests {
     use super::ApiWalletRepo;
     use crate::{dao::api_wallet::ApiWalletDao, repositories::test_helper::setup_api_wallet_pool};
 
+    async fn seed_delete_wallet(pool: &crate::ApiWalletDbPool, uid: &str, address: &str) {
+        ApiWalletRepo::upsert(
+            pool,
+            uid,
+            "wallet",
+            address,
+            b"phrase",
+            b"seed",
+            crate::entities::api_wallet::ApiWalletType::SubAccount,
+            None,
+            "sn",
+            0,
+        )
+        .await
+        .unwrap();
+    }
+
     #[tokio::test]
     async fn api_wallet_repo_upsert_and_find_success() {
         let pool = setup_api_wallet_pool("wallet_db_api_wallet_success").await;
@@ -294,6 +311,33 @@ mod tests {
         let pool = setup_api_wallet_pool("wallet_db_api_wallet_edge").await;
         let got = ApiWalletRepo::find_by_address(&pool, "0xapi_wallet_missing").await.unwrap();
         assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn api_wallet_physical_delete_only_removes_exact_address() {
+        let pool = setup_api_wallet_pool("wallet_db_api_wallet_delete_exact").await;
+        seed_delete_wallet(&pool, "uid_a", "wallet_a").await;
+        seed_delete_wallet(&pool, "uid_b", "wallet_b").await;
+
+        let deleted = ApiWalletRepo::physical_delete(&pool, &["wallet_a"]).await.unwrap();
+
+        assert_eq!(deleted.len(), 1);
+        assert_eq!(deleted[0].address, "wallet_a");
+        assert!(ApiWalletRepo::find_by_address(&pool, "wallet_a").await.unwrap().is_none());
+        assert!(ApiWalletRepo::find_by_address(&pool, "wallet_b").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn api_wallet_physical_delete_treats_sql_shaped_address_as_data() {
+        let pool = setup_api_wallet_pool("wallet_db_api_wallet_delete_bind").await;
+        seed_delete_wallet(&pool, "uid_a", "wallet_a").await;
+        seed_delete_wallet(&pool, "uid_b", "wallet_b").await;
+
+        let deleted =
+            ApiWalletRepo::physical_delete(&pool, &["wallet_a') OR 1=1 --"]).await.unwrap();
+
+        assert!(deleted.is_empty());
+        assert_eq!(ApiWalletRepo::list(&pool, None).await.unwrap().len(), 2);
     }
 
     #[tokio::test]

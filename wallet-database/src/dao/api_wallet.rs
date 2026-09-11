@@ -5,7 +5,7 @@ use crate::{
         update_builder::DynamicUpdateBuilder,
     },
 };
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 /// DAO 层设计原则：
 ///
@@ -423,17 +423,19 @@ impl ApiWalletDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let condition = crate::any_in_collection(addresses, "','");
-        let sql = format!(
-            r#"
-            DELETE FROM api_wallet
-            WHERE address IN ('{}')
-            RETURNING *;
-            "#,
-            condition
-        );
+        if addresses.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(&sql)
+        let mut query = QueryBuilder::<Sqlite>::new("DELETE FROM api_wallet WHERE address IN (");
+        let mut values = query.separated(", ");
+        for address in addresses {
+            values.push_bind(*address);
+        }
+        values.push_unseparated(") RETURNING *");
+
+        query
+            .build_query_as::<ApiWalletEntity>()
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
