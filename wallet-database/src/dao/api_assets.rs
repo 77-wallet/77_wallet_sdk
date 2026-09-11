@@ -10,7 +10,7 @@ use crate::{
 use std::collections::HashMap;
 
 use crate::entities::api_assets::ApiCreateAssetsVo;
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub(crate) struct ApiAssetsDao;
 
@@ -23,48 +23,37 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = String::from("SELECT * FROM api_assets");
-        let mut conditions = Vec::new();
-        conditions.push(" status = 1".to_string());
-        conditions.push(
-            " EXISTS (
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT * FROM api_assets WHERE status = 1 AND EXISTS (
                     SELECT 1
                     FROM api_chain
                     WHERE api_chain.chain_code = api_assets.chain_code
                     AND api_chain.status = 1
-                )"
-            .to_string(),
-        );
-
-        conditions.push(
-            " EXISTS (
+                ) AND EXISTS (
                     SELECT 1
                     FROM api_coin
                     WHERE api_coin.chain_code = api_assets.chain_code
                     AND api_coin.token_address = api_assets.token_address
                     AND api_coin.symbol = api_assets.symbol
                     AND api_coin.status = 1
-                )"
-            .to_string(),
+                )",
         );
 
         if let Some(chain_code) = chain_code {
-            conditions.push(format!("chain_code = '{chain_code}'"));
+            query.push(" AND chain_code = ").push_bind(chain_code);
         }
 
         if !addr.is_empty() {
-            let str = format!("address in ('{}')", addr.join("','"));
-            conditions.push(str)
+            query.push(" AND address IN (");
+            let mut values = query.separated(", ");
+            for address in &addr {
+                values.push_bind(address);
+            }
+            values.push_unseparated(")");
         }
 
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        // tracing::debug!("sql: {}", sql);
-
-        sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(&sql)
+        query
+            .build_query_as::<ApiAssetsEntity>()
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -450,8 +439,8 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::any_in_collection(address, "','");
-        let mut sql = "SELECT * FROM api_assets
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT * FROM api_assets
         WHERE status = 1
             AND EXISTS (
                 SELECT 1
@@ -466,40 +455,40 @@ impl ApiAssetsDao {
                 AND api_coin.token_address = api_assets.token_address
                 AND api_coin.symbol = api_assets.symbol
                 AND api_coin.status = 1
-            )"
-        .to_string();
+            )",
+        );
 
-        if !addresses.is_empty() {
-            let str = format!(" AND address in ('{}')", addresses);
-            sql.push_str(&str)
+        if !address.is_empty() {
+            query.push(" AND address IN (");
+            let mut values = query.separated(", ");
+            for item in &address {
+                values.push_bind(item);
+            }
+            values.push_unseparated(")");
         }
 
-        if chain_code.is_some() {
-            sql.push_str(" AND chain_code = ?");
+        if let Some(code) = chain_code.as_deref() {
+            query.push(" AND chain_code = ").push_bind(code);
         }
 
-        if symbol.is_some() {
-            sql.push_str(" AND symbol = ?");
+        if let Some(symbol) = symbol {
+            query.push(" AND symbol = ").push_bind(symbol);
         }
 
         if let Some(is_multisig) = is_multisig {
-            let is_multisig = if is_multisig { vec![1] } else { vec![0, 2] };
-            let is_multisig = crate::any_in_collection(is_multisig, "','");
-            let str = format!(" AND is_multisig in ('{}')", is_multisig);
-            sql.push_str(&str);
+            if is_multisig {
+                query.push(" AND is_multisig = ").push_bind(1_i8);
+            } else {
+                query.push(" AND is_multisig IN (").push_bind(0_i8);
+                query.push(", ").push_bind(2_i8).push(")");
+            }
         }
 
-        let mut query = sqlx::query_as::<_, ApiAssetsEntity>(&sql);
-
-        if let Some(code) = chain_code {
-            query = query.bind(code);
-        }
-
-        if let Some(sym) = symbol {
-            query = query.bind(sym);
-        }
-
-        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+        query
+            .build_query_as::<ApiAssetsEntity>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub(crate) async fn get_api_assets_by_address<'a, E>(
@@ -513,13 +502,12 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::any_in_collection(address, "','");
         // `api_assets` lives in `api_wallet.db`. Multisig tables (e.g. `multisig_account`) are in
         // the core db (`data.db`) and must NOT be joined here. This API wallet path has no multisig
         // business, so we always join `api_account`.
-        let base_sql = || -> String {
+        let mut query = QueryBuilder::<Sqlite>::new(
             "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code,
-                a.token_address, a.protocol, a.status, a.balance, a.is_multisig,
+                    a.token_address, a.protocol, a.status, a.balance, a.is_multisig,
                 a.created_at, a.updated_at, acc.address_type
                 FROM api_assets AS a
                 JOIN api_account AS acc
@@ -538,48 +526,40 @@ impl ApiAssetsDao {
                         AND api_coin.token_address = a.token_address
                         AND api_coin.symbol = a.symbol
                         AND api_coin.status = 1
-                    )"
-            .to_string()
-        };
+                    )",
+        );
 
-        let add_dynamic_conditions = |sql: &mut String| {
-            if !addresses.is_empty() {
-                sql.push_str(&format!(" AND a.address IN ('{}')", addresses));
+        if !address.is_empty() {
+            query.push(" AND a.address IN (");
+            let mut values = query.separated(", ");
+            for item in &address {
+                values.push_bind(item);
             }
-            if chain_code.is_some() {
-                sql.push_str(" AND a.chain_code = ?");
-            }
-            if symbol.is_some() {
-                sql.push_str(" AND a.symbol = ?");
-            }
-            if token_address.is_some() {
-                sql.push_str(" AND a.token_address = ?");
-            }
-            if let Some(is_multisig) = is_multisig {
-                let is_multisig_values = if is_multisig { vec![1] } else { vec![0, 2] };
-                let is_multisig_str = crate::any_in_collection(is_multisig_values, "','");
-                sql.push_str(&format!(" AND a.is_multisig IN ('{}')", is_multisig_str));
-            }
-        };
-
-        let mut sql = base_sql();
-        add_dynamic_conditions(&mut sql);
-
-        let mut query = sqlx::query_as::<_, ApiAssetsEntityWithAddressType>(&sql);
-
+            values.push_unseparated(")");
+        }
         if let Some(code) = chain_code {
-            query = query.bind(code);
+            query.push(" AND a.chain_code = ").push_bind(code);
         }
-
-        if let Some(sym) = symbol {
-            query = query.bind(sym);
+        if let Some(symbol) = symbol {
+            query.push(" AND a.symbol = ").push_bind(symbol);
         }
-
         if let Some(token_address) = token_address {
-            query = query.bind(token_address);
+            query.push(" AND a.token_address = ").push_bind(token_address);
+        }
+        if let Some(is_multisig) = is_multisig {
+            if is_multisig {
+                query.push(" AND a.is_multisig = ").push_bind(1_i8);
+            } else {
+                query.push(" AND a.is_multisig IN (").push_bind(0_i8);
+                query.push(", ").push_bind(2_i8).push(")");
+            }
         }
 
-        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+        query
+            .build_query_as::<ApiAssetsEntityWithAddressType>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn assets_with_wallet_address_by_address<'a, 'b, E>(
@@ -1043,6 +1023,76 @@ mod tests {
         crate::entities::api_assets::ApiCreateAssetsVo::new(assets_id, symbol, 18, None, 0)
             .with_name("t")
             .with_balance(balance)
+    }
+
+    async fn seed_queryable_asset(conn: &mut sqlx::SqliteConnection) {
+        sqlx::query(
+            r#"
+            INSERT INTO api_chain (name, chain_code, protocols, status, main_symbol, created_at)
+            VALUES ('Ethereum', 'eth', '[]', 1, 'ETH', CURRENT_TIMESTAMP);
+            INSERT INTO api_coin (
+                name, symbol, chain_code, token_address, price, protocol, decimals,
+                is_default, is_popular, is_custom, status, created_at
+            ) VALUES ('Token', 'TOK', 'eth', '0xtoken', '1', '', 18, 1, 0, 0, 1, CURRENT_TIMESTAMP);
+            INSERT INTO api_account (
+                account_id, name, address, pubkey, address_type, wallet_address, uid,
+                derivation_path, derivation_path_index, chain_code, api_wallet_type,
+                status, is_init, is_used, created_at
+            ) VALUES (1, 'main', '0xasset', '', '', '0xwallet', 'uid', '', 0, 'eth', 1, 1, 1, 0, CURRENT_TIMESTAMP);
+            INSERT INTO api_assets (
+                name, symbol, decimals, address, chain_code, token_address, protocol,
+                status, balance, is_multisig, created_at
+            ) VALUES ('Token', 'TOK', 18, '0xasset', 'eth', '0xtoken', '', 1, '1', 0, CURRENT_TIMESTAMP);
+            "#,
+        )
+        .execute(conn)
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn api_asset_collection_reads_bind_external_selectors() {
+        let dir = make_temp_dir("wallet_db_api_assets_query_bind");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        seed_queryable_asset(&mut conn).await;
+
+        let exact =
+            ApiAssetsDao::list(&mut *conn, vec!["0xasset".to_string()], Some("eth".to_string()))
+                .await
+                .unwrap();
+        let sql_address = vec!["missing') OR 1=1 --".to_string()];
+        let listed = ApiAssetsDao::list(&mut *conn, sql_address.clone(), None).await.unwrap();
+        let chain = ApiAssetsDao::get_chain_assets_by_address_chain_code_symbol(
+            &mut *conn,
+            sql_address.clone(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let joined = ApiAssetsDao::get_api_assets_by_address(
+            &mut *conn,
+            sql_address,
+            None,
+            None,
+            None,
+            Some(false),
+        )
+        .await
+        .unwrap();
+        let wrong_chain =
+            ApiAssetsDao::list(&mut *conn, vec![], Some("missing' OR 1=1 --".to_string()))
+                .await
+                .unwrap();
+
+        assert_eq!(exact.len(), 1);
+        assert!(listed.is_empty());
+        assert!(chain.is_empty());
+        assert!(joined.is_empty());
+        assert!(wrong_chain.is_empty());
     }
 
     #[tokio::test]
