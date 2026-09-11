@@ -122,6 +122,7 @@ async-trait = { workspace = true }
 reqwest = { workspace = true }
 
 urlencoding = { workspace = true }
+url = { workspace = true }
 dashmap.workspace = true
 num_cpus = "1.16"
 scopeguard = "1.2"

@@ -1,5 +1,5 @@
 use crate::{
-    context::Context, domain::node::NodeDomain,
+    context::Context, domain::node::NodeDomain, error::service::ServiceError,
     infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer,
 };
 
@@ -28,6 +28,22 @@ pub struct RpcAddressInfoBody {
     pub url: String,
 }
 
+fn validate_rpc_url(url: &str) -> Result<(), ServiceError> {
+    #[cfg(feature = "prod")]
+    {
+        let parsed = url::Url::parse(url)
+            .map_err(|_| ServiceError::Parameter("invalid RPC URL".to_string()))?;
+        if parsed.scheme() != "https" {
+            return Err(ServiceError::Parameter("production RPC URL must use HTTPS".to_string()));
+        }
+    }
+
+    #[cfg(not(feature = "prod"))]
+    let _ = url;
+
+    Ok(())
+}
+
 impl RpcChange {
     pub(crate) async fn exec(
         &self,
@@ -45,6 +61,7 @@ impl RpcChange {
                 let Some(id) = &node.id else {
                     continue;
                 };
+                validate_rpc_url(&node.url)?;
                 list.push(wallet_transport_backend::response_vo::chain::ChainInfo {
                     id: id.clone(),
                     name: node.name.clone(),
@@ -73,6 +90,30 @@ impl RpcChange {
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_rpc_url;
+
+    #[cfg(feature = "prod")]
+    #[test]
+    fn production_accepts_https_rpc_url() {
+        assert!(validate_rpc_url("https://rpc.example.com").is_ok());
+    }
+
+    #[cfg(feature = "prod")]
+    #[test]
+    fn production_rejects_insecure_or_invalid_rpc_url() {
+        assert!(validate_rpc_url("http://rpc.example.com").is_err());
+        assert!(validate_rpc_url("not a url").is_err());
+    }
+
+    #[cfg(not(feature = "prod"))]
+    #[test]
+    fn development_keeps_local_http_rpc_support() {
+        assert!(validate_rpc_url("http://127.0.0.1:8545").is_ok());
     }
 }
 
