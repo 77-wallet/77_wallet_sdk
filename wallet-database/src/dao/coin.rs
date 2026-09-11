@@ -174,28 +174,22 @@ impl CoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = "SELECT * FROM coin WHERE is_del = 0".to_string();
-
-        let mut conditions = Vec::new();
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM coin WHERE is_del = 0");
 
         if let Some(symbol) = symbol {
-            conditions.push(format!("symbol = '{symbol}'"));
+            query.push(" AND symbol = ").push_bind(symbol);
         }
 
         if let Some(chain_code) = chain_code {
-            conditions.push(format!("chain_code = '{chain_code}'"));
+            query.push(" AND chain_code = ").push_bind(chain_code);
         }
 
         if let Some(is_default) = is_default {
-            conditions.push(format!("is_default = {is_default}"));
+            query.push(" AND is_default = ").push_bind(is_default);
         }
 
-        if !conditions.is_empty() {
-            sql.push_str(" AND ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        sqlx::query_as::<sqlx::Sqlite, CoinEntity>(&sql)
+        query
+            .build_query_as::<CoinEntity>()
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -210,29 +204,27 @@ impl CoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let symbol_list = crate::any_in_collection(symbol_list, "','");
-        let mut sql = "SELECT * FROM coin WHERE is_del = 0".to_string();
-
-        let mut conditions = Vec::new();
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM coin WHERE is_del = 0");
 
         if !symbol_list.is_empty() {
-            conditions.push(format!("symbol in ('{}')", symbol_list));
+            query.push(" AND symbol IN (");
+            let mut separated = query.separated(", ");
+            for symbol in symbol_list {
+                separated.push_bind(symbol);
+            }
+            separated.push_unseparated(")");
         }
 
         if let Some(chain_code) = chain_code {
-            conditions.push(format!("chain_code = '{chain_code}'"));
+            query.push(" AND chain_code = ").push_bind(chain_code);
         }
 
         if let Some(is_default) = is_default {
-            conditions.push(format!("is_default = {is_default}"));
+            query.push(" AND is_default = ").push_bind(is_default);
         }
 
-        if !conditions.is_empty() {
-            sql.push_str(" AND ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        sqlx::query_as::<sqlx::Sqlite, CoinEntity>(&sql)
+        query
+            .build_query_as::<CoinEntity>()
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

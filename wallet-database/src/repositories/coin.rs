@@ -347,6 +347,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn coin_repo_list_v2_treats_sql_shaped_chain_as_data() {
+        let pool = prepare_sol_coin_pool().await;
+
+        let coins = CoinRepo::list_v2(&pool, None, Some("sol' OR 1=1 --".to_string()), Some(1))
+            .await
+            .unwrap();
+
+        assert!(coins.is_empty());
+    }
+
+    #[tokio::test]
+    async fn coin_repo_symbol_list_treats_sql_shaped_symbol_as_data() {
+        let pool = prepare_sol_coin_pool().await;
+        let symbols = vec!["SOL') OR 1=1 --".to_string()];
+
+        let coins = CoinDao::list(pool.read_ref(), &symbols, None, None).await.unwrap();
+
+        assert!(coins.is_empty());
+    }
+
+    #[tokio::test]
     async fn coin_repo_main_coin_missing_chain_returns_not_found() {
         let pool = prepare_sol_coin_pool().await;
         let err = CoinRepo::main_coin("tron", &pool).await.unwrap_err();
