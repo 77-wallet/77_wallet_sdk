@@ -315,6 +315,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_hot_coin_list_excludes_exact_coin_and_counts_rows() {
+        let pool = setup_api_wallet_pool("wallet_db_api_hot_coin_exclude").await;
+        ApiCoinRepo::upsert_multi_coin(
+            &pool,
+            vec![make_coin("eth", "0xeth".into(), "1"), make_coin("sol", "sol-token".into(), "2")],
+        )
+        .await
+        .unwrap();
+        let exclude = vec![crate::entities::coin::CoinId::new("eth", "USDT", "0xeth".into())];
+
+        let page =
+            ApiCoinRepo::coin_list_symbol_not_in(&pool, &exclude, None, None, 0, 10).await.unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].chain_code, "sol");
+    }
+
+    #[tokio::test]
+    async fn api_hot_coin_list_treats_sql_shaped_chain_as_data() {
+        let pool = setup_api_wallet_pool("wallet_db_api_hot_coin_bind").await;
+        ApiCoinRepo::upsert_multi_coin(
+            &pool,
+            vec![make_coin("eth", "0xeth".into(), "1"), make_coin("sol", "sol-token".into(), "2")],
+        )
+        .await
+        .unwrap();
+
+        let page = ApiCoinRepo::coin_list_symbol_not_in(
+            &pool,
+            &[],
+            Some("sol' OR 1=1 --".to_string()),
+            None,
+            0,
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 0);
+        assert!(page.data.is_empty());
+    }
+
+    #[tokio::test]
     async fn coin_repo_tx_rollback_keeps_price_unchanged() {
         let pool = setup_api_wallet_pool("wallet_db_api_coin_rollback").await;
         let chain = wallet_types::constant::chain_code::ETHEREUM;
