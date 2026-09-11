@@ -34,13 +34,13 @@ impl ExchangeRateEntity {
     where
         E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
     {
-        let sql =
-            format!("select * from exchange_rate where target_currency= '{target_currency}' ");
-        sqlx::query_as::<_, ExchangeRateEntity>(sql.as_str())
-            .bind(target_currency)
-            .fetch_optional(exec)
-            .await
-            .map_err(|e| crate::error::Error::Database(database::DatabaseError::Sqlx(e)))
+        sqlx::query_as::<_, ExchangeRateEntity>(
+            "SELECT * FROM exchange_rate WHERE target_currency = ?",
+        )
+        .bind(target_currency)
+        .fetch_optional(exec)
+        .await
+        .map_err(|e| crate::error::Error::Database(database::DatabaseError::Sqlx(e)))
     }
 }
 

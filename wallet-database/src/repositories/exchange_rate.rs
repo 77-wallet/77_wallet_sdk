@@ -127,6 +127,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn exchange_rate_target_currency_treats_sql_shaped_input_as_data() {
+        let pool = setup_core_pool("wallet_db_exchange_rate_bind").await;
+        ExchangeRateRepo::upsert(pool.clone(), "USD", "USD", 1.0).await.unwrap();
+
+        let found =
+            ExchangeRateRepo::get_by_target_currency(pool, "missing' OR 1=1 --").await.unwrap();
+
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
     async fn exchange_rate_repo_tx_rollback_keeps_rate_unchanged() {
         let pool = setup_core_pool("wallet_db_exchange_rate_rollback").await;
         ExchangeRateRepo::upsert(pool.clone(), "USD", "USD", 1.0).await.unwrap();
