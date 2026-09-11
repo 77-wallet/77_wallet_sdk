@@ -258,27 +258,6 @@ impl NodeDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    // pub async fn get_node_list_in_chain_codes<'a, E>(
-    //     exec: E,
-    //     chain_codes: Vec<&str>,
-    //     status: Option<u8>,
-    // ) -> Result<Vec<NodeEntity>, crate::Error>
-    // where
-    //     E: Executor<'a, Database = Sqlite>,
-    // {
-    //     let chain_codes = crate::any_in_collection(chain_codes, "','");
-    //     let sql = format!(
-    //         "SELECT * FROM node
-    //     WHERE chain_code in ('{}');",
-    //         chain_codes
-    //     );
-    //     sqlx::query_as::<sqlx::Sqlite, NodeEntity>(&sql)
-    //         .bind(chain_codes)
-    //         .fetch_all(exec)
-    //         .await
-    //         .map_err(|e| crate::Error::Database(e.into()))
-    // }
-
     pub async fn delete<'a, E>(
         exec: E,
         node_id: &str,

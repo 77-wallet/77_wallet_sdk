@@ -310,43 +310,6 @@ impl ApiAssetsDao {
             .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
     }
 
-    // pub async fn delete_multi_assets<'a, E>(
-    //     exec: E,
-    //     assets_ids: Vec<AssetsId>,
-    // ) -> Result<(), crate::Error>
-    // where
-    //     E: Executor<'a, Database = Sqlite>,
-    // {
-    //     if assets_ids.is_empty() {
-    //         return Ok(());
-    //     }
-    //     let placeholders = assets_ids.iter().map(|_| "(?, ?, ?, ?)").collect::<Vec<_>>().join(", ");
-
-    //     // 构建 SQL 查询
-    //     let sql = format!(
-    //         "UPDATE api_assets SET status = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE (address, symbol, chain_code, token_address) IN ({})",
-    //         placeholders
-    //     );
-
-    //     let mut query = sqlx::query(&sql);
-
-    //     // 绑定参数
-    //     for assets_id in &assets_ids {
-    //         let token_address = match &assets_id.token_address {
-    //             Some(token_address) => token_address.to_string(),
-    //             None => String::new(),
-    //         };
-    //         query = query
-    //             .bind(&assets_id.address)
-    //             .bind(&assets_id.symbol)
-    //             .bind(&assets_id.chain_code)
-    //             .bind(token_address);
-    //     }
-
-    //     // 执行查询
-    //     query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
-    // }
-
     pub async fn update_status<'a, E>(
         exec: E,
         chain_code: &str,

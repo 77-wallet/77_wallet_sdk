@@ -145,18 +145,6 @@ impl AccountDao {
             .and_where_eq_opt("chain_code", chain_code);
 
         builder.fetch_all(executor).await
-
-        // let addresses = crate::any_in_collection(addresses, "','");
-        // let mut sql = format!("SELECT * FROM account WHERE address IN ('{}')", addresses);
-
-        // if let Some(chain_code) = chain_code {
-        //     sql.push_str(&format!(" and chain_code = '{}'", chain_code));
-        // }
-
-        // sqlx::query_as::<sqlx::Sqlite, AccountEntity>(&sql)
-        //     .fetch_all(executor)
-        //     .await
-        //     .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn account_list_v2<'a, E>(
