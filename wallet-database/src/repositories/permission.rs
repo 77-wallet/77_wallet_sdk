@@ -328,4 +328,20 @@ mod tests {
             PermissionRepo::permission_with_user(&pool, "T_grantor_rb", 7, false).await.unwrap();
         assert!(found.is_none());
     }
+
+    #[tokio::test]
+    async fn permission_repo_treats_apostrophes_in_user_fields_as_data() {
+        let pool = setup_core_pool("wallet_db_permission_repo_apostrophe").await;
+        let permission = build_permission("T_grantor_quote", 8);
+        let quoted_address = "T_user_'_quote";
+        let users = vec![build_user("T_grantor_'_quote", &permission.id, quoted_address)];
+
+        PermissionRepo::add_with_user(&pool, &permission, &users).await.unwrap();
+
+        let found =
+            PermissionUserDao::find_by_permission(&permission.id, pool.read_ref()).await.unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].address, quoted_address);
+        assert_eq!(found[0].grantor_addr, "T_grantor_'_quote");
+    }
 }

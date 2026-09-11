@@ -1,6 +1,5 @@
 use crate::entities::permission_user::PermissionUserEntity;
-use chrono::SecondsFormat;
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub(crate) struct PermissionUserDao;
 
@@ -13,26 +12,20 @@ impl PermissionUserDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut query = String::from(
-            "INSERT INTO permission_user (address,grantor_addr, permission_id, is_self, weight,created_at) VALUES ",
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "INSERT INTO permission_user (address,grantor_addr, permission_id, is_self, weight,created_at) ",
         );
 
-        for (i, param) in users.iter().enumerate() {
-            if i != 0 {
-                query.push_str(", ");
-            }
-            query.push_str(&format!(
-                "('{}','{}','{}', '{}', {}, '{}')",
-                param.address,
-                param.grantor_addr,
-                param.permission_id,
-                param.is_self,
-                param.weight,
-                param.created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
-            ));
-        }
+        query.push_values(users, |mut row, param| {
+            row.push_bind(&param.address)
+                .push_bind(&param.grantor_addr)
+                .push_bind(&param.permission_id)
+                .push_bind(param.is_self)
+                .push_bind(param.weight)
+                .push_bind(param.created_at);
+        });
 
-        sqlx::query(&query).execute(exec).await?;
+        query.build().execute(exec).await?;
 
         Ok(())
     }
