@@ -7,10 +7,35 @@ use crate::{
     pagination::Pagination,
 };
 use chrono::SecondsFormat;
-use sqlx::{Executor, Pool, Sqlite};
+use sqlx::{Executor, Pool, QueryBuilder, Sqlite};
 use std::sync::Arc;
 
 pub struct MultisigAccountDaoV1;
+
+fn account_column(key: &str) -> Result<&'static str, crate::DatabaseError> {
+    match key {
+        "id" => Ok("id"),
+        "name" => Ok("name"),
+        "initiator_addr" => Ok("initiator_addr"),
+        "address" => Ok("address"),
+        "address_type" => Ok("address_type"),
+        "authority_addr" => Ok("authority_addr"),
+        "status" => Ok("status"),
+        "pay_status" => Ok("pay_status"),
+        "owner" => Ok("owner"),
+        "chain_code" => Ok("chain_code"),
+        "threshold" => Ok("threshold"),
+        "member_num" => Ok("member_num"),
+        "salt" => Ok("salt"),
+        "deploy_hash" => Ok("deploy_hash"),
+        "fee_hash" => Ok("fee_hash"),
+        "fee_chain" => Ok("fee_chain"),
+        "is_del" => Ok("is_del"),
+        "created_at" => Ok("created_at"),
+        "updated_at" => Ok("updated_at"),
+        _ => Err(crate::DatabaseError::QueryFailed),
+    }
+}
 
 impl MultisigAccountDaoV1 {
     pub async fn create_account_with_member(
@@ -92,20 +117,20 @@ impl MultisigAccountDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut query = r#"SELECT * FROM multisig_account"#.to_string();
-        let mut query_where = Vec::new();
-
-        for (key, value) in conditions.iter() {
-            query_where.push(format!("{} = '{}'", key, value));
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM multisig_account");
+        if !conditions.is_empty() {
+            query.push(" WHERE ");
+            for (index, (key, value)) in conditions.iter().enumerate() {
+                if index != 0 {
+                    query.push(" AND ");
+                }
+                query.push(account_column(key)?).push(" = ").push_bind(value);
+            }
         }
-        if !query_where.is_empty() {
-            query.push_str(" WHERE ");
-            query.push_str(&query_where.join(" AND "));
-        }
 
-        query.push_str(" ORDER BY created_at DESC LIMIT 1");
+        query.push(" ORDER BY created_at DESC LIMIT 1");
 
-        let res = sqlx::query_as::<_, MultisigAccountEntity>(&query).fetch_optional(exec).await?;
+        let res = query.build_query_as::<MultisigAccountEntity>().fetch_optional(exec).await?;
 
         Ok(res)
     }
@@ -118,30 +143,16 @@ impl MultisigAccountDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = String::from("UPDATE multisig_account SET ");
-
-        let mut first = true;
-        let mut args = Vec::new();
-
-        for (key, value) in params.iter() {
-            if !first {
-                sql.push_str(", ");
+        let mut query = QueryBuilder::<Sqlite>::new("UPDATE multisig_account SET ");
+        for (index, (key, value)) in params.iter().enumerate() {
+            if index != 0 {
+                query.push(", ");
             }
-            sql.push_str(&format!("{} = ?", key));
-            args.push(value);
-            first = false;
+            query.push(account_column(key)?).push(" = ").push_bind(value);
         }
+        query.push(" WHERE id = ").push_bind(id).push(" RETURNING *");
 
-        let id = id.to_string();
-        sql.push_str(" WHERE id = ? RETURNING *");
-        args.push(&id);
-
-        let mut query = sqlx::query_as::<_, MultisigAccountEntity>(&sql);
-        for arg in args {
-            query = query.bind(arg);
-        }
-
-        let mut res = query.fetch_all(exec).await?;
+        let mut res = query.build_query_as::<MultisigAccountEntity>().fetch_all(exec).await?;
         res.pop().ok_or(crate::DatabaseError::ReturningNone)
     }
 
@@ -152,18 +163,18 @@ impl MultisigAccountDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut query = r#"SELECT * FROM multisig_account"#.to_string();
-        let mut query_where = Vec::new();
-
-        for (key, value) in conditions.iter() {
-            query_where.push(format!("{} = '{}'", key, value));
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM multisig_account");
+        if !conditions.is_empty() {
+            query.push(" WHERE ");
+            for (index, (key, value)) in conditions.iter().enumerate() {
+                if index != 0 {
+                    query.push(" AND ");
+                }
+                query.push(account_column(key)?).push(" = ").push_bind(value);
+            }
         }
-        if !query_where.is_empty() {
-            query.push_str(" WHERE ");
-            query.push_str(&query_where.join(" AND "));
-        }
 
-        let res = sqlx::query_as::<_, MultisigAccountEntity>(&query).fetch_all(exec).await?;
+        let res = query.build_query_as::<MultisigAccountEntity>().fetch_all(exec).await?;
         Ok(res)
     }
 
@@ -248,28 +259,32 @@ impl MultisigAccountDaoV1 {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<MultisigAccountEntity>, crate::DatabaseError> {
-        let mut sql = String::from("SELECT * FROM multisig_account where is_del = 0 and ");
-        let mut conditions = Vec::new();
-
-        if owner {
-            conditions.push("owner <> 0".to_string());
-        } else {
-            conditions.push("owner <> 1".to_string());
-        }
-
+        let excluded_owner = if owner { 0 } else { 1 };
+        let mut count_query = QueryBuilder::<Sqlite>::new(
+            "SELECT COUNT(*) FROM multisig_account WHERE is_del = 0 AND owner <> ",
+        );
+        count_query.push_bind(excluded_owner);
         if let Some(chain) = chain_code {
-            let sql = format!("chain_code = '{}'", chain);
-            conditions.push(sql);
+            count_query.push(" AND chain_code = ").push_bind(chain);
         }
+        let total_count = count_query.build_query_scalar::<i64>().fetch_one(pool.as_ref()).await?;
 
-        if !conditions.is_empty() {
-            sql.push_str(&conditions.join(" AND "));
+        let mut data_query = QueryBuilder::<Sqlite>::new(
+            "SELECT * FROM multisig_account WHERE is_del = 0 AND owner <> ",
+        );
+        data_query.push_bind(excluded_owner);
+        if let Some(chain) = chain_code {
+            data_query.push(" AND chain_code = ").push_bind(chain);
         }
-        sql.push_str(" ORDER BY created_at DESC");
+        data_query
+            .push(" ORDER BY created_at DESC LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(page * page_size);
+        let data =
+            data_query.build_query_as::<MultisigAccountEntity>().fetch_all(pool.as_ref()).await?;
 
-        let pagination = Pagination::<MultisigAccountEntity>::init(page, page_size);
-
-        pagination.page(pool.as_ref(), &sql).await
+        Ok(Pagination { page, page_size, total_count, data })
     }
 
     pub async fn update_name<'a, E>(
@@ -493,14 +508,22 @@ impl MultisigAccountDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = if ids.is_empty() {
-            "DELETE FROM multisig_account RETURNING *".to_string()
+        let rows = if ids.is_empty() {
+            sqlx::query_as::<_, MultisigAccountEntity>("DELETE FROM multisig_account RETURNING *")
+                .fetch_all(exec)
+                .await?
         } else {
-            let ids = crate::any_in_collection(ids, "','");
-            format!("DELETE FROM multisig_account WHERE id IN ('{}') RETURNING *", ids)
+            let mut query =
+                QueryBuilder::<Sqlite>::new("DELETE FROM multisig_account WHERE id IN (");
+            let mut values = query.separated(", ");
+            for id in ids {
+                values.push_bind(id);
+            }
+            values.push_unseparated(") RETURNING *");
+            query.build_query_as::<MultisigAccountEntity>().fetch_all(exec).await?
         };
 
-        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigAccountEntity>(&sql).fetch_all(exec).await?)
+        Ok(rows)
     }
 
     pub async fn pending_handle<'a, E>(

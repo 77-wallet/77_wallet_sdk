@@ -486,4 +486,137 @@ mod tests {
         .unwrap();
         assert!(found_with_is_del.is_none());
     }
+
+    #[tokio::test]
+    async fn multisig_account_repo_condition_values_are_bound() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_condition_bind").await;
+        let mut params = build_new_account("acc_condition", "T_acc_condition");
+        params.address = "T_multisig_'_quote".to_string();
+        MultisigAccountRepo::create_account_with_member(&pool, &params).await.unwrap();
+
+        let exact = MultisigAccountRepo::find_by_condition(&pool, "address", "T_multisig_'_quote")
+            .await
+            .unwrap();
+        let sql_shaped = "missing' OR 1=1 --";
+        let found =
+            MultisigAccountRepo::find_by_condition(&pool, "address", sql_shaped).await.unwrap();
+        let listed = MultisigAccountDaoV1::list(vec![("address", sql_shaped)], pool.read_ref())
+            .await
+            .unwrap();
+
+        assert!(exact.is_some());
+        assert!(found.is_none());
+        assert!(listed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn multisig_account_repo_rejects_unknown_dynamic_columns() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_column_guard").await;
+        let params = build_new_account("acc_column_guard", "T_column_guard");
+        MultisigAccountRepo::create_account_with_member(&pool, &params).await.unwrap();
+
+        let found = MultisigAccountRepo::find_by_condition(
+            &pool,
+            "address = 'missing' OR 1=1 --",
+            "ignored",
+        )
+        .await;
+        let updated = MultisigAccountRepo::update_by_id(
+            &pool,
+            "acc_column_guard",
+            std::collections::HashMap::from([(
+                "name = 'changed' WHERE 1=1 --".to_string(),
+                "ignored".to_string(),
+            )]),
+        )
+        .await;
+
+        assert!(found.is_err());
+        assert!(updated.is_err());
+        assert_eq!(
+            MultisigAccountRepo::find_by_id(&pool, "acc_column_guard").await.unwrap().unwrap().name,
+            "acc_name"
+        );
+    }
+
+    #[tokio::test]
+    async fn multisig_account_repo_account_list_binds_chain_code() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_page_bind").await;
+        let params = build_new_account("acc_page_bind", "T_page_bind");
+        MultisigAccountRepo::create_account_with_member(&pool, &params).await.unwrap();
+
+        let page =
+            MultisigAccountRepo::account_list(&pool, true, Some("missing' OR 1=1 --"), 0, 20)
+                .await
+                .unwrap();
+
+        assert_eq!(page.total_count, 0);
+        assert!(page.data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn multisig_account_repo_multi_delete_binds_account_ids() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_delete_bind").await;
+        for (id, initiator) in
+            [("acc_delete_bind_1", "T_delete_bind_1"), ("acc_delete_bind_2", "T_delete_bind_2")]
+        {
+            let params = build_new_account(id, initiator);
+            MultisigAccountRepo::create_account_with_member(&pool, &params).await.unwrap();
+        }
+
+        let deleted =
+            MultisigAccountRepo::physical_delete_by_account_ids(&pool, &["missing') OR 1=1 --"])
+                .await
+                .unwrap();
+
+        assert!(deleted.is_empty());
+        assert!(
+            MultisigAccountRepo::find_by_id(&pool, "acc_delete_bind_1").await.unwrap().is_some()
+        );
+        assert!(
+            MultisigAccountRepo::find_by_id(&pool, "acc_delete_bind_2").await.unwrap().is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn multisig_account_repo_dynamic_update_and_filtered_page_succeed() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_update_page").await;
+        let params = build_new_account("acc_update_page", "T_update_page");
+        MultisigAccountRepo::create_account_with_member(&pool, &params).await.unwrap();
+
+        let updated = MultisigAccountRepo::update_by_id(
+            &pool,
+            "acc_update_page",
+            std::collections::HashMap::from([("name".to_string(), "updated_name".to_string())]),
+        )
+        .await
+        .unwrap();
+        let page =
+            MultisigAccountRepo::account_list(&pool, true, Some("tron"), 0, 20).await.unwrap();
+
+        assert_eq!(updated.name, "updated_name");
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].id, "acc_update_page");
+    }
+
+    #[tokio::test]
+    async fn multisig_account_repo_multi_delete_removes_only_selected_accounts() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_delete_selected").await;
+        for (id, initiator) in
+            [("acc_delete_selected", "T_delete_selected"), ("acc_delete_keep", "T_delete_keep")]
+        {
+            let params = build_new_account(id, initiator);
+            MultisigAccountRepo::create_account_with_member(&pool, &params).await.unwrap();
+        }
+
+        let deleted =
+            MultisigAccountRepo::physical_delete_by_account_ids(&pool, &["acc_delete_selected"])
+                .await
+                .unwrap();
+
+        assert_eq!(deleted.len(), 1);
+        assert_eq!(deleted[0].id, "acc_delete_selected");
+        assert!(MultisigAccountRepo::find_by_id(&pool, "acc_delete_keep").await.unwrap().is_some());
+    }
 }
