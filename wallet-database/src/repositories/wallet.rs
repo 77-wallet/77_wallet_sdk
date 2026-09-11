@@ -203,6 +203,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wallet_restart_only_updates_exact_addresses() {
+        let pool = setup_core_pool("wallet_db_wallet_restart_exact").await;
+        WalletRepo::upsert_wallet(pool.clone(), "wallet_a", "uid_a", "a").await.unwrap();
+        WalletRepo::upsert_wallet(pool.clone(), "wallet_b", "uid_b", "b").await.unwrap();
+        WalletRepo::reset_all_wallet(pool.clone()).await.unwrap();
+
+        let restarted = WalletRepo::restart(pool.clone(), &["wallet_a"]).await.unwrap();
+
+        assert_eq!(restarted.len(), 1);
+        assert_eq!(restarted[0].address, "wallet_a");
+        assert!(WalletRepo::detail(pool.clone(), "wallet_a").await.unwrap().is_some());
+        assert!(WalletRepo::detail(pool, "wallet_b").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn wallet_restart_treats_sql_shaped_address_as_data() {
+        let pool = setup_core_pool("wallet_db_wallet_restart_bind").await;
+        WalletRepo::upsert_wallet(pool.clone(), "wallet_a", "uid_a", "a").await.unwrap();
+        WalletRepo::upsert_wallet(pool.clone(), "wallet_b", "uid_b", "b").await.unwrap();
+        WalletRepo::reset_all_wallet(pool.clone()).await.unwrap();
+
+        let restarted = WalletRepo::restart(pool.clone(), &["wallet_a') OR 1=1 --"]).await.unwrap();
+
+        assert!(restarted.is_empty());
+        assert!(WalletRepo::detail(pool.clone(), "wallet_a").await.unwrap().is_none());
+        assert!(WalletRepo::detail(pool, "wallet_b").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn wallet_delete_treats_sql_shaped_address_as_data() {
+        let pool = setup_core_pool("wallet_db_wallet_delete_bind").await;
+        WalletRepo::upsert_wallet(pool.clone(), "wallet_a", "uid_a", "a").await.unwrap();
+        WalletRepo::upsert_wallet(pool.clone(), "wallet_b", "uid_b", "b").await.unwrap();
+
+        let deleted =
+            WalletRepo::physical_delete(pool.clone(), &["wallet_a') OR 1=1 --"]).await.unwrap();
+
+        assert!(deleted.is_empty());
+        assert_eq!(WalletRepo::wallet_list(pool).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
     async fn wallet_reset_with_tx_rollback_keeps_active() {
         let pool = setup_core_pool("wallet_db_wallet_rollback").await;
         let wallet_address = "wallet_rb_1";

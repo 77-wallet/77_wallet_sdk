@@ -1,4 +1,4 @@
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 use crate::entities::wallet::WalletEntity;
 
@@ -283,19 +283,26 @@ impl WalletDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::any_in_collection(wallet_addresses, "','");
-        let sql = format!(
+        if wallet_addresses.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut query = QueryBuilder::<Sqlite>::new(
             r#"
             update wallet set 
                 status = 1,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            where address IN ('{}')
-            RETURNING *
+            where address IN (
             "#,
-            addresses
         );
+        let mut addresses = query.separated(", ");
+        for address in wallet_addresses {
+            addresses.push_bind(*address);
+        }
+        addresses.push_unseparated(") RETURNING *");
 
-        sqlx::query_as::<sqlx::Sqlite, WalletEntity>(&sql)
+        query
+            .build_query_as::<WalletEntity>()
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -308,17 +315,19 @@ impl WalletDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::any_in_collection(wallet_addresses, "','");
-        let sql = format!(
-            r#"
-            DELETE FROM wallet
-            WHERE address IN ('{}')
-            RETURNING *
-            "#,
-            addresses
-        );
+        if wallet_addresses.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        sqlx::query_as::<sqlx::Sqlite, WalletEntity>(&sql)
+        let mut query = QueryBuilder::<Sqlite>::new("DELETE FROM wallet WHERE address IN (");
+        let mut addresses = query.separated(", ");
+        for address in wallet_addresses {
+            addresses.push_bind(*address);
+        }
+        addresses.push_unseparated(") RETURNING *");
+
+        query
+            .build_query_as::<WalletEntity>()
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
