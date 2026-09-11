@@ -103,50 +103,6 @@ impl MultisigQueueDaoV1 {
     }
 
     // 0 待签名 1已签名 2待执行，确认中，4成功 5失败;待执行需要查询2中状态
-    pub async fn queue_list(
-        from: Option<&str>,
-        chain_code: Option<&str>,
-        status: i32,
-        page: i64,
-        page_size: i64,
-        pool: Arc<Pool<Sqlite>>,
-    ) -> Result<Pagination<MultisigQueueSimpleEntity>, crate::DatabaseError> {
-        let mut sql = "SELECT q.*, a.name, a.threshold, a.member_num, a.owner,a.initiator_addr 
-                   FROM multisig_queue AS q 
-                   JOIN multisig_account AS a ON q.account_id = a.id"
-            .to_string();
-        let mut conditions = Vec::new();
-
-        if status == 2 {
-            conditions.push(format!(
-                "q.status in ({},{}) ",
-                MultisigQueueStatus::PendingExecution.to_i8(),
-                MultisigQueueStatus::InConfirmation.to_i8()
-            ));
-        } else {
-            conditions.push(format!("q.status = {}", status));
-        }
-
-        if let Some(from_addr) = from {
-            conditions.push(format!("q.from_addr = '{}'", from_addr));
-        }
-
-        if let Some(chain) = chain_code {
-            conditions.push(format!("q.chain_code = '{}'", chain));
-        }
-
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        sql.push_str(" ORDER BY q.created_at DESC");
-        let pagination = Pagination::<MultisigQueueSimpleEntity>::init(page, page_size);
-
-        pagination.page(&*pool, &sql).await
-    }
-
-    // 0 待签名 1已签名 2待执行，确认中，4成功 5失败;待执行需要查询2中状态
     pub async fn lists(
         from: Option<&str>,
         chain_code: Option<&str>,
