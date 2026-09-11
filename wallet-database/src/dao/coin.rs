@@ -17,6 +17,31 @@ use std::{collections::HashSet, sync::Arc};
 fn sql_quote(s: &str) -> String {
     s.replace('\'', "''")
 }
+
+fn push_coin_list_page_filters<'a>(
+    query: &mut QueryBuilder<'a, Sqlite>,
+    chain_code: Option<&'a str>,
+    keyword: Option<&'a str>,
+    symbol_list: &'a [String],
+) {
+    if let Some(chain_code) = chain_code {
+        query.push(" AND chain_code = ").push_bind(chain_code);
+    }
+
+    if !symbol_list.is_empty() {
+        query.push(" AND symbol IN (");
+        let mut separated = query.separated(", ");
+        for symbol in symbol_list {
+            separated.push_bind(symbol);
+        }
+        separated.push_unseparated(")");
+    }
+
+    if let Some(keyword) = keyword {
+        query.push(" AND symbol LIKE ").push_bind(format!("%{keyword}%"));
+    }
+}
+
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 pub struct CoinDao {
     pub name: String,
@@ -288,32 +313,30 @@ impl CoinDao {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<CoinEntity>, crate::Error> {
-        let symbol_list = crate::any_in_collection(symbol_list, "','");
-        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
+        let base = " FROM coin WHERE is_del = 0 AND status = 1";
 
-        let mut conditions = Vec::new();
+        let mut count_query = QueryBuilder::<Sqlite>::new(format!("SELECT COUNT(*){base}"));
+        push_coin_list_page_filters(&mut count_query, chain_code, keyword, &symbol_list);
+        let total_count = count_query
+            .build_query_scalar::<i64>()
+            .fetch_one(&*pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
 
-        if let Some(chain_code) = chain_code {
-            conditions.push(format!("chain_code = '{chain_code}'"));
-        }
+        let mut data_query = QueryBuilder::<Sqlite>::new(format!("SELECT *{base}"));
+        push_coin_list_page_filters(&mut data_query, chain_code, keyword, &symbol_list);
+        data_query
+            .push(" LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(page * page_size);
+        let data = data_query
+            .build_query_as::<CoinEntity>()
+            .fetch_all(&*pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
 
-        if !symbol_list.is_empty() {
-            let str = format!(" AND symbol in ('{}')", symbol_list);
-            sql.push_str(&str)
-        }
-
-        if let Some(keyword) = keyword {
-            conditions.push(format!("symbol LIKE '%{keyword}%'"));
-        }
-
-        if !conditions.is_empty() {
-            sql.push_str(" AND ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        // 执行查询并返回结果
-        let paginate = Pagination::<CoinEntity>::init(page, page_size);
-        Ok(paginate.page(&*pool, &sql).await?)
+        Ok(Pagination { page, page_size, total_count, data })
     }
 
     pub async fn upsert_multi_coin<'a, E>(tx: E, coins: Vec<CoinData>) -> Result<(), crate::Error>

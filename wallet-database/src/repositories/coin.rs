@@ -368,6 +368,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn coin_list_page_filters_and_counts_matching_rows() {
+        let pool = prepare_sol_coin_pool().await;
+
+        let page = CoinDao::coin_list_page(
+            std::sync::Arc::new(pool.read_ref().clone()),
+            Some("sol"),
+            Some("USD"),
+            vec!["USDT".to_string()],
+            0,
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].symbol, "USDT");
+    }
+
+    #[tokio::test]
+    async fn coin_list_page_treats_sql_shaped_filters_as_data() {
+        let pool = prepare_sol_coin_pool().await;
+        let pool = std::sync::Arc::new(pool.read_ref().clone());
+
+        let cases = [
+            (Some("sol' OR 1=1 --"), None, Vec::new()),
+            (None, None, vec!["SOL') OR 1=1 --".to_string()]),
+            (None, Some("%' OR 1=1 --"), Vec::new()),
+        ];
+        for (chain_code, keyword, symbols) in cases {
+            let page = CoinDao::coin_list_page(pool.clone(), chain_code, keyword, symbols, 0, 10)
+                .await
+                .unwrap();
+            assert_eq!(page.total_count, 0);
+            assert!(page.data.is_empty());
+        }
+    }
+
+    #[tokio::test]
     async fn coin_repo_main_coin_missing_chain_returns_not_found() {
         let pool = prepare_sol_coin_pool().await;
         let err = CoinRepo::main_coin("tron", &pool).await.unwrap_err();
