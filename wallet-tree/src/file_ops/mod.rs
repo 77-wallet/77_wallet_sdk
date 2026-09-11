@@ -8,6 +8,7 @@ use std::{
     path::Path,
 };
 
+use secrecy::zeroize::Zeroize;
 use wallet_crypto::{KdfAlgorithm, KeystoreBuilder, RecoverableData};
 
 use crate::naming::v2::KeyMeta;
@@ -154,6 +155,19 @@ pub struct RootData {
     seed: Vec<u8>,
 }
 
+impl Zeroize for RootData {
+    fn zeroize(&mut self) {
+        self.phrase.zeroize();
+        self.seed.zeroize();
+    }
+}
+
+impl Drop for RootData {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 impl fmt::Debug for RootData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RootData")
@@ -188,6 +202,7 @@ impl TryFrom<RecoverableData> for RootData {
 #[cfg(test)]
 mod tests {
     use super::RootData;
+    use secrecy::zeroize::Zeroize;
 
     #[test]
     fn root_data_debug_redacts_phrase_and_seed() {
@@ -196,5 +211,15 @@ mod tests {
         assert!(!debug.contains("phrase words"));
         assert!(!debug.contains("1, 2, 3"));
         assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn root_data_zeroize_clears_phrase_and_seed() {
+        let mut root = RootData::new("phrase words", &[1, 2, 3]);
+
+        root.zeroize();
+
+        assert!(root.phrase().is_empty());
+        assert!(root.seed().is_empty());
     }
 }
