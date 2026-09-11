@@ -1,7 +1,7 @@
 use crate::entities::multisig_signatures::{
     MultisigSignatureEntities, MultisigSignatureEntity, NewSignatureEntity,
 };
-use sqlx::{Executor, Pool, Sqlite};
+use sqlx::{Executor, Pool, QueryBuilder, Sqlite};
 use std::sync::Arc;
 
 pub struct MultisigSignatureDaoV1;
@@ -154,14 +154,20 @@ impl MultisigSignatureDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let ids = crate::any_in_collection(ids, "','");
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "UPDATE multisig_signatures SET is_del = 1 WHERE queue_id IN (",
+        );
+        let mut values = query.separated(", ");
+        if ids.is_empty() {
+            values.push_bind("");
+        } else {
+            for id in &ids {
+                values.push_bind(id);
+            }
+        }
+        values.push_unseparated(")");
 
-        let sql =
-            format!("UPDATE multisig_signatures SET is_del = 1 WHERE queue_id IN ('{}')", ids);
-
-        let query = sqlx::query(&sql);
-
-        query.execute(exec).await?;
+        query.build().execute(exec).await?;
 
         Ok(())
     }
@@ -173,20 +179,18 @@ impl MultisigSignatureDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = if ids.is_empty() {
-            "DELETE FROM multisig_signatures RETURNING *".to_string()
+        if ids.is_empty() {
+            sqlx::query("DELETE FROM multisig_signatures RETURNING *").execute(exec).await?;
         } else {
-            let addresses = crate::any_in_collection(ids, "','");
-            format!(
-                r#"
-                DELETE FROM multisig_signatures
-                WHERE queue_id IN ('{}')
-                RETURNING *
-                "#,
-                addresses
-            )
-        };
-        sqlx::query(&sql).execute(exec).await?;
+            let mut query =
+                QueryBuilder::<Sqlite>::new("DELETE FROM multisig_signatures WHERE queue_id IN (");
+            let mut values = query.separated(", ");
+            for id in &ids {
+                values.push_bind(id);
+            }
+            values.push_unseparated(") RETURNING *");
+            query.build().execute(exec).await?;
+        }
 
         Ok(())
     }

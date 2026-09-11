@@ -120,4 +120,59 @@ mod tests {
         .unwrap();
         assert_eq!(is_del, 0);
     }
+
+    #[tokio::test]
+    async fn multisig_signature_repo_logic_delete_binds_queue_ids() {
+        let pool = setup_core_pool("wallet_db_multisig_signature_repo_logic_bind").await;
+        for (queue_id, address) in [("q_logic_1", "T_logic_1"), ("q_logic_2", "T_logic_2")] {
+            MultisigSignatureDaoV1::create_signature(
+                &build_signature(queue_id, address),
+                pool.write_ref(),
+            )
+            .await
+            .unwrap();
+        }
+
+        MultisigSignatureRepo::logic_delete_by_queue_ids(
+            &pool,
+            vec!["missing') OR 1=1 --".to_string()],
+        )
+        .await
+        .unwrap();
+
+        let active: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM multisig_signatures WHERE is_del = 0")
+                .fetch_one(pool.read_ref())
+                .await
+                .unwrap();
+        assert_eq!(active, 2);
+    }
+
+    #[tokio::test]
+    async fn multisig_signature_repo_physical_delete_binds_queue_ids() {
+        let pool = setup_core_pool("wallet_db_multisig_signature_repo_physical_bind").await;
+        for (queue_id, address) in
+            [("q_physical_1", "T_physical_1"), ("q_physical_2", "T_physical_2")]
+        {
+            MultisigSignatureDaoV1::create_signature(
+                &build_signature(queue_id, address),
+                pool.write_ref(),
+            )
+            .await
+            .unwrap();
+        }
+
+        MultisigSignatureRepo::physical_delete_by_queue_ids(
+            &pool,
+            vec!["missing') OR 1=1 --".to_string()],
+        )
+        .await
+        .unwrap();
+
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM multisig_signatures")
+            .fetch_one(pool.read_ref())
+            .await
+            .unwrap();
+        assert_eq!(remaining, 2);
+    }
 }
