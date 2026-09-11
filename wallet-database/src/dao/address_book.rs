@@ -1,5 +1,5 @@
 use crate::{entities::address_book::AddressBookEntity, pagination::Pagination};
-use sqlx::{Executor, Pool, Sqlite};
+use sqlx::{Executor, Pool, QueryBuilder, Sqlite};
 use std::sync::Arc;
 
 pub struct AddressBookDao;
@@ -120,16 +120,26 @@ impl AddressBookDao {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<AddressBookEntity>, crate::DatabaseError> {
-        let mut query =
-            r#"SELECT id, name, address, chain_code, created_at, updated_at FROM address_book"#
-                .to_string();
-
+        let mut count_query = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM address_book");
         if let Some(chain) = chain_code {
-            query.push_str(format!(" WHERE chain_code = '{}'", chain).as_str());
+            count_query.push(" WHERE chain_code = ").push_bind(chain);
         }
-        let sql = format!("{} ORDER BY created_at DESC", query);
-        let res = Pagination::<AddressBookEntity>::init(page, page_size);
-        res.page(&*pool, sql.as_str()).await
+        let total_count = count_query.build_query_scalar::<i64>().fetch_one(&*pool).await?;
+
+        let mut data_query = QueryBuilder::<Sqlite>::new(
+            "SELECT id, name, address, chain_code, created_at, updated_at FROM address_book",
+        );
+        if let Some(chain) = chain_code {
+            data_query.push(" WHERE chain_code = ").push_bind(chain);
+        }
+        data_query
+            .push(" ORDER BY created_at DESC LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(page * page_size);
+        let data = data_query.build_query_as::<AddressBookEntity>().fetch_all(&*pool).await?;
+
+        Ok(Pagination { page, page_size, total_count, data })
     }
 
     pub async fn find_by_address<'a, E>(

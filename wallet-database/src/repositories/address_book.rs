@@ -113,6 +113,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn address_book_list_filters_chain_and_counts_rows() {
+        let pool = setup_core_pool("wallet_db_address_book_list").await;
+        AddressBookRepo::insert(&pool, "tron", "T_list", "tron").await.unwrap();
+        AddressBookRepo::insert(&pool, "eth", "0x_list", "eth").await.unwrap();
+
+        let page = AddressBookRepo::list(&pool, Some("tron"), 0, 10).await.unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].chain_code, "tron");
+    }
+
+    #[tokio::test]
+    async fn address_book_list_treats_sql_shaped_chain_as_data() {
+        let pool = setup_core_pool("wallet_db_address_book_list_bind").await;
+        AddressBookRepo::insert(&pool, "tron", "T_bind", "tron").await.unwrap();
+        AddressBookRepo::insert(&pool, "eth", "0x_bind", "eth").await.unwrap();
+
+        let page = AddressBookRepo::list(&pool, Some("tron' OR 1=1 --"), 0, 10).await.unwrap();
+
+        assert_eq!(page.total_count, 0);
+        assert!(page.data.is_empty());
+    }
+
+    #[tokio::test]
     async fn address_book_tx_rollback_keeps_no_residue() {
         let pool = setup_core_pool("wallet_db_address_book_rollback").await;
         let chain_code = wallet_types::constant::chain_code::TRON;
