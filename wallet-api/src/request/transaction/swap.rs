@@ -99,13 +99,22 @@ pub struct ApproveCancel {
     pub chain_code: String,
 }
 
-impl From<ApproveReq> for NewBillEntity {
-    fn from(value: ApproveReq) -> Self {
+impl TryFrom<ApproveReq> for NewBillEntity {
+    type Error = crate::error::service::ServiceError;
+
+    fn try_from(value: ApproveReq) -> Result<Self, Self::Error> {
+        let amount = wallet_utils::unit::string_to_f64(&value.value)?;
+        if !amount.is_finite() {
+            return Err(
+                wallet_utils::Error::Other("approve amount must be finite".to_string()).into()
+            );
+        }
+
         let mut bill = BillRepo::build_bill(
             "".to_string(),
             value.from,
             value.spender,
-            wallet_utils::unit::string_to_f64(&value.value).unwrap(),
+            amount,
             value.chain_code,
             "".to_string(),
             false,
@@ -114,7 +123,7 @@ impl From<ApproveReq> for NewBillEntity {
         );
         bill.tx_type = 1;
         bill.token = AssetTokenKey::from(value.contract);
-        bill
+        Ok(bill)
     }
 }
 
@@ -455,7 +464,32 @@ pub struct RouteInDex {
 
 #[cfg(test)]
 mod tests {
-    use super::QuoteReq;
+    use super::{ApproveReq, QuoteReq};
+    use wallet_database::entities::bill::NewBillEntity;
+
+    fn approve_req(value: &str) -> ApproveReq {
+        ApproveReq {
+            contract: "contract".to_string(),
+            from: "from".to_string(),
+            spender: "spender".to_string(),
+            value: value.to_string(),
+            chain_code: "ethereum".to_string(),
+        }
+    }
+
+    #[test]
+    fn approve_bill_rejects_invalid_amount_without_panicking() {
+        let result = NewBillEntity::try_from(approve_req("invalid"));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn approve_bill_rejects_non_finite_amount() {
+        let result = NewBillEntity::try_from(approve_req("NaN"));
+
+        assert!(result.is_err());
+    }
 
     #[test]
     fn addr_tron_to_eth_converts_tron_base58_address() {

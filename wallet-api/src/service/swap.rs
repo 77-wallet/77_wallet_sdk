@@ -927,7 +927,7 @@ impl SwapServer {
             .await?;
 
         // 写入本地交易
-        let mut new_bill: NewBillEntity = BillRepo::build_bill_from(req);
+        let mut new_bill: NewBillEntity = BillRepo::try_build_bill_from(req)?;
         new_bill.hash = resp.tx_hash.clone();
         new_bill.symbol = coin.symbol;
         new_bill.resource_consume = resp.resource_consume()?;
@@ -1082,7 +1082,7 @@ impl SwapServer {
         };
         TaskQueueDomain::send_or_to_queue_with_ctx(self.ctx, backend, SWAP_APPROVE_CANCEL).await?;
         // 写入本地交易
-        let mut new_bill: NewBillEntity = BillRepo::build_bill_from(req);
+        let mut new_bill: NewBillEntity = BillRepo::try_build_bill_from(req)?;
         new_bill.hash = resp.tx_hash.clone();
         new_bill.symbol = coin.symbol;
         new_bill.tx_kind = wallet_database::entities::bill::BillKind::UnApprove;
