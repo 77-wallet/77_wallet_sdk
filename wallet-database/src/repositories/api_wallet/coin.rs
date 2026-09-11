@@ -202,8 +202,11 @@ mod tests {
     use super::ApiCoinRepo;
     use crate::{
         dao::api_coin::ApiCoinDao,
-        entities::{api_coin::ApiCoinData, asset_token_key::AssetTokenKey},
-        repositories::test_helper::setup_api_wallet_pool,
+        entities::{
+            api_assets::ApiCreateAssetsVo, api_coin::ApiCoinData, asset_token_key::AssetTokenKey,
+            assets::AssetsId,
+        },
+        repositories::{api_wallet::assets::ApiAssetsRepo, test_helper::setup_api_wallet_pool},
     };
     use chrono::Utc;
 
@@ -356,6 +359,76 @@ mod tests {
 
         assert_eq!(page.total_count, 0);
         assert!(page.data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn api_coin_with_assets_filters_chain_and_joins_requested_balance() {
+        let pool = setup_api_wallet_pool("wallet_db_api_coin_assets_filter").await;
+        ApiCoinRepo::upsert_multi_coin(
+            &pool,
+            vec![make_coin("eth", "0xeth".into(), "1"), make_coin("bnb", "0xbnb".into(), "2")],
+        )
+        .await
+        .unwrap();
+        let asset = ApiCreateAssetsVo::new(
+            AssetsId::new("owner", "eth", "0xeth".into()),
+            "USDT",
+            6,
+            None,
+            0,
+        )
+        .with_balance("12.5");
+        ApiAssetsRepo::upsert_assets(&pool, asset).await.unwrap();
+
+        let page = ApiCoinRepo::coin_list_with_assets(
+            "USD",
+            Vec::new(),
+            "eth".to_string(),
+            vec!["owner".to_string()],
+            0,
+            10,
+            &pool,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].chain_code, "eth");
+        assert_eq!(page.data[0].balance, "12.5");
+    }
+
+    #[tokio::test]
+    async fn api_coin_with_assets_treats_sql_shaped_address_as_data() {
+        let pool = setup_api_wallet_pool("wallet_db_api_coin_assets_bind").await;
+        ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin("eth", "0xeth".into(), "1")])
+            .await
+            .unwrap();
+        let asset = ApiCreateAssetsVo::new(
+            AssetsId::new("victim", "eth", "0xeth".into()),
+            "USDT",
+            6,
+            None,
+            0,
+        )
+        .with_balance("99");
+        ApiAssetsRepo::upsert_assets(&pool, asset).await.unwrap();
+
+        let page = ApiCoinRepo::coin_list_with_assets(
+            "",
+            Vec::new(),
+            "eth".to_string(),
+            vec!["victim') OR 1=1 --".to_string()],
+            0,
+            10,
+            &pool,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].balance, "0");
     }
 
     #[tokio::test]

@@ -53,6 +53,55 @@ fn push_api_excluded_coin_filters<'a>(
     }
 }
 
+fn push_api_coin_with_assets_from_and_filters<'a>(
+    query: &mut QueryBuilder<'a, Sqlite>,
+    search: &'a str,
+    exclude_token: &'a [String],
+    chain_code: &'a str,
+    address: &'a [String],
+) {
+    query.push(
+        " FROM api_coin LEFT JOIN api_assets ON api_coin.chain_code = api_assets.chain_code \
+         AND api_coin.token_address = api_assets.token_address AND ",
+    );
+    if address.is_empty() {
+        query.push("0");
+    } else {
+        query.push("api_assets.address IN (");
+        let mut addresses = query.separated(", ");
+        for value in address {
+            addresses.push_bind(value);
+        }
+        addresses.push_unseparated(")");
+    }
+
+    query.push(" WHERE 1 = 1");
+    if chain_code.is_empty() {
+        query.push(" AND api_coin.chain_code IN ('tron','bnb','eth')");
+    } else {
+        query.push(" AND api_coin.chain_code = ").push_bind(chain_code);
+    }
+
+    if !exclude_token.is_empty() {
+        query.push(" AND api_coin.token_address NOT IN (");
+        let mut tokens = query.separated(", ");
+        for token in exclude_token {
+            tokens.push_bind(token);
+        }
+        tokens.push_unseparated(")");
+    }
+
+    if !search.is_empty() {
+        let pattern = format!("%{}%", search.to_lowercase());
+        query
+            .push(" AND (LOWER(api_coin.symbol) LIKE ")
+            .push_bind(pattern.clone())
+            .push(" OR LOWER(api_coin.token_address) LIKE ")
+            .push_bind(pattern)
+            .push(")");
+    }
+}
+
 impl ApiCoinDao {
     pub async fn upsert_multi_coin<'a, E>(
         tx: E,
@@ -376,47 +425,42 @@ impl ApiCoinDao {
         page_size: i64,
         pool: DbPool,
     ) -> Result<Pagination<CoinWithAssets>, crate::Error> {
-        let address = crate::any_in_collection(address, "','");
-
-        let mut sql = format!(
-            r#"
-        SELECT api_coin.*, COALESCE(api_assets.balance, '0') AS balance
-        FROM api_coin
-        LEFT JOIN api_assets
-            ON api_coin.chain_code = api_assets.chain_code
-            AND api_coin.token_address = api_assets.token_address
-            and api_assets.address  IN ('{}')
-        "#,
-            address,
+        let mut count_query = QueryBuilder::<Sqlite>::new("SELECT COUNT(*)");
+        push_api_coin_with_assets_from_and_filters(
+            &mut count_query,
+            search,
+            &exclude_token,
+            &chain_code,
+            &address,
         );
+        let total_count = count_query
+            .build_query_scalar::<i64>()
+            .fetch_one(&*pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
 
-        if !chain_code.is_empty() {
-            sql.push_str(&format!(" AND api_coin.chain_code = '{}'", chain_code));
-        } else {
-            // TODO: 优化目前只查询这些链的数据,后续支持了更多的链进行删除
-            sql.push_str(" AND api_coin.chain_code in ('tron','bnb','eth')");
-        }
+        let mut data_query = QueryBuilder::<Sqlite>::new(
+            "SELECT api_coin.*, COALESCE(api_assets.balance, '0') AS balance",
+        );
+        push_api_coin_with_assets_from_and_filters(
+            &mut data_query,
+            search,
+            &exclude_token,
+            &chain_code,
+            &address,
+        );
+        data_query
+            .push(" ORDER BY CAST(api_assets.balance AS NUMERIC) DESC LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(page * page_size);
+        let data = data_query
+            .build_query_as::<CoinWithAssets>()
+            .fetch_all(&*pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
 
-        if !exclude_token.is_empty() {
-            let excludes: Vec<String> =
-                exclude_token.into_iter().map(|t| format!("'{}'", t.replace("'", "''"))).collect();
-            let clause = excludes.join(", ");
-            sql.push_str(&format!(" AND api_coin.token_address NOT IN ({})", clause));
-        }
-
-        if !search.is_empty() {
-            let escaped = search.replace("'", "''").to_lowercase();
-            sql.push_str(&format!(
-                " AND (LOWER(api_coin.symbol) LIKE '%{}%' OR LOWER(api_coin.token_address) LIKE '%{}%')",
-                escaped, escaped
-            ));
-        }
-
-        sql.push_str(" ORDER BY CAST(api_assets.balance AS NUMERIC) DESC");
-
-        // 分页
-        let paginate = Pagination::<CoinWithAssets>::init(page, page_size);
-        Ok(paginate.page(&pool, &sql).await?)
+        Ok(Pagination { page, page_size, total_count, data })
     }
 
     pub async fn drop_coin_just_null_token_address<'a, E>(exec: E) -> Result<(), crate::Error>
