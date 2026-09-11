@@ -6,7 +6,7 @@ use crate::entities::{
 pub struct ChainDao;
 
 use crate::sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder};
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 impl ChainDao {
     pub async fn upsert<'c, E>(
@@ -146,22 +146,30 @@ impl ChainDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let chain_codes = crate::any_in_collection(chain_codes, "','");
-        // 用逗号分隔的列表，用于 IN 查询
-        let sql = format!(
+        let mut query = QueryBuilder::<Sqlite>::new(
             "UPDATE chain
             SET 
                 status = CASE 
-                            WHEN chain_code IN ('{}') THEN 1 
+                            WHEN chain_code IN (",
+        );
+        let mut values = query.separated(", ");
+        if chain_codes.is_empty() {
+            values.push_bind("");
+        } else {
+            for chain_code in chain_codes {
+                values.push_bind(chain_code);
+            }
+        }
+        values.push_unseparated(
+            ") THEN 1
                             ELSE 0 
                         END,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             RETURNING *",
-            chain_codes
         );
 
-        // 为 `IN` 子句绑定参数，确保 chain_codes 被正确处理
-        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(&sql)
+        query
+            .build_query_as::<ChainEntity>()
             .fetch_all(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -335,15 +343,19 @@ impl ChainDao {
         db: std::sync::Arc<sqlx::Pool<sqlx::Sqlite>>,
         chain_codes: Vec<&str>,
     ) -> Result<Vec<ChainEntity>, crate::Error> {
-        let chain_codes = crate::any_in_collection(chain_codes, "','");
-        let sql = format!(
-            "SELECT * FROM chain
-        WHERE chain_code in ('{}') and status = 1;",
-            chain_codes
-        );
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM chain WHERE chain_code IN (");
+        let mut values = query.separated(", ");
+        if chain_codes.is_empty() {
+            values.push_bind("");
+        } else {
+            for chain_code in chain_codes {
+                values.push_bind(chain_code);
+            }
+        }
+        values.push_unseparated(") AND status = 1");
 
-        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(&sql)
-            .bind(chain_codes)
+        query
+            .build_query_as::<ChainEntity>()
             .fetch_all(db.as_ref())
             .await
             .map_err(|e| crate::Error::Database(e.into()))

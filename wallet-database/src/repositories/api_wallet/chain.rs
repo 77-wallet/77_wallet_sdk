@@ -225,4 +225,25 @@ mod tests {
         assert!(after_b.is_some());
         assert_eq!(after_b.unwrap().status, 1);
     }
+
+    #[tokio::test]
+    async fn api_chain_toggle_binds_chain_codes() {
+        let pool = setup_api_wallet_pool("wallet_db_api_chain_toggle_bind").await;
+        ApiChainRepo::add(&pool, make_chain("api_chain_bind_a", "BDA")).await.unwrap();
+        ApiChainRepo::add(&pool, make_chain("api_chain_bind_b", "BDB")).await.unwrap();
+
+        ApiChainRepo::toggle_chains_status(&pool, &["missing') OR 1=1 --".to_string()])
+            .await
+            .unwrap();
+
+        for chain_code in ["api_chain_bind_a", "api_chain_bind_b"] {
+            let status: i64 =
+                sqlx::query_scalar("SELECT status FROM api_chain WHERE chain_code = ?")
+                    .bind(chain_code)
+                    .fetch_one(pool.read_ref())
+                    .await
+                    .unwrap();
+            assert_eq!(status, 0);
+        }
+    }
 }

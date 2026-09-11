@@ -133,4 +133,41 @@ mod tests {
         let found = ChainRepo::detail(&pool, "tron_rb").await.unwrap();
         assert!(found.is_none());
     }
+
+    #[tokio::test]
+    async fn chain_collection_queries_bind_chain_codes() {
+        let pool = setup_core_pool("wallet_db_chain_collection_bind").await;
+        ChainRepo::add(&pool, build_chain("chain_bind_a")).await.unwrap();
+        ChainRepo::add(&pool, build_chain("chain_bind_b")).await.unwrap();
+        let sql_shaped = "missing') OR 1=1 --";
+
+        ChainRepo::toggle_chains_status(&pool, &[sql_shaped.to_string()]).await.unwrap();
+        let active = ChainDao::get_chain_list_in_chain_code(pool.read_pool(), vec![sql_shaped])
+            .await
+            .unwrap();
+
+        assert!(active.is_empty());
+        for chain_code in ["chain_bind_a", "chain_bind_b"] {
+            let status: i64 = sqlx::query_scalar("SELECT status FROM chain WHERE chain_code = ?")
+                .bind(chain_code)
+                .fetch_one(pool.read_ref())
+                .await
+                .unwrap();
+            assert_eq!(status, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn active_chain_collection_lookup_returns_selected_chain() {
+        let pool = setup_core_pool("wallet_db_chain_collection_success").await;
+        ChainRepo::add(&pool, build_chain("chain_selected")).await.unwrap();
+
+        let active =
+            ChainDao::get_chain_list_in_chain_code(pool.read_pool(), vec!["chain_selected"])
+                .await
+                .unwrap();
+
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].chain_code, "chain_selected");
+    }
 }

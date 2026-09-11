@@ -1,5 +1,5 @@
 use crate::entities::api_chain::{ApiChainCreateVo, ApiChainEntity, NodeBindType};
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub(crate) struct ApiChainDao;
 
@@ -142,22 +142,30 @@ impl ApiChainDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let chain_codes = crate::any_in_collection(chain_codes, "','");
-        // 用逗号分隔的列表，用于 IN 查询
-        let sql = format!(
+        let mut query = QueryBuilder::<Sqlite>::new(
             "UPDATE api_chain
             SET 
                 status = CASE 
-                            WHEN chain_code IN ('{}') THEN 1 
+                            WHEN chain_code IN (",
+        );
+        let mut values = query.separated(", ");
+        if chain_codes.is_empty() {
+            values.push_bind("");
+        } else {
+            for chain_code in chain_codes {
+                values.push_bind(chain_code);
+            }
+        }
+        values.push_unseparated(
+            ") THEN 1
                             ELSE 0 
                         END,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             RETURNING *",
-            chain_codes
         );
 
-        // 为 `IN` 子句绑定参数，确保 chain_codes 被正确处理
-        sqlx::query_as::<sqlx::Sqlite, ApiChainEntity>(&sql)
+        query
+            .build_query_as::<ApiChainEntity>()
             .fetch_all(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
