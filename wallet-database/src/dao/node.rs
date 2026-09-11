@@ -1,4 +1,4 @@
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 use crate::entities::node::{NodeCreateVo, NodeEntity};
 
@@ -225,44 +225,37 @@ impl NodeDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = "SELECT * FROM node".to_string();
-        let chain_codes = crate::any_in_collection(chain_codes, "','");
-        let mut conditions = Vec::new();
-
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM node WHERE 1 = 1");
         if !chain_codes.is_empty() {
-            let str = format!("chain_code in ('{}')", chain_codes);
-            conditions.push(str)
+            query.push(" AND chain_code IN (");
+            let mut chains = query.separated(", ");
+            for chain_code in chain_codes {
+                chains.push_bind(chain_code);
+            }
+            chains.push_unseparated(")");
         }
 
-        if is_local.is_some() {
-            conditions.push("is_local = ?".to_string());
+        if let Some(is_local) = is_local {
+            query.push(" AND is_local = ").push_bind(is_local);
         }
-        if status.is_some() {
-            conditions.push("status = ?".to_string());
+        if let Some(status) = status {
+            query.push(" AND status = ").push_bind(status);
         }
         if let Some(network) = network {
             if network == "mainnet" {
-                conditions.push("(network = ? OR network IS NULL OR network = '')".to_string());
+                query
+                    .push(" AND (network = ")
+                    .push_bind(network)
+                    .push(" OR network IS NULL OR network = '')");
             } else {
-                conditions.push("network = ?".to_string());
+                query.push(" AND network = ").push_bind(network);
             }
         }
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-        let mut query = sqlx::query_as::<_, NodeEntity>(&sql);
-
-        if let Some(is_local) = is_local {
-            query = query.bind(is_local);
-        }
-        if let Some(status) = status {
-            query = query.bind(status);
-        }
-        if let Some(network) = network {
-            query = query.bind(network);
-        }
-        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+        query
+            .build_query_as::<NodeEntity>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     // pub async fn get_node_list_in_chain_codes<'a, E>(

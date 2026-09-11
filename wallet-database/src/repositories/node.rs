@@ -114,6 +114,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn node_list_filters_chain_local_status_and_network() {
+        let pool = setup_core_pool("wallet_db_node_list_filters").await;
+        NodeRepo::upsert(&pool, build_node("tron_main", "tron")).await.unwrap();
+        NodeRepo::upsert(&pool, build_node("eth_main", "eth")).await.unwrap();
+
+        let nodes = NodeDao::list_with_network(
+            pool.read_ref(),
+            &["tron".to_string()],
+            Some(1),
+            Some(1),
+            Some("mainnet"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].node_id, "tron_main");
+    }
+
+    #[tokio::test]
+    async fn node_list_treats_sql_shaped_chain_as_data() {
+        let pool = setup_core_pool("wallet_db_node_list_bind").await;
+        NodeRepo::upsert(&pool, build_node("tron_bind", "tron")).await.unwrap();
+        NodeRepo::upsert(&pool, build_node("eth_bind", "eth")).await.unwrap();
+
+        let nodes = NodeRepo::get_node_list_in_chain_codes(
+            &pool,
+            &["tron') OR 1=1 --".to_string()],
+            Some(1),
+        )
+        .await
+        .unwrap();
+
+        assert!(nodes.is_empty());
+    }
+
+    #[tokio::test]
     async fn node_repo_tx_rollback_keeps_node_absent() {
         let pool = setup_core_pool("wallet_db_node_repo_rollback").await;
 
