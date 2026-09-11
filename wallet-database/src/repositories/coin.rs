@@ -447,6 +447,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn coin_list_with_assets_joins_requested_address_balance() {
+        let pool = prepare_sol_coin_pool().await;
+        let token = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+        crate::repositories::test_helper::seed_assets(
+            &pool,
+            crate::entities::assets::AssetsId::new("owner", "sol", token.into()),
+            "USDT",
+            "USDT",
+            6,
+            "12.5",
+        )
+        .await;
+
+        let page = CoinRepo::coin_list_with_assets(
+            "",
+            Vec::new(),
+            "sol".to_string(),
+            vec!["owner".to_string()],
+            0,
+            10,
+            pool,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(page.total_count, 2);
+        assert_eq!(page.data[0].symbol, "USDT");
+        assert_eq!(page.data[0].balance, "12.5");
+    }
+
+    #[tokio::test]
+    async fn coin_list_with_assets_treats_sql_shaped_selectors_as_data() {
+        let pool = prepare_sol_coin_pool().await;
+        let token = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+        crate::repositories::test_helper::seed_assets(
+            &pool,
+            crate::entities::assets::AssetsId::new("victim", "sol", token.into()),
+            "USDT",
+            "USDT",
+            6,
+            "99",
+        )
+        .await;
+
+        let address_page = CoinRepo::coin_list_with_assets(
+            "",
+            Vec::new(),
+            "sol".to_string(),
+            vec!["victim') OR 1=1 --".to_string()],
+            0,
+            10,
+            pool.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(address_page.data.iter().all(|coin| coin.balance == "0"));
+
+        let chain_page = CoinRepo::coin_list_with_assets(
+            "",
+            Vec::new(),
+            "sol' OR 1=1 --".to_string(),
+            Vec::new(),
+            0,
+            10,
+            pool,
+        )
+        .await
+        .unwrap();
+        assert_eq!(chain_page.total_count, 0);
+        assert!(chain_page.data.is_empty());
+    }
+
+    #[tokio::test]
     async fn coin_repo_main_coin_missing_chain_returns_not_found() {
         let pool = prepare_sol_coin_pool().await;
         let err = CoinRepo::main_coin("tron", &pool).await.unwrap_err();
