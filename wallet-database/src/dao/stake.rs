@@ -2,7 +2,7 @@ use crate::{
     entities::stake::{DelegateEntity, NewDelegateEntity, NewUnFreezeEntity, UnFreezeEntity},
     pagination::Pagination,
 };
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub struct StakeDao;
 
@@ -40,15 +40,31 @@ impl StakeDao {
         exec: &crate::DbPool,
     ) -> Result<Pagination<UnFreezeEntity>, crate::error::DatabaseError> {
         let time = wallet_utils::time::now().timestamp();
-        let sql = format!(
-            "select * FROM unfreeze where owner_address = '{}' and resource_type = '{}' and freeze_time > {} order by created_at desc ",
-            owner, resource_type, time
-        );
+        let mut count_query =
+            QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM unfreeze WHERE owner_address = ");
+        count_query
+            .push_bind(owner)
+            .push(" AND resource_type = ")
+            .push_bind(resource_type)
+            .push(" AND freeze_time > ")
+            .push_bind(time);
+        let total_count = count_query.build_query_scalar::<i64>().fetch_one(&**exec).await?;
 
-        let pagination = Pagination::init(page, page_size);
-        let res = pagination.page(exec, &sql).await?;
+        let mut data_query =
+            QueryBuilder::<Sqlite>::new("SELECT * FROM unfreeze WHERE owner_address = ");
+        data_query
+            .push_bind(owner)
+            .push(" AND resource_type = ")
+            .push_bind(resource_type)
+            .push(" AND freeze_time > ")
+            .push_bind(time)
+            .push(" ORDER BY created_at DESC LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(page * page_size);
+        let data = data_query.build_query_as::<UnFreezeEntity>().fetch_all(&**exec).await?;
 
-        Ok(res)
+        Ok(Pagination { page, page_size, total_count, data })
     }
 
     pub async fn add_delegate<'a, E>(
@@ -85,15 +101,24 @@ impl StakeDao {
         page_size: i64,
         exec: crate::DbPool,
     ) -> Result<Pagination<DelegateEntity>, crate::error::DatabaseError> {
-        let sql = format!(
-            "select * FROM delegate where owner_address = '{}' and resource_type = '{}' order by created_at desc ",
-            owner, resource_type
-        );
+        let mut count_query =
+            QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM delegate WHERE owner_address = ");
+        count_query.push_bind(owner).push(" AND resource_type = ").push_bind(resource_type);
+        let total_count = count_query.build_query_scalar::<i64>().fetch_one(&*exec).await?;
 
-        let pagination = Pagination::init(page, page_size);
-        let res = pagination.page(&exec, &sql).await?;
+        let mut data_query =
+            QueryBuilder::<Sqlite>::new("SELECT * FROM delegate WHERE owner_address = ");
+        data_query
+            .push_bind(owner)
+            .push(" AND resource_type = ")
+            .push_bind(resource_type)
+            .push(" ORDER BY created_at DESC LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(page * page_size);
+        let data = data_query.build_query_as::<DelegateEntity>().fetch_all(&*exec).await?;
 
-        Ok(res)
+        Ok(Pagination { page, page_size, total_count, data })
     }
 
     pub async fn update_delegate<'a, E>(

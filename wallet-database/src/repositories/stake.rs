@@ -58,7 +58,8 @@ impl StakeRepo {
 mod tests {
     use super::StakeRepo;
     use crate::{
-        dao::stake::StakeDao, entities::stake::NewDelegateEntity,
+        dao::stake::StakeDao,
+        entities::stake::{NewDelegateEntity, NewUnFreezeEntity},
         repositories::test_helper::setup_core_pool,
     };
 
@@ -114,6 +115,16 @@ mod tests {
         }
     }
 
+    fn build_unfreeze(tx_hash: &str) -> NewUnFreezeEntity {
+        NewUnFreezeEntity {
+            tx_hash: tx_hash.to_string(),
+            owner_address: "T_owner_stake".to_string(),
+            resource_type: "ENERGY".to_string(),
+            amount: "1000".to_string(),
+            freeze_time: wallet_utils::time::now().timestamp() + 3600,
+        }
+    }
+
     #[tokio::test]
     async fn stake_repo_add_and_list_delegate_success() {
         let pool = setup_core_pool("wallet_db_stake_success").await;
@@ -132,6 +143,28 @@ mod tests {
         ensure_stake_tables(&pool).await;
         let found = StakeRepo::find_delegate_by_id(&pool, "delegate_id_missing").await;
         assert!(found.is_err());
+    }
+
+    #[tokio::test]
+    async fn stake_lists_treat_sql_shaped_filters_as_data() {
+        let pool = setup_core_pool("wallet_db_stake_list_bind").await;
+        ensure_stake_tables(&pool).await;
+        StakeRepo::add_delegate(&pool, build_delegate("tx_delegate_bind")).await.unwrap();
+        StakeRepo::add_unfreeze(&pool, build_unfreeze("tx_unfreeze_bind")).await.unwrap();
+
+        let delegate_page =
+            StakeRepo::delegate_list(&pool, "T_owner_stake' OR 1=1 --", "ENERGY", 0, 20)
+                .await
+                .unwrap();
+        assert_eq!(delegate_page.total_count, 0);
+        assert!(delegate_page.data.is_empty());
+
+        let unfreeze_page =
+            StakeDao::unfreeze_list("T_owner_stake' OR 1=1 --", "ENERGY", 0, 20, &pool.read_pool())
+                .await
+                .unwrap();
+        assert_eq!(unfreeze_page.total_count, 0);
+        assert!(unfreeze_page.data.is_empty());
     }
 
     #[tokio::test]
