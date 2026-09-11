@@ -158,4 +158,67 @@ mod tests {
         let listed = MultisigMemberRepo::list_by_account_id(&pool, "acc_rb").await.unwrap();
         assert!(listed.is_empty());
     }
+
+    #[tokio::test]
+    async fn multisig_member_repo_batch_add_treats_apostrophes_as_data() {
+        let pool = setup_core_pool("wallet_db_multisig_member_repo_insert_quote").await;
+        let members = vec![build_member("acc_'_quote", "T_'_quote", "uid_'_quote")];
+
+        MultisigMemberDaoV1::batch_add(&members, pool.write_ref()).await.unwrap();
+
+        let listed = MultisigMemberRepo::list_by_account_id(&pool, "acc_'_quote").await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].address, "T_'_quote");
+        assert_eq!(listed[0].uid, "uid_'_quote");
+    }
+
+    #[tokio::test]
+    async fn multisig_member_repo_multi_lookups_bind_all_selectors() {
+        let pool = setup_core_pool("wallet_db_multisig_member_repo_lookup_bind").await;
+        let members = vec![
+            build_member("acc_lookup_1", "T_lookup_1", "uid_lookup_1"),
+            build_member("acc_lookup_2", "T_lookup_2", "uid_lookup_2"),
+        ];
+        MultisigMemberDaoV1::batch_add(&members, pool.write_ref()).await.unwrap();
+        let sql_shaped = vec!["missing') OR 1=1 --".to_string()];
+
+        let by_uids = MultisigMemberRepo::list_by_uids(&pool, &sql_shaped).await.unwrap();
+        let by_addresses = MultisigMemberRepo::list_by_addresses(&pool, &sql_shaped).await.unwrap();
+        let by_accounts = MultisigMemberRepo::list_by_account_ids_not_addresses(
+            &pool,
+            &sql_shaped,
+            &["T_lookup_1".to_string()],
+        )
+        .await
+        .unwrap();
+
+        assert!(by_uids.is_empty());
+        assert!(by_addresses.is_empty());
+        assert!(by_accounts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn multisig_member_repo_multi_delete_binds_account_ids() {
+        let pool = setup_core_pool("wallet_db_multisig_member_repo_delete_bind").await;
+        let members = vec![
+            build_member("acc_delete_1", "T_delete_1", "uid_delete_1"),
+            build_member("acc_delete_2", "T_delete_2", "uid_delete_2"),
+        ];
+        MultisigMemberDaoV1::batch_add(&members, pool.write_ref()).await.unwrap();
+
+        let deleted =
+            MultisigMemberRepo::physical_delete_by_account_ids(&pool, &["missing') OR 1=1 --"])
+                .await
+                .unwrap();
+
+        assert!(deleted.is_empty());
+        assert_eq!(
+            MultisigMemberRepo::list_by_account_id(&pool, "acc_delete_1").await.unwrap().len(),
+            1
+        );
+        assert_eq!(
+            MultisigMemberRepo::list_by_account_id(&pool, "acc_delete_2").await.unwrap().len(),
+            1
+        );
+    }
 }

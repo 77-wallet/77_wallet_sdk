@@ -1,7 +1,7 @@
 use crate::entities::multisig_member::{
     MultisigMemberEntities, MultisigMemberEntity, NewMemberEntity,
 };
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub struct MultisigMemberDaoV1;
 
@@ -10,27 +10,22 @@ impl MultisigMemberDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut query = String::from(
-            "INSERT INTO multisig_member (account_id, address, name, confirmed,is_self,pubkey,uid,created_at) VALUES ",
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "INSERT INTO multisig_member (account_id, address, name, confirmed,is_self,pubkey,uid,created_at) ",
         );
 
-        for (i, param) in params.iter().enumerate() {
-            if i != 0 {
-                query.push_str(", ");
-            }
-            query.push_str(&format!(
-                "('{}', '{}', '{}', {}, {},'{}','{}', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))",
-                param.account_id,
-                param.address,
-                param.name,
-                param.confirmed,
-                param.is_self,
-                param.pubkey,
-                param.uid,
-            ));
-        }
+        query.push_values(params, |mut row, param| {
+            row.push_bind(&param.account_id)
+                .push_bind(&param.address)
+                .push_bind(&param.name)
+                .push_bind(param.confirmed)
+                .push_bind(param.is_self)
+                .push_bind(&param.pubkey)
+                .push_bind(&param.uid)
+                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+        });
 
-        query.push_str(
+        query.push(
             "ON CONFLICT (account_id, address)
         DO UPDATE SET
             is_self = EXCLUDED.is_self,
@@ -39,7 +34,7 @@ impl MultisigMemberDaoV1 {
             updated_at = EXCLUDED.updated_at;",
         );
 
-        sqlx::query(&query).execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        query.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(())
     }
@@ -165,15 +160,18 @@ impl MultisigMemberDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let uids = crate::any_in_collection(uids, "','");
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM multisig_member WHERE uid IN (");
+        let mut values = query.separated(", ");
+        if uids.is_empty() {
+            values.push_bind("");
+        } else {
+            for uid in uids {
+                values.push_bind(uid);
+            }
+        }
+        values.push_unseparated(")");
 
-        let sql = format!(
-            "SELECT *
-            FROM multisig_member
-            WHERE uid IN ('{}')",
-            uids
-        );
-        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql).fetch_all(exec).await?;
+        let res = query.build_query_as::<MultisigMemberEntity>().fetch_all(exec).await?;
         Ok(MultisigMemberEntities(res))
     }
 
@@ -184,15 +182,19 @@ impl MultisigMemberDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::any_in_collection(addresses, "','");
+        let mut query =
+            QueryBuilder::<Sqlite>::new("SELECT * FROM multisig_member WHERE address IN (");
+        let mut values = query.separated(", ");
+        if addresses.is_empty() {
+            values.push_bind("");
+        } else {
+            for address in addresses {
+                values.push_bind(address);
+            }
+        }
+        values.push_unseparated(")");
 
-        let sql = format!(
-            "SELECT *
-            FROM multisig_member
-            WHERE address IN ('{}')",
-            addresses
-        );
-        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql).fetch_all(exec).await?;
+        let res = query.build_query_as::<MultisigMemberEntity>().fetch_all(exec).await?;
         Ok(MultisigMemberEntities(res))
     }
 
@@ -204,18 +206,28 @@ impl MultisigMemberDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::any_in_collection(addresses, "','");
-        let account_ids = crate::any_in_collection(account_ids, "','");
+        let mut query =
+            QueryBuilder::<Sqlite>::new("SELECT * FROM multisig_member WHERE account_id IN (");
+        let mut account_values = query.separated(", ");
+        if account_ids.is_empty() {
+            account_values.push_bind("");
+        } else {
+            for account_id in account_ids {
+                account_values.push_bind(account_id);
+            }
+        }
+        account_values.push_unseparated(") AND address NOT IN (");
+        let mut address_values = query.separated(", ");
+        if addresses.is_empty() {
+            address_values.push_bind("");
+        } else {
+            for address in addresses {
+                address_values.push_bind(address);
+            }
+        }
+        address_values.push_unseparated(")");
 
-        let sql = format!(
-            "SELECT *
-            FROM multisig_member
-            WHERE account_id IN ('{}')
-            AND address NOT IN ('{}')",
-            account_ids, addresses
-        );
-
-        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql).fetch_all(exec).await?;
+        let res = query.build_query_as::<MultisigMemberEntity>().fetch_all(exec).await?;
         Ok(MultisigMemberEntities(res))
     }
 
@@ -251,13 +263,21 @@ impl MultisigMemberDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = if ids.is_empty() {
-            "DELETE FROM multisig_member RETURNING *".to_string()
+        let rows = if ids.is_empty() {
+            sqlx::query_as::<_, MultisigMemberEntity>("DELETE FROM multisig_member RETURNING *")
+                .fetch_all(exec)
+                .await?
         } else {
-            let ids = crate::any_in_collection(ids, "','");
-            format!("DELETE FROM multisig_member WHERE account_id IN ('{}') RETURNING *", ids)
+            let mut query =
+                QueryBuilder::<Sqlite>::new("DELETE FROM multisig_member WHERE account_id IN (");
+            let mut values = query.separated(", ");
+            for id in ids {
+                values.push_bind(id);
+            }
+            values.push_unseparated(") RETURNING *");
+            query.build_query_as::<MultisigMemberEntity>().fetch_all(exec).await?
         };
 
-        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigMemberEntity>(&sql).fetch_all(exec).await?)
+        Ok(rows)
     }
 }
