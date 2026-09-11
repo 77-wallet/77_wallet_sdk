@@ -138,6 +138,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn address_book_find_conditions_binds_values_and_rejects_unknown_columns() {
+        let pool = setup_core_pool("wallet_db_address_book_conditions_bind").await;
+        AddressBookRepo::insert(&pool, "owner's wallet", "T_conditions", "tron").await.unwrap();
+
+        let exact = AddressBookRepo::find_by_conditions(
+            &pool,
+            vec![("name", "owner's wallet"), ("chain_code", "tron")],
+        )
+        .await
+        .unwrap();
+        assert_eq!(exact.unwrap().address, "T_conditions");
+
+        let injected =
+            AddressBookRepo::find_by_conditions(&pool, vec![("name", "missing' OR 1=1 --")])
+                .await
+                .unwrap();
+        assert!(injected.is_none());
+
+        let invalid_column =
+            AddressBookRepo::find_by_conditions(&pool, vec![("name OR 1=1 --", "ignored")]).await;
+        assert!(matches!(
+            invalid_column,
+            Err(crate::Error::Database(crate::DatabaseError::QueryFailed))
+        ));
+    }
+
+    #[tokio::test]
     async fn address_book_tx_rollback_keeps_no_residue() {
         let pool = setup_core_pool("wallet_db_address_book_rollback").await;
         let chain_code = wallet_types::constant::chain_code::TRON;

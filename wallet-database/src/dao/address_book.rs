@@ -4,6 +4,18 @@ use std::sync::Arc;
 
 pub struct AddressBookDao;
 
+fn address_book_column(key: &str) -> Result<&'static str, crate::DatabaseError> {
+    match key {
+        "id" => Ok("id"),
+        "name" => Ok("name"),
+        "address" => Ok("address"),
+        "chain_code" => Ok("chain_code"),
+        "created_at" => Ok("created_at"),
+        "updated_at" => Ok("updated_at"),
+        _ => Err(crate::DatabaseError::QueryFailed),
+    }
+}
+
 impl AddressBookDao {
     pub async fn insert<'a, E>(
         executor: E,
@@ -76,19 +88,19 @@ impl AddressBookDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut query = r#"SELECT * FROM address_book "#.to_string();
-        let mut query_where = Vec::new();
-
-        for (key, value) in conditions.iter() {
-            query_where.push(format!("{} = '{}'", key, value));
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM address_book");
+        if !conditions.is_empty() {
+            query.push(" WHERE ");
+            for (index, (key, value)) in conditions.iter().enumerate() {
+                if index != 0 {
+                    query.push(" AND ");
+                }
+                query.push(address_book_column(key)?).push(" = ").push_bind(value);
+            }
         }
-        if !query_where.is_empty() {
-            query.push_str(" WHERE ");
-            query.push_str(&query_where.join(" AND "));
-        }
 
-        query.push_str(" ORDER BY created_at DESC LIMIT 1");
-        let res = sqlx::query_as::<_, AddressBookEntity>(&query).fetch_optional(exec).await?;
+        query.push(" ORDER BY created_at DESC LIMIT 1");
+        let res = query.build_query_as::<AddressBookEntity>().fetch_optional(exec).await?;
         Ok(res)
     }
 
