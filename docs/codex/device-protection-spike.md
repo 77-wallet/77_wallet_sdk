@@ -85,3 +85,9 @@ target/device-protection-sep/probe target/device-protection-sep read
 2026-09-12，ANA-AN00，API 31：独立测试包运行通过。设备安全锁屏已开启且当前解锁；实际适配器报告 TEE（非 StrongBox）。真实 AndroidKeyStore AES-GCM 往返、持久化合成密文、显式 force-stop 后新进程解密，以及真实密钥下篡改/错误 AAD 拒绝全部通过。进程 PID 已变化，未重启手机。测试结束卸载独立测试包并清理测试密钥及合成数据，未接触钱包。
 
 仍未验证：StrongBox、锁屏状态切换/移除锁屏、系统重启、另一台设备解密拒绝、Flutter/FRB 及实际 SDK 存储集成。本次证据证明该真机上原生 TEE 适配工作的成功路径，不代表完整钱包已启用设备保护。
+
+## iOS 正式原生模块
+
+新增插件 ios/Classes/IOSEnvelope.swift 与 IOSDeviceProtection.swift，明确 SEP + Keychain 存储、显式初始化、缺失不重建、版本化 AAD 绑定。审查修正了已有引用恢复失败的 keyMissing/keyInvalidated 分类，避免误入初始化分支。实际安装文件的 CryptoKit 封装测试通过；iPhoneOS arm64/iOS11 target 类型检查通过（实现受 iOS13 availability 保护）。测试说明位于插件 ios/docs/device-protection.md。
+
+仍无 iPhone 真机运行结果，且双端均未完成 Flutter/FFI 注册及 SDK 敏感存储接入。不能将已完成原生模块等同于钱包数据已获得外层保护。

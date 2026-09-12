@@ -508,7 +508,6 @@ impl TransactionService {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::TransactionService;
