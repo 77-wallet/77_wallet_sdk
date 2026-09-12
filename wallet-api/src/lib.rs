@@ -27,6 +27,7 @@ pub mod application;
 pub mod batch_transfer;
 pub mod config;
 pub(crate) mod default_data;
+pub mod device_protection;
 pub mod domain;
 pub mod error;
 pub mod infrastructure;
