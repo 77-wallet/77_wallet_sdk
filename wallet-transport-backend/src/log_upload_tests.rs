@@ -64,6 +64,21 @@ fn invalid_config_and_metadata_are_rejected_before_network_io() {
 }
 
 #[test]
+fn rejected_acknowledgement_includes_backend_code_and_message_only() {
+    let body = br#"{
+        "success": false,
+        "code": 40101,
+        "msg": "invalid upload credentials",
+        "data": {"token": "must-not-appear"}
+    }"#;
+
+    let error = validate_acknowledgement(StatusCode::OK, body).unwrap_err();
+    let rendered = error.to_string();
+    assert_eq!(rendered, "backend rejected log upload: code=40101, msg=invalid upload credentials");
+    assert!(!rendered.contains("must-not-appear"));
+}
+
+#[test]
 fn config_debug_does_not_reveal_credentials() {
     let output = format!("{:?}", config());
     assert!(!output.contains("synthetic-upload-key"));

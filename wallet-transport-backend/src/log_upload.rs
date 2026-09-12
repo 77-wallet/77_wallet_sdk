@@ -22,7 +22,7 @@ impl fmt::Debug for LogUploadConfig {
     }
 }
 
-/// Errors deliberately exclude response bodies and credentials.
+/// Errors deliberately exclude response bodies, response data, and credentials.
 #[derive(Debug, thiserror::Error)]
 pub enum LogUploadError {
     #[error("invalid log upload configuration")]
@@ -39,8 +39,8 @@ pub enum LogUploadError {
     Http(u16),
     #[error("invalid log upload acknowledgement")]
     InvalidAcknowledgement,
-    #[error("backend rejected log upload")]
-    Rejected,
+    #[error("backend rejected log upload: code={code}, msg={message}")]
+    Rejected { code: String, message: String },
 }
 
 #[derive(Debug)]
@@ -141,10 +141,43 @@ fn validate_acknowledgement(status: StatusCode, body: &[u8]) -> Result<(), LogUp
     #[derive(Deserialize)]
     struct Acknowledgement {
         success: bool,
+        #[serde(default)]
+        code: Option<serde_json::Value>,
+        #[serde(default)]
+        msg: Option<String>,
     }
     let ack: Acknowledgement =
         serde_json::from_slice(body).map_err(|_| LogUploadError::InvalidAcknowledgement)?;
-    if ack.success { Ok(()) } else { Err(LogUploadError::Rejected) }
+    if ack.success {
+        Ok(())
+    } else {
+        let code = ack.code.as_ref().map(format_ack_code).unwrap_or_else(|| "unknown".to_string());
+        let message = ack
+            .msg
+            .as_deref()
+            .map(|value| sanitize_ack_field(value, 512))
+            .unwrap_or_else(|| "unknown".to_string());
+        Err(LogUploadError::Rejected { code, message })
+    }
+}
+
+fn format_ack_code(value: &serde_json::Value) -> String {
+    let raw = match value {
+        serde_json::Value::String(value) => value.clone(),
+        serde_json::Value::Number(value) => value.to_string(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        _ => "unknown".to_string(),
+    };
+    sanitize_ack_field(&raw, 128)
+}
+
+fn sanitize_ack_field(value: &str, max_chars: usize) -> String {
+    let sanitized: String = value
+        .chars()
+        .take(max_chars)
+        .map(|character| if character.is_control() { ' ' } else { character })
+        .collect();
+    if sanitized.trim().is_empty() { "unknown".to_string() } else { sanitized }
 }
 
 #[cfg(test)]
