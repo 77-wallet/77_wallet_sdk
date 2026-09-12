@@ -13,7 +13,7 @@ use tokio::{
 use wallet_transport_backend::log_upload::LogUploadClient;
 
 #[async_trait::async_trait]
-trait LogUploader: Send + Sync {
+pub(crate) trait LogUploader: Send + Sync {
     async fn upload(
         &self,
         sn: &str,

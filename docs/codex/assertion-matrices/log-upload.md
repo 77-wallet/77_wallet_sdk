@@ -25,7 +25,7 @@ Never run these checks with production credentials or a remote endpoint.
 | Invariant | Test |
 | --- | --- |
 | Incomplete upload config is rejected rather than ignored | log_upload_config_rejects_incomplete_credentials |
-| New section parses; old config remains valid with uploads disabled | log_upload_config_accepts_new_section_and_preserves_legacy_parsing |
+| New section parses; missing section disables uploads; OSS is not required | log_upload_config_is_optional_and_does_not_require_oss |
 | Failure preserves offset, identity and on-disk checkpoint; retry sends identical pending bytes and runtime SN | failed_upload_preserves_checkpoint_and_retry_sends_same_pending_bytes |
 | Rotation changes checkpoint only after acknowledgement | rotated_file_commits_new_identity_only_after_acknowledgement |
 | Under 1 KiB causes neither upload nor checkpoint change | less_than_one_kib_waits_without_upload_or_checkpoint_change |
@@ -34,3 +34,13 @@ Never run these checks with production credentials or a remote endpoint.
 Run: `cargo test --offline -p wallet-api --no-default-features --lib log_upload_config`
 and `cargo test --offline -p wallet-api --no-default-features --lib infrastructure::log::upload_log`.
 Worker tests use an in-memory fake uploader and temporary synthetic files; no sockets.
+
+## Batch 3 — manual uploads and OSS removal
+
+| Invariant | Test |
+| --- | --- |
+| Manual upload reads the exact validated file and propagates backend rejection | manual_log_upload_reads_exact_file_and_propagates_backend_failure |
+| Existing source confinement and destination-name validation remain active | upload_log_file_source_* / upload_log_file_name_* |
+
+`wallet-api` no longer contains `wallet_oss`, `OssConfig`, or an OSS client. Manual
+uploads require configured `log_upload` and return an error if it is absent.

@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use wallet_oss::OssConfig;
 
 // 运行时稳定性相关的默认阈值（本轮止血参数）集中放在子模块中维护。
 pub mod runtime_defaults;
@@ -29,7 +28,6 @@ impl ChainNetwork {
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    pub oss: OssConfig,
     #[serde(default)]
     pub log_upload: Option<wallet_transport_backend::log_upload::LogUploadConfig>,
     pub backend_api: BackendApiConfig,
@@ -155,13 +153,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn log_upload_config_accepts_new_section_and_preserves_legacy_parsing() {
+    fn log_upload_config_is_optional_and_does_not_require_oss() {
         let yaml = r#"
 app_code: test
 crypto: { aes_key: synthetic-key, aes_iv: synthetic-iv }
 backend_api: { dev_url: x, test_url: x, prod_url: x }
 aggregate_api: { dev_url: x, test_url: x, prod_url: x }
-oss: { access_key_id: x, access_key_secret: x, bucket_name: x, endpoint: x }
 "#;
         assert!(Config::new(yaml).unwrap().log_upload.is_none());
         let updated = format!(
@@ -182,7 +179,6 @@ app_code: test
 crypto: { aes_key: synthetic-key, aes_iv: synthetic-iv }
 backend_api: { dev_url: x, test_url: x, prod_url: x }
 aggregate_api: { dev_url: x, test_url: x, prod_url: x }
-oss: { access_key_id: x, access_key_secret: x, bucket_name: x, endpoint: x }
 log_upload: { url: 'https://logs.example.invalid/upload', key: test }
 "#;
         assert!(Config::new(yaml).is_err());

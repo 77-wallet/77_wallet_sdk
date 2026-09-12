@@ -20,8 +20,6 @@ pub enum ServiceError {
     TransportBackend(#[from] wallet_transport_backend::Error),
     #[error("Transport error: `{0}`")]
     Transport(#[from] wallet_transport::TransportError),
-    #[error("Oss error: `{0}`")]
-    Oss(#[from] wallet_oss::TransportError),
     #[error("Chain instance error: `{0}`")]
     ChainInstance(#[from] wallet_chain_instance::Error),
     #[error("Chain interact error: `{0}`")]
@@ -218,7 +216,6 @@ impl From<ServiceError> for (i64, String) {
             ServiceError::Types(_) => (620, err.to_string()),
             ServiceError::Database(_) => (630, err.to_string()),
             ServiceError::Tree(err) => map_tree_error(err),
-            ServiceError::Oss(_) => (650, err.to_string()),
             ServiceError::System(_) => (660, err.to_string()),
             ServiceError::AggregatorError { code, agg_code: _, msg: _ } => {
                 let error = if code != -1 { code } else { 670 };

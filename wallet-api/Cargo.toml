@@ -49,7 +49,6 @@ wallet-database = { workspace = true }
 wallet-utils = { workspace = true }
 wallet-crypto = { workspace = true }
 wallet-tree = { workspace = true }
-wallet-oss = { workspace = true }
 wallet-ecdh = { workspace = true }
 # wallet-error = { workspace = true }
 wallet-core = { workspace = true }

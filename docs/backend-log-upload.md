@@ -18,10 +18,10 @@ connect timeout 10 seconds, whole request timeout 60 seconds.
 
 Batch 2 wires automatic uploads to the backend. `wallet-api::Config` accepts optional
 `log_upload`. Missing configuration disables automatic uploads (no OSS fallback).
-Invalid configured credentials or URL fail initialization. Manual uploads still use
-OSS, so the existing `oss` section remains required until the next batch; add the new
-section alongside it rather than deleting it. The plugin must use this SDK revision
-before this takes effect. Existing AES response settings are unchanged.
+Invalid configured credentials or URL fail initialization. Batch 3 routes manual
+uploads through the same backend client and removes `wallet-api`'s OSS configuration,
+client, and dependency. The plugin must use the batch 3 SDK revision before deleting
+its `oss` section. Existing AES response settings are unchanged.
 
 Automatic uploads check every 5 minutes (Tokio interval also ticks immediately on startup).
 Pending content below 1 KiB is retained. The worker reads the current log through one
@@ -30,7 +30,7 @@ Upload failure leaves the in-memory and persisted checkpoint unchanged for retry
 This batch does not add backfill across all rotated log archives. Checkpoint persistence
 still uses the existing OffsetTracker best-effort save implementation.
 
-Add this section to the existing YAML after upgrading the SDK dependency:
+After upgrading the SDK dependency, delete the old `oss` section and add:
 
 ```yaml
 log_upload:

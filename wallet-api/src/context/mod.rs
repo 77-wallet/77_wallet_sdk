@@ -94,7 +94,6 @@ pub struct Context {
     api_transaction_db: Arc<wallet_database::SqliteContext>, // api_transaction.db
     api_resource_db: Arc<wallet_database::SqliteContext>, // api_resource.db
     task_db: Arc<wallet_database::SqliteContext>, // task.db
-    oss_client: Arc<wallet_oss::oss_client::OssClient>,
     log_upload_client: Option<Arc<wallet_transport_backend::log_upload::LogUploadClient>>,
     frontend_notify: Arc<RwLock<FrontendNotifySender>>,
     mqtt_topics: Arc<RwLock<Topics>>,
@@ -281,8 +280,6 @@ impl Context {
             app_state.set_backend_url(Some(backend_api.base_url.clone()));
         }
 
-        let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
-
         let defaults = crate::config::runtime_defaults::recovery();
         let background_task_pool =
             Arc::new(BackgroundTaskPool::new(defaults.background_task_pool_max_concurrent));
@@ -302,7 +299,6 @@ impl Context {
             api_resource_db: Arc::new(api_resource_db),
             task_db: Arc::new(task_db),
             frontend_notify,
-            oss_client: Arc::new(oss_client),
             log_upload_client,
             mqtt_topics: Arc::new(RwLock::new(Topics::new())),
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
@@ -493,10 +489,6 @@ impl Context {
         &self,
     ) -> Option<Arc<wallet_transport_backend::log_upload::LogUploadClient>> {
         self.log_upload_client.clone()
-    }
-
-    pub(crate) fn get_global_oss_client(&self) -> Arc<wallet_oss::oss_client::OssClient> {
-        self.oss_client.clone()
     }
 
     pub(crate) fn get_global_cache(&self) -> Arc<SharedCache> {

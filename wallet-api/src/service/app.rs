@@ -212,16 +212,32 @@ impl AppService {
         self,
         req: Vec<crate::request::app::UploadLogFileReq>,
     ) -> Result<(), ServiceError> {
-        let oss_client = self.ctx.get_global_oss_client();
+        let client = self
+            .ctx
+            .get_log_upload_client()
+            .ok_or_else(|| ServiceError::Parameter("log upload is not configured".to_string()))?;
+        let sn = self.ctx.get_sn();
         let log_dir = Self::canonical_log_upload_dir(&self.ctx.get_global_dirs().get_log_dir())?;
         for req in req.into_iter() {
             let src_file_path = Self::validate_log_upload_source(&log_dir, &req.src_file_path)?;
             let dst_file_name = Self::validate_log_upload_file_name(&req.dst_file_name)?;
-            oss_client
-                .upload_local_file(src_file_path.to_string_lossy().as_ref(), dst_file_name)
+            Self::upload_validated_log_file(client.clone(), sn, &src_file_path, dst_file_name)
                 .await?;
         }
 
+        Ok(())
+    }
+
+    async fn upload_validated_log_file(
+        uploader: std::sync::Arc<dyn crate::infrastructure::log::upload_log::LogUploader>,
+        sn: &str,
+        path: &Path,
+        filename: &str,
+    ) -> Result<(), ServiceError> {
+        let data = tokio::fs::read(path).await.map_err(|e| {
+            ServiceError::Parameter(format!("failed to read log upload source: {e}"))
+        })?;
+        uploader.upload(sn, filename, data).await?;
         Ok(())
     }
 
@@ -520,9 +536,69 @@ impl AppService {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{
+        fs,
+        sync::{Arc, Mutex},
+    };
 
     use super::AppService;
+    use crate::infrastructure::log::upload_log::LogUploader;
+
+    #[derive(Default)]
+    struct FakeUploader {
+        reject: bool,
+        calls: Mutex<Vec<(String, String, Vec<u8>)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LogUploader for FakeUploader {
+        async fn upload(
+            &self,
+            sn: &str,
+            filename: &str,
+            data: Vec<u8>,
+        ) -> Result<(), crate::error::system::SystemError> {
+            self.calls.lock().unwrap().push((sn.into(), filename.into(), data));
+            if self.reject {
+                Err(crate::error::system::SystemError::Service("synthetic rejection".into()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn manual_log_upload_reads_exact_file_and_propagates_backend_failure() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let log_file = dir.path().join("manual-log.txt");
+        fs::write(&log_file, b"synthetic manual log").expect("write log file");
+        let success = Arc::new(FakeUploader::default());
+
+        AppService::upload_validated_log_file(
+            success.clone(),
+            "device-sn",
+            &log_file,
+            "manual-log.txt",
+        )
+        .await
+        .expect("upload succeeds");
+
+        assert_eq!(
+            success.calls.lock().unwrap().as_slice(),
+            &[("device-sn".into(), "manual-log.txt".into(), b"synthetic manual log".to_vec())]
+        );
+        let rejected = Arc::new(FakeUploader { reject: true, ..Default::default() });
+        assert!(
+            AppService::upload_validated_log_file(
+                rejected,
+                "device-sn",
+                &log_file,
+                "manual-log.txt",
+            )
+            .await
+            .is_err()
+        );
+    }
 
     #[test]
     fn upload_log_file_source_accepts_file_under_log_dir() {
@@ -555,7 +631,7 @@ mod tests {
     }
 
     #[test]
-    fn upload_log_file_name_rejects_nested_oss_key() {
+    fn upload_log_file_name_rejects_nested_destination() {
         let err = AppService::validate_log_upload_file_name("../secret.txt")
             .expect_err("traversal destination must be rejected");
 

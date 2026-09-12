@@ -37,11 +37,14 @@ async fn main() {
 
     let config_content = read_config();
     let config = wallet_api::config::Config::new(&config_content).unwrap();
-    let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
+    let log_upload_client = config
+        .log_upload
+        .map(wallet_transport_backend::log_upload::LogUploadClient::new)
+        .transpose()
+        .unwrap()
+        .map(Arc::new);
 
-    println!("bucket_name: {}", config.oss.bucket_name);
-
-    let _c = UploadLogHandle::new(base_path, 20, Arc::new(oss_client)).await;
+    let _c = UploadLogHandle::new(base_path, 20, log_upload_client, "9528".to_string()).await;
 
     loop {}
 }
