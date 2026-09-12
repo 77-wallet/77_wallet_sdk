@@ -69,3 +69,13 @@ target/device-protection-sep/probe target/device-protection-sep read
 5 项契约测试通过，包含 Pending 到 Ready 的延迟响应；代码审查无阻塞问题。断言矩阵见 `assertion-matrices/device-protection.md`。此批不包含 Context 初始化注入、插件注册或钱包读写接入；这些都仍是后续工作。
 
 `cargo check -p wallet-api --offline` 通过（1m36s）；存在仓库原有警告，未扩大范围修复。
+
+## Android 模拟器运行验证
+
+2026-09-12：构建独立包 com.sevenwallet.protectionprobe（源码和 APK 在 target/android-device-protection/apk），在 emulator-5554 安装运行。未读取钱包数据或修改锁屏设置。测试结束已卸载独立测试 App。
+
+- Android 运行时的合成数据 AES-GCM 往返、随机 IV、AAD、篡改、错密钥、格式和缺失密钥断言通过。
+- 设备状态 secureLock=false、locked=false。
+- 独立 AndroidKeyStore 能力探测 key 的 isInsideSecureHardware=false；探测 key 已删除。
+- 正式适配器 provision 返回 UNAVAILABLE，未降级。由于首先被无安全锁屏检查拒绝，本次不构成其软件密钥等级拒绝分支的动态覆盖。
+- 无连接的 Android 真机，因此 TEE/StrongBox 成功路径、锁屏变化、重启恢复仍待真机测试。未接通 Flutter/FRB。

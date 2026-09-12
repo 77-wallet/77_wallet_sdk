@@ -10,3 +10,5 @@ pub use response_vo::{
 };
 pub mod api_request;
 pub mod consts;
+
+pub mod log_upload;
