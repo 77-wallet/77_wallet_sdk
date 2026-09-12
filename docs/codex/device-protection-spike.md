@@ -79,3 +79,9 @@ target/device-protection-sep/probe target/device-protection-sep read
 - 独立 AndroidKeyStore 能力探测 key 的 isInsideSecureHardware=false；探测 key 已删除。
 - 正式适配器 provision 返回 UNAVAILABLE，未降级。由于首先被无安全锁屏检查拒绝，本次不构成其软件密钥等级拒绝分支的动态覆盖。
 - 无连接的 Android 真机，因此 TEE/StrongBox 成功路径、锁屏变化、重启恢复仍待真机测试。未接通 Flutter/FRB。
+
+## Android 真机 TEE 验证
+
+2026-09-12，ANA-AN00，API 31：独立测试包运行通过。设备安全锁屏已开启且当前解锁；实际适配器报告 TEE（非 StrongBox）。真实 AndroidKeyStore AES-GCM 往返、持久化合成密文、显式 force-stop 后新进程解密，以及真实密钥下篡改/错误 AAD 拒绝全部通过。进程 PID 已变化，未重启手机。测试结束卸载独立测试包并清理测试密钥及合成数据，未接触钱包。
+
+仍未验证：StrongBox、锁屏状态切换/移除锁屏、系统重启、另一台设备解密拒绝、Flutter/FRB 及实际 SDK 存储集成。本次证据证明该真机上原生 TEE 适配工作的成功路径，不代表完整钱包已启用设备保护。

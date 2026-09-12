@@ -10,7 +10,31 @@ use tokio::{
     task::JoinHandle,
     time::interval,
 };
-use wallet_oss::oss_client;
+use wallet_transport_backend::log_upload::LogUploadClient;
+
+#[async_trait::async_trait]
+trait LogUploader: Send + Sync {
+    async fn upload(
+        &self,
+        sn: &str,
+        filename: &str,
+        data: Vec<u8>,
+    ) -> Result<(), crate::error::system::SystemError>;
+}
+
+#[async_trait::async_trait]
+impl LogUploader for LogUploadClient {
+    async fn upload(
+        &self,
+        sn: &str,
+        filename: &str,
+        data: Vec<u8>,
+    ) -> Result<(), crate::error::system::SystemError> {
+        LogUploadClient::upload(self, sn, filename, data)
+            .await
+            .map_err(|e| crate::error::system::SystemError::Service(e.to_string()))
+    }
+}
 
 #[derive(Debug)]
 pub struct UploadLogHandle {
@@ -22,14 +46,21 @@ impl UploadLogHandle {
     pub async fn new(
         base_path: LogBasePath,
         interval_sec: u64,
-        oss_client: Arc<oss_client::OssClient>,
+        client: Option<Arc<LogUploadClient>>,
+        sn: String,
     ) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
-        let shutdown_rx1 = shutdown_tx.subscribe();
-        // 发交易
-        let mut tx = UploadLogConsumer::new(shutdown_rx1, base_path, interval_sec, oss_client);
-        let tx_handle = tokio::spawn(async move { tx.run().await });
-        Self { shutdown_tx, handle: Mutex::new(Some(tx_handle)) }
+        let handle = client.map(|client| {
+            let mut worker = UploadLogConsumer::new(
+                shutdown_tx.subscribe(),
+                base_path,
+                interval_sec,
+                client,
+                sn,
+            );
+            tokio::spawn(async move { worker.run().await })
+        });
+        Self { shutdown_tx, handle: Mutex::new(handle) }
     }
 
     pub(crate) async fn close(&self) -> Result<(), ServiceError> {
@@ -47,7 +78,8 @@ struct UploadLogConsumer {
     shutdown_rx: broadcast::Receiver<()>,
     base_path: LogBasePath,
     interval_sec: u64,
-    oss_client: Arc<oss_client::OssClient>,
+    uploader: Arc<dyn LogUploader>,
+    sn: String,
 }
 
 impl UploadLogConsumer {
@@ -55,128 +87,60 @@ impl UploadLogConsumer {
         shutdown_rx: broadcast::Receiver<()>,
         base_path: LogBasePath,
         interval_sec: u64,
-        oss_client: Arc<oss_client::OssClient>,
+        uploader: Arc<dyn LogUploader>,
+        sn: String,
     ) -> Self {
-        Self { shutdown_rx, base_path, interval_sec, oss_client }
+        Self { shutdown_rx, base_path, interval_sec, uploader, sn }
     }
 
     async fn run(&mut self) -> Result<(), ServiceError> {
-        tracing::info!("starting process upload log -------------------------------");
         let mut interval = interval(Duration::from_secs(self.interval_sec));
         let mut tracker = OffsetTracker::new(self.base_path.offset_path()).await;
         loop {
             tokio::select! {
-                _ = self.shutdown_rx.recv() => {
-                    tracing::info!("closing process upload log -------------------------------");
-                    break;
-                }
+                _ = self.shutdown_rx.recv() => break,
                 _ = interval.tick() => {
-                     if let Ok(time) = self.read_first_line().await {
-                        if tracker.get_uid().is_empty() {
-                            tracker.set_uid(time.clone());
-                        }
-
-                        if time != tracker.get_uid() {
-                            // 将未上报的进行上报
-                            if let Err(e) = self
-                                .upload(&mut tracker)
-                                .await
-                            {
-                                tracing::error!("upload log to oss error1: {}", e);
-                            }
-
-                            // 重置为0
-                            tracker.set_offset(0);
-                        }
-
-                        // 上报
-                        match self.upload(&mut tracker).await
-                        {
-                            Ok(new_offset) => {
-                                tracker.set_offset(new_offset);
-                                tracker.save().await;
-                            }
-                            Err(e) => {
-                                tracing::error!("upload log to oss error: {}", e);
-                            }
-                        }
+                    if let Err(e) = self.upload_pending(&mut tracker).await {
+                        tracing::error!("backend log upload failed: {}", e);
                     }
                 }
             }
         }
-        tracing::info!("closing process upload log ------------------------------- end");
         Ok(())
     }
 
-    async fn read_first_line(&self) -> std::io::Result<String> {
-        let path = &self.base_path.log_path();
-        let file = File::open(path).await?;
-        let mut reader = BufReader::new(file);
-        let mut line = String::new();
-        reader.read_line(&mut line).await?;
-        Ok(line.trim().to_string())
-    }
-
-    async fn upload(
+    async fn upload_pending(
         &self,
         tracker: &mut OffsetTracker,
-    ) -> Result<u64, crate::error::system::SystemError> {
-        let path = &self.base_path.log_path();
-        let file = File::open(path).await?;
+    ) -> Result<(), crate::error::system::SystemError> {
+        // Read identity and content through the same descriptor, even if the path rotates.
+        let file = File::open(self.base_path.log_path()).await?;
         let mut reader = BufReader::new(file);
-        let mut offset = tracker.get_offset();
-        let start_offset = offset;
-
-        if offset == 0 {
-            let mut first_line = String::new();
-            let bytes = reader.read_line(&mut first_line).await?;
-            offset += bytes as u64;
-        }
-
-        reader.seek(SeekFrom::Start(offset)).await?;
-
-        let mut buf = Vec::new();
-        let bytes_reader = reader.read_to_end(&mut buf).await?;
-
-        // 数据太少了,下次上报
-        if buf.len() < 1024 {
-            tracing::debug!(
-                start_offset,
-                end_offset = offset,
-                bytes = buf.len(),
-                "skip log upload because pending bytes are below threshold"
-            );
-            return Ok(offset);
-        }
-
-        // println!("content");
-        // println!("{}", String::from_utf8_lossy(&buf));
-
-        // 上传文件
-        let timestamp = chrono::Utc::now();
-        let dst_file_name = format!("sdk:{}.txt", timestamp.format("%Y-%m-%d %H:%M:%S"));
-        let upload_bytes = buf.len();
-        if let Err(e) = self.oss_client.upload_buffer(buf, &dst_file_name).await {
-            tracing::error!(
-                start_offset,
-                bytes = upload_bytes,
-                dst_file_name = %dst_file_name,
-                "upload log file error: {}",
-                e
-            );
-            return Err(crate::error::system::SystemError::Service(e.to_string()));
+        let mut first_line = String::new();
+        let header_bytes = reader.read_line(&mut first_line).await? as u64;
+        let uid = first_line.trim();
+        let offset = if uid == tracker.get_uid() {
+            tracker.get_offset().max(header_bytes)
+        } else {
+            header_bytes
         };
-
-        // tracing::info!("upload log file success");
-        offset += bytes_reader as u64;
-        tracing::info!(
-            start_offset,
-            end_offset = offset,
-            bytes = upload_bytes,
-            dst_file_name = %dst_file_name,
-            "upload log file success"
-        );
-
-        Ok(offset)
+        reader.seek(SeekFrom::Start(offset)).await?;
+        let mut data = Vec::new();
+        let bytes_read = reader.read_to_end(&mut data).await?;
+        if data.len() < 1024 {
+            return Ok(());
+        }
+        let filename = format!("sdk:{}.txt", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+        self.uploader.upload(&self.sn, &filename, data).await?;
+        // A rejected request must leave BOTH offset and identity unchanged for retry.
+        tracker.set_uid(uid.to_owned());
+        tracker.set_offset(offset + bytes_read as u64);
+        tracker.save().await;
+        tracing::info!(bytes = bytes_read, "backend log upload succeeded");
+        Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "upload_log_tests.rs"]
+mod tests;

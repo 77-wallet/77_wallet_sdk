@@ -30,6 +30,8 @@ impl ChainNetwork {
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub oss: OssConfig,
+    #[serde(default)]
+    pub log_upload: Option<wallet_transport_backend::log_upload::LogUploadConfig>,
     pub backend_api: BackendApiConfig,
     pub aggregate_api: AggregateApi,
     pub crypto: CryptoConfig,
@@ -151,6 +153,40 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_upload_config_accepts_new_section_and_preserves_legacy_parsing() {
+        let yaml = r#"
+app_code: test
+crypto: { aes_key: synthetic-key, aes_iv: synthetic-iv }
+backend_api: { dev_url: x, test_url: x, prod_url: x }
+aggregate_api: { dev_url: x, test_url: x, prod_url: x }
+oss: { access_key_id: x, access_key_secret: x, bucket_name: x, endpoint: x }
+"#;
+        assert!(Config::new(yaml).unwrap().log_upload.is_none());
+        let updated = format!(
+            "{yaml}\nlog_upload: {{ url: 'https://logs.example.invalid/log/uploadFile', key: synthetic-upload-key, secret: synthetic-upload-secret }}\n"
+        );
+        let cfg = Config::new(&updated).unwrap();
+        let upload = cfg.log_upload.unwrap();
+        assert_eq!(upload.key, "synthetic-upload-key");
+        assert_eq!(upload.secret, "synthetic-upload-secret");
+        assert_eq!(cfg.crypto.aes_key, "synthetic-key");
+        assert!(wallet_transport_backend::log_upload::LogUploadClient::new(upload).is_ok());
+    }
+
+    #[test]
+    fn log_upload_config_rejects_incomplete_credentials() {
+        let yaml = r#"
+app_code: test
+crypto: { aes_key: synthetic-key, aes_iv: synthetic-iv }
+backend_api: { dev_url: x, test_url: x, prod_url: x }
+aggregate_api: { dev_url: x, test_url: x, prod_url: x }
+oss: { access_key_id: x, access_key_secret: x, bucket_name: x, endpoint: x }
+log_upload: { url: 'https://logs.example.invalid/upload', key: test }
+"#;
+        assert!(Config::new(yaml).is_err());
+    }
 
     #[test]
     fn unlock_session_config_uses_defaults_when_missing() {

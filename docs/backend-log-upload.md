@@ -16,13 +16,21 @@ connect timeout 10 seconds, whole request timeout 60 seconds.
 
 ## Migration status
 
-Batch 1 adds transport support only. `wallet-api::Config` still expects `oss`;
-DO NOT replace plugin config.yaml with log_upload yet. The next batch must wire the
-new config/client to automatic uploads and preserve offsets on any failure. Manual
-uploads and removal of obsolete OSS configuration follow in a separate batch.
-Existing AES response settings are outside this migration.
+Batch 2 wires automatic uploads to the backend. `wallet-api::Config` accepts optional
+`log_upload`. Missing configuration disables automatic uploads (no OSS fallback).
+Invalid configured credentials or URL fail initialization. Manual uploads still use
+OSS, so the existing `oss` section remains required until the next batch; add the new
+section alongside it rather than deleting it. The plugin must use this SDK revision
+before this takes effect. Existing AES response settings are unchanged.
 
-The proposed YAML after wallet-api migration (not usable with current wallet-api):
+Automatic uploads check every 5 minutes (Tokio interval also ticks immediately on startup).
+Pending content below 1 KiB is retained. The worker reads the current log through one
+file handle and commits its identity/offset only after backend acknowledgement.
+Upload failure leaves the in-memory and persisted checkpoint unchanged for retry.
+This batch does not add backfill across all rotated log archives. Checkpoint persistence
+still uses the existing OffsetTracker best-effort save implementation.
+
+Add this section to the existing YAML after upgrading the SDK dependency:
 
 ```yaml
 log_upload:

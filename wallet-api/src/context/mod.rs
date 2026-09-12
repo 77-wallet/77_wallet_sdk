@@ -95,6 +95,7 @@ pub struct Context {
     api_resource_db: Arc<wallet_database::SqliteContext>, // api_resource.db
     task_db: Arc<wallet_database::SqliteContext>, // task.db
     oss_client: Arc<wallet_oss::oss_client::OssClient>,
+    log_upload_client: Option<Arc<wallet_transport_backend::log_upload::LogUploadClient>>,
     frontend_notify: Arc<RwLock<FrontendNotifySender>>,
     mqtt_topics: Arc<RwLock<Topics>>,
     rpc_token: Arc<RwLock<RpcToken>>,
@@ -266,6 +267,13 @@ impl Context {
         api_resource_db: SqliteContext,
         task_db: SqliteContext,
     ) -> Result<Context, crate::error::service::ServiceError> {
+        let log_upload_client = config
+            .log_upload
+            .clone()
+            .map(wallet_transport_backend::log_upload::LogUploadClient::new)
+            .transpose()
+            .map_err(|e| crate::error::service::ServiceError::Parameter(e.to_string()))?
+            .map(Arc::new);
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
 
         {
@@ -295,6 +303,7 @@ impl Context {
             task_db: Arc::new(task_db),
             frontend_notify,
             oss_client: Arc::new(oss_client),
+            log_upload_client,
             mqtt_topics: Arc::new(RwLock::new(Topics::new())),
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
             rpc_token_refresh_lock: Mutex::new(()),
@@ -478,6 +487,12 @@ impl Context {
 
     pub(crate) fn get_aggregate_api(&self) -> String {
         self.aggregate_api.clone()
+    }
+
+    pub(crate) fn get_log_upload_client(
+        &self,
+    ) -> Option<Arc<wallet_transport_backend::log_upload::LogUploadClient>> {
+        self.log_upload_client.clone()
     }
 
     pub(crate) fn get_global_oss_client(&self) -> Arc<wallet_oss::oss_client::OssClient> {

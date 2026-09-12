@@ -70,8 +70,13 @@ impl Handles {
         tracing::info!("Initialize private key manager completed");
         let dirs = context.get_global_dirs();
         let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
-        let upload_log_handle =
-            UploadLogHandle::new(base_path, 5 * 60, context.get_global_oss_client()).await;
+        let upload_log_handle = UploadLogHandle::new(
+            base_path,
+            5 * 60,
+            context.get_log_upload_client(),
+            context.get_sn().to_owned(),
+        )
+        .await;
         // let asset_calc_actor_manager = AssetCalcActorManager::start(pool.clone());
         Ok(Self {
             context,
