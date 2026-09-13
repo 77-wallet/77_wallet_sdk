@@ -102,6 +102,8 @@ impl KeystoreProtection {
     }
 
     /// Modern root write using the injected provider and existing root.keystore path.
+    ///
+    /// This wrapper only serializes root data; all storage uses the common file API.
     /// `wallet_id` must be the stable wallet identity, never a display name or path.
     /// Caller must provision safely and serialize authorized writes before entering.
     /// Do not activate until all root consumers understand the protected format.
@@ -134,6 +136,25 @@ impl KeystoreProtection {
         let context = ProtectionContext::new(wallet_id, "root-keystore")?;
         let plaintext = self.load_file(&root_dir.join("root.keystore"), &context, password).await?;
         serde_json::from_slice(&plaintext).map_err(|_| KeystoreProtectionError::InvalidFormat)
+    }
+
+    /// Migrate one existing file using an explicitly authorized read policy.
+    /// Returns true after replacement, false after verifying an already-current file.
+    /// Password/native failures never publish; no downgrade or key provisioning.
+    /// Caller must persist wallet-wide completion separately, exclude legacy writers,
+    /// and handle an uncertain durability error by inspecting/retrying the file.
+    pub async fn migrate_file(
+        &self,
+        path: &std::path::Path,
+        context: &ProtectionContext,
+        password: &str,
+        policy: ReadPolicy,
+    ) -> Result<bool, KeystoreProtectionError> {
+        wallet_tree::file_ops::protected::rewrite(path, |stored| async move {
+            let opened = self.open(context, &stored, password, policy).await?;
+            Ok(opened.replacement)
+        })
+        .await
     }
 
     /// New writes use this directly. Only accepts existing password-encrypted JSON,

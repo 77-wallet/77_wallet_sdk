@@ -84,3 +84,20 @@ not an identity supplied by the file. Loaded plaintext uses Zeroizing<Vec<u8>>.
 The tests use synthetic record-purpose labels and a deterministic provider; production
 callers still need stable record-identity conventions and activation/migration orchestration.
 This binding alone does not switch existing service I/O or protect SQLite fields.
+
+## Common file migration
+
+`migrate_file(path, context, password, policy)` now binds shared rewrite to open.
+Policy must come from trusted application state. The return value describes this file
+only: true means replacement published, false means current-format password/device
+verification succeeded without a rewrite. Neither value marks a wallet fully migrated.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Legacy root/derived/verify paths | Password verified before wrapping; original inner ciphertext retained; WDK file reads; further migrations no-op | file_migration_converts_each_kind_once_after_password_verification |
+| Wrong password, DeviceRequired on legacy, missing provider | Distinct errors; existing bytes unchanged; no extra files | file_migration_failure_never_changes_original_or_downgrades_policy |
+
+Tests use real password crypto and filesystem publication but a deterministic provider.
+No mobile hardware migration is claimed. Wallet-wide persistent completion state,
+provisioning and service activation are still pending. After an uncertain directory-sync
+failure, callers must inspect/retry the file before marking migration complete.

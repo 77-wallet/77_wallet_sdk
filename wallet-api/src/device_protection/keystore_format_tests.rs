@@ -54,6 +54,81 @@ fn root_dir() -> tempfile::TempDir {
 }
 
 #[tokio::test]
+async fn file_migration_converts_each_kind_once_after_password_verification() {
+    let dir = root_dir();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    for (name, purpose) in [
+        ("root.keystore", "root-keystore"),
+        ("key0.keystore", "derived:0"),
+        ("verify", "password-verify"),
+    ] {
+        let path = dir.path().join(name);
+        let context = ProtectionContext::new("wallet-fixture", purpose).unwrap();
+        let original = legacy();
+        std::fs::write(&path, &original).unwrap();
+        assert!(
+            codec
+                .migrate_file(
+                    &path,
+                    &context,
+                    "fixture-password",
+                    ReadPolicy::LegacyMigrationAllowed
+                )
+                .await
+                .unwrap()
+        );
+        let migrated = std::fs::read(&path).unwrap();
+        assert!(migrated.starts_with(b"WDK\x01"));
+        let inner = native.unprotect(&context, &migrated[4..]).await.unwrap();
+        assert!(inner == original, "migration changed the existing password ciphertext");
+        let plain = codec.load_file(&path, &context, "fixture-password").await.unwrap();
+        assert!(plain.as_slice() == b"synthetic-payload");
+        for policy in [ReadPolicy::LegacyMigrationAllowed, ReadPolicy::DeviceRequired] {
+            assert!(
+                !codec.migrate_file(&path, &context, "fixture-password", policy).await.unwrap()
+            );
+            assert!(std::fs::read(&path).unwrap() == migrated);
+        }
+    }
+    assert_eq!(native.protects.load(Ordering::SeqCst), 3);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 3);
+}
+
+#[tokio::test]
+async fn file_migration_failure_never_changes_original_or_downgrades_policy() {
+    let dir = root_dir();
+    let path = dir.path().join("key0.keystore");
+    let original = legacy();
+    std::fs::write(&path, &original).unwrap();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    assert!(matches!(
+        codec
+            .migrate_file(&path, &context(), "wrong-password", ReadPolicy::LegacyMigrationAllowed)
+            .await,
+        Err(KeystoreProtectionError::PasswordDecryption)
+    ));
+    assert!(std::fs::read(&path).unwrap() == original);
+    assert_eq!(native.protects.load(Ordering::SeqCst), 0);
+    assert!(matches!(
+        codec.migrate_file(&path, &context(), "fixture-password", ReadPolicy::DeviceRequired).await,
+        Err(KeystoreProtectionError::LegacyForbidden)
+    ));
+    assert!(std::fs::read(&path).unwrap() == original);
+    assert_eq!(native.protects.load(Ordering::SeqCst), 0);
+    let unavailable = KeystoreProtection::new(DeviceProtection::default());
+    assert!(matches!(
+        unavailable
+            .migrate_file(&path, &context(), "fixture-password", ReadPolicy::LegacyMigrationAllowed)
+            .await,
+        Err(KeystoreProtectionError::Protection(ProtectionError::NotConfigured))
+    ));
+    assert!(std::fs::read(path).unwrap() == original);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
 async fn common_file_codec_roundtrips_every_keystore_kind_without_rewrap() {
     let dir = root_dir();
     let native = Arc::new(Fixture::default());
