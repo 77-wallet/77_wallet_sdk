@@ -60,11 +60,10 @@ impl WalletDomain {
 
     pub(crate) async fn get_seed(
         ctx: &'static Context,
-        dirs: &crate::dirs::Dirs,
         wallet_address: &str,
         wallet_password: &str,
     ) -> Result<Vec<u8>, ServiceError> {
-        WalletApplication::get_seed(ctx, dirs, wallet_address, wallet_password).await
+        WalletApplication::get_seed(ctx, wallet_address, wallet_password).await
     }
 
     pub(crate) async fn restart_existing_wallet(

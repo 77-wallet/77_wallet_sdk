@@ -1,4 +1,4 @@
-use super::WalletService;
+use super::WalletApplication;
 use crate::{
     context::Context,
     device_protection::{
@@ -9,6 +9,7 @@ use crate::{
     },
     dirs::Dirs,
     error::service::ServiceError,
+    service::wallet::WalletService,
 };
 use std::sync::{
     Arc,
@@ -193,4 +194,80 @@ async fn modern_password_only_phrase_uses_existing_reader_without_native_calls()
     ));
     assert_eq!(native.opens.load(Ordering::SeqCst), 0);
     assert!(std::fs::read(&path).unwrap() == b"WDK\x02unsupported-fixture");
+}
+
+#[tokio::test]
+async fn protected_seed_and_password_fallback_use_device_reader() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let dirs = ctx.get_global_dirs();
+    let root = dirs.get_root_dir(WALLET).unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .store_root(
+            &root,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    wallet_database::repositories::wallet::WalletRepo::upsert_wallet(
+        ctx.core_pool().unwrap(),
+        WALLET,
+        "fixture-uid",
+        "fixture",
+    )
+    .await
+    .unwrap();
+    let before = std::fs::read(root.join("root.keystore")).unwrap();
+    let seed = WalletApplication::get_seed(ctx, WALLET, PASSWORD).await.unwrap();
+    assert!(seed == b"synthetic seed");
+    assert!(WalletApplication::try_decrypt_wallet_db(ctx, PASSWORD).await.unwrap());
+    assert!(
+        !WalletApplication::try_decrypt_wallet_db(ctx, "wrong-fixture-password").await.unwrap()
+    );
+    native.locked.store(true, Ordering::SeqCst);
+    let failure = WalletApplication::try_decrypt_wallet_db(ctx, PASSWORD).await;
+    assert!(matches!(
+        failure,
+        Err(ServiceError::DeviceProtection(KeystoreProtectionError::Protection(
+            ProtectionError::Locked
+        )))
+    ));
+    assert!(std::fs::read(root.join("root.keystore")).unwrap() == before);
+}
+
+#[tokio::test]
+async fn legacy_password_fallback_preserves_success_and_wrong_password_behavior() {
+    use wallet_tree::wallet_hierarchy::{WalletTreeOps, v1::LegacyWalletTree};
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let root = ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    LegacyWalletTree::default()
+        .io()
+        .store_root(
+            WALLET,
+            b"synthetic seed",
+            PHRASE,
+            &root,
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .unwrap();
+    wallet_database::repositories::wallet::WalletRepo::upsert_wallet(
+        ctx.core_pool().unwrap(),
+        WALLET,
+        "fixture-uid",
+        "fixture",
+    )
+    .await
+    .unwrap();
+    assert!(WalletApplication::try_decrypt_wallet_db(ctx, PASSWORD).await.unwrap());
+    assert!(
+        !WalletApplication::try_decrypt_wallet_db(ctx, "wrong-fixture-password").await.unwrap()
+    );
+    assert_eq!(native.opens.load(Ordering::SeqCst), 0);
 }

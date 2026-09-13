@@ -183,9 +183,7 @@ impl WalletService {
         wallet_utils::file_func::read(&mut buf, path)?;
 
         let exports: Vec<Export> = wallet_utils::serde_func::serde_from_str(&buf)?;
-        let seed =
-            WalletApplication::get_seed(self.ctx, dirs.as_ref(), wallet_address, wallet_password)
-                .await?;
+        let seed = WalletApplication::get_seed(self.ctx, wallet_address, wallet_password).await?;
 
         let wallet = WalletRepo::wallet_detail_by_address(pool.clone(), wallet_address)
             .await?
@@ -1037,7 +1035,3 @@ mod tests {
         println!("uid: {}", uid);
     }
 }
-
-#[cfg(test)]
-#[path = "wallet_phrase_protection_tests.rs"]
-mod phrase_protection;

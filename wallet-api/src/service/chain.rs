@@ -115,7 +115,6 @@ impl ChainService {
 
             let seed = domain::wallet::WalletDomain::get_seed(
                 self.ctx,
-                dirs.as_ref(),
                 &wallet.wallet_address,
                 wallet_password,
             )

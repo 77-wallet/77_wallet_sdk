@@ -96,6 +96,21 @@ business consumers still require integration before wallet-wide activation.
 
 | Modern password-only root, unsupported WDK version | Existing modern reader works with zero native calls; unsupported WDK fails without fallback or rewriting | modern_password_only_phrase_uses_existing_reader_without_native_calls |
 
-Validation: `cargo test -p wallet-api --offline --lib phrase_protection`.
+Validation: `cargo test -p wallet-api --offline --lib protection_tests`.
 These are offline service component tests with real SQLite/password crypto and synthetic
 native envelopes, not hardware or wallet App runtime tests. No global Context is initialized.
+
+## Root seed consumers and password fallback
+
+`get_seed` delegates to the same root loader used by phrase export. Derivation import,
+account/chain seed pass-throughs and derived-address listing use that entry. The standard
+wallet branch of `try_decrypt_wallet_db` also uses the root loader. Only password failures
+continue the existing fallback; typed device failures and policy/state failures propagate.
+This does not activate protected writes or change the existing password_proof fast path.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Protected seed and password fallback, then wrong password and Locked | Exact seed recovered; valid password accepted; wrong password false; Locked propagated and root bytes unchanged | protected_seed_and_password_fallback_use_device_reader |
+| Legacy password fallback | Correct password true, wrong password false; zero native calls | legacy_password_fallback_preserves_success_and_wrong_password_behavior |
+
+Validation: `cargo test -p wallet-api --offline --lib protection`.

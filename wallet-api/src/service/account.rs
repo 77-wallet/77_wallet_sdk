@@ -114,9 +114,7 @@ impl AccountService {
             .with_context(&format!("WalletRepo::wallet_detail_by_address: {}", wallet_address))?;
 
         // 获取种子
-        let seed =
-            WalletDomain::get_seed(self.ctx, dirs.as_ref(), &wallet.address, wallet_password)
-                .await?;
+        let seed = WalletDomain::get_seed(self.ctx, &wallet.address, wallet_password).await?;
         // 获取默认链和币
         let default_chain_list = ChainRepo::get_chain_list(&core_pool).await?;
         let default_coins_list = CoinRepo::default_coin_list(&core_pool).await?;
@@ -274,18 +272,7 @@ impl AccountService {
         WalletDomain::validate_password_with_context(self.ctx, password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
-        let dirs = self.ctx.get_global_dirs();
-
-        let root_dir = dirs.get_root_dir(wallet_address)?;
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-        let seed = wallet_tree::api::KeystoreApi::load_seed(
-            &*wallet_tree,
-            &root_dir,
-            wallet_address,
-            password,
-        )?;
+        let seed = WalletDomain::get_seed(self.ctx, wallet_address, password).await?;
 
         // 获取默认链和币
         let chains = if !all {

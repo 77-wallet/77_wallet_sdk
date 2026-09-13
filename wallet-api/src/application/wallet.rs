@@ -274,21 +274,10 @@ impl WalletApplication {
 
     pub(crate) async fn get_seed(
         ctx: &'static Context,
-        dirs: &crate::dirs::Dirs,
         wallet_address: &str,
         wallet_password: &str,
     ) -> Result<Vec<u8>, ServiceError> {
-        let root_dir = dirs.get_root_dir(wallet_address)?;
-        let wallet_tree_strategy =
-            crate::domain::app::config::ConfigDomain::get_wallet_tree_strategy(ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-        Ok(wallet_tree::api::KeystoreApi::load_seed(
-            &*wallet_tree,
-            &root_dir,
-            wallet_address,
-            wallet_password,
-        )?)
+        Ok(Self::load_root(ctx, wallet_address, wallet_password).await?.seed().to_vec())
     }
 
     pub(crate) async fn restart_existing_wallet(
@@ -357,22 +346,18 @@ impl WalletApplication {
         let pool = ctx.api_wallet_pool()?;
 
         if let Some(wallet) = WalletRepo::wallet_latest(core_pool.clone()).await? {
-            let dirs = ctx.get_global_dirs();
-            let root_dir = dirs.get_root_dir(&wallet.address)?;
-            let wallet_tree_strategy =
-                crate::domain::app::config::ConfigDomain::get_wallet_tree_strategy(ctx).await?;
-            let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-            if wallet_tree::api::KeystoreApi::load_seed(
-                &*wallet_tree,
-                &root_dir,
-                &wallet.address,
-                password,
-            )
-            .is_ok()
-            {
-                tracing::info!("standard wallet decryption succeeded");
-                return Ok(true);
+            match Self::load_root(ctx, &wallet.address, password).await {
+                Ok(_) => {
+                    tracing::info!("standard wallet decryption succeeded");
+                    return Ok(true);
+                }
+                // Preserve password fallback, but never hide a device or policy failure.
+                Err(ServiceError::DeviceProtection(
+                    KeystoreProtectionError::PasswordDecryption,
+                ))
+                | Err(ServiceError::Tree(_))
+                | Err(ServiceError::Keystore(_)) => {}
+                Err(error) => return Err(error),
             }
         } else {
             tracing::info!("no WalletRepo wallet_latest");
@@ -411,3 +396,7 @@ struct SubsKeyInfo {
     pub address: String,
     pub chain_code: String,
 }
+
+#[cfg(test)]
+#[path = "wallet_protection_tests.rs"]
+mod protection_tests;
