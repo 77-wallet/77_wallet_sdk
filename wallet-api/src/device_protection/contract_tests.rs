@@ -152,3 +152,22 @@ fn pending_native_callback_yields_before_returning_result() {
     assert!(future.as_mut().poll(&mut cx).is_pending());
     assert_eq!(future.as_mut().poll(&mut cx), Poll::Ready(Ok(b"native-result".to_vec())));
 }
+
+#[test]
+fn provider_identity_distinguishes_clone_replacement_and_disabled_mode() {
+    struct Never;
+    impl DeviceProtectionProvider for Never {
+        fn protect<'a>(&'a self, _: &'a ProtectionContext, _: &'a [u8]) -> ProtectionFuture<'a> {
+            Box::pin(async { Err(ProtectionError::Unavailable) })
+        }
+        fn unprotect<'a>(&'a self, _: &'a ProtectionContext, _: &'a [u8]) -> ProtectionFuture<'a> {
+            Box::pin(async { Err(ProtectionError::Unavailable) })
+        }
+    }
+    let configured = DeviceProtection::new(std::sync::Arc::new(Never));
+    assert!(configured.same_provider(&configured.clone()));
+    assert!(!configured.same_provider(&DeviceProtection::new(std::sync::Arc::new(Never))));
+    assert!(!configured.same_provider(&DeviceProtection::default()));
+    assert!(!DeviceProtection::default().same_provider(&configured));
+    assert!(DeviceProtection::default().same_provider(&DeviceProtection::default()));
+}

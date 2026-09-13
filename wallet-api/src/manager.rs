@@ -2,7 +2,7 @@
 use crate::{ApiWalletBackend, context::init_context_with_api_wallet_backend};
 use crate::{
     api::ReturnType,
-    context::{Context, init_context},
+    context::{Context, init_context_with_device_protection},
     data::init_some_data,
     dirs::Dirs,
     domain::{self},
@@ -40,6 +40,28 @@ impl WalletManager {
         config: crate::config::Config,
         dir: Dirs,
     ) -> Result<WalletManager, crate::error::service::ServiceError> {
+        Self::new_with_device_protection(
+            sn,
+            device_type,
+            sender,
+            config,
+            dir,
+            crate::device_protection::DeviceProtection::default(),
+        )
+        .await
+    }
+
+    /// Platform plugins inject hardware callbacks before any wallet workers start.
+    /// Keep a clone of the same provider when retrying initialization; replacement
+    /// after Context initialization is rejected, including switching to legacy mode.
+    pub async fn new_with_device_protection(
+        sn: &str,
+        device_type: &str,
+        sender: Option<UnboundedSender<FrontendNotifyEvent>>,
+        config: crate::config::Config,
+        dir: Dirs,
+        protection: crate::device_protection::DeviceProtection,
+    ) -> Result<WalletManager, crate::error::service::ServiceError> {
         #[cfg(any(test, feature = "integration-tests"))]
         crate::infrastructure::task_queue::set_task_execution_mode_for_test(
             crate::infrastructure::task_queue::TaskExecutionMode::Normal,
@@ -52,7 +74,9 @@ impl WalletManager {
             dir.db_dir.display()
         );
 
-        let context = init_context(sn, device_type, dir, sender, config).await?;
+        let context =
+            init_context_with_device_protection(sn, device_type, dir, sender, config, protection)
+                .await?;
         GLOBAL_KEY.set_sn(sn);
         unlock_session::start_wallet_unlock_session_rotation_task(context).await?;
 

@@ -103,6 +103,15 @@ pub struct DeviceProtection {
     provider: Option<Arc<dyn DeviceProtectionProvider>>,
 }
 impl DeviceProtection {
+    /// Reinitialization may reuse a clone, but must not replace/drop a provider.
+    pub(crate) fn same_provider(&self, other: &Self) -> bool {
+        match (&self.provider, &other.provider) {
+            (None, None) => true,
+            (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
+
     pub fn new(provider: Arc<dyn DeviceProtectionProvider>) -> Self {
         Self { provider: Some(provider) }
     }
@@ -125,6 +134,5 @@ impl DeviceProtection {
 #[cfg(test)]
 #[path = "device_protection/contract_tests.rs"]
 mod contract_tests;
-
 
 pub mod keystore_format;

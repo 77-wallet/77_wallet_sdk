@@ -39,3 +39,12 @@ Tests use real existing wallet_crypto password encryption/decryption and a deter
 | Current Argon2id, Scrypt, PBKDF2 generation defaults | Accepted by resource policy | current_generated_kdf_profiles_remain_supported |
 
 Resource limits: Argon2 memory <=256 MiB, iterations <=10, parallelism <=16 and memory-KiB × iterations <=1,048,576; Scrypt estimated memory <=256 MiB and N×r×p <=16,777,216; PBKDF2 iterations <=2,000,000. Derived length must be 32 bytes. Files outside these limits are left untouched and require an explicit compatibility/recovery decision; arbitrary historical/imported profiles have not been verified.
+
+## SDK initialization binding
+
+| Scenario | Expected invariant | Test |
+| --- | --- | --- |
+| Reuse cloned provider | Same Arc identity accepted | provider_identity_distinguishes_clone_replacement_and_disabled_mode |
+| Replace provider or enable/disable after initialization | Identity mismatch; Context initializer rejects before WalletManager background startup | provider_identity_distinguishes_clone_replacement_and_disabled_mode |
+
+The unit test covers the identity predicate; constructor wiring is checked by compilation/review, not a live backend/global-context test. WalletManager::new preserves legacy initialization; new_with_device_protection binds the injected provider before Context publication. No runtime setter. The plugin must retain/reuse the same provider object across retries. Wallet keystore I/O still needs to consume Context.device_protection; constructor injection alone does not enable storage protection.

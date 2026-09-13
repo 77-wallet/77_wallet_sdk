@@ -42,14 +42,38 @@ pub(crate) async fn init_context<'a>(
     frontend_notify: Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>,
     config: crate::config::Config,
 ) -> Result<&'a Context, crate::error::service::ServiceError> {
-    tracing::info!("init_context");
+    init_context_with_device_protection(
+        sn,
+        device_type,
+        dirs,
+        frontend_notify,
+        config,
+        crate::device_protection::DeviceProtection::default(),
+    )
+    .await
+}
+
+pub(crate) async fn init_context_with_device_protection<'a>(
+    sn: &str,
+    device_type: &str,
+    dirs: Dirs,
+    frontend_notify: FrontendNotifySender,
+    config: crate::config::Config,
+    protection: crate::device_protection::DeviceProtection,
+) -> Result<&'a Context, crate::error::service::ServiceError> {
     let context = CONTEXT
         .get_or_try_init::<crate::error::service::ServiceError, _, _>(|| async {
-            let context = Context::new(sn, device_type, dirs, frontend_notify, config).await?;
+            let mut context = Context::new(sn, device_type, dirs, frontend_notify, config).await?;
+            // Assign before publishing Context or starting WalletManager workers.
+            context.device_protection = protection.clone();
             Ok(context)
         })
         .await?;
-
+    if !context.device_protection.same_provider(&protection) {
+        return Err(crate::error::service::ServiceError::Context(
+            "device protection configuration differs from initialized context".to_owned(),
+        ));
+    }
     Ok(context)
 }
 
@@ -81,6 +105,7 @@ pub(crate) async fn init_context_with_api_wallet_backend<'a>(
 }
 
 pub struct Context {
+    device_protection: crate::device_protection::DeviceProtection,
     sn: String,
     client_id: String,
     dirs: Arc<Dirs>,
@@ -285,6 +310,7 @@ impl Context {
             Arc::new(BackgroundTaskPool::new(defaults.background_task_pool_max_concurrent));
 
         Ok(Context {
+            device_protection: crate::device_protection::DeviceProtection::default(),
             sn: sn.to_string(),
             client_id: client_id.clone(),
             dirs: Arc::new(dirs),
@@ -313,6 +339,11 @@ impl Context {
             background_task_pool,
             recovery_coordinator: Arc::new(RecoveryCoordinator::default()),
         })
+    }
+
+    /// Immutable provider selected during SDK initialization.
+    pub fn device_protection(&self) -> &crate::device_protection::DeviceProtection {
+        &self.device_protection
     }
 
     pub fn get_sn(&self) -> &str {

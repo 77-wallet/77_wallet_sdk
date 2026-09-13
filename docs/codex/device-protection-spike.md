@@ -145,3 +145,9 @@ KeystoreProtection now provides byte-level seal/open behavior. New writes accept
 Caller integration is still required: durable wallet migration state, existing-path atomic replacement and readback, update migration state only after durable success, and deletion of old password-only copies. This module performs no I/O or native key provisioning. It does not yet enable migration in WalletManager or Flutter. Legacy/imported KDF resource limits and compatibility scope are documented in the assertion matrix; beyond-budget input is rejected without modification.
 
 Validation: 11 device_protection contract/compatibility tests passed, including six keystore format tests; review follow-up found no remaining issue in the new resource guard. Test log: target/keystore-format-tests-final.log.
+
+### SDK initialization injection — 2026-09-13
+
+WalletManager::new_with_device_protection now accepts a DeviceProtection instance and installs it before global Context publication and manager worker startup. Existing new delegates with the legacy/default configuration. Reusing the same provider Arc is permitted; replacing/enabling/disabling a provider after initialization is rejected. Context exposes the immutable instance for subsequent existing-I/O integration, with no runtime setter.
+
+Validation: 12 device_protection tests passed (including provider identity regression); cargo check -p wallet-api --offline passed with existing warnings. Independent review found no actionable issue. Identity tests do not start backend/global Context. Plugin manager initialization and ordinary wallet I/O consumption are the next batches; no storage cutover in this batch.
