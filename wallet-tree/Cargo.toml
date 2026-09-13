@@ -28,3 +28,5 @@ rand = { workspace = true }
 
 coins-bip32 = { workspace = true }
 secrecy = { workspace = true }
+tokio = { workspace = true }
+tempfile = "3.19.0"

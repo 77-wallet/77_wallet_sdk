@@ -1,5 +1,9 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Keystore I/O failed: {0}")]
+    KeystoreIo(#[from] std::io::Error),
+    #[error("Keystore worker failed")]
+    KeystoreWorker,
     #[error("Core error: `{0}`")]
     Core(#[from] wallet_core::Error),
     #[error("Crypto error: `{0}`")]

@@ -13,6 +13,11 @@ use super::{BulkSubkey, IoStrategy};
 #[derive(Debug, Default, PartialEq, Clone, Serialize)]
 pub struct ModernIo;
 
+#[cfg(test)]
+mod tests;
+
+mod root_protection;
+
 impl IoStrategy for ModernIo {
     fn store(
         &self,
@@ -182,9 +187,8 @@ impl IoStrategy for ModernIo {
             derivation_path: derivation_path.to_string(),
         });
 
-        // 写入元数据
+        // Prepare metadata without publishing it before keystore operations succeed.
         let contents = wallet_utils::serde_func::serde_to_string(&metadata)?;
-        wallet_utils::file_func::write_all(&meta_path, contents.as_bytes())?;
 
         // 2. 处理密钥数据
         let data_path = base_path.join(&key_filename);
@@ -213,6 +217,8 @@ impl IoStrategy for ModernIo {
             &key_filename, // 唯一标识
         )
         .save()?;
+        // A decryption/encryption failure must not add an index entry for an unwritten key.
+        wallet_utils::file_func::write_all(&meta_path, contents.as_bytes())?;
         Ok(())
     }
 
