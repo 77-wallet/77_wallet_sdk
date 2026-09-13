@@ -125,3 +125,6 @@ impl DeviceProtection {
 #[cfg(test)]
 #[path = "device_protection/contract_tests.rs"]
 mod contract_tests;
+
+
+pub mod keystore_format;

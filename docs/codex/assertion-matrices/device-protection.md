@@ -1,6 +1,6 @@
 # Device protection — SDK contract batch
 
-Scope: public platform-neutral contract only. No native implementation or storage routing yet.
+Scope: platform-neutral provider contract. Production wallet routing is not connected yet.
 
 | Scenario | Expected invariant | Test |
 | --- | --- | --- |
@@ -12,11 +12,30 @@ Scope: public platform-neutral contract only. No native implementation or storag
 
 These fixture tests validate dispatch semantics, not encryption strength. Native adapters must enforce AAD, hardware security level, nonce generation and key lifecycle. No production storage protection claim until read/write paths are connected.
 
-Validation of exact module without unrelated test dependencies:
+Validation of contract and storage tests:
 
 ```sh
-rustc --edition=2021 --test wallet-api/src/device_protection.rs -o target/device-protection-contract/tests
-target/device-protection-contract/tests
+cargo test -p wallet-api --offline --lib device_protection::
 ```
 
 Production export compilation: `cargo check -p wallet-api --offline`.
+
+## Existing-keystore byte compatibility
+
+| Scenario | Expected invariant | Test |
+| --- | --- | --- |
+| New protected bytes read under either policy | No migration/re-wrapping; password decrypt works | new_file_never_enters_migration_or_double_wraps |
+| Old bytes, wrong password | No hardware wrap or replacement returned | old_file_upgrades_once_only_after_correct_password |
+| Old bytes, correct password, then read upgraded bytes | One upgrade, subsequent read returns no replacement | old_file_upgrades_once_only_after_correct_password |
+| Device-required wallet sees legacy bytes | Reject downgrade before legacy decrypt | required_policy_and_unknown_formats_never_fall_back |
+| Unknown/truncated version or native failure | Error, never legacy fallback | required_policy_and_unknown_formats_never_fall_back |
+| Hardware unavailable during migration or wrong context on current data | No opened result/replacement; no rewrap | native_failure_does_not_release_legacy_migration_or_downgrade_current_data |
+
+Tests use real existing wallet_crypto password encryption/decryption and a deterministic hardware-provider fixture. The module transforms bytes only. Callers must supply durable policy, atomically persist and read back replacement at the existing path, then update migration state. Those call sites are not wired yet; no App rollout/migration completion claim. The earlier unused file-store component was removed per user direction.
+
+| KDF compatibility | Invariant | Test |
+| --- | --- | --- |
+| Excessive legacy work parameters | Reject before password/native work | excessive_kdf_cost_is_rejected_without_native_calls |
+| Current Argon2id, Scrypt, PBKDF2 generation defaults | Accepted by resource policy | current_generated_kdf_profiles_remain_supported |
+
+Resource limits: Argon2 memory <=256 MiB, iterations <=10, parallelism <=16 and memory-KiB × iterations <=1,048,576; Scrypt estimated memory <=256 MiB and N×r×p <=16,777,216; PBKDF2 iterations <=2,000,000. Derived length must be 32 bytes. Files outside these limits are left untouched and require an explicit compatibility/recovery decision; arbitrary historical/imported profiles have not been verified.

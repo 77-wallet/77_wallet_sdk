@@ -105,3 +105,43 @@ target/device-protection-sep/probe target/device-protection-sep read
 实际插件4项Rust测试、7项Dart测试通过；Dart定向分析无问题；生成器、Android通道编译、测试profile动态库构建通过。另加载刚构建的真实Rust动态库，Flutter→Rust SDK trait→Dart callback往返及错误映射测试1项通过；其中MethodChannel使用测试替身，不能声称Android整机硬件调用链已验证。
 
 尚未完成：iOS通道注册、Android Flutter真机整链路、Context/WalletManager注入和实际钱包读写切换。插件使用的SDK版本未在本批调整。
+
+### iOS Flutter channel batch — 2026-09-13
+
+Added plugin registration and a serial, bounded native channel (four pending requests). Byte-array/AAD/size checks, stable error codes, iOS 13 availability guard, and exactly-once cancellation on engine detach are implemented. Existing FFI registration remains enabled. Provisioning is explicit; no SDK storage routing changed.
+
+Validation passed: iPhoneOS arm64/iOS 11 typecheck against installed real Flutter.framework; standalone Swift channel harness (async success, bad context, size bound, queue saturation, queued and running cancellation, post-detach rejection, missing-key error); CryptoKit envelope harness; seven Dart facade/callback tests. Review found non-byte typed-array acceptance and it was corrected to UInt8-only, then typechecked again. Flutter adapter runtime, iPhone Keychain/SEP, full CocoaPods build and Android Flutter full-chain testing remain pending.
+
+### Android Flutter probe packaging and emulator — 2026-09-13
+
+Built an isolated app under target/protection_fullchain with a snapshot of current wallet_plugin, synthetic config `{}`, and synthetic payload only. No WalletManager, real wallet storage or production config used. Debug APK: target/protection_fullchain/build/app/outputs/flutter-apk/app-debug.apk. Package com.sevenwallet.protection_fullchain, backups disabled.
+
+Build succeeded (actual aarch64-linux-android Rust library, generated FRB, Flutter and native Android channel). Final Dart analyze passed. Environment adjustments are documented in the probe README: isolated Cargo workspace, cached Kotlin plugin mapping, installed NDK version/host path, local Maven cache and official Flutter dependencies. These are disposable probe changes, not edits to the production plugin build.
+
+Emulator runtime: Rust library initialized; actual Rust provider -> Dart callback -> native Android channel -> Rust error returned UNAVAILABLE as expected. This checks real error propagation with no mocked messenger; it does not prove hardware success. The emulator lacks the required secure hardware/lock configuration. Native provisioning was unavailable and no synthetic ciphertext was created. Probe app uninstalled after testing.
+
+Physical phone was not connected (adb listed only emulator-5554). Pending: install APK on an unlocked secure physical Android device, verify ALL PASS for persisted roundtrip/tamper/context tests, force-stop/relaunch and verify existing ciphertext reload without provisioning. iPhone runtime and real SDK storage routing remain pending.
+
+### Android physical-device full chain — 2026-09-13
+
+Installed the isolated Flutter probe APK on connected Huawei ANA-AN00. First run (PID 9569) initialized the real Rust library, provisioned a TEE-backed key, wrote synthetic ciphertext, and reported PASS persisted roundtrip, PASS tamper rejection, PASS context rejection, ALL PASS. This exercises Flutter -> actual Android Rust SDK provider -> Dart callback -> real Android MethodChannel -> Android hardware adapter, without mocked messenger or cryptography.
+
+Force-stopped only the probe app and relaunched. New PID 9989 reported Reloading existing ciphertext without provisioning, then all three checks and ALL PASS again. This verifies process-restart persistence; no phone reboot, lock transition, StrongBox or different-device test was performed. No real wallet storage was read or migrated. Test app removed after completion; APK and source retained in target/protection_fullchain. SDK production storage integration and iPhone runtime remain pending.
+
+### SDK create-only protected file component — 2026-09-13
+
+Added wallet-api::device_protection::file_store::ProtectedFileStore. It asynchronously protects already password-encrypted bytes, then uses a private same-directory tempfile and no-clobber publication. Existing destinations are never replaced. Reads are bounded and reject unrecognized/legacy envelopes before hardware calls. WDS v1 wraps native envelope bytes; stable wallet/purpose context is supplied by caller. This component neither provisions keys nor handles password decryption.
+
+Ten contract/component tests passed, including five new disk tests: create/reopen roundtrip and wrong context, existing-file preservation/provider failure/legacy rejection, oversized input, concurrent one-winner publication, and oversized disk read. Fixture provider validates orchestration, not cryptography; hardware implementation was tested separately.
+
+This batch does not route WalletManager/KeystoreApi calls into the component. Ordinary wallet I/O is synchronous and requires a subsequent async orchestration integration. Migration, field encryption/password_proof, directory crash durability and update semantics remain pending. Cancellation after worker dispatch may still publish a file; caller must verify before retry. A successful hard-link-based publication may leave an encrypted temporary link if unlink fails.
+
+### User correction: existing I/O only; keystore compatibility bytes
+
+The unused ProtectedFileStore and its file-creation tests were removed. Its previous validation record above is historical and no longer describes a shipped component. Existing wallet paths, file creation and directory management remain authoritative.
+
+KeystoreProtection now provides byte-level seal/open behavior. New writes accept existing password-encrypted JSON and produce WDK v1 plus the native envelope; nested wrapping is rejected. Open distinguishes current format from legacy with an explicit ReadPolicy supplied by the caller. DeviceRequired rejects legacy bytes; unknown versions and native failures never fall back. LegacyMigrationAllowed first runs the existing wallet_crypto password decrypt, then wraps and verifies the original password ciphertext. The returned optional replacement is present only for legacy data. Current-format reads never rewrap. Password/plaintext buffers owned by this helper are zeroized and errors do not include their contents.
+
+Caller integration is still required: durable wallet migration state, existing-path atomic replacement and readback, update migration state only after durable success, and deletion of old password-only copies. This module performs no I/O or native key provisioning. It does not yet enable migration in WalletManager or Flutter. Legacy/imported KDF resource limits and compatibility scope are documented in the assertion matrix; beyond-budget input is rejected without modification.
+
+Validation: 11 device_protection contract/compatibility tests passed, including six keystore format tests; review follow-up found no remaining issue in the new resource guard. Test log: target/keystore-format-tests-final.log.
