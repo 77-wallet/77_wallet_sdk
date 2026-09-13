@@ -75,6 +75,13 @@ fn directory() -> tempfile::TempDir {
     tempfile::tempdir_in(base).unwrap()
 }
 async fn context(path: &std::path::Path, native: Arc<Native>) -> &'static Context {
+    context_with_protection(path, DeviceProtection::new(native)).await
+}
+
+async fn context_with_protection(
+    path: &std::path::Path,
+    protection: DeviceProtection,
+) -> &'static Context {
     let config = serde_json::from_value(serde_json::json!({
         "backend_api": {"dev_url":"http://127.0.0.1:1", "test_url":"http://127.0.0.1:1", "prod_url":"http://127.0.0.1:1"},
         "aggregate_api": {"dev_url":"http://127.0.0.1:1", "test_url":"http://127.0.0.1:1", "prod_url":"http://127.0.0.1:1"},
@@ -85,7 +92,7 @@ async fn context(path: &std::path::Path, native: Arc<Native>) -> &'static Contex
         Context::new_without_handles_for_test(Dirs::new(path.to_str().unwrap()).unwrap(), config)
             .await
             .unwrap()
-            .with_device_protection_for_test(DeviceProtection::new(native));
+            .with_device_protection_for_test(protection);
     Box::leak(Box::new(ctx))
 }
 
@@ -2201,4 +2208,157 @@ async fn protection_rollout_pending_derived_loss_never_rebuilds_from_partial_key
     );
     assert!(!subs.join("key7.keystore").exists());
     assert_eq!(std::fs::read(subs.join("derived_meta.json")).unwrap(), before);
+}
+
+async fn protection_device_fixture(ctx: &Context) {
+    wallet_database::repositories::device::DeviceRepo::upsert(
+        ctx.core_pool().unwrap(),
+        wallet_database::entities::device::CreateDeviceEntity {
+            device_type: "fixture".into(),
+            sn: ctx.get_sn().to_owned(),
+            code: "fixture".into(),
+            system_ver: "fixture".into(),
+            iemi: None,
+            meid: None,
+            iccid: None,
+            mem: None,
+            app_id: None,
+            is_init: 1,
+            language_init: 1,
+        },
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn protection_startup_defers_provisioning_and_never_replaces_a_missing_key() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    WalletApplication::prepare_device_protection_startup(ctx).await.unwrap();
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    WalletApplication::initialize_device_protection(ctx).await.unwrap();
+    WalletApplication::prepare_device_protection_startup(ctx).await.unwrap();
+    native.key_missing.store(true, Ordering::SeqCst);
+    assert!(WalletApplication::prepare_device_protection_startup(ctx).await.is_err());
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn protection_password_entry_activates_v2_once_without_extra_frontend_call() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    protection_device_fixture(ctx).await;
+    let subs = derived_password_fixture(ctx).await;
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    WalletApplication::prepare_device_protection_startup(ctx).await.unwrap();
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    assert!(WalletApplication::validate_password(ctx, "wrong password").await.is_err());
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
+    let before = std::fs::read(subs.join("key0.keystore")).unwrap();
+    assert!(before.starts_with(b"WDK\x01"));
+    WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), before);
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn protection_password_entry_new_install_and_token_cannot_bootstrap() {
+    use crate::domain::api_wallet::unlock::WalletUnlockSession;
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    protection_device_fixture(ctx).await;
+    ctx.set_wallet_unlock_session(WalletUnlockSession::new(
+        "synthetic-token".into(),
+        std::time::Instant::now() + std::time::Duration::from_secs(60),
+        Default::default(),
+    ))
+    .await
+    .unwrap();
+    assert!(WalletApplication::validate_password(ctx, "synthetic-token").await.is_err());
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
+    assert!(!ctx.get_global_dirs().root_dir.join("verify").exists());
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    assert!(
+        std::fs::read(ctx.get_global_dirs().get_root_dir(WALLET).unwrap().join("root.keystore"))
+            .unwrap()
+            .starts_with(b"WDK\x01")
+    );
+    WalletApplication::validate_password(ctx, "synthetic-token").await.unwrap();
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn protection_password_entry_native_failure_preserves_files_and_retries() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    protection_device_fixture(ctx).await;
+    let subs = derived_password_fixture(ctx).await;
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    let before = std::fs::read(subs.join("key0.keystore")).unwrap();
+    native.fail_protect.store(true, Ordering::SeqCst);
+    assert!(
+        crate::service::api_wallet::wallet::ApiWalletService::new(ctx)
+            .set_passwd_cache(PASSWORD)
+            .await
+            .is_err()
+    );
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), before);
+    assert!(ctx.wallet_unlock_session_snapshot().await.is_none());
+    native.fail_protect.store(false, Ordering::SeqCst);
+    WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
+    assert!(std::fs::read(subs.join("key0.keystore")).unwrap().starts_with(b"WDK\x01"));
+}
+
+#[tokio::test]
+async fn protection_password_entry_upgrades_v1_then_protects_it() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    protection_device_fixture(ctx).await;
+    let root = legacy_upgrade_fixture(ctx);
+    register_wallet_for_password_change(ctx).await;
+    WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
+    assert!(std::fs::read(root.join("root.keystore")).unwrap().starts_with(b"WDK\x01"));
+    assert!(!root.join("fixturewallet-seed").exists());
+    assert!(!root.join("fixturewallet-phrase").exists());
+    assert!(
+        std::fs::read(ctx.get_global_dirs().root_dir.join("verify"))
+            .unwrap()
+            .starts_with(b"WDK\x01")
+    );
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn protection_password_entry_without_provider_retains_legacy_behavior() {
+    let dir = directory();
+    let ctx = context_with_protection(dir.path(), DeviceProtection::default()).await;
+    protection_device_fixture(ctx).await;
+    let subs = derived_password_fixture(ctx).await;
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    let before = std::fs::read(subs.join("key0.keystore")).unwrap();
+    WalletApplication::prepare_device_protection_startup(ctx).await.unwrap();
+    WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), before);
+    let state: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM config WHERE key='device_protection.files.v1'")
+            .fetch_one(ctx.core_pool().unwrap().read_ref())
+            .await
+            .unwrap();
+    assert_eq!(state, 0);
 }

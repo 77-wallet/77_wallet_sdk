@@ -77,6 +77,8 @@ impl WalletManager {
         let context =
             init_context_with_device_protection(sn, device_type, dir, sender, config, protection)
                 .await?;
+        crate::application::wallet::WalletApplication::prepare_device_protection_startup(context)
+            .await?;
         GLOBAL_KEY.set_sn(sn);
         unlock_session::start_wallet_unlock_session_rotation_task(context).await?;
 

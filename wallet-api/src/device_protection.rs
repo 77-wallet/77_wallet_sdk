@@ -123,6 +123,10 @@ impl DeviceProtection {
         }
     }
 
+    pub(crate) fn is_configured(&self) -> bool {
+        self.provider.is_some()
+    }
+
     pub fn new(provider: Arc<dyn DeviceProtectionProvider>) -> Self {
         Self { provider: Some(provider) }
     }

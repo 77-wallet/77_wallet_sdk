@@ -3,6 +3,7 @@ mod legacy_initialization;
 mod legacy_upgrade;
 mod protection_initialization;
 mod protection_rollout;
+mod protection_startup;
 mod wallet_deletion;
 
 use std::collections::HashSet;
@@ -29,7 +30,6 @@ use crate::{
     },
     domain::{api_wallet::wallet::ApiWalletDomain, app::config::ConfigDomain},
     error::service::ServiceError,
-    infrastructure::unlock_session,
 };
 
 pub struct WalletApplication;
@@ -341,16 +341,12 @@ impl WalletApplication {
         Ok(decode_account_data(&plain)?)
     }
 
-    pub(crate) async fn validate_password(
+    async fn validate_password_inner(
         ctx: &'static Context,
         password: &str,
     ) -> Result<(), ServiceError> {
         let core_pool = ctx.core_pool()?;
         let api_pool = ctx.api_wallet_pool()?;
-
-        if unlock_session::wallet_unlock_token_is_active(password).await? {
-            return Ok(());
-        }
 
         let sn = ctx.get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {

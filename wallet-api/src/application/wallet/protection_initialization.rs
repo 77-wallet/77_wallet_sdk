@@ -105,20 +105,7 @@ pub(super) async fn initialize_under_gate(
     legacy_password: Option<&str>,
 ) -> Result<(), ServiceError> {
     let pool = ctx.core_pool()?;
-    let state: Option<(String, i64)> =
-        sqlx::query_as("SELECT value, types FROM config WHERE key=?")
-            .bind(KEY)
-            .fetch_optional(pool.read_ref())
-            .await
-            .map_err(|_| {
-                ServiceError::Context("Cannot read device key initialization state".into())
-            })?;
-    let ready = match state {
-        Some((value, 1)) if value == READY => true,
-        Some((value, 1)) if value == PENDING => false,
-        None => false,
-        _ => return Err(KeystoreProtectionError::InvalidFormat.into()),
-    };
+    let ready = key_state(ctx).await? == Some(KeyState::Ready);
     if !ready {
         if super::protection_rollout::files_active(ctx).await? {
             return Err(KeystoreProtectionError::LegacyForbidden.into());
@@ -159,4 +146,27 @@ pub(super) async fn initialize_under_gate(
         ConfigRepo::upsert(KEY, READY, Some(1), &pool).await?;
     }
     Ok::<_, ServiceError>(())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum KeyState {
+    Pending,
+    Ready,
+}
+
+pub(super) async fn key_state(ctx: &Context) -> Result<Option<KeyState>, ServiceError> {
+    let state: Option<(String, i64)> =
+        sqlx::query_as("SELECT value, types FROM config WHERE key=?")
+            .bind(KEY)
+            .fetch_optional(ctx.core_pool()?.read_ref())
+            .await
+            .map_err(|_| {
+                ServiceError::Context("Cannot read device key initialization state".into())
+            })?;
+    match state {
+        None => Ok(None),
+        Some((value, 1)) if value == PENDING => Ok(Some(KeyState::Pending)),
+        Some((value, 1)) if value == READY => Ok(Some(KeyState::Ready)),
+        _ => Err(KeystoreProtectionError::InvalidFormat.into()),
+    }
 }
