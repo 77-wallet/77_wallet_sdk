@@ -136,3 +136,4 @@ impl DeviceProtection {
 mod contract_tests;
 
 pub mod keystore_format;
+pub mod migration;
