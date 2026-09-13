@@ -10,6 +10,7 @@ pub mod chain;
 pub mod coin;
 pub mod config;
 pub mod device;
+pub mod device_protection;
 pub mod exchange_rate;
 pub mod multisig_account;
 pub mod multisig_member;
