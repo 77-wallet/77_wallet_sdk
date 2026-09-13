@@ -140,6 +140,79 @@ impl WalletApplication {
         Ok(())
     }
 
+    pub(crate) async fn load_account_data(
+        ctx: &Context,
+        wallet_address: &str,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        password: &str,
+    ) -> Result<wallet_tree::file_ops::AccountData, ServiceError> {
+        let dirs = ctx.get_global_dirs();
+        let subs_dir = dirs.get_subs_dir(wallet_address)?;
+        let path = subs_dir.join(format!("key{}.keystore", account_index_map.account_id));
+        let binding = ProtectionContext::new(
+            wallet_address,
+            format!("derived:{}", account_index_map.account_id),
+        )
+        .map_err(KeystoreProtectionError::from)?;
+        if Self::record_requires_device(ctx, &binding, &path).await? {
+            return Self::load_protected_account(ctx, &binding, &path, password).await;
+        }
+        let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
+        let wallet_tree = strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        Ok(wallet_tree::api::KeystoreApi::load_account_pk(
+            &*wallet_tree,
+            account_index_map,
+            &subs_dir,
+            password,
+        )?)
+    }
+
+    pub(crate) async fn load_sub_key(
+        ctx: &Context,
+        wallet_address: &str,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        expected: &wallet_tree::KeyMeta,
+        password: &str,
+    ) -> Result<Vec<u8>, ServiceError> {
+        let dirs = ctx.get_global_dirs();
+        let subs_dir = dirs.get_subs_dir(wallet_address)?;
+        let path = subs_dir.join(format!("key{}.keystore", account_index_map.account_id));
+        let binding = ProtectionContext::new(
+            wallet_address,
+            format!("derived:{}", account_index_map.account_id),
+        )
+        .map_err(KeystoreProtectionError::from)?;
+        if Self::record_requires_device(ctx, &binding, &path).await? {
+            let mut keys = Self::load_protected_account(ctx, &binding, &path, password).await?;
+            return keys
+                .remove(expected)
+                .ok_or_else(|| wallet_tree::Error::PrivateKeyNotFound.into());
+        }
+        let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
+        let wallet_tree = strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        Ok(wallet_tree::api::KeystoreApi::load_sub_pk(
+            &*wallet_tree,
+            Some(account_index_map),
+            &subs_dir,
+            &expected.address,
+            &expected.chain_code,
+            &expected.derivation_path,
+            password,
+        )?)
+    }
+
+    async fn load_protected_account(
+        ctx: &Context,
+        binding: &ProtectionContext,
+        path: &std::path::Path,
+        password: &str,
+    ) -> Result<wallet_tree::file_ops::AccountData, ServiceError> {
+        let plain = KeystoreProtection::new(ctx.device_protection().clone())
+            .load_file(path, binding, password)
+            .await?;
+        Ok(decode_account_data(&plain)?)
+    }
+
     pub(crate) async fn validate_password(
         ctx: &'static Context,
         password: &str,
@@ -476,6 +549,38 @@ struct SubsKeyInfo {
     pub wallet_address: String,
     pub address: String,
     pub chain_code: String,
+}
+
+// Visit entries directly: a normal map deserializer discards duplicate JSON keys.
+fn decode_account_data(
+    plain: &[u8],
+) -> Result<wallet_tree::file_ops::AccountData, KeystoreProtectionError> {
+    use serde::de::{Error as _, MapAccess, Visitor};
+    struct AccountVisitor;
+    impl<'de> Visitor<'de> for AccountVisitor {
+        type Value = wallet_tree::file_ops::AccountData;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("an account key map")
+        }
+
+        fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+            let mut keys = Self::Value::default();
+            while let Some((encoded, key)) = map.next_entry::<String, Vec<u8>>()? {
+                let meta = wallet_tree::KeyMeta::decode(&encoded)
+                    .map_err(|_| M::Error::custom("invalid account metadata"))?;
+                if keys.insert(meta, key).is_some() {
+                    return Err(M::Error::custom("duplicate account metadata"));
+                }
+            }
+            Ok(keys)
+        }
+    }
+    let mut decoder = serde_json::Deserializer::from_slice(plain);
+    let keys = serde::de::Deserializer::deserialize_map(&mut decoder, AccountVisitor)
+        .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
+    decoder.end().map_err(|_| KeystoreProtectionError::InvalidFormat)?;
+    Ok(keys)
 }
 
 #[cfg(test)]

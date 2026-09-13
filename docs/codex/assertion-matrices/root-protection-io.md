@@ -156,3 +156,23 @@ Fixtures use the existing ModernIo writer to produce actual grouped account payl
 This covers account-file password changes, not single-address `set_sub_password`,
 private-key read activation, multi-file transactionality, or the pre-existing V1
 `load_account` unimplemented branch. No new protected-file activation is introduced.
+
+## Derived private-key reads
+
+The domain bulk-export and individual-key read paths now delegate storage reads to
+`WalletApplication::load_account_data` / `load_sub_key`. Both share protected-account
+map decoding through the existing public KeyMeta codec, common WDK/password codec and
+record policy. Key selection requires the exact chain/address/derivation tuple. Chain
+output conversion and legacy file readers remain unchanged. Protected malformed metadata
+or collisions between decoded identities fail instead of silently skipping entries.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Actual bulk export domain with locked provider | Typed Locked before chain conversion; stored bytes unchanged | private_key_export_propagates_device_failure_before_conversion |
+| Plain V2 then protected grouped account | Identical full key map and exact selected key; wrong derivation cannot select another key; wrong password/Locked preserve ciphertext/index | derived_private_key_reads_match_exact_metadata_and_preserve_files |
+| Invalid metadata, duplicate JSON names or distinct names decoding to one identity | InvalidFormat; no rewriting or legacy fallback | malformed_protected_account_payload_is_rejected_without_rewrite |
+
+Validation: `cargo test -p wallet-api --offline --lib protection`.
+These are offline component checks, not transaction signing, live-chain, or hardware tests.
+The existing algorithm-upgrade path still directly reads legacy subkeys intentionally;
+new-user write activation and migration ordering remain outstanding.

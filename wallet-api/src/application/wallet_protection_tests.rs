@@ -627,3 +627,122 @@ async fn password_only_derived_change_remains_compatible() {
     assert!(wallet_crypto::KeystoreJsonDecryptor.decrypt(PASSWORD.as_bytes(), &updated).is_err());
     assert_eq!(native.opens.load(Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn private_key_export_propagates_device_failure_before_conversion() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .migrate_file(&path, &binding, PASSWORD, ReadPolicy::LegacyMigrationAllowed)
+        .await
+        .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    native.locked.store(true, Ordering::SeqCst);
+    let account = wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap();
+    let failed =
+        crate::domain::account::open_accounts_pk_with_password(ctx, &account, WALLET, PASSWORD)
+            .await;
+    assert!(matches!(
+        failed,
+        Err(ServiceError::DeviceProtection(KeystoreProtectionError::Protection(
+            ProtectionError::Locked
+        )))
+    ));
+    assert!(std::fs::read(&path).unwrap() == before);
+}
+
+#[tokio::test]
+async fn derived_private_key_reads_match_exact_metadata_and_preserve_files() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let index = std::fs::read(subs.join("derived_meta.json")).unwrap();
+    let account = wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap();
+    let expected = wallet_tree::KeyMeta {
+        chain_code: "eth".into(),
+        address: "fixture-eth".into(),
+        derivation_path: "m/0".into(),
+    };
+    let legacy =
+        WalletApplication::load_account_data(ctx, WALLET, &account, PASSWORD).await.unwrap();
+    assert_eq!(legacy.len(), 2);
+    assert!(
+        WalletApplication::load_sub_key(ctx, WALLET, &account, &expected, PASSWORD).await.unwrap()
+            == b"synthetic eth key"
+    );
+    assert_eq!(native.opens.load(Ordering::SeqCst), 0);
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .migrate_file(&path, &binding, PASSWORD, ReadPolicy::LegacyMigrationAllowed)
+        .await
+        .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let loaded =
+        WalletApplication::load_account_data(ctx, WALLET, &account, PASSWORD).await.unwrap();
+    assert!(loaded.into_inner() == legacy.into_inner());
+    assert!(
+        WalletApplication::load_sub_key(ctx, WALLET, &account, &expected, PASSWORD).await.unwrap()
+            == b"synthetic eth key"
+    );
+    let wrong_path =
+        wallet_tree::KeyMeta { derivation_path: "m/unknown".into(), ..expected.clone() };
+    assert!(matches!(
+        WalletApplication::load_sub_key(ctx, WALLET, &account, &wrong_path, PASSWORD).await,
+        Err(ServiceError::Tree(wallet_tree::Error::PrivateKeyNotFound))
+    ));
+    let wrong_password =
+        WalletApplication::load_sub_key(ctx, WALLET, &account, &expected, "wrong-fixture-password")
+            .await;
+    assert!(matches!(
+        wrong_password,
+        Err(ServiceError::DeviceProtection(KeystoreProtectionError::PasswordDecryption))
+    ));
+    native.locked.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        WalletApplication::load_sub_key(ctx, WALLET, &account, &expected, PASSWORD).await,
+        Err(ServiceError::DeviceProtection(KeystoreProtectionError::Protection(
+            ProtectionError::Locked
+        )))
+    ));
+    assert!(std::fs::read(&path).unwrap() == before);
+    assert!(std::fs::read(subs.join("derived_meta.json")).unwrap() == index);
+}
+
+#[tokio::test]
+async fn malformed_protected_account_payload_is_rejected_without_rewrite() {
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    let codec = KeystoreProtection::new(ctx.device_protection().clone());
+    for payload in [
+        br#"{"invalid-key":[1,2,3]}"#.as_slice(),
+        br#"{"eth::address::m/0":[1],"eth::address::m/0":[2]}"#.as_slice(),
+        br#"{"eth::addr:1::m/0":[1],"eth::addr\\c1::m/0":[2]}"#.as_slice(),
+    ] {
+        codec
+            .store_file(
+                &path,
+                &binding,
+                zeroize::Zeroizing::new(payload.to_vec()),
+                PASSWORD,
+                wallet_crypto::KdfAlgorithm::Scrypt,
+            )
+            .await
+            .unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let account = wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap();
+        assert!(matches!(
+            WalletApplication::load_account_data(ctx, WALLET, &account, PASSWORD).await,
+            Err(ServiceError::DeviceProtection(KeystoreProtectionError::InvalidFormat))
+        ));
+        assert!(std::fs::read(&path).unwrap() == before);
+    }
+}

@@ -331,19 +331,8 @@ pub async fn open_accounts_pk_with_password(
     ServiceError,
 > {
     let core_pool = ctx.core_pool()?;
-    let dirs = ctx.get_global_dirs();
-
-    let subs_path = dirs.get_subs_dir(address)?;
-    // let storage_path = subs_path.join(name);
-    let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
-    let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-    let account_data = wallet_tree::api::KeystoreApi::load_account_pk(
-        &*wallet_tree,
-        account_index_map,
-        &subs_path,
-        password,
-    )?;
+    let account_data =
+        WalletApplication::load_account_data(ctx, address, account_index_map, password).await?;
     let mut res = std::collections::HashMap::default();
     for (meta, key) in account_data.into_inner() {
         let chain_code = &meta.chain_code;
@@ -379,7 +368,6 @@ pub async fn open_subpk_with_password(
     password: &str,
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, ServiceError> {
     let core_pool = ctx.core_pool()?;
-    let dirs = ctx.get_global_dirs();
 
     let account =
         AccountRepo::detail_by_address_and_chain_code(core_pool.clone(), address, chain_code)
@@ -403,21 +391,21 @@ pub async fn open_subpk_with_password(
 
     let chain_code: ChainCode = chain_code.try_into()?;
 
-    let subs_path = dirs.get_subs_dir(&wallet.address)?;
-    let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
-    let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
     let account_index_map =
         wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
-    let key = wallet_tree::api::KeystoreApi::load_sub_pk(
-        &*wallet_tree,
-        Some(&account_index_map),
-        &subs_path,
-        address,
-        &chain_code.to_string(),
-        &account.derivation_path,
+    let expected = wallet_tree::KeyMeta {
+        chain_code: chain_code.to_string(),
+        address: address.to_owned(),
+        derivation_path: account.derivation_path.clone(),
+    };
+    let key = WalletApplication::load_sub_key(
+        ctx,
+        &wallet.address,
+        &account_index_map,
+        &expected,
         password,
-    )?;
+    )
+    .await?;
 
     // TODO: 优化
     let private_key = match chain_code {
