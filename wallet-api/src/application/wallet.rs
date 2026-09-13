@@ -4,20 +4,61 @@ use wallet_database::{
     CoreDbPool,
     entities::config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
     repositories::{
-        account::AccountRepo, api_wallet::wallet::ApiWalletRepo, device::DeviceRepo,
+        account::AccountRepo,
+        api_wallet::wallet::ApiWalletRepo,
+        device::DeviceRepo,
+        device_protection::{MigrationRepo, MigrationState},
         wallet::WalletRepo,
     },
 };
 use wallet_tree::{KdfAlgorithm, WalletTreeStrategy};
 
 use crate::{
-    context::Context, domain::api_wallet::wallet::ApiWalletDomain, error::service::ServiceError,
+    context::Context,
+    device_protection::{
+        ProtectionContext,
+        keystore_format::{KeystoreProtection, KeystoreProtectionError, has_device_header},
+        migration::record_scope,
+    },
+    domain::{api_wallet::wallet::ApiWalletDomain, app::config::ConfigDomain},
+    error::service::ServiceError,
     infrastructure::unlock_session,
 };
 
 pub struct WalletApplication;
 
 impl WalletApplication {
+    pub(crate) async fn load_root(
+        ctx: &Context,
+        wallet_address: &str,
+        password: &str,
+    ) -> Result<wallet_tree::file_ops::RootData, ServiceError> {
+        let dirs = ctx.get_global_dirs();
+        let root_dir = dirs.get_root_dir(wallet_address)?;
+        let binding = ProtectionContext::new(wallet_address, "root-keystore")
+            .map_err(KeystoreProtectionError::from)?;
+        let state = MigrationRepo::get(&record_scope(&binding), &ctx.core_pool()?)
+            .await
+            .map_err(|_| ServiceError::Context("Cannot read keystore migration progress".into()))?;
+        let protected = has_device_header(&root_dir.join("root.keystore")).await?;
+
+        // Completion forbids legacy fallback, even when the protected file is missing.
+        if protected || state == Some(MigrationState::DeviceRequired) {
+            return Ok(KeystoreProtection::new(ctx.device_protection().clone())
+                .load_root(&root_dir, wallet_address, password)
+                .await?);
+        }
+
+        let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
+        let wallet_tree = strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        Ok(wallet_tree::api::KeystoreApi::load_root(
+            &*wallet_tree,
+            &root_dir,
+            wallet_address,
+            password,
+        )?)
+    }
+
     pub(crate) async fn validate_password(
         ctx: &'static Context,
         password: &str,

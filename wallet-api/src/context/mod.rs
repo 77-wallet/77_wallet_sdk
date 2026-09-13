@@ -158,6 +158,15 @@ impl Context {
         Self::new("collect_receipt_test", "unittest", dirs, None, config).await
     }
 
+    #[cfg(test)]
+    pub(crate) fn with_device_protection_for_test(
+        mut self,
+        protection: crate::device_protection::DeviceProtection,
+    ) -> Self {
+        self.device_protection = protection;
+        self
+    }
+
     async fn new(
         sn: &str,
         device_type: &str,

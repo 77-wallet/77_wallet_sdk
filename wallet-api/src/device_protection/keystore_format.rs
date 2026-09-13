@@ -9,6 +9,31 @@ const HEADER: &[u8] = b"WDK\x01";
 const MAX_INNER: usize = 1024 * 1024;
 const MAX_NATIVE: usize = MAX_INNER + 128;
 
+/// Identify the outer format without decrypting it. Missing files return false;
+/// callers must still enforce migration policy before allowing legacy reads.
+/// Any WDK version is routed to the protected decoder, including unsupported ones.
+pub(crate) async fn has_device_header(
+    path: &std::path::Path,
+) -> Result<bool, KeystoreProtectionError> {
+    let path = path.to_owned();
+    tokio::task::spawn_blocking(move || {
+        use std::io::Read;
+        match std::fs::File::open(path) {
+            Ok(file) => {
+                let mut prefix = Vec::with_capacity(MAGIC.len());
+                file.take(MAGIC.len() as u64)
+                    .read_to_end(&mut prefix)
+                    .map_err(|_| KeystoreProtectionError::Storage)?;
+                Ok(prefix == MAGIC)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(_) => Err(KeystoreProtectionError::Storage),
+        }
+    })
+    .await
+    .map_err(|_| KeystoreProtectionError::Worker)?
+}
+
 /// Must come from trusted wallet state, never inferred from a failed decrypt.
 #[derive(Clone, Copy)]
 pub enum ReadPolicy {

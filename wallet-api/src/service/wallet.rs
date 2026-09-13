@@ -519,19 +519,10 @@ impl WalletService {
         crate::response_vo::standard_wallet::wallet::GetPhraseRes,
         crate::error::service::ServiceError,
     > {
-        let dirs = self.ctx.get_global_dirs();
-        let root_dir = dirs.get_root_dir(wallet_address)?;
-
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-        let phrase = wallet_tree::api::KeystoreApi::load_phrase(
-            &*wallet_tree,
-            &root_dir,
-            wallet_address,
-            password,
-        )?;
-        Ok(crate::response_vo::standard_wallet::wallet::GetPhraseRes { phrase })
+        let root = WalletApplication::load_root(self.ctx, wallet_address, password).await?;
+        Ok(crate::response_vo::standard_wallet::wallet::GetPhraseRes {
+            phrase: root.phrase().to_owned(),
+        })
     }
 
     pub(crate) fn generate_phrase(
@@ -1046,3 +1037,7 @@ mod tests {
         println!("uid: {}", uid);
     }
 }
+
+#[cfg(test)]
+#[path = "wallet_phrase_protection_tests.rs"]
+mod phrase_protection;

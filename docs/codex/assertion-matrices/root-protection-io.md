@@ -79,3 +79,23 @@ files) currently block scanning and require recovery; they are never silently di
 | Different names decoding to one identity | Error, both files preserved | duplicate_decoded_identity_is_rejected_without_changing_files |
 
 Validation: `cargo test -p wallet-tree --offline --lib file_ops`.
+
+## Standard-wallet phrase service integration
+
+Scope: actual `WalletService::get_phrase`, modern WDK root read with injected provider.
+The service delegates root loading to `WalletApplication::load_root`; migration policy
+and reader selection live there, while `keystore_format::has_device_header` owns the
+format probe. This extraction preserves existing behavior and uses the same service tests.
+This read path does not enable writes, provision keys or migrate legacy data. Other
+business consumers still require integration before wallet-wide activation.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Protected root, new Context on same directory, wrong password and native Locked | Actual service returns phrase before/after reopen; typed password/Locked errors propagated; file unchanged | protected_phrase_uses_actual_service_after_context_reopen |
+| Legacy root then completed modern migration with missing modern file | Legacy initially readable without native calls; completion forbids fallback to retained old files | legacy_phrase_stays_readable_but_completed_migration_blocks_rollback |
+
+| Modern password-only root, unsupported WDK version | Existing modern reader works with zero native calls; unsupported WDK fails without fallback or rewriting | modern_password_only_phrase_uses_existing_reader_without_native_calls |
+
+Validation: `cargo test -p wallet-api --offline --lib phrase_protection`.
+These are offline service component tests with real SQLite/password crypto and synthetic
+native envelopes, not hardware or wallet App runtime tests. No global Context is initialized.

@@ -77,7 +77,7 @@ impl KeystoreProtection {
     }
 }
 
-fn record_scope(context: &ProtectionContext) -> String {
+pub(crate) fn record_scope(context: &ProtectionContext) -> String {
     format!("file-v1:{}", hex::encode(sha2::Sha256::digest(context.authenticated_data())))
 }
 

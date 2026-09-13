@@ -14,6 +14,8 @@ pub enum ServiceError {
     Tree(#[from] wallet_tree::Error),
     #[error("Keystore error: `{0}`")]
     Keystore(#[from] wallet_crypto::error::Error),
+    #[error(transparent)]
+    DeviceProtection(#[from] crate::device_protection::keystore_format::KeystoreProtectionError),
     #[error("Utils error: `{0}`")]
     Utils(#[from] wallet_utils::error::Error),
     #[error("TransportBackend error: `{0}`")]
@@ -206,7 +208,7 @@ impl From<ServiceError> for (i64, String) {
         let (code, message) = match err {
             ServiceError::Business(msg) => (msg.get_status_code(), msg.to_string()),
             ServiceError::Parameter(_) => (422, err.to_string()),
-            ServiceError::Keystore(_) => (510, err.to_string()),
+            ServiceError::Keystore(_) | ServiceError::DeviceProtection(_) => (510, err.to_string()),
             ServiceError::Utils(_) => (520, err.to_string()),
             ServiceError::TransportBackend(bakend_err) => map_backend_error(bakend_err),
             ServiceError::Transport(_) => (531, err.to_string()),
