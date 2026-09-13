@@ -40,3 +40,23 @@ Derived/verify files, password changes, SQLite secrets and wallet App integratio
 Atomic rename protects the old file before publication. A parent-directory sync failure after rename
 reports an uncertain durability outcome; cancellation cannot stop an already running blocking write.
 This is not a multi-file transaction or crash-recovery implementation.
+
+## Shared migration replacement
+
+`protected::rewrite` reads existing bytes and asks the caller for a validated optional
+replacement. Some is published using the same atomic writer as store; None performs no
+write. Password/version decisions and durable migration state remain outside wallet-tree.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Replacement followed by None | First replacement persisted, second call does not rewrite; no extra files | rewrite_commits_replacement_and_skips_current_bytes |
+| Transform rejected | Original bytes and directory entries unchanged | rejected_rewrite_keeps_original_file |
+| Two overlapping transforms | Second reads the first committed version, including case-alias filename on case-insensitive FS | concurrent_rewrites_observe_the_previous_committed_version |
+
+Shared store/rewrite operations serialize by canonical parent directory in this process.
+The publication worker owns the lock guard, so cancelling its waiter does not unlock a
+still-running write. Callbacks must not await another store/rewrite in that directory.
+Legacy writers outside the common API and other processes are not protected by this lock;
+service migration must exclude those writers. This is not cross-process locking or a
+durable migration-state implementation. Same-directory writes are conservatively serialized
+to cover case-insensitive aliases; independent directories can proceed concurrently.
