@@ -114,3 +114,25 @@ This does not activate protected writes or change the existing password_proof fa
 | Legacy password fallback | Correct password true, wrong password false; zero native calls | legacy_password_fallback_preserves_success_and_wrong_password_behavior |
 
 Validation: `cargo test -p wallet-api --offline --lib protection`.
+
+## Root password change through AccountDomain
+
+`AccountDomain::set_root_password` keeps the wallet existence check and delegates to
+`WalletApplication::change_root_password`. Existing-root read/write selection shares
+`root_requires_device`. WDK records use the generic codec `change_file_password` under
+the common directory rewrite lock; the existing password generator transforms opaque
+plaintext in memory, and only validated outer ciphertext reaches the atomic publisher.
+Legacy records retain their previous writer. No keys are provisioned and no migration
+state is changed by this operation.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Native protect failure, incorrect old password, then successful change | Failure preserves original bytes and old-password access; success retains WDK and identical phrase/seed; old password fails; no extra files | root_password_change_preserves_wdk_and_recovers_from_native_failure |
+| Two simultaneous changes with same old password | Exactly one succeeds; winning password reads original phrase; no extra files | root_password_change_preserves_wdk_and_recovers_from_native_failure |
+| Completed root removed with old root files retained | Password change fails without modifying old files | completed_root_password_change_rejects_legacy_rollback |
+| Legacy root change | New password reads phrase, old password fails; existing names retained and zero native unwrap calls | legacy_root_password_change_keeps_existing_format |
+
+Validation: `cargo test -p wallet-api --offline --lib protection`.
+The atomicity guarantee is per protected file, before publication. The existing App-wide
+password change updates multiple records sequentially and is not made transactional by
+this batch. Failures after atomic rename can still report uncertain durability, as above.

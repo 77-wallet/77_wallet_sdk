@@ -12,6 +12,7 @@ use wallet_types::chain::{
 
 use super::app::config::ConfigDomain;
 use crate::{
+    application::wallet::WalletApplication,
     context::Context,
     error::{business::BusinessError, service::ServiceError, system::SystemError},
     response_vo::standard_wallet::account::CreateAccountRes,
@@ -261,34 +262,11 @@ impl AccountDomain {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
-        // let tx = &mut self.repo;
-        let dirs = ctx.get_global_dirs();
-        let core_pool = ctx.core_pool()?;
-
-        let wallet = WalletRepo::detail(core_pool, wallet_address).await?.ok_or(
-            crate::error::business::BusinessError::Wallet(
-                crate::error::business::wallet::WalletError::NotFound,
-            ),
-        )?;
-
-        // Get the path to the root directory for the given wallet name.
-        let root_dir = dirs.get_root_dir(&wallet.address)?;
-
-        // Traverse the directory structure to obtain the current wallet tree.
-
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
-        Ok(wallet_tree::api::KeystoreApi::update_root_password(
-            root_dir,
-            wallet_tree,
-            wallet_address,
-            old_password,
-            new_password,
-            algorithm,
-        )
-        .map_err(|e| SystemError::Service(e.to_string()))?)
+        let wallet = WalletRepo::detail(ctx.core_pool()?, wallet_address)
+            .await?
+            .ok_or(BusinessError::Wallet(crate::error::business::wallet::WalletError::NotFound))?;
+        WalletApplication::change_root_password(ctx, &wallet.address, old_password, new_password)
+            .await
     }
 
     pub async fn set_account_password(
