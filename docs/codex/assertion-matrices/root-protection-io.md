@@ -211,3 +211,13 @@ was not expanded; searches found no callers in SDK API, plugin Dart or App Dart.
 - Root read/write errors propagate; the modern replacement must decrypt to the same seed/phrase before the legacy source can be scheduled for deletion. Failure tests assert source bytes, protected bytes and configuration remain unchanged; successful V1 conversion remains covered.
 - Upgrade shares the application write gate with root and derived writes/password changes. Deletion paths and external processes are not yet covered by this gate; no concurrent automatic hardware rollout is activated here. Later-stage failures may leave modern copies beside original files; this is not a multi-file transaction.
 - Offline validation: `cargo test -p wallet-api --offline --lib protection`.
+
+## Intentional account deletion
+
+- Durable `RecreationAllowed` progress represents user-authorized deletion, not proof of completed deletion. It remains a device requirement; it grants neither legacy fallback nor native key provisioning.
+- SQLite tests verify reopen, begin preserving authorization, verified completion revoking authorization, first authorization without prior migration row, invalid scopes and preservation of unknown versions.
+- API integration must require both the target file and its public index entry to be absent before protected recreation. Accidental loss while DeviceRequired must remain blocked.
+- Account deletion shares the existing writer gate and finishes an accepted operation even if its waiter cancels. Index/path validation and durable intent precede file removal. The real service calls storage deletion before removing business DB records.
+- API regressions cover delete/retry/recreate with an otherwise legacy root, persistent device requirement after recreation, accidental subsequent loss, malformed index, SQLite intent-write failure, retry after file-only deletion, forbidden legacy migration under recreation permission, and old-format deletion compatibility. Other account files remain byte-identical.
+- State/metadata failure after file removal may leave a partial deletion; retry is supported. Business DB/backend operations are not in a filesystem transaction. Whole-wallet deletion and external writers remain separate rollout work.
+- Review found a cancelled protected password-change publisher could outlive the application gate and resurrect a deleted account file. The protected password task now owns that gate through completion; its cancellation regression first failed, then checks publication precedes deletion and removal stays complete.

@@ -99,7 +99,11 @@ impl WalletApplication {
             .map_err(|_| ServiceError::Context("Cannot read keystore migration progress".into()))?;
         let protected = has_device_header(path).await?;
         // Completion forbids legacy fallback, even when the protected file is missing.
-        Ok(protected || state == Some(MigrationState::DeviceRequired))
+        Ok(protected
+            || matches!(
+                state,
+                Some(MigrationState::DeviceRequired | MigrationState::RecreationAllowed)
+            ))
     }
 
     pub(crate) async fn change_root_password(
@@ -147,7 +151,7 @@ impl WalletApplication {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
-        let _guard = derived_store::lock().await;
+        let guard = derived_store::lock().await;
         let dirs = ctx.get_global_dirs();
         let subs_dir = dirs.get_subs_dir(wallet_address)?;
         let path = subs_dir.join(format!("key{}.keystore", account_index_map.account_id));
@@ -158,9 +162,19 @@ impl WalletApplication {
         .map_err(KeystoreProtectionError::from)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
         if Self::record_requires_device(ctx, &binding, &path).await? {
-            return Ok(KeystoreProtection::new(ctx.device_protection().clone())
-                .change_file_password(&path, &binding, old_password, new_password, algorithm)
-                .await?);
+            let codec = KeystoreProtection::new(ctx.device_protection().clone());
+            let old_password = zeroize::Zeroizing::new(old_password.to_owned());
+            let new_password = zeroize::Zeroizing::new(new_password.to_owned());
+            // Keep deletion/append blocked through publication even if the
+            // caller cancels while the native operation or disk worker runs.
+            return Ok(tokio::spawn(async move {
+                let _guard = guard;
+                codec
+                    .change_file_password(&path, &binding, &old_password, &new_password, algorithm)
+                    .await
+            })
+            .await
+            .map_err(|_| KeystoreProtectionError::Worker)??);
         }
 
         let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;

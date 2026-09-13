@@ -400,6 +400,13 @@ impl AccountService {
             .into());
         }
 
+        crate::application::wallet::WalletApplication::delete_account_files(
+            self.ctx,
+            wallet_address,
+            account_id,
+        )
+        .await?;
+
         let deleted =
             AccountRepo::physical_delete(pool.clone(), wallet_address, account_id).await?;
 
@@ -423,14 +430,6 @@ impl AccountService {
             .push(BackendApiTask::BackendApi(device_unbind_address_task))
             .send_with_ctx(self.ctx)
             .await?;
-        let dirs = self.ctx.get_global_dirs();
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-        wallet_tree.io().delete_account(
-            &AccountIndexMap::from_account_id(account_id)?,
-            &dirs.get_subs_dir(wallet_address)?,
-        )?;
 
         Ok(())
     }

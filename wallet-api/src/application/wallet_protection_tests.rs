@@ -1246,3 +1246,233 @@ async fn protection_legacy_upgrade_checks_derived_and_verify_before_any_write() 
         );
     }
 }
+
+#[tokio::test]
+async fn protection_account_delete_recreate_preserves_other_accounts_and_device_requirement() {
+    use wallet_database::repositories::device_protection::{MigrationRepo, MigrationState};
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    let scope = crate::device_protection::migration::record_scope(&binding);
+    let codec = KeystoreProtection::new(ctx.device_protection().clone());
+    codec
+        .migrate_file(
+            &subs.join("key0.keystore"),
+            &binding,
+            PASSWORD,
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+    let other = std::fs::read(subs.join("key1.keystore")).unwrap();
+    WalletApplication::delete_account_files(ctx, WALLET, 0).await.unwrap();
+    // Retrying a deletion must remain harmless and keep recreation permission.
+    WalletApplication::delete_account_files(ctx, WALLET, 0).await.unwrap();
+    assert!(!subs.join("key0.keystore").exists());
+    let index: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(subs.join("derived_meta.json")).unwrap()).unwrap();
+    assert!(index["accounts"].get("0").is_none());
+    assert_eq!(
+        MigrationRepo::get(&scope, &ctx.core_pool().unwrap()).await.unwrap(),
+        Some(MigrationState::RecreationAllowed)
+    );
+    // Root is still legacy: the deletion record itself must enforce new protection.
+    native.fail_protect.store(true, Ordering::SeqCst);
+    assert!(
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "recreated")],
+            PASSWORD
+        )
+        .await
+        .is_err()
+    );
+    assert!(!subs.join("key0.keystore").exists());
+    native.fail_protect.store(false, Ordering::SeqCst);
+    WalletApplication::store_subkeys(ctx, WALLET, vec![appended_subkey(0, "recreated")], PASSWORD)
+        .await
+        .unwrap();
+    assert!(std::fs::read(subs.join("key0.keystore")).unwrap().starts_with(b"WDK\x01"));
+    assert_eq!(
+        MigrationRepo::get(&scope, &ctx.core_pool().unwrap()).await.unwrap(),
+        Some(MigrationState::DeviceRequired)
+    );
+    assert_eq!(std::fs::read(subs.join("key1.keystore")).unwrap(), other);
+    let index = wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap();
+    let data = WalletApplication::load_account_data(ctx, WALLET, &index, PASSWORD).await.unwrap();
+    assert_eq!(data.len(), 1);
+    assert!(data.keys().all(|key| key.address == "recreated"));
+    // A later accidental loss is not another authorized deletion.
+    std::fs::remove_file(subs.join("key0.keystore")).unwrap();
+    assert!(
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "must-not-recreate")],
+            PASSWORD
+        )
+        .await
+        .is_err()
+    );
+}
+
+#[tokio::test]
+async fn protection_account_delete_rejects_damaged_index_without_side_effects() {
+    use wallet_database::repositories::device_protection::MigrationRepo;
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    let subs = derived_password_fixture(ctx).await;
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .migrate_file(
+            &subs.join("key0.keystore"),
+            &binding,
+            PASSWORD,
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+    let original = std::fs::read(subs.join("key0.keystore")).unwrap();
+    std::fs::write(subs.join("derived_meta.json"), b"bad index").unwrap();
+    assert!(WalletApplication::delete_account_files(ctx, WALLET, 0).await.is_err());
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), original);
+    assert_eq!(std::fs::read(subs.join("derived_meta.json")).unwrap(), b"bad index");
+    assert_eq!(
+        MigrationRepo::get(
+            &crate::device_protection::migration::record_scope(&binding),
+            &ctx.core_pool().unwrap()
+        )
+        .await
+        .unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn protection_account_delete_partial_removal_requires_retry_and_blocks_legacy_migration() {
+    use wallet_database::repositories::device_protection::MigrationRepo;
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    let scope = crate::device_protection::migration::record_scope(&binding);
+    MigrationRepo::authorize_recreation(&scope, &ctx.core_pool().unwrap()).await.unwrap();
+    let original = std::fs::read(&path).unwrap();
+    assert!(
+        KeystoreProtection::new(ctx.device_protection().clone())
+            .migrate_files(
+                &ctx.core_pool().unwrap(),
+                &[MigrationFile { path: &path, context: &binding }],
+                PASSWORD,
+                ReadPolicy::LegacyMigrationAllowed,
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    std::fs::remove_file(&path).unwrap();
+    // Represents termination between file removal and index publication.
+    assert!(
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "too-early")],
+            PASSWORD
+        )
+        .await
+        .is_err()
+    );
+    WalletApplication::delete_account_files(ctx, WALLET, 0).await.unwrap();
+    WalletApplication::store_subkeys(
+        ctx,
+        WALLET,
+        vec![appended_subkey(0, "after-retry")],
+        PASSWORD,
+    )
+    .await
+    .unwrap();
+    assert!(std::fs::read(&path).unwrap().starts_with(b"WDK\x01"));
+}
+
+#[tokio::test]
+async fn protection_account_delete_retains_legacy_behavior() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let other = std::fs::read(subs.join("key1.keystore")).unwrap();
+    WalletApplication::delete_account_files(ctx, WALLET, 0).await.unwrap();
+    assert!(!subs.join("key0.keystore").exists());
+    assert_eq!(std::fs::read(subs.join("key1.keystore")).unwrap(), other);
+    assert_eq!(native.opens.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn protection_account_delete_state_write_failure_preserves_file_and_index() {
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .migrate_file(&path, &binding, PASSWORD, ReadPolicy::LegacyMigrationAllowed)
+        .await
+        .unwrap();
+    let original = std::fs::read(&path).unwrap();
+    let metadata = std::fs::read(subs.join("derived_meta.json")).unwrap();
+    let pool = ctx.core_pool().unwrap();
+    sqlx::query("CREATE TRIGGER reject_deletion_state BEFORE INSERT ON config WHEN NEW.key LIKE 'device_protection.migration.v1:%' BEGIN SELECT RAISE(ABORT, 'fixture refusal'); END")
+        .execute(pool.write_ref()).await.unwrap();
+    assert!(WalletApplication::delete_account_files(ctx, WALLET, 0).await.is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    assert_eq!(std::fs::read(subs.join("derived_meta.json")).unwrap(), metadata);
+    sqlx::query("DROP TRIGGER reject_deletion_state").execute(pool.write_ref()).await.unwrap();
+    WalletApplication::delete_account_files(ctx, WALLET, 0).await.unwrap();
+    assert!(!path.exists());
+}
+
+#[tokio::test]
+async fn protection_account_delete_waits_for_cancelled_password_change_publication() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    let codec = KeystoreProtection::new(ctx.device_protection().clone());
+    codec
+        .migrate_file(&path, &binding, PASSWORD, ReadPolicy::LegacyMigrationAllowed)
+        .await
+        .unwrap();
+    native.pause_protect.store(true, Ordering::SeqCst);
+    let changing = tokio::spawn(async move {
+        let index = wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap();
+        WalletApplication::change_account_password(
+            ctx,
+            WALLET,
+            &index,
+            PASSWORD,
+            "new-fixture-password",
+        )
+        .await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(10), native.protect_entered.notified())
+        .await
+        .unwrap();
+    changing.abort();
+    assert!(changing.await.unwrap_err().is_cancelled());
+    native.protect_resume.notify_one();
+    // Deletion uses this same gate. It must not acquire it ahead of publication.
+    let guard = super::derived_store::lock().await;
+    assert!(codec.load_file(&path, &binding, "new-fixture-password").await.is_ok());
+    drop(guard);
+    WalletApplication::delete_account_files(ctx, WALLET, 0).await.unwrap();
+    assert!(!path.exists());
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(subs.join("derived_meta.json")).unwrap()).unwrap();
+    assert!(metadata["accounts"].get("0").is_none());
+}

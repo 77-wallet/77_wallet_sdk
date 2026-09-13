@@ -6,6 +6,8 @@ use crate::CoreDbPool;
 pub enum MigrationState {
     Pending,
     DeviceRequired,
+    /// Explicit deletion permits protected recreation only after file/index removal.
+    RecreationAllowed,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -43,6 +45,7 @@ impl MigrationRepo {
         match value.as_str() {
             "migrating-v1" => Ok(Some(MigrationState::Pending)),
             "device-required-v1" => Ok(Some(MigrationState::DeviceRequired)),
+            "recreation-allowed-v1" => Ok(Some(MigrationState::RecreationAllowed)),
             _ => Err(MigrationError::InvalidState),
         }
     }
@@ -59,6 +62,27 @@ impl MigrationRepo {
         Self::get(scope, pool).await?.ok_or(MigrationError::NotStarted)
     }
 
+    /// Record an explicit account deletion before removing its ciphertext/index.
+    /// This never authorizes legacy writes or device-key provisioning. Callers must
+    /// serialize deletion/recreation and require BOTH file and index absence before
+    /// creating a protected replacement. Unknown state/version is never reset.
+    pub async fn authorize_recreation(
+        scope: &str,
+        pool: &CoreDbPool,
+    ) -> Result<MigrationState, MigrationError> {
+        let key = state_key(scope)?;
+        sqlx::query(
+            "INSERT INTO config (key,value,types,created_at,updated_at)
+             VALUES (?, 'recreation-allowed-v1', 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+             ON CONFLICT(key) DO UPDATE SET value='recreation-allowed-v1', updated_at=excluded.updated_at
+             WHERE config.types=1 AND config.value IN ('migrating-v1', 'device-required-v1', 'recreation-allowed-v1')",
+        ).bind(&key).execute(pool.write_ref()).await.map_err(db_error)?;
+        match Self::get(scope, pool).await? {
+            Some(MigrationState::RecreationAllowed) => Ok(MigrationState::RecreationAllowed),
+            _ => Err(MigrationError::NotStarted),
+        }
+    }
+
     /// Caller must verify every protected record in this scope before completion.
     /// This row alone cannot prove file contents, hardware availability or migration.
     pub async fn complete(
@@ -68,12 +92,14 @@ impl MigrationRepo {
         let key = state_key(scope)?;
         sqlx::query(
             "UPDATE config SET value='device-required-v1', updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
-             WHERE key=? AND value='migrating-v1' AND types=1",
+             WHERE key=? AND value IN ('migrating-v1', 'recreation-allowed-v1') AND types=1",
         ).bind(&key).execute(pool.write_ref()).await.map_err(db_error)?;
         match Self::get(scope, pool).await? {
             Some(MigrationState::DeviceRequired) => Ok(MigrationState::DeviceRequired),
             // A concurrent begin may insert Pending after our update affected no rows.
-            Some(MigrationState::Pending) | None => Err(MigrationError::NotStarted),
+            Some(MigrationState::Pending | MigrationState::RecreationAllowed) | None => {
+                Err(MigrationError::NotStarted)
+            }
         }
     }
 }

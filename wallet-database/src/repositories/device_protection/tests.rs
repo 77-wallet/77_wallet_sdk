@@ -127,3 +127,50 @@ async fn completion_racing_with_first_begin_never_reports_pending_success() {
     }
     close(pool).await;
 }
+
+#[tokio::test]
+async fn authorized_recreation_survives_reopen_and_completion_revokes_it() {
+    let fixture = Fixture::new();
+    let pool = fixture.open().await;
+    MigrationRepo::begin("deleted-account", &pool).await.unwrap();
+    MigrationRepo::complete("deleted-account", &pool).await.unwrap();
+    MigrationRepo::authorize_recreation("deleted-account", &pool).await.unwrap();
+    close(pool).await;
+    let pool = fixture.open().await;
+    assert_eq!(
+        MigrationRepo::get("deleted-account", &pool).await.unwrap(),
+        Some(MigrationState::RecreationAllowed)
+    );
+    assert_eq!(
+        MigrationRepo::begin("deleted-account", &pool).await.unwrap(),
+        MigrationState::RecreationAllowed
+    );
+    MigrationRepo::complete("deleted-account", &pool).await.unwrap();
+    assert_eq!(
+        MigrationRepo::get("deleted-account", &pool).await.unwrap(),
+        Some(MigrationState::DeviceRequired)
+    );
+    close(pool).await;
+}
+
+#[tokio::test]
+async fn recreation_authorization_preserves_unknown_state() {
+    let fixture = Fixture::new();
+    let pool = fixture.open().await;
+    let key = state_key("unknown-account").unwrap();
+    crate::repositories::config::ConfigRepo::upsert(&key, "future-state", Some(1), &pool)
+        .await
+        .unwrap();
+    assert!(MigrationRepo::authorize_recreation("unknown-account", &pool).await.is_err());
+    let stored =
+        crate::repositories::config::ConfigRepo::find_by_key(&key, &pool).await.unwrap().unwrap();
+    assert_eq!(stored.value, "future-state");
+    assert!(MigrationRepo::authorize_recreation("", &pool).await.is_err());
+    assert_eq!(MigrationRepo::get("missing-account", &pool).await.unwrap(), None);
+    MigrationRepo::authorize_recreation("missing-account", &pool).await.unwrap();
+    assert_eq!(
+        MigrationRepo::get("missing-account", &pool).await.unwrap(),
+        Some(MigrationState::RecreationAllowed)
+    );
+    close(pool).await;
+}

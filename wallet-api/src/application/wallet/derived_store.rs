@@ -4,6 +4,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+use crate::device_protection::migration::record_scope;
+use wallet_database::repositories::device_protection::{MigrationRepo, MigrationState};
 use wallet_tree::{
     KeyMeta,
     file_ops::{AccountData, BulkSubkey},
@@ -37,6 +39,64 @@ struct Metadata {
 }
 
 impl WalletApplication {
+    /// The service validates user intent/password before entering. Keep the
+    /// operation alive through state, file and index writes if its waiter cancels.
+    pub(crate) async fn delete_account_files(
+        ctx: &'static Context,
+        wallet_address: &str,
+        account_id: u32,
+    ) -> Result<(), ServiceError> {
+        let wallet_address = wallet_address.to_owned();
+        tokio::spawn(async move {
+            let guard = lock().await;
+            let index = wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
+            let dirs = ctx.get_global_dirs();
+            let subs = dirs.get_subs_dir(&wallet_address)?;
+            let path = subs.join(format!("key{account_id}.keystore"));
+            let binding = ProtectionContext::new(&wallet_address, format!("derived:{account_id}"))
+                .map_err(KeystoreProtectionError::from)?;
+            let root_binding = ProtectionContext::new(&wallet_address, "root-keystore")
+                .map_err(KeystoreProtectionError::from)?;
+            let protected = Self::record_requires_device(ctx, &binding, &path).await?
+                || Self::record_requires_device(
+                    ctx,
+                    &root_binding,
+                    &dirs.get_root_dir(&wallet_address)?.join("root.keystore"),
+                )
+                .await?;
+            if !protected {
+                let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
+                strategy.get_wallet_tree(&dirs.wallet_dir)?.io().delete_account(&index, &subs)?;
+                return Ok::<_, ServiceError>(());
+            }
+            let meta_path = subs.join("derived_meta.json");
+            let mut metadata: Metadata = serde_json::from_slice(
+                &std::fs::read(&meta_path).map_err(|_| KeystoreProtectionError::Storage)?,
+            )
+            .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
+            match std::fs::symlink_metadata(&path) {
+                Ok(meta) if meta.is_file() => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                _ => return Err(KeystoreProtectionError::Storage.into()),
+            }
+            // Record intent first: a crash after removal must not erase the device
+            // requirement. An old index entry blocks recreation until deletion retries.
+            MigrationRepo::authorize_recreation(&record_scope(&binding), &ctx.core_pool()?)
+                .await
+                .map_err(|_| ServiceError::Context("Cannot record account deletion".into()))?;
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(_) => return Err(KeystoreProtectionError::Storage.into()),
+            }
+            metadata.accounts.remove(&account_id);
+            publish_metadata(meta_path, &metadata, guard).await?;
+            Ok(())
+        })
+        .await
+        .map_err(|_| KeystoreProtectionError::Worker)?
+    }
+
     /// Once accepted, finish ciphertext and index publication even if the caller
     /// stops waiting. Otherwise a detached file publisher can outlive this gate.
     pub(crate) async fn store_subkeys(
@@ -97,6 +157,10 @@ impl WalletApplication {
                 legacy.extend(additions);
                 continue;
             }
+            let can_recreate =
+                MigrationRepo::get(&record_scope(&binding), &ctx.core_pool()?).await.map_err(
+                    |_| ServiceError::Context("Cannot read keystore migration progress".into()),
+                )? == Some(MigrationState::RecreationAllowed);
             let exists = path.try_exists().map_err(|_| KeystoreProtectionError::Storage)?;
             let keys = if exists {
                 codec
@@ -111,7 +175,7 @@ impl WalletApplication {
                     .await?
             } else {
                 // Never replace a lost known file with only the new subset of keys.
-                if required || metadata.accounts.contains_key(&id) {
+                if (required && !can_recreate) || metadata.accounts.contains_key(&id) {
                     return Err(KeystoreProtectionError::Storage.into());
                 }
                 let (plain, keys) = merge(AccountData::default(), additions)?;
@@ -119,24 +183,12 @@ impl WalletApplication {
                 keys
             };
             metadata.accounts.insert(id, keys);
-            let bytes = serde_json::to_vec(&metadata)
-                .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
-            let destination = meta_path.clone();
-            let retained_guard = guard.clone();
-            tokio::task::spawn_blocking(move || {
-                let _guard = retained_guard;
-                let parent = destination.parent().ok_or(KeystoreProtectionError::Storage)?;
-                let publish = || -> std::io::Result<()> {
-                    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-                    temp.write_all(&bytes)?;
-                    temp.as_file().sync_all()?;
-                    temp.persist(&destination).map_err(|e| e.error)?;
-                    std::fs::File::open(parent)?.sync_all()
-                };
-                publish().map_err(|_| KeystoreProtectionError::Storage)
-            })
-            .await
-            .map_err(|_| KeystoreProtectionError::Worker)??;
+            publish_metadata(meta_path.clone(), &metadata, guard.clone()).await?;
+            if can_recreate {
+                MigrationRepo::complete(&record_scope(&binding), &ctx.core_pool()?).await.map_err(
+                    |_| ServiceError::Context("Cannot complete keystore recreation".into()),
+                )?;
+            }
         }
         if !legacy.is_empty() {
             let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
@@ -170,4 +222,26 @@ fn merge(
     let encoded: BTreeMap<_, _> = data.iter().map(|(key, value)| (key.encode(), value)).collect();
     let bytes = serde_json::to_vec(&encoded).map_err(|_| KeystoreProtectionError::InvalidFormat)?;
     Ok((Zeroizing::new(bytes), metadata))
+}
+
+async fn publish_metadata(
+    destination: std::path::PathBuf,
+    metadata: &Metadata,
+    guard: Arc<tokio::sync::OwnedMutexGuard<()>>,
+) -> Result<(), KeystoreProtectionError> {
+    let bytes = serde_json::to_vec(metadata).map_err(|_| KeystoreProtectionError::InvalidFormat)?;
+    tokio::task::spawn_blocking(move || {
+        let _guard = guard;
+        let parent = destination.parent().ok_or(KeystoreProtectionError::Storage)?;
+        let publish = || -> std::io::Result<()> {
+            let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+            temp.write_all(&bytes)?;
+            temp.as_file().sync_all()?;
+            temp.persist(&destination).map_err(|e| e.error)?;
+            std::fs::File::open(parent)?.sync_all()
+        };
+        publish().map_err(|_| KeystoreProtectionError::Storage)
+    })
+    .await
+    .map_err(|_| KeystoreProtectionError::Worker)?
 }
