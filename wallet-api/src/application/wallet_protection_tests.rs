@@ -1098,3 +1098,151 @@ async fn derived_bulk_protection_refuses_legacy_or_missing_known_file_under_prot
     assert!(!subs.join("key0.keystore").exists());
     assert_eq!(std::fs::read(subs.join("derived_meta.json")).unwrap(), index);
 }
+
+fn legacy_upgrade_fixture(ctx: &Context) -> std::path::PathBuf {
+    use wallet_tree::wallet_hierarchy::{WalletTreeOps, v1::LegacyWalletTree};
+    let root = ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    ctx.get_global_dirs().get_subs_dir(WALLET).unwrap();
+    LegacyWalletTree::default()
+        .io()
+        .store_root(
+            WALLET,
+            b"synthetic seed",
+            PHRASE,
+            &root,
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .unwrap();
+    root
+}
+
+#[tokio::test]
+async fn protection_legacy_upgrade_wrong_password_keeps_originals_and_config() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let root = legacy_upgrade_fixture(ctx);
+    let seed = std::fs::read(root.join("fixturewallet-seed")).unwrap();
+    let phrase = std::fs::read(root.join("fixturewallet-phrase")).unwrap();
+    assert!(WalletApplication::upgrade_algorithm(ctx, "wrong-password").await.is_err());
+    assert_eq!(std::fs::read(root.join("fixturewallet-seed")).unwrap(), seed);
+    assert_eq!(std::fs::read(root.join("fixturewallet-phrase")).unwrap(), phrase);
+    assert!(!root.join("root.keystore").exists());
+    assert!(!ctx.get_global_dirs().root_dir.join("verify").exists());
+    assert!(
+        wallet_database::repositories::config::ConfigRepo::find_by_key(
+            "wallet_tree_strategy",
+            &ctx.core_pool().unwrap()
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    assert_eq!(native.opens.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn protection_legacy_upgrade_does_not_overwrite_protected_root() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native).await;
+    let root = legacy_upgrade_fixture(ctx);
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .store_root(
+            &root,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    let before = std::fs::read(root.join("root.keystore")).unwrap();
+    let legacy = std::fs::read(root.join("fixturewallet-seed")).unwrap();
+    assert!(WalletApplication::upgrade_algorithm(ctx, PASSWORD).await.is_err());
+    assert_eq!(std::fs::read(root.join("root.keystore")).unwrap(), before);
+    assert_eq!(std::fs::read(root.join("fixturewallet-seed")).unwrap(), legacy);
+    assert!(!ctx.get_global_dirs().root_dir.join("verify").exists());
+}
+
+#[tokio::test]
+async fn protection_legacy_upgrade_retains_successful_conversion() {
+    use wallet_tree::wallet_hierarchy::{WalletTreeOps, v2::ModernWalletTree};
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let root = legacy_upgrade_fixture(ctx);
+    WalletApplication::upgrade_algorithm(ctx, PASSWORD).await.unwrap();
+    let converted = ModernWalletTree::default().io().load_root(WALLET, &root, PASSWORD).unwrap();
+    assert!(converted.phrase() == PHRASE);
+    assert!(converted.seed() == b"synthetic seed");
+    assert!(!root.join("fixturewallet-seed").exists());
+    assert!(!root.join("fixturewallet-phrase").exists());
+    assert!(ctx.get_global_dirs().root_dir.join("verify").is_file());
+    let config = wallet_database::repositories::config::ConfigRepo::find_by_key(
+        "wallet_tree_strategy",
+        &ctx.core_pool().unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(config.value, r#"{"wallet_tree_strategy":"v2"}"#);
+    assert_eq!(native.opens.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn protection_legacy_upgrade_refuses_migration_progress_even_if_file_missing() {
+    use wallet_database::repositories::device_protection::{MigrationRepo, MigrationState};
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    let root = legacy_upgrade_fixture(ctx);
+    let binding = ProtectionContext::new(WALLET, "root-keystore").unwrap();
+    let scope = crate::device_protection::migration::record_scope(&binding);
+    let pool = ctx.core_pool().unwrap();
+    let original = std::fs::read(root.join("fixturewallet-seed")).unwrap();
+    MigrationRepo::begin(&scope, &pool).await.unwrap();
+    for completed in [false, true] {
+        if completed {
+            MigrationRepo::complete(&scope, &pool).await.unwrap();
+        }
+        assert!(WalletApplication::upgrade_algorithm(ctx, PASSWORD).await.is_err());
+        assert_eq!(std::fs::read(root.join("fixturewallet-seed")).unwrap(), original);
+        assert!(!root.join("root.keystore").exists());
+        assert!(!ctx.get_global_dirs().root_dir.join("verify").exists());
+        assert_eq!(
+            MigrationRepo::get(&scope, &pool).await.unwrap(),
+            Some(if completed { MigrationState::DeviceRequired } else { MigrationState::Pending })
+        );
+    }
+}
+
+#[tokio::test]
+async fn protection_legacy_upgrade_checks_derived_and_verify_before_any_write() {
+    for verify in [false, true] {
+        let dir = directory();
+        let ctx = context(dir.path(), Arc::new(Native::default())).await;
+        let root = legacy_upgrade_fixture(ctx);
+        let path = if verify {
+            ctx.get_global_dirs().root_dir.join("verify")
+        } else {
+            ctx.get_global_dirs().get_subs_dir(WALLET).unwrap().join("key0.keystore")
+        };
+        // Even an unsupported protected envelope must never reach a legacy writer.
+        std::fs::write(&path, b"WDK\x7fsynthetic invalid envelope").unwrap();
+        let original = std::fs::read(root.join("fixturewallet-seed")).unwrap();
+        assert!(WalletApplication::upgrade_algorithm(ctx, PASSWORD).await.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"WDK\x7fsynthetic invalid envelope");
+        assert_eq!(std::fs::read(root.join("fixturewallet-seed")).unwrap(), original);
+        assert!(!root.join("root.keystore").exists());
+        assert!(
+            wallet_database::repositories::config::ConfigRepo::find_by_key(
+                "wallet_tree_strategy",
+                &ctx.core_pool().unwrap()
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+    }
+}

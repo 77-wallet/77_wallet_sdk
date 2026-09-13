@@ -1,4 +1,5 @@
 mod derived_store;
+mod legacy_upgrade;
 
 use std::collections::HashSet;
 
@@ -61,6 +62,7 @@ impl WalletApplication {
         root: wallet_tree::file_ops::RootData,
         password: &str,
     ) -> Result<(), ServiceError> {
+        let _guard = derived_store::lock().await;
         let dirs = ctx.get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let binding = ProtectionContext::new(wallet_address, "root-keystore")
@@ -106,6 +108,7 @@ impl WalletApplication {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
+        let _guard = derived_store::lock().await;
         let dirs = ctx.get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
@@ -310,6 +313,8 @@ impl WalletApplication {
         ctx: &'static Context,
         password: &str,
     ) -> Result<(), ServiceError> {
+        let _guard = derived_store::lock().await;
+        legacy_upgrade::preflight(ctx).await?;
         let dirs = ctx.get_global_dirs();
 
         let mut legacy_wallet_tree = WalletTreeStrategy::V1.get_wallet_tree(&dirs.wallet_dir)?;
@@ -331,23 +336,21 @@ impl WalletApplication {
         for (k, v) in legacy_wallet_tree.iter() {
             let root_dir = dirs.get_root_dir(k)?;
             let subs_dir = dirs.get_subs_dir(k)?;
-            match legacy_wallet_tree.io().load_root(k, &root_dir, password) {
-                Ok(root_data) => {
-                    if let Err(e) = modern_wallet_tree.io().store_root(
-                        k,
-                        root_data.seed(),
-                        root_data.phrase(),
-                        &root_dir,
-                        password,
-                        wallet_tree::KdfAlgorithm::Argon2id,
-                    ) {
-                        tracing::error!("store_root error: {:?}", e);
-                    };
-                }
-                Err(e) => {
-                    tracing::error!("load_root error: {:?}", e);
-                }
-            };
+            let root_data = legacy_wallet_tree.io().load_root(k, &root_dir, password)?;
+            modern_wallet_tree.io().store_root(
+                k,
+                root_data.seed(),
+                root_data.phrase(),
+                &root_dir,
+                password,
+                wallet_tree::KdfAlgorithm::Argon2id,
+            )?;
+            // Never schedule removal of the source unless its replacement reads
+            // back correctly. Failed/partial conversions retain the legacy files.
+            let verified = modern_wallet_tree.io().load_root(k, &root_dir, password)?;
+            if verified.seed() != root_data.seed() || verified.phrase() != root_data.phrase() {
+                return Err(KeystoreProtectionError::InvalidFormat.into());
+            }
 
             for account in v.get_accounts().into_iter() {
                 let address = account.get_address();

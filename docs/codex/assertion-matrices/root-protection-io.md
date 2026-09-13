@@ -203,3 +203,11 @@ was not expanded; searches found no callers in SDK API, plugin Dart or App Dart.
 - Updated index entries come from the full resulting key map; retries do not duplicate entries. A malformed existing index fails before ciphertext writes. A missing known protected account is an error, never rebuilt from a partial input.
 - Regression tests cover native failure, append/new file, idempotent retry, concurrent appends, malformed index and legacy compatibility. Cancellation test requires an accepted operation to finish its ciphertext/index write while retaining serialization even after its waiter is cancelled.
 - Legacy deletion/algorithm-upgrade writers and separate processes do not participate in this application gate; rollout still requires their integration or exclusion during migration. Process termination between ciphertext and index publication remains a recovery boundary; this change does not claim a cross-file transaction.
+
+## Legacy algorithm upgrade before device migration
+
+- Actual `upgrade_algorithm` regressions reproduce two pre-existing hazards: wrong root password returned success and continued cleanup; a mixed legacy/protected root was overwritten by the legacy upgrade writer.
+- Upgrade now rejects any device migration progress row, including Pending or records whose file is missing, and scans all wallet root/derived files plus app verify before writing. WDK prefixes of unsupported versions are also blocked. Unknown inventory entries fail closed.
+- Root read/write errors propagate; the modern replacement must decrypt to the same seed/phrase before the legacy source can be scheduled for deletion. Failure tests assert source bytes, protected bytes and configuration remain unchanged; successful V1 conversion remains covered.
+- Upgrade shares the application write gate with root and derived writes/password changes. Deletion paths and external processes are not yet covered by this gate; no concurrent automatic hardware rollout is activated here. Later-stage failures may leave modern copies beside original files; this is not a multi-file transaction.
+- Offline validation: `cargo test -p wallet-api --offline --lib protection`.
