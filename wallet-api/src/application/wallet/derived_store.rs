@@ -152,16 +152,23 @@ impl WalletApplication {
             let path = subs.join(format!("key{id}.keystore"));
             let binding = ProtectionContext::new(wallet_address, format!("derived:{id}"))
                 .map_err(KeystoreProtectionError::from)?;
-            let required = Self::record_requires_device(ctx, &binding, &path).await?;
+            let required = Self::record_has_device_requirement(ctx, &binding, &path).await?;
             if !required && !root_required {
                 legacy.extend(additions);
                 continue;
             }
-            let can_recreate =
+            let state =
                 MigrationRepo::get(&record_scope(&binding), &ctx.core_pool()?).await.map_err(
                     |_| ServiceError::Context("Cannot read keystore migration progress".into()),
-                )? == Some(MigrationState::RecreationAllowed);
+                )?;
+            let can_recreate = state == Some(MigrationState::RecreationAllowed);
             let exists = path.try_exists().map_err(|_| KeystoreProtectionError::Storage)?;
+            if !exists && state == Some(MigrationState::Pending) {
+                return Err(KeystoreProtectionError::Storage.into());
+            }
+            MigrationRepo::begin(&record_scope(&binding), &ctx.core_pool()?).await.map_err(
+                |_| ServiceError::Context("Cannot record protected account write".into()),
+            )?;
             let keys = if exists {
                 codec
                     .update_file(
@@ -179,16 +186,33 @@ impl WalletApplication {
                     return Err(KeystoreProtectionError::Storage.into());
                 }
                 let (plain, keys) = merge(AccountData::default(), additions)?;
-                codec.store_file(&path, &binding, plain, password, algorithm.clone()).await?;
+                if let Err(error) =
+                    codec.store_file(&path, &binding, plain, password, algorithm.clone()).await
+                {
+                    // Native seal/roundtrip failures precede publication. Only a
+                    // first creation with known no publication gets retry permission;
+                    // storage/worker failures and old Pending records stay blocked.
+                    if state.is_none() && matches!(error, KeystoreProtectionError::Protection(_)) {
+                        MigrationRepo::authorize_recreation(
+                            &record_scope(&binding),
+                            &ctx.core_pool()?,
+                        )
+                        .await
+                        .map_err(|_| {
+                            ServiceError::Context(
+                                "Cannot record unstarted account creation retry".into(),
+                            )
+                        })?;
+                    }
+                    return Err(error.into());
+                }
                 keys
             };
             metadata.accounts.insert(id, keys);
             publish_metadata(meta_path.clone(), &metadata, guard.clone()).await?;
-            if can_recreate {
-                MigrationRepo::complete(&record_scope(&binding), &ctx.core_pool()?).await.map_err(
-                    |_| ServiceError::Context("Cannot complete keystore recreation".into()),
-                )?;
-            }
+            MigrationRepo::complete(&record_scope(&binding), &ctx.core_pool()?).await.map_err(
+                |_| ServiceError::Context("Cannot complete protected account write".into()),
+            )?;
         }
         if !legacy.is_empty() {
             let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;

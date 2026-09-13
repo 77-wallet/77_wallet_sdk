@@ -42,58 +42,7 @@ impl WalletApplication {
             let api_pool = ctx.api_wallet_pool()?;
             let _api_write_guard =
                 api_pool.lock_write_with_metric("device_protection_initialization").await;
-            let pool = ctx.core_pool()?;
-            let state: Option<(String, i64)> =
-                sqlx::query_as("SELECT value, types FROM config WHERE key=?")
-                    .bind(KEY)
-                    .fetch_optional(pool.read_ref())
-                    .await
-                    .map_err(|_| {
-                        ServiceError::Context("Cannot read device key initialization state".into())
-                    })?;
-            let ready = match state {
-                Some((value, 1)) if value == READY => true,
-                Some((value, 1)) if value == PENDING => false,
-                None => false,
-                _ => return Err(KeystoreProtectionError::InvalidFormat.into()),
-            };
-            if !ready {
-                if let Some(password) = legacy_password.as_deref() {
-                    super::legacy_initialization::verify_storage(ctx, password).await?;
-                } else {
-                    require_empty_storage(ctx).await?;
-                }
-                ConfigRepo::upsert(KEY, PENDING, Some(1), &pool).await?;
-                ctx.device_protection()
-                    .provision_for_new_storage()
-                    .await
-                    .map_err(KeystoreProtectionError::from)?;
-            }
-            // READY retries deliberately never provision, including after KeyMissing.
-            // This non-secret challenge checks usability; it is not attestation and
-            // does not prove that any existing wallet ciphertext can be recovered.
-            use rand::RngCore;
-            let mut challenge = [0u8; 32];
-            rand::thread_rng().fill_bytes(&mut challenge);
-            let binding = ProtectionContext::new("device-protection", "initialization-probe-v1")
-                .map_err(KeystoreProtectionError::from)?;
-            let blob = ctx
-                .device_protection()
-                .protect(&binding, &challenge)
-                .await
-                .map_err(KeystoreProtectionError::from)?;
-            let opened = ctx
-                .device_protection()
-                .unprotect(&binding, &blob)
-                .await
-                .map_err(KeystoreProtectionError::from)?;
-            if opened != challenge {
-                return Err(KeystoreProtectionError::InvalidFormat.into());
-            }
-            if !ready {
-                ConfigRepo::upsert(KEY, READY, Some(1), &pool).await?;
-            }
-            Ok::<_, ServiceError>(())
+            initialize_under_gate(ctx, legacy_password.as_deref().map(|p| p.as_str())).await
         })
         .await
         .map_err(|_| KeystoreProtectionError::Worker)?
@@ -148,4 +97,66 @@ async fn require_empty_storage(ctx: &Context) -> Result<(), ServiceError> {
     })
     .await
     .map_err(|_| KeystoreProtectionError::Worker)?
+}
+
+/// Caller owns both application file and API database writer gates.
+pub(super) async fn initialize_under_gate(
+    ctx: &Context,
+    legacy_password: Option<&str>,
+) -> Result<(), ServiceError> {
+    let pool = ctx.core_pool()?;
+    let state: Option<(String, i64)> =
+        sqlx::query_as("SELECT value, types FROM config WHERE key=?")
+            .bind(KEY)
+            .fetch_optional(pool.read_ref())
+            .await
+            .map_err(|_| {
+                ServiceError::Context("Cannot read device key initialization state".into())
+            })?;
+    let ready = match state {
+        Some((value, 1)) if value == READY => true,
+        Some((value, 1)) if value == PENDING => false,
+        None => false,
+        _ => return Err(KeystoreProtectionError::InvalidFormat.into()),
+    };
+    if !ready {
+        if super::protection_rollout::files_active(ctx).await? {
+            return Err(KeystoreProtectionError::LegacyForbidden.into());
+        }
+        if let Some(password) = legacy_password {
+            super::legacy_initialization::verify_storage(ctx, password).await?;
+        } else {
+            require_empty_storage(ctx).await?;
+        }
+        ConfigRepo::upsert(KEY, PENDING, Some(1), &pool).await?;
+        ctx.device_protection()
+            .provision_for_new_storage()
+            .await
+            .map_err(KeystoreProtectionError::from)?;
+    }
+    // READY retries deliberately never provision, including after KeyMissing.
+    // This non-secret challenge checks usability; it is not attestation and
+    // does not prove that any existing wallet ciphertext can be recovered.
+    use rand::RngCore;
+    let mut challenge = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut challenge);
+    let binding = ProtectionContext::new("device-protection", "initialization-probe-v1")
+        .map_err(KeystoreProtectionError::from)?;
+    let blob = ctx
+        .device_protection()
+        .protect(&binding, &challenge)
+        .await
+        .map_err(KeystoreProtectionError::from)?;
+    let opened = ctx
+        .device_protection()
+        .unprotect(&binding, &blob)
+        .await
+        .map_err(KeystoreProtectionError::from)?;
+    if opened != challenge {
+        return Err(KeystoreProtectionError::InvalidFormat.into());
+    }
+    if !ready {
+        ConfigRepo::upsert(KEY, READY, Some(1), &pool).await?;
+    }
+    Ok::<_, ServiceError>(())
 }

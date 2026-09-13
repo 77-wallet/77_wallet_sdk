@@ -244,3 +244,19 @@ was not expanded; searches found no callers in SDK API, plugin Dart or App Dart.
 - Regression coverage includes V1/V2 success, wrong password, native probe failure/retry, protected files, missing index/DB targets, missing payload keys, migration history and existing API packages. Existing ciphertext remains unchanged; this operation does not migrate or activate protection.
 - API writes and application file writes are gated during preflight. Startup integration must still exclude other writers; this is not cross-process synchronization. READY retries only probe the existing key and are not password authentication.
 - Validation: `cargo test -p wallet-api --offline --lib protection`.
+
+## Ordinary V2 file migration orchestration
+
+- One owned application task holds the file and API writer gates across snapshot, initialization, validation, progress and publication. Caller cancellation does not release gates early.
+- Reuse strict DB/index/file inventory and exact KeyMeta checks. Reject V1 or mixed legacy identities before provisioning; existing V1-to-V2 conversion remains a prerequisite. Validate every file's password and payload before the first replacement.
+- Save all expected file scopes before publication. On retry, progress without a file is an error, including unindexed verify files; explicit deletion's RecreationAllowed is the sole absence exception. READY uses the same native key, never provisions again.
+- Tests cover root/all derived files, unchanged inner phrase, repeat calls with byte-identical WDK output, wrong-password preservation, publication followed by progress-write failure and successful retry, legacy format rejection and missing protected verify detection.
+- Successful migration sets the versioned ordinary-file active policy; later root and derived writes are protected. This explicit boundary is not yet invoked by startup/unlock and does not migrate SQLite. API packages/password proofs are only verified by first-use initialization here. Progress remains operational SQLite state, not a tamper-resistant trust anchor.
+
+## Default ordinary-file writes after explicit activation
+
+- Active policy is persisted only after complete file validation/migration. Active readers reject legacy fallback even without a per-record marker; unknown policy versions/types and per-record state still fail closed.
+- Fresh roots require no per-record state, no wallet/account DB references, an empty strict wallet inventory and no stale derived index. Explicit creation records retry permission before protected publication; accepted writes complete the device requirement. Existing missing DeviceRequired roots remain blocked.
+- Protected derived writes begin progress and complete only after ciphertext and index publication. Missing Pending files cannot be reconstructed from a partial new key set. Only a first creation's native Protection error (known to precede publish) grants explicit recreation retry permission; uncertain storage/worker errors do not.
+- Tests cover empty activation, failed first native root/derived writes and safe retry, WDK output and durable derived policy, active rejection of newly injected legacy records, and missing Pending derived loss preserving the index. Initialization cannot provision when active policy survives but initialization state is absent.
+- This policy becomes operational when the SDK startup/unlock integration invokes the migration boundary. Plugin callback availability alone does not invoke it; no App rollout or hardware integration result is implied.

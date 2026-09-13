@@ -2,6 +2,7 @@ mod derived_store;
 mod legacy_initialization;
 mod legacy_upgrade;
 mod protection_initialization;
+mod protection_rollout;
 mod wallet_deletion;
 
 use std::collections::HashSet;
@@ -74,9 +75,39 @@ impl WalletApplication {
         if Self::record_requires_device(ctx, &binding, &root_dir.join("root.keystore")).await? {
             let pool = ctx.core_pool()?;
             let scope = record_scope(&binding);
-            let recreate = MigrationRepo::get(&scope, &pool).await.map_err(|_| {
+            let state = MigrationRepo::get(&scope, &pool).await.map_err(|_| {
                 ServiceError::Context("Cannot read keystore migration progress".into())
-            })? == Some(MigrationState::RecreationAllowed);
+            })?;
+            let mut recreate = state == Some(MigrationState::RecreationAllowed);
+            let active = protection_rollout::files_active(ctx).await?;
+            let exists = root_dir
+                .join("root.keystore")
+                .try_exists()
+                .map_err(|_| KeystoreProtectionError::Storage)?;
+            if active && exists && !has_device_header(&root_dir.join("root.keystore")).await? {
+                return Err(KeystoreProtectionError::LegacyForbidden.into());
+            }
+            if active && !exists && state.is_none() {
+                let known: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM wallet WHERE address=?) OR EXISTS(SELECT 1 FROM account WHERE wallet_address=?)")
+                    .bind(wallet_address).bind(wallet_address).fetch_one(pool.read_ref()).await
+                    .map_err(|_| ServiceError::Context("Cannot inspect new wallet storage".into()))?;
+                let wallet_dir = root_dir.parent().ok_or(KeystoreProtectionError::Storage)?;
+                if known
+                    || !wallet_tree::file_ops::inventory::scan_wallet(wallet_dir, wallet_address)?
+                        .is_empty()
+                    || wallet_dir
+                        .join("subs/derived_meta.json")
+                        .try_exists()
+                        .map_err(|_| KeystoreProtectionError::Storage)?
+                {
+                    return Err(KeystoreProtectionError::Storage.into());
+                }
+                // Explicit fresh creation owns retry permission before publication.
+                MigrationRepo::authorize_recreation(&scope, &pool)
+                    .await
+                    .map_err(|_| ServiceError::Context("Cannot record new root creation".into()))?;
+                recreate = true;
+            }
             if !root_dir
                 .join("root.keystore")
                 .try_exists()
@@ -116,8 +147,18 @@ impl WalletApplication {
         )?)
     }
 
-    // Shared policy for existing records. Not permission to provision or migrate.
+    // Active file policy forbids legacy fallback even for untracked records.
     async fn record_requires_device(
+        ctx: &Context,
+        binding: &ProtectionContext,
+        path: &std::path::Path,
+    ) -> Result<bool, ServiceError> {
+        let recorded = Self::record_has_device_requirement(ctx, binding, path).await?;
+        Ok(protection_rollout::files_active(ctx).await? || recorded)
+    }
+
+    // Per-record history, used to distinguish new derived files from lost ones.
+    async fn record_has_device_requirement(
         ctx: &Context,
         binding: &ProtectionContext,
         path: &std::path::Path,

@@ -22,6 +22,71 @@ pub(super) async fn verify_storage(ctx: &Context, password: &str) -> Result<(), 
     if migrated {
         return Err(KeystoreProtectionError::LegacyForbidden.into());
     }
+    let paths = snapshot(ctx).await?;
+    for (_, record, expected) in paths {
+        let plain = read_legacy_file(&record.path, password).await?;
+        verify_payload(&record.identity, &plain, &expected)?;
+    }
+
+    let proofs: Vec<String> =
+        sqlx::query_scalar("SELECT password_proof FROM device WHERE password_proof IS NOT NULL")
+            .fetch_all(core.read_ref())
+            .await
+            .map_err(|_| state_error())?;
+    for proof in proofs {
+        verify_legacy_bytes(proof.as_bytes(), password).await?;
+    }
+
+    let api = ctx.api_wallet_pool()?;
+    let orphaned: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM api_account a WHERE NOT EXISTS(SELECT 1 FROM api_wallet w WHERE w.address=a.wallet_address))")
+        .fetch_one(api.read_ref()).await.map_err(|_| state_error())?;
+    if orphaned {
+        return Err(KeystoreProtectionError::Storage.into());
+    }
+    let packages: Vec<(Vec<u8>, Vec<u8>)> = sqlx::query_as("SELECT phrase, seed FROM api_wallet")
+        .fetch_all(api.read_ref())
+        .await
+        .map_err(|_| state_error())?;
+    for (phrase, seed) in packages {
+        if phrase.starts_with(b"WDK") || seed.starts_with(b"WDK") {
+            return Err(KeystoreProtectionError::LegacyForbidden.into());
+        }
+        // Existing package codecs perform the password checks; do not invent a
+        // second decoder. Drop zeroizing plaintext immediately, never persist it.
+        let _phrase = zeroize::Zeroizing::new(
+            ApiWalletDomain::decrypt_phrase(password, &phrase)
+                .await
+                .map_err(|_| KeystoreProtectionError::PasswordDecryption)?,
+        );
+        let _seed = zeroize::Zeroizing::new(
+            ApiWalletDomain::decrypt_seed(password, &seed)
+                .await
+                .map_err(|_| KeystoreProtectionError::PasswordDecryption)?,
+        );
+    }
+    Ok(())
+}
+
+fn require_root(records: &[InventoryEntry]) -> Result<(), ServiceError> {
+    let has = |identity| records.iter().any(|record| record.identity == identity);
+    if has(RecordIdentity::Root)
+        || (has(RecordIdentity::LegacySeed) && has(RecordIdentity::LegacyPhrase))
+    {
+        Ok(())
+    } else {
+        Err(KeystoreProtectionError::Storage.into())
+    }
+}
+
+fn state_error() -> ServiceError {
+    ServiceError::Context("Cannot inspect legacy wallet storage".into())
+}
+
+/// Caller holds the application storage gate; reused by legacy preflight and resume.
+pub(super) async fn snapshot(
+    ctx: &Context,
+) -> Result<Vec<(String, InventoryEntry, Vec<wallet_tree::KeyMeta>)>, ServiceError> {
+    let core = ctx.core_pool()?;
     let wallets: Vec<String> = sqlx::query_scalar("SELECT address FROM wallet")
         .fetch_all(core.read_ref())
         .await
@@ -33,7 +98,7 @@ pub(super) async fn verify_storage(ctx: &Context, password: &str) -> Result<(), 
     .await
     .map_err(|_| state_error())?;
     let dirs = ctx.get_global_dirs().clone();
-    let paths = tokio::task::spawn_blocking(move || -> Result<_, ServiceError> {
+    tokio::task::spawn_blocking(move || -> Result<_, ServiceError> {
         let mut expected = BTreeMap::<(String, u32), Vec<wallet_tree::KeyMeta>>::new();
         let mut inventory = BTreeMap::<String, Vec<InventoryEntry>>::new();
         for entry in
@@ -101,81 +166,33 @@ pub(super) async fn verify_storage(ctx: &Context, password: &str) -> Result<(), 
                     }
                     _ => Vec::new(),
                 };
-                paths.push((record, keys));
+                paths.push((wallet.clone(), record, keys));
             }
         }
         if let Some(verify) = scan_verify(&dirs.root_dir)? {
-            paths.push((verify, Vec::new()));
+            paths.push((String::new(), verify, Vec::new()));
         }
         Ok(paths)
     })
     .await
-    .map_err(|_| KeystoreProtectionError::Worker)??;
-    for (record, expected) in paths {
-        let plain = read_legacy_file(&record.path, password).await?;
-        if matches!(record.identity, RecordIdentity::Derived { .. }) {
-            let mut keys = super::decode_account_data(&plain)?;
-            let complete =
-                expected.iter().all(|meta| keys.get(meta).is_some_and(|key| !key.is_empty()));
-            for key in keys.values_mut() {
-                zeroize::Zeroize::zeroize(key);
-            }
-            if !complete {
-                return Err(KeystoreProtectionError::Storage.into());
-            }
-        }
-    }
+    .map_err(|_| KeystoreProtectionError::Worker)?
+}
 
-    let proofs: Vec<String> =
-        sqlx::query_scalar("SELECT password_proof FROM device WHERE password_proof IS NOT NULL")
-            .fetch_all(core.read_ref())
-            .await
-            .map_err(|_| state_error())?;
-    for proof in proofs {
-        verify_legacy_bytes(proof.as_bytes(), password).await?;
-    }
-
-    let api = ctx.api_wallet_pool()?;
-    let orphaned: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM api_account a WHERE NOT EXISTS(SELECT 1 FROM api_wallet w WHERE w.address=a.wallet_address))")
-        .fetch_one(api.read_ref()).await.map_err(|_| state_error())?;
-    if orphaned {
-        return Err(KeystoreProtectionError::Storage.into());
-    }
-    let packages: Vec<(Vec<u8>, Vec<u8>)> = sqlx::query_as("SELECT phrase, seed FROM api_wallet")
-        .fetch_all(api.read_ref())
-        .await
-        .map_err(|_| state_error())?;
-    for (phrase, seed) in packages {
-        if phrase.starts_with(b"WDK") || seed.starts_with(b"WDK") {
-            return Err(KeystoreProtectionError::LegacyForbidden.into());
+pub(super) fn verify_payload(
+    identity: &RecordIdentity,
+    plain: &[u8],
+    expected: &[wallet_tree::KeyMeta],
+) -> Result<(), ServiceError> {
+    if matches!(identity, RecordIdentity::Derived { .. }) {
+        let mut keys = super::decode_account_data(plain)?;
+        let complete =
+            expected.iter().all(|meta| keys.get(meta).is_some_and(|key| !key.is_empty()));
+        for key in keys.values_mut() {
+            zeroize::Zeroize::zeroize(key);
         }
-        // Existing package codecs perform the password checks; do not invent a
-        // second decoder. Drop zeroizing plaintext immediately, never persist it.
-        let _phrase = zeroize::Zeroizing::new(
-            ApiWalletDomain::decrypt_phrase(password, &phrase)
-                .await
-                .map_err(|_| KeystoreProtectionError::PasswordDecryption)?,
-        );
-        let _seed = zeroize::Zeroizing::new(
-            ApiWalletDomain::decrypt_seed(password, &seed)
-                .await
-                .map_err(|_| KeystoreProtectionError::PasswordDecryption)?,
-        );
+        if !complete {
+            return Err(KeystoreProtectionError::Storage.into());
+        }
     }
     Ok(())
-}
-
-fn require_root(records: &[InventoryEntry]) -> Result<(), ServiceError> {
-    let has = |identity| records.iter().any(|record| record.identity == identity);
-    if has(RecordIdentity::Root)
-        || (has(RecordIdentity::LegacySeed) && has(RecordIdentity::LegacyPhrase))
-    {
-        Ok(())
-    } else {
-        Err(KeystoreProtectionError::Storage.into())
-    }
-}
-
-fn state_error() -> ServiceError {
-    ServiceError::Context("Cannot inspect legacy wallet storage".into())
 }
