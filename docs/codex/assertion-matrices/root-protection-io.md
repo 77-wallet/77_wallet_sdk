@@ -236,3 +236,11 @@ was not expanded; searches found no callers in SDK API, plugin Dart or App Dart.
 - Persist provisioning intent before calling native code. A non-secret challenge roundtrip precedes key-ready state. READY retries only test the existing key; KeyMissing/Locked/invalidated errors must not trigger provisioning. Pending retries require empty storage again and an idempotent native provisioner that never resets existing keys.
 - Tests cover empty initialization/repeat, readiness across context reopen, failed probe then retry, no reprovision after key loss, existing standard/API storage/history/verify rejection, unknown state/type, and default unsupported adapters.
 - This boundary is not yet wired to plugin provisioning or automatic activation. The challenge proves provider roundtrip usability, not hardware attestation or recovery of existing wallet ciphertext. Native hardware enforcement remains the adapter's responsibility.
+
+## Explicit legacy-storage key initialization (not rollout)
+
+- Password-bearing initialization scans strict ordinary-wallet inventories, DB/index references, password proofs and existing API phrase/seed packages before provisioning. Existing WDK records, migration history, missing roots/files, unknown formats and orphan API accounts reject initialization.
+- Modern account payloads use the existing strict decoder; every DB/index KeyMeta must reference a nonempty key. Password-decryptable but incomplete payloads fail before native provisioning. Decrypted buffers are cleared after verification.
+- Regression coverage includes V1/V2 success, wrong password, native probe failure/retry, protected files, missing index/DB targets, missing payload keys, migration history and existing API packages. Existing ciphertext remains unchanged; this operation does not migrate or activate protection.
+- API writes and application file writes are gated during preflight. Startup integration must still exclude other writers; this is not cross-process synchronization. READY retries only probe the existing key and are not password authentication.
+- Validation: `cargo test -p wallet-api --offline --lib protection`.

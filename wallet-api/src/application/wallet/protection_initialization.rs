@@ -17,8 +17,31 @@ impl WalletApplication {
     pub(crate) async fn initialize_device_protection(
         ctx: &'static Context,
     ) -> Result<(), ServiceError> {
+        Self::initialize_device_protection_inner(ctx, None).await
+    }
+
+    /// Verify legacy data before first provisioning. READY only checks key usability;
+    /// this is not a password-validation API and does not migrate any records.
+    pub(crate) async fn initialize_device_protection_for_legacy(
+        ctx: &'static Context,
+        password: &str,
+    ) -> Result<(), ServiceError> {
+        Self::initialize_device_protection_inner(
+            ctx,
+            Some(zeroize::Zeroizing::new(password.to_owned())),
+        )
+        .await
+    }
+
+    async fn initialize_device_protection_inner(
+        ctx: &'static Context,
+        legacy_password: Option<zeroize::Zeroizing<String>>,
+    ) -> Result<(), ServiceError> {
         tokio::spawn(async move {
             let _guard = derived_store::lock().await;
+            let api_pool = ctx.api_wallet_pool()?;
+            let _api_write_guard =
+                api_pool.lock_write_with_metric("device_protection_initialization").await;
             let pool = ctx.core_pool()?;
             let state: Option<(String, i64)> =
                 sqlx::query_as("SELECT value, types FROM config WHERE key=?")
@@ -35,7 +58,11 @@ impl WalletApplication {
                 _ => return Err(KeystoreProtectionError::InvalidFormat.into()),
             };
             if !ready {
-                require_empty_storage(ctx).await?;
+                if let Some(password) = legacy_password.as_deref() {
+                    super::legacy_initialization::verify_storage(ctx, password).await?;
+                } else {
+                    require_empty_storage(ctx).await?;
+                }
                 ConfigRepo::upsert(KEY, PENDING, Some(1), &pool).await?;
                 ctx.device_protection()
                     .provision_for_new_storage()
@@ -76,7 +103,7 @@ impl WalletApplication {
 async fn require_empty_storage(ctx: &Context) -> Result<(), ServiceError> {
     let core = ctx.core_pool()?;
     let occupied: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM wallet) OR EXISTS(SELECT 1 FROM account) OR EXISTS(SELECT 1 FROM config WHERE key LIKE 'device_protection.migration.v1:%')",
+        "SELECT EXISTS(SELECT 1 FROM wallet) OR EXISTS(SELECT 1 FROM account) OR EXISTS(SELECT 1 FROM device WHERE password_proof IS NOT NULL) OR EXISTS(SELECT 1 FROM config WHERE key LIKE 'device_protection.migration.v1:%')",
     ).fetch_one(core.read_ref()).await
         .map_err(|_| ServiceError::Context("Cannot inspect wallet initialization state".into()))?;
     let api = ctx.api_wallet_pool()?;

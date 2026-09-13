@@ -289,22 +289,54 @@ impl KeystoreProtection {
             }
             (stored.to_vec(), true)
         };
-        validate_inner(&inner)?;
-        let password = Zeroizing::new(password.as_bytes().to_vec());
-        let encrypted = inner.clone();
-        let plaintext = tokio::task::spawn_blocking(move || {
-            let json = std::str::from_utf8(&encrypted)
-                .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
-            wallet_crypto::KeystoreJsonDecryptor
-                .decrypt(&password, json)
-                .map(Zeroizing::new)
-                .map_err(|_| KeystoreProtectionError::PasswordDecryption)
-        })
-        .await
-        .map_err(|_| KeystoreProtectionError::Worker)??;
+        let plaintext = decrypt_inner(&inner, password).await?;
         let replacement = if legacy { Some(self.seal(context, &inner).await?) } else { None };
         Ok(OpenedKeystore { plaintext, replacement })
     }
+}
+
+/// Read-only verification for provisioning preflight: never seals or calls native.
+pub(crate) async fn read_legacy_file(
+    path: &std::path::Path,
+    password: &str,
+) -> Result<Zeroizing<Vec<u8>>, KeystoreProtectionError> {
+    wallet_tree::file_ops::protected::load(path, |stored| async move {
+        if stored.starts_with(MAGIC) {
+            return Err(KeystoreProtectionError::LegacyForbidden);
+        }
+        decrypt_inner(&stored, password).await
+    })
+    .await
+}
+
+pub(crate) async fn verify_legacy_bytes(
+    stored: &[u8],
+    password: &str,
+) -> Result<(), KeystoreProtectionError> {
+    if stored.starts_with(MAGIC) {
+        return Err(KeystoreProtectionError::LegacyForbidden);
+    }
+    let _plaintext = decrypt_inner(stored, password).await?;
+    Ok(())
+}
+
+async fn decrypt_inner(
+    inner: &[u8],
+    password: &str,
+) -> Result<Zeroizing<Vec<u8>>, KeystoreProtectionError> {
+    validate_inner(inner)?;
+    let password = Zeroizing::new(password.as_bytes().to_vec());
+    let encrypted = inner.to_vec();
+    tokio::task::spawn_blocking(move || {
+        let json =
+            std::str::from_utf8(&encrypted).map_err(|_| KeystoreProtectionError::InvalidFormat)?;
+        wallet_crypto::KeystoreJsonDecryptor
+            .decrypt(&password, json)
+            .map(Zeroizing::new)
+            .map_err(|_| KeystoreProtectionError::PasswordDecryption)
+    })
+    .await
+    .map_err(|_| KeystoreProtectionError::Worker)?
 }
 
 fn validate_inner(inner: &[u8]) -> Result<(), KeystoreProtectionError> {

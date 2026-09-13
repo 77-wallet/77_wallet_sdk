@@ -1786,3 +1786,176 @@ async fn protection_initialization_refuses_api_wallets_and_unknown_state() {
         assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
     }
 }
+
+#[tokio::test]
+async fn protection_legacy_initialization_verifies_password_without_rewriting_files() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let root = legacy_upgrade_fixture(ctx);
+    let original = std::fs::read(root.join("fixturewallet-seed")).unwrap();
+    assert!(
+        WalletApplication::initialize_device_protection_for_legacy(ctx, "wrong-password")
+            .await
+            .is_err()
+    );
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    WalletApplication::initialize_device_protection_for_legacy(ctx, PASSWORD).await.unwrap();
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+    assert_eq!(std::fs::read(root.join("fixturewallet-seed")).unwrap(), original);
+    assert!(!root.join("root.keystore").exists());
+}
+
+#[tokio::test]
+async fn protection_legacy_initialization_rejects_protected_and_missing_files() {
+    for protected in [false, true] {
+        let dir = directory();
+        let native = Arc::new(Native::default());
+        let ctx = context(dir.path(), native.clone()).await;
+        let subs = derived_password_fixture(ctx).await;
+        WalletApplication::store_root(
+            ctx,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+        )
+        .await
+        .unwrap();
+        if protected {
+            let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+            KeystoreProtection::new(ctx.device_protection().clone())
+                .migrate_file(
+                    &subs.join("key0.keystore"),
+                    &binding,
+                    PASSWORD,
+                    ReadPolicy::LegacyMigrationAllowed,
+                )
+                .await
+                .unwrap();
+        } else {
+            std::fs::remove_file(subs.join("key1.keystore")).unwrap();
+        }
+        assert!(
+            WalletApplication::initialize_device_protection_for_legacy(ctx, PASSWORD)
+                .await
+                .is_err()
+        );
+        assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn protection_legacy_initialization_v2_retry_keeps_all_ciphertext() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    let original = std::fs::read(subs.join("key0.keystore")).unwrap();
+    native.fail_protect.store(true, Ordering::SeqCst);
+    assert!(
+        WalletApplication::initialize_device_protection_for_legacy(ctx, PASSWORD).await.is_err()
+    );
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+    native.fail_protect.store(false, Ordering::SeqCst);
+    WalletApplication::initialize_device_protection_for_legacy(ctx, PASSWORD).await.unwrap();
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 2);
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), original);
+}
+
+#[tokio::test]
+async fn protection_legacy_initialization_verifies_existing_api_packages_without_changes() {
+    use crate::{
+        domain::api_wallet::wallet::ApiWalletDomain,
+        infrastructure::phrase_package::PhrasePackageCodec,
+    };
+    use wallet_database::{
+        entities::api_wallet::ApiWalletType, repositories::api_wallet::wallet::ApiWalletRepo,
+    };
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let phrase = PhrasePackageCodec::encrypt_phrase(PASSWORD, PHRASE).await.unwrap();
+    let seed = ApiWalletDomain::encrypt_seed_bundle(PASSWORD, b"synthetic api seed").await.unwrap();
+    let pool = ctx.api_wallet_pool().unwrap();
+    ApiWalletRepo::upsert(
+        &pool,
+        "fixture-uid",
+        "fixture-name",
+        "fixture-address",
+        &phrase,
+        &seed,
+        ApiWalletType::SubAccount,
+        None,
+        "fixture-sn",
+        0,
+    )
+    .await
+    .unwrap();
+    assert!(
+        WalletApplication::initialize_device_protection_for_legacy(ctx, "wrong-password")
+            .await
+            .is_err()
+    );
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    WalletApplication::initialize_device_protection_for_legacy(ctx, PASSWORD).await.unwrap();
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+    let stored: (Vec<u8>, Vec<u8>) =
+        sqlx::query_as("SELECT phrase, seed FROM api_wallet WHERE address='fixture-address'")
+            .fetch_one(pool.read_ref())
+            .await
+            .unwrap();
+    assert_eq!(stored, (phrase, seed));
+}
+
+#[tokio::test]
+async fn protection_legacy_initialization_refuses_history_and_missing_db_wallet() {
+    use wallet_database::repositories::device_protection::MigrationRepo;
+    for history in [true, false] {
+        let dir = directory();
+        let native = Arc::new(Native::default());
+        let ctx = context(dir.path(), native.clone()).await;
+        if history {
+            legacy_upgrade_fixture(ctx);
+            MigrationRepo::begin("old-device-record", &ctx.core_pool().unwrap()).await.unwrap();
+        } else {
+            register_wallet_for_password_change(ctx).await;
+        }
+        assert!(
+            WalletApplication::initialize_device_protection_for_legacy(ctx, PASSWORD)
+                .await
+                .is_err()
+        );
+        assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn protection_legacy_initialization_rejects_missing_keys_inside_v2_file() {
+    use wallet_tree::wallet_hierarchy::{WalletTreeOps, v2::ModernWalletTree};
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    ModernWalletTree::default()
+        .io()
+        .store(
+            "key0.keystore",
+            &b"{}".to_vec(),
+            &subs,
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .unwrap();
+    let before = std::fs::read(subs.join("key0.keystore")).unwrap();
+    assert!(
+        WalletApplication::initialize_device_protection_for_legacy(ctx, PASSWORD).await.is_err()
+    );
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), before);
+}
