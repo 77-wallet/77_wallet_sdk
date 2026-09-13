@@ -91,3 +91,17 @@ target/device-protection-sep/probe target/device-protection-sep read
 新增插件 ios/Classes/IOSEnvelope.swift 与 IOSDeviceProtection.swift，明确 SEP + Keychain 存储、显式初始化、缺失不重建、版本化 AAD 绑定。审查修正了已有引用恢复失败的 keyMissing/keyInvalidated 分类，避免误入初始化分支。实际安装文件的 CryptoKit 封装测试通过；iPhoneOS arm64/iOS11 target 类型检查通过（实现受 iOS13 availability 保护）。测试说明位于插件 ios/docs/device-protection.md。
 
 仍无 iPhone 真机运行结果，且双端均未完成 Flutter/FFI 注册及 SDK 敏感存储接入。不能将已完成原生模块等同于钱包数据已获得外层保护。
+
+## Android MethodChannel 与 Dart 封装
+
+插件新增 DeviceProtectionPlugin Android 注册、后台执行器、Dart DeviceProtectionChannel 和5项实际插件工程 messenger 测试。Java 使用 Android35/Flutter embedding 编译通过；测试全部通过。接口提供显式 provisionForNewStorage 和字节 protect/unprotect，SDK 版本未修改，尚无 Rust 注入/FRB 调用证据。
+
+代码审查后将通道限制为4个未完成请求、单次约1 MiB，并在复制前拒绝超限请求；工作线程只捕获方法名而非完整 MethodCall。Dart 30秒超时仅停止等待，不保证原生操作取消；原生 detach 返回 CANCELLED、清空队列，已执行的 Keystore 操作可能完成。必须在后续真机 Flutter 测试覆盖队列压力与 detach。iOS 通道注册和 SDK 存储接入仍未完成。
+
+## Rust/Dart 注入桥接完成（合成数据）
+
+插件使用真实 SDK DeviceProtection trait，由实例化 DeviceProtectionBridge 注入 DartProtectionProvider；生成 FRB 绑定，Dart 转发器调用原生 MethodChannel。Rust/Dart 以固定错误类别传递失败，Rust35秒与Dart30秒等待超时不等同于取消原生操作。审查修正了加密前后大小上限差异，最大1MiB内层密文可带128字节封装开销读回。
+
+实际插件4项Rust测试、7项Dart测试通过；Dart定向分析无问题；生成器、Android通道编译、测试profile动态库构建通过。另加载刚构建的真实Rust动态库，Flutter→Rust SDK trait→Dart callback往返及错误映射测试1项通过；其中MethodChannel使用测试替身，不能声称Android整机硬件调用链已验证。
+
+尚未完成：iOS通道注册、Android Flutter真机整链路、Context/WalletManager注入和实际钱包读写切换。插件使用的SDK版本未在本批调整。
