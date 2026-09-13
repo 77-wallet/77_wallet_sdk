@@ -276,24 +276,14 @@ impl AccountDomain {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
-        let dirs = ctx.get_global_dirs();
-        let subs_dir = dirs.get_subs_dir(wallet_address)?;
-
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
-        wallet_tree::api::KeystoreApi::update_account_password(
-            wallet_tree,
-            &subs_dir,
+        WalletApplication::change_account_password(
+            ctx,
+            wallet_address,
             account_index_map,
             old_password,
             new_password,
-            algorithm,
         )
-        .map_err(|e| SystemError::Service(e.to_string()))?;
-
-        Ok(())
+        .await
     }
 
     /// 废弃方法，不再使用

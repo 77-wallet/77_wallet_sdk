@@ -443,3 +443,187 @@ async fn legacy_root_password_change_keeps_existing_format() {
     assert!(!root.join("root.keystore").exists());
     assert_eq!(native.opens.load(Ordering::SeqCst), 0);
 }
+
+async fn derived_password_fixture(ctx: &Context) -> std::path::PathBuf {
+    use wallet_tree::{
+        file_ops::BulkSubkey,
+        wallet_hierarchy::{WalletTreeOps, v2::ModernWalletTree},
+    };
+    use wallet_utils::address::AccountIndexMap;
+    register_wallet_for_password_change(ctx).await;
+    wallet_database::repositories::config::ConfigRepo::upsert(
+        "wallet_tree_strategy",
+        r#"{"wallet_tree_strategy":"v2"}"#,
+        Some(0),
+        &ctx.core_pool().unwrap(),
+    )
+    .await
+    .unwrap();
+    ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    let subs = ctx.get_global_dirs().get_subs_dir(WALLET).unwrap();
+    let account = AccountIndexMap::from_account_id(0).unwrap();
+    let other = AccountIndexMap::from_account_id(1).unwrap();
+    ModernWalletTree::default()
+        .io()
+        .store_subkeys_bulk(
+            vec![
+                BulkSubkey::new(
+                    account.clone(),
+                    "fixture-eth",
+                    "eth",
+                    "m/0",
+                    b"synthetic eth key".to_vec(),
+                ),
+                BulkSubkey::new(
+                    account,
+                    "fixture-sol",
+                    "sol",
+                    "m/1",
+                    b"synthetic sol key".to_vec(),
+                ),
+                BulkSubkey::new(
+                    other,
+                    "fixture-other",
+                    "eth",
+                    "m/2",
+                    b"synthetic other key".to_vec(),
+                ),
+            ],
+            &subs,
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .unwrap();
+    subs
+}
+
+#[tokio::test]
+async fn derived_password_change_preserves_payload_index_and_other_accounts() {
+    use crate::domain::account::AccountDomain;
+    use wallet_crypto::EncryptedJsonDecryptor;
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let index = std::fs::read(subs.join("derived_meta.json")).unwrap();
+    let other = std::fs::read(subs.join("key1.keystore")).unwrap();
+    let original = std::fs::read_to_string(&path).unwrap();
+    let plain =
+        wallet_crypto::KeystoreJsonDecryptor.decrypt(PASSWORD.as_bytes(), &original).unwrap();
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    let codec = KeystoreProtection::new(ctx.device_protection().clone());
+    codec
+        .migrate_file(&path, &binding, PASSWORD, ReadPolicy::LegacyMigrationAllowed)
+        .await
+        .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let account = wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap();
+    let wrong = AccountDomain::set_account_password(
+        ctx,
+        WALLET,
+        &account,
+        "wrong-fixture-password",
+        "new-fixture-password",
+    )
+    .await;
+    assert!(matches!(
+        wrong,
+        Err(ServiceError::DeviceProtection(KeystoreProtectionError::PasswordDecryption))
+    ));
+    assert!(std::fs::read(&path).unwrap() == before);
+    native.fail_protect.store(true, Ordering::SeqCst);
+    let failed = AccountDomain::set_account_password(
+        ctx,
+        WALLET,
+        &account,
+        PASSWORD,
+        "new-fixture-password",
+    )
+    .await;
+    assert!(matches!(
+        failed,
+        Err(ServiceError::DeviceProtection(KeystoreProtectionError::Protection(
+            ProtectionError::PlatformFailure
+        )))
+    ));
+    assert!(std::fs::read(&path).unwrap() == before);
+    assert!(std::fs::read(subs.join("derived_meta.json")).unwrap() == index);
+    native.fail_protect.store(false, Ordering::SeqCst);
+    AccountDomain::set_account_password(ctx, WALLET, &account, PASSWORD, "new-fixture-password")
+        .await
+        .unwrap();
+    assert!(
+        codec.load_file(&path, &binding, "new-fixture-password").await.unwrap().as_slice() == plain
+    );
+    assert!(matches!(
+        codec.load_file(&path, &binding, PASSWORD).await,
+        Err(KeystoreProtectionError::PasswordDecryption)
+    ));
+    assert!(std::fs::read(&path).unwrap().starts_with(b"WDK\x01"));
+    assert!(std::fs::read(subs.join("derived_meta.json")).unwrap() == index);
+    assert!(std::fs::read(subs.join("key1.keystore")).unwrap() == other);
+    assert_eq!(std::fs::read_dir(&subs).unwrap().count(), 3);
+}
+
+#[tokio::test]
+async fn completed_derived_password_change_rejects_legacy_rollback() {
+    use crate::domain::account::AccountDomain;
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let original = std::fs::read(&path).unwrap();
+    let index = std::fs::read(subs.join("derived_meta.json")).unwrap();
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .migrate_files(
+            &ctx.core_pool().unwrap(),
+            &[MigrationFile { path: &path, context: &binding }],
+            PASSWORD,
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+    std::fs::write(&path, &original).unwrap();
+    let account = wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap();
+    let failed = AccountDomain::set_account_password(
+        ctx,
+        WALLET,
+        &account,
+        PASSWORD,
+        "new-fixture-password",
+    )
+    .await;
+    assert!(matches!(
+        failed,
+        Err(ServiceError::DeviceProtection(KeystoreProtectionError::LegacyForbidden))
+    ));
+    assert!(std::fs::read(&path).unwrap() == original);
+    assert!(std::fs::read(subs.join("derived_meta.json")).unwrap() == index);
+}
+
+#[tokio::test]
+async fn password_only_derived_change_remains_compatible() {
+    use crate::domain::account::AccountDomain;
+    use wallet_crypto::EncryptedJsonDecryptor;
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let original = std::fs::read_to_string(&path).unwrap();
+    let plain =
+        wallet_crypto::KeystoreJsonDecryptor.decrypt(PASSWORD.as_bytes(), &original).unwrap();
+    let account = wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap();
+    AccountDomain::set_account_password(ctx, WALLET, &account, PASSWORD, "new-fixture-password")
+        .await
+        .unwrap();
+    let updated = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        wallet_crypto::KeystoreJsonDecryptor.decrypt(b"new-fixture-password", &updated).unwrap()
+            == plain
+    );
+    assert!(wallet_crypto::KeystoreJsonDecryptor.decrypt(PASSWORD.as_bytes(), &updated).is_err());
+    assert_eq!(native.opens.load(Ordering::SeqCst), 0);
+}

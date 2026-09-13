@@ -35,7 +35,9 @@ impl WalletApplication {
     ) -> Result<wallet_tree::file_ops::RootData, ServiceError> {
         let dirs = ctx.get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
-        if Self::root_requires_device(ctx, wallet_address, &root_dir).await? {
+        let binding = ProtectionContext::new(wallet_address, "root-keystore")
+            .map_err(KeystoreProtectionError::from)?;
+        if Self::record_requires_device(ctx, &binding, &root_dir.join("root.keystore")).await? {
             return Ok(KeystoreProtection::new(ctx.device_protection().clone())
                 .load_root(&root_dir, wallet_address, password)
                 .await?);
@@ -51,18 +53,16 @@ impl WalletApplication {
         )?)
     }
 
-    // Shared policy for existing-root reads and password changes. Not provisioning permission.
-    async fn root_requires_device(
+    // Shared policy for existing records. Not permission to provision or migrate.
+    async fn record_requires_device(
         ctx: &Context,
-        wallet_address: &str,
-        root_dir: &std::path::Path,
+        binding: &ProtectionContext,
+        path: &std::path::Path,
     ) -> Result<bool, ServiceError> {
-        let binding = ProtectionContext::new(wallet_address, "root-keystore")
-            .map_err(KeystoreProtectionError::from)?;
-        let state = MigrationRepo::get(&record_scope(&binding), &ctx.core_pool()?)
+        let state = MigrationRepo::get(&record_scope(binding), &ctx.core_pool()?)
             .await
             .map_err(|_| ServiceError::Context("Cannot read keystore migration progress".into()))?;
-        let protected = has_device_header(&root_dir.join("root.keystore")).await?;
+        let protected = has_device_header(path).await?;
         // Completion forbids legacy fallback, even when the protected file is missing.
         Ok(protected || state == Some(MigrationState::DeviceRequired))
     }
@@ -76,9 +76,9 @@ impl WalletApplication {
         let dirs = ctx.get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
-        if Self::root_requires_device(ctx, wallet_address, &root_dir).await? {
-            let binding = ProtectionContext::new(wallet_address, "root-keystore")
-                .map_err(KeystoreProtectionError::from)?;
+        let binding = ProtectionContext::new(wallet_address, "root-keystore")
+            .map_err(KeystoreProtectionError::from)?;
+        if Self::record_requires_device(ctx, &binding, &root_dir.join("root.keystore")).await? {
             return Ok(KeystoreProtection::new(ctx.device_protection().clone())
                 .change_file_password(
                     &root_dir.join("root.keystore"),
@@ -96,6 +96,42 @@ impl WalletApplication {
             root_dir,
             wallet_tree,
             wallet_address,
+            old_password,
+            new_password,
+            algorithm,
+        )
+        .map_err(|error| crate::error::system::SystemError::Service(error.to_string()))?;
+        Ok(())
+    }
+
+    pub(crate) async fn change_account_password(
+        ctx: &Context,
+        wallet_address: &str,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), ServiceError> {
+        let dirs = ctx.get_global_dirs();
+        let subs_dir = dirs.get_subs_dir(wallet_address)?;
+        let path = subs_dir.join(format!("key{}.keystore", account_index_map.account_id));
+        let binding = ProtectionContext::new(
+            wallet_address,
+            format!("derived:{}", account_index_map.account_id),
+        )
+        .map_err(KeystoreProtectionError::from)?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
+        if Self::record_requires_device(ctx, &binding, &path).await? {
+            return Ok(KeystoreProtection::new(ctx.device_protection().clone())
+                .change_file_password(&path, &binding, old_password, new_password, algorithm)
+                .await?);
+        }
+
+        let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
+        let wallet_tree = strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        wallet_tree::api::KeystoreApi::update_account_password(
+            wallet_tree,
+            &subs_dir,
+            account_index_map,
             old_password,
             new_password,
             algorithm,

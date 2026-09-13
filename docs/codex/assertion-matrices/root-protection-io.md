@@ -119,7 +119,7 @@ Validation: `cargo test -p wallet-api --offline --lib protection`.
 
 `AccountDomain::set_root_password` keeps the wallet existence check and delegates to
 `WalletApplication::change_root_password`. Existing-root read/write selection shares
-`root_requires_device`. WDK records use the generic codec `change_file_password` under
+`record_requires_device`. WDK records use the generic codec `change_file_password` under
 the common directory rewrite lock; the existing password generator transforms opaque
 plaintext in memory, and only validated outer ciphertext reaches the atomic publisher.
 Legacy records retain their previous writer. No keys are provisioned and no migration
@@ -136,3 +136,23 @@ Validation: `cargo test -p wallet-api --offline --lib protection`.
 The atomicity guarantee is per protected file, before publication. The existing App-wide
 password change updates multiple records sequentially and is not made transactional by
 this batch. Failures after atomic rename can still report uncertain durability, as above.
+
+## Derived account-file password change
+
+The actual `AccountDomain::set_account_password` entry delegates to the same generic
+protected password transform as root changes. Expected context is wallet address plus
+`derived:{account_id}`, at the existing `subs/key{account_id}.keystore` path. Read-policy
+selection is shared as `record_requires_device`. Protected payloads are not parsed or
+rebuilt, and this path never writes `derived_meta.json` or deletes the original first.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Multi-key protected file: wrong password/native failure, then successful change | Exact plaintext retained; WDK retained; index and other account file byte-identical; failures preserve original; old password fails after success | derived_password_change_preserves_payload_index_and_other_accounts |
+| Completed account restored to password-only file | LegacyForbidden; ciphertext and index unchanged | completed_derived_password_change_rejects_legacy_rollback |
+| Existing password-only V2 file | New password recovers same payload; old password fails; no native calls | password_only_derived_change_remains_compatible |
+
+Validation: `cargo test -p wallet-api --offline --lib protection`.
+Fixtures use the existing ModernIo writer to produce actual grouped account payloads.
+This covers account-file password changes, not single-address `set_sub_password`,
+private-key read activation, multi-file transactionality, or the pre-existing V1
+`load_account` unimplemented branch. No new protected-file activation is introduced.
