@@ -194,3 +194,12 @@ This does not activate protected storage for new records or make create/reimport
 across DB and derived files. Derived bulk writes still require integration before full
 wallet reimport can be described as device-protected. The unused set_sub_password method
 was not expanded; searches found no callers in SDK API, plugin Dart or App Dart.
+
+## Derived bulk application writes
+
+- Four live service callers share `WalletApplication::store_subkeys`: wallet creation/import, derivation-path import, account creation, chain synchronization.
+- Existing protected account maps merge new entries under the common codec rewrite lock. Old keys and unrelated account ciphertext survive; a protected root requires outer encryption for newly created derived files.
+- Native protection failure before publication leaves that file and its index unchanged. This is not atomic over all files in a bulk request; earlier completed account writes can remain after a later failure.
+- Updated index entries come from the full resulting key map; retries do not duplicate entries. A malformed existing index fails before ciphertext writes. A missing known protected account is an error, never rebuilt from a partial input.
+- Regression tests cover native failure, append/new file, idempotent retry, concurrent appends, malformed index and legacy compatibility. Cancellation test requires an accepted operation to finish its ciphertext/index write while retaining serialization even after its waiter is cancelled.
+- Legacy deletion/algorithm-upgrade writers and separate processes do not participate in this application gate; rollout still requires their integration or exclusion during migration. Process termination between ciphertext and index publication remains a recovery boundary; this change does not claim a cross-file transaction.

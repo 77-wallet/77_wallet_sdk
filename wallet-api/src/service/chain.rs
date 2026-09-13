@@ -23,7 +23,6 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};
-use wallet_tree::api::KeystoreApi;
 
 pub struct ChainService {
     ctx: &'static crate::context::Context,
@@ -91,8 +90,6 @@ impl ChainService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = self.ctx.core_pool()?;
 
-        let dirs = self.ctx.get_global_dirs();
-
         domain::wallet::WalletDomain::validate_password_with_context(self.ctx, wallet_password)
             .await?;
         let chain_list: Vec<String> = ChainRepo::get_chain_node_list(&core_pool)
@@ -138,16 +135,13 @@ impl ChainService {
             )
             .await?;
 
-            let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
-            let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-            let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
-            KeystoreApi::initialize_child_keystores(
-                wallet_tree,
+            crate::application::wallet::WalletApplication::store_subkeys(
+                self.ctx,
+                &wallet.wallet_address,
                 subkeys,
-                dirs.get_subs_dir(&wallet.wallet_address)?,
                 wallet_password,
-                algorithm,
-            )?;
+            )
+            .await?;
         }
 
         // let device_bind_address_task_data =

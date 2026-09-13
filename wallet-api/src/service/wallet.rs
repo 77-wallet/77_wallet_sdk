@@ -178,7 +178,6 @@ impl WalletService {
         let pool = self.ctx.core_pool()?;
 
         WalletApplication::validate_password(self.ctx, wallet_password).await?;
-        let dirs = self.ctx.get_global_dirs();
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;
 
@@ -250,16 +249,8 @@ impl WalletService {
             accounts.push(account.address);
         }
 
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
-        KeystoreApi::initialize_child_keystores(
-            wallet_tree,
-            subkeys,
-            dirs.get_subs_dir(wallet_address)?,
-            wallet_password,
-            algorithm,
-        )?;
+        WalletApplication::store_subkeys(self.ctx, wallet_address, subkeys, wallet_password)
+            .await?;
 
         let address_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
@@ -334,8 +325,6 @@ impl WalletService {
                 ),
             ));
         };
-
-        let dirs = self.ctx.get_global_dirs();
 
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
@@ -416,21 +405,12 @@ impl WalletService {
         );
 
         let child_keystore_start = std::time::Instant::now();
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
 
         // 波场的地址
         let tron_address =
             subkeys.iter().find(|s| s.chain_code == chain_code::TRON).map(|s| s.address.clone());
 
-        KeystoreApi::initialize_child_keystores(
-            wallet_tree,
-            subkeys,
-            dirs.get_subs_dir(address)?,
-            wallet_password,
-            algorithm,
-        )?;
+        WalletApplication::store_subkeys(self.ctx, address, subkeys, wallet_password).await?;
         tracing::debug!("Child keystore initialization took: {:?}", child_keystore_start.elapsed());
 
         Tasks::new().push(CommonTask::QueryCoinPrice(req)).send_with_ctx(self.ctx).await?;

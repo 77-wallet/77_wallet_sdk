@@ -1,3 +1,5 @@
+mod derived_store;
+
 use std::collections::HashSet;
 
 use wallet_database::{
@@ -142,6 +144,7 @@ impl WalletApplication {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
+        let _guard = derived_store::lock().await;
         let dirs = ctx.get_global_dirs();
         let subs_dir = dirs.get_subs_dir(wallet_address)?;
         let path = subs_dir.join(format!("key{}.keystore", account_index_map.account_id));

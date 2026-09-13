@@ -137,24 +137,54 @@ impl KeystoreProtection {
         new_password: &str,
         algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), KeystoreProtectionError> {
+        self.update_file(path, context, old_password, new_password, algorithm, |plain| {
+            Ok((plain, ()))
+        })
+        .await
+    }
+
+    /// Transform an opaque protected payload under the shared file rewrite lock.
+    /// Returns caller metadata only after the replacement has been published.
+    pub(crate) async fn update_file<F, R>(
+        &self,
+        path: &std::path::Path,
+        context: &ProtectionContext,
+        old_password: &str,
+        new_password: &str,
+        algorithm: wallet_crypto::KdfAlgorithm,
+        transform: F,
+    ) -> Result<R, KeystoreProtectionError>
+    where
+        F: FnOnce(Zeroizing<Vec<u8>>) -> Result<(Zeroizing<Vec<u8>>, R), KeystoreProtectionError>
+            + Send
+            + 'static,
+        R: Send + 'static,
+    {
+        let mut result = None;
+        let result_slot = &mut result;
         wallet_tree::file_ops::protected::rewrite(path, |stored| async move {
             let opened =
                 self.open(context, &stored, old_password, ReadPolicy::DeviceRequired).await?;
             let password = Zeroizing::new(new_password.as_bytes().to_vec());
-            let inner = tokio::task::spawn_blocking(move || {
+            let (inner, metadata) = tokio::task::spawn_blocking(move || {
                 use wallet_crypto::EncryptedJsonGenerator;
+                let (plaintext, metadata) = transform(opened.plaintext)?;
                 let encrypted =
                     wallet_crypto::KeystoreJsonGenerator::new(rand::thread_rng(), algorithm)
-                        .generate(&password, &opened.plaintext)
+                        .generate(&password, &plaintext)
                         .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
-                serde_json::to_vec(&encrypted).map_err(|_| KeystoreProtectionError::InvalidFormat)
+                let inner = serde_json::to_vec(&encrypted)
+                    .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
+                Ok::<_, KeystoreProtectionError>((inner, metadata))
             })
             .await
             .map_err(|_| KeystoreProtectionError::Worker)??;
-            Ok::<_, KeystoreProtectionError>(Some(self.seal(context, &inner).await?))
+            let sealed = self.seal(context, &inner).await?;
+            *result_slot = Some(metadata);
+            Ok::<_, KeystoreProtectionError>(Some(sealed))
         })
         .await?;
-        Ok(())
+        result.ok_or(KeystoreProtectionError::Worker)
     }
 
     /// Modern root write using the injected provider and existing root.keystore path.

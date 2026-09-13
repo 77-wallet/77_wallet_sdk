@@ -8,7 +8,6 @@ use wallet_database::{
 use wallet_transport_backend::request::{
     AddressBatchInitReq, AddressUpdateAccountNameReq, TokenQueryPriceReq,
 };
-use wallet_tree::api::KeystoreApi;
 use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 use wallet_utils::address::AccountIndexMap;
 
@@ -102,7 +101,6 @@ impl AccountService {
         is_default_name: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = self.ctx.core_pool()?;
-        let dirs = self.ctx.get_global_dirs();
 
         WalletDomain::validate_password_with_context(self.ctx, wallet_password).await?;
         // 根据钱包地址查询是否有钱包
@@ -186,20 +184,16 @@ impl AccountService {
         )
         .await?;
 
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
-
         let tron_address =
             subkeys.iter().find(|s| s.chain_code == chain_code::TRON).map(|s| s.address.clone());
 
-        KeystoreApi::initialize_child_keystores(
-            wallet_tree,
+        crate::application::wallet::WalletApplication::store_subkeys(
+            self.ctx,
+            wallet_address,
             subkeys,
-            dirs.get_subs_dir(wallet_address)?,
             wallet_password,
-            algorithm,
-        )?;
+        )
+        .await?;
 
         // let device_bind_address_task_data =
         //     domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;

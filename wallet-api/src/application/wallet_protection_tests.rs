@@ -22,10 +22,17 @@ struct Native {
     locked: AtomicBool,
     fail_protect: AtomicBool,
     opens: AtomicUsize,
+    pause_protect: AtomicBool,
+    protect_entered: tokio::sync::Notify,
+    protect_resume: tokio::sync::Notify,
 }
 impl DeviceProtectionProvider for Native {
     fn protect<'a>(&'a self, ctx: &'a ProtectionContext, input: &'a [u8]) -> ProtectionFuture<'a> {
         Box::pin(async move {
+            if self.pause_protect.swap(false, Ordering::SeqCst) {
+                self.protect_entered.notify_one();
+                self.protect_resume.notified().await;
+            }
             if self.fail_protect.load(Ordering::SeqCst) {
                 return Err(ProtectionError::PlatformFailure);
             }
@@ -809,4 +816,285 @@ async fn root_store_retains_legacy_creation_until_activation() {
     assert!(
         ctx.get_global_dirs().get_root_dir(WALLET).unwrap().join("fixturewallet-seed").exists()
     );
+}
+
+fn appended_subkey(account: u32, address: &str) -> wallet_tree::file_ops::BulkSubkey {
+    wallet_tree::file_ops::BulkSubkey::new(
+        wallet_utils::address::AccountIndexMap::from_account_id(account).unwrap(),
+        address,
+        "eth",
+        "m/3",
+        b"synthetic appended key".to_vec(),
+    )
+}
+
+#[tokio::test]
+async fn derived_bulk_protection_preserves_keys_and_index_on_failure_and_retry() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let codec = KeystoreProtection::new(ctx.device_protection().clone());
+    let root = ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    codec
+        .store_root(
+            &root,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    codec
+        .migrate_file(
+            &subs.join("key0.keystore"),
+            &binding,
+            PASSWORD,
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+    let original = std::fs::read(subs.join("key0.keystore")).unwrap();
+    let index = std::fs::read(subs.join("derived_meta.json")).unwrap();
+    let other = std::fs::read(subs.join("key1.keystore")).unwrap();
+    native.fail_protect.store(true, Ordering::SeqCst);
+    assert!(
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "new-a"), appended_subkey(2, "new-b")],
+            PASSWORD
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), original);
+    assert_eq!(std::fs::read(subs.join("derived_meta.json")).unwrap(), index);
+    assert!(!subs.join("key2.keystore").exists());
+    native.fail_protect.store(false, Ordering::SeqCst);
+    for _ in 0..2 {
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "new-a"), appended_subkey(2, "new-b")],
+            PASSWORD,
+        )
+        .await
+        .unwrap();
+    }
+    let keys = WalletApplication::load_account_data(
+        ctx,
+        WALLET,
+        &wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap(),
+        PASSWORD,
+    )
+    .await
+    .unwrap();
+    assert_eq!(keys.len(), 3);
+    assert!(keys.values().any(|v| v == b"synthetic eth key"));
+    assert!(keys.values().any(|v| v == b"synthetic sol key"));
+    assert_eq!(
+        WalletApplication::load_account_data(
+            ctx,
+            WALLET,
+            &wallet_utils::address::AccountIndexMap::from_account_id(2).unwrap(),
+            PASSWORD
+        )
+        .await
+        .unwrap()
+        .len(),
+        1
+    );
+    assert!(std::fs::read(subs.join("key2.keystore")).unwrap().starts_with(b"WDK\x01"));
+    let index: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(subs.join("derived_meta.json")).unwrap()).unwrap();
+    assert_eq!(index["accounts"]["0"].as_array().unwrap().len(), 3);
+    assert_eq!(index["accounts"]["2"].as_array().unwrap().len(), 1);
+    assert_eq!(std::fs::read(subs.join("key1.keystore")).unwrap(), other);
+}
+
+#[tokio::test]
+async fn derived_bulk_protection_serializes_appends_and_rejects_damaged_index() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native).await;
+    let subs = derived_password_fixture(ctx).await;
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .migrate_file(
+            &subs.join("key0.keystore"),
+            &binding,
+            PASSWORD,
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+    let (a, b) = tokio::join!(
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "concurrent-a")],
+            PASSWORD
+        ),
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "concurrent-b")],
+            PASSWORD
+        ),
+    );
+    a.unwrap();
+    b.unwrap();
+    let keys = WalletApplication::load_account_data(
+        ctx,
+        WALLET,
+        &wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap(),
+        PASSWORD,
+    )
+    .await
+    .unwrap();
+    assert_eq!(keys.len(), 4);
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(subs.join("derived_meta.json")).unwrap()).unwrap();
+    assert_eq!(metadata["accounts"]["0"].as_array().unwrap().len(), 4);
+    let original = std::fs::read(subs.join("key0.keystore")).unwrap();
+    std::fs::write(subs.join("derived_meta.json"), b"invalid index").unwrap();
+    assert!(
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "rejected")],
+            PASSWORD
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), original);
+    assert_eq!(std::fs::read(subs.join("derived_meta.json")).unwrap(), b"invalid index");
+}
+
+#[tokio::test]
+async fn derived_bulk_protection_retains_legacy_compatibility() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    native.fail_protect.store(true, Ordering::SeqCst);
+    WalletApplication::store_subkeys(
+        ctx,
+        WALLET,
+        vec![appended_subkey(0, "legacy-append")],
+        PASSWORD,
+    )
+    .await
+    .unwrap();
+    let keys = WalletApplication::load_account_data(
+        ctx,
+        WALLET,
+        &wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap(),
+        PASSWORD,
+    )
+    .await
+    .unwrap();
+    assert_eq!(keys.len(), 3);
+    assert!(!std::fs::read(subs.join("key0.keystore")).unwrap().starts_with(b"WDK"));
+    assert_eq!(native.opens.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn derived_bulk_protection_finishes_accepted_write_after_waiter_cancellation() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let root = ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .store_root(
+            &root,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    native.pause_protect.store(true, Ordering::SeqCst);
+    let first = tokio::spawn(WalletApplication::store_subkeys(
+        ctx,
+        WALLET,
+        vec![appended_subkey(2, "first")],
+        PASSWORD,
+    ));
+    tokio::time::timeout(std::time::Duration::from_secs(10), native.protect_entered.notified())
+        .await
+        .unwrap();
+    first.abort();
+    assert!(first.await.unwrap_err().is_cancelled());
+    native.protect_resume.notify_one();
+    WalletApplication::store_subkeys(ctx, WALLET, vec![appended_subkey(2, "second")], PASSWORD)
+        .await
+        .unwrap();
+    let keys = WalletApplication::load_account_data(
+        ctx,
+        WALLET,
+        &wallet_utils::address::AccountIndexMap::from_account_id(2).unwrap(),
+        PASSWORD,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        keys.len(),
+        2,
+        "accepted operation must retain its guard through ciphertext and index publication"
+    );
+    let index: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(subs.join("derived_meta.json")).unwrap()).unwrap();
+    assert_eq!(index["accounts"]["2"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn derived_bulk_protection_refuses_legacy_or_missing_known_file_under_protected_root() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native).await;
+    let subs = derived_password_fixture(ctx).await;
+    let root = ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .store_root(
+            &root,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    let before = std::fs::read(subs.join("key0.keystore")).unwrap();
+    let index = std::fs::read(subs.join("derived_meta.json")).unwrap();
+    assert!(
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "refused")],
+            PASSWORD
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), before);
+    std::fs::remove_file(subs.join("key0.keystore")).unwrap();
+    assert!(
+        WalletApplication::store_subkeys(
+            ctx,
+            WALLET,
+            vec![appended_subkey(0, "refused")],
+            PASSWORD
+        )
+        .await
+        .is_err()
+    );
+    assert!(!subs.join("key0.keystore").exists());
+    assert_eq!(std::fs::read(subs.join("derived_meta.json")).unwrap(), index);
 }
