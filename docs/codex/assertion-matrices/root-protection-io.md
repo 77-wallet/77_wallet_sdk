@@ -60,3 +60,22 @@ Legacy writers outside the common API and other processes are not protected by t
 service migration must exclude those writers. This is not cross-process locking or a
 durable migration-state implementation. Same-directory writes are conservatively serialized
 to cover case-insensitive aliases; independent directories can proceed concurrently.
+
+## Read-only existing-file inventory
+
+`file_ops::inventory::scan_wallet` discovers modern and legacy root/subs records;
+`scan_verify` discovers the separate App-root verify file. These functions never read
+secret contents or change files, migration progress or native keys. Empty results are
+not permission to provision a key. SQLite secrets and authoritative DB membership
+must be checked by the caller before rollout. Unknown files (including orphan temporary
+files) currently block scanning and require recovery; they are never silently discarded.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Mixed modern/legacy files and verify | All six wallet identities found; only public derived_meta excluded; contents unchanged | scans_all_existing_modern_and_legacy_keystores_without_reading_contents |
+| Unknown file or different wallet root | Error, original bytes preserved | unknown_file_and_wrong_wallet_root_are_not_silently_skipped |
+| Empty existing directory | Empty result; no files or progress created | empty_directories_do_not_create_data_or_progress |
+| Symbolic link | Error without following/replacing link target | symlink_is_rejected_without_following_or_replacing_it |
+| Different names decoding to one identity | Error, both files preserved | duplicate_decoded_identity_is_rejected_without_changing_files |
+
+Validation: `cargo test -p wallet-tree --offline --lib file_ops`.
