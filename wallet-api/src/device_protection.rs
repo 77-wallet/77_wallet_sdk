@@ -9,6 +9,10 @@ use std::{fmt, future::Future, pin::Pin, sync::Arc};
 pub type ProtectionFuture<'a> =
     Pin<Box<dyn Future<Output = Result<Vec<u8>, ProtectionError>> + Send + 'a>>;
 
+/// Explicit provisioning result; no key material crosses this interface.
+pub type ProvisionFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(), ProtectionError>> + Send + 'a>>;
+
 /// Stable categories suitable for mapping across the native bridge.
 /// Never put ciphertext, passwords, key material or raw platform errors here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,13 +79,20 @@ impl ProtectionContext {
 /// use fresh encryption randomness and return a versioned opaque envelope.
 /// They must fail on missing/invalidated keys during decryption, never create
 /// replacement keys to recover existing ciphertext, and never silently fall
-/// back to software or plaintext. Explicit provisioning/deletion lifecycle is
-/// owned by the adapter; this interface grants no reset/delete capability.
+/// back to software or plaintext. SDK storage checks authorize provisioning;
+/// this interface grants no reset/delete capability.
 ///
 /// Futures must not block an executor thread while awaiting native callbacks.
 /// The adapter owns deadlines/cancellation and thread-safe native request state.
 /// Error categories describe outcomes; this wrapper does not enforce a timeout.
 pub trait DeviceProtectionProvider: Send + Sync {
+    /// Called only after the SDK establishes empty storage and records intent.
+    /// Must be idempotent: use an existing valid key, never rotate/delete/reset it.
+    /// Old adapters remain unsupported until their explicit callback is connected.
+    fn provision_for_new_storage(&self) -> ProvisionFuture<'_> {
+        Box::pin(async { Err(ProtectionError::Unavailable) })
+    }
+
     /// Input is already password-encrypted data, not raw wallet secrets.
     fn protect<'a>(
         &'a self,
@@ -114,6 +125,13 @@ impl DeviceProtection {
 
     pub fn new(provider: Arc<dyn DeviceProtectionProvider>) -> Self {
         Self { provider: Some(provider) }
+    }
+    pub(crate) async fn provision_for_new_storage(&self) -> Result<(), ProtectionError> {
+        self.provider
+            .as_ref()
+            .ok_or(ProtectionError::NotConfigured)?
+            .provision_for_new_storage()
+            .await
     }
     pub async fn protect(
         &self,

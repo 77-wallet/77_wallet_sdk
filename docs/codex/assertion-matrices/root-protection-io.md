@@ -228,3 +228,11 @@ was not expanded; searches found no callers in SDK API, plugin Dart or App Dart.
 - Snapshot strict files, metadata and DB identities (including inactive wallets) before mutation. Save recreation authorization for protected roots/known accounts before removing any directory. Keep the wallet base and unrelated directories intact.
 - Root reimport retains device protection, requires explicit recreation permission if its protected file is missing, and revokes permission after successful publication. Root writes/password changes retain the shared gate when their waiters cancel.
 - Regressions cover root + multi-account deletion/reimport, intent-persistence failure preserving ciphertext, reset preserving unrelated data, cancelled root publication ordering, and inactive missing-wallet reset recovery. Partial deletion/DB failures remain retryable storage operations, not a global transaction.
+
+## Explicit empty-storage key initialization (not rollout)
+
+- Provider provisioning is a separate, default-unsupported operation. Existing providers and protect/unprotect behavior remain unchanged; no default enablement is inferred from callback presence.
+- Empty-storage checks cover all standard/API wallet and account rows, migration history, strict wallet files, stale public indices and app verify. Unknown initialization versions/types or read errors reject provisioning.
+- Persist provisioning intent before calling native code. A non-secret challenge roundtrip precedes key-ready state. READY retries only test the existing key; KeyMissing/Locked/invalidated errors must not trigger provisioning. Pending retries require empty storage again and an idempotent native provisioner that never resets existing keys.
+- Tests cover empty initialization/repeat, readiness across context reopen, failed probe then retry, no reprovision after key loss, existing standard/API storage/history/verify rejection, unknown state/type, and default unsupported adapters.
+- This boundary is not yet wired to plugin provisioning or automatic activation. The challenge proves provider roundtrip usability, not hardware attestation or recovery of existing wallet ciphertext. Native hardware enforcement remains the adapter's responsibility.

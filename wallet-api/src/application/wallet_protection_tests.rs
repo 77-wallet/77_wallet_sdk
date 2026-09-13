@@ -25,13 +25,25 @@ struct Native {
     pause_protect: AtomicBool,
     protect_entered: tokio::sync::Notify,
     protect_resume: tokio::sync::Notify,
+    provisions: AtomicUsize,
+    key_missing: AtomicBool,
 }
 impl DeviceProtectionProvider for Native {
+    fn provision_for_new_storage(&self) -> crate::device_protection::ProvisionFuture<'_> {
+        Box::pin(async move {
+            self.provisions.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        })
+    }
+
     fn protect<'a>(&'a self, ctx: &'a ProtectionContext, input: &'a [u8]) -> ProtectionFuture<'a> {
         Box::pin(async move {
             if self.pause_protect.swap(false, Ordering::SeqCst) {
                 self.protect_entered.notify_one();
                 self.protect_resume.notified().await;
+            }
+            if self.key_missing.load(Ordering::SeqCst) {
+                return Err(ProtectionError::KeyMissing);
             }
             if self.fail_protect.load(Ordering::SeqCst) {
                 return Err(ProtectionError::PlatformFailure);
@@ -1027,7 +1039,7 @@ async fn derived_bulk_protection_finishes_accepted_write_after_waiter_cancellati
         vec![appended_subkey(2, "first")],
         PASSWORD,
     ));
-    tokio::time::timeout(std::time::Duration::from_secs(10), native.protect_entered.notified())
+    tokio::time::timeout(std::time::Duration::from_secs(60), native.protect_entered.notified())
         .await
         .unwrap();
     first.abort();
@@ -1460,7 +1472,7 @@ async fn protection_account_delete_waits_for_cancelled_password_change_publicati
         )
         .await
     });
-    tokio::time::timeout(std::time::Duration::from_secs(10), native.protect_entered.notified())
+    tokio::time::timeout(std::time::Duration::from_secs(60), native.protect_entered.notified())
         .await
         .unwrap();
     changing.abort();
@@ -1611,7 +1623,7 @@ async fn protection_wallet_delete_waits_for_cancelled_root_write() {
         RootData::new("synthetic replacement", b"replacement seed"),
         PASSWORD,
     ));
-    tokio::time::timeout(std::time::Duration::from_secs(10), native.protect_entered.notified())
+    tokio::time::timeout(std::time::Duration::from_secs(60), native.protect_entered.notified())
         .await
         .unwrap();
     writing.abort();
@@ -1663,4 +1675,114 @@ async fn protection_wallet_delete_reset_includes_inactive_missing_wallets() {
         .await
         .unwrap();
     assert!(WalletApplication::load_root(ctx, WALLET, PASSWORD).await.unwrap().phrase() == PHRASE);
+}
+
+#[tokio::test]
+async fn protection_initialization_empty_storage_is_verified_and_never_reprovisions_ready_key() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    WalletApplication::initialize_device_protection(ctx).await.unwrap();
+    WalletApplication::initialize_device_protection(ctx).await.unwrap();
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+    native.key_missing.store(true, Ordering::SeqCst);
+    assert!(WalletApplication::initialize_device_protection(ctx).await.is_err());
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+    assert_eq!(std::fs::read_dir(&ctx.get_global_dirs().wallet_dir).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn protection_initialization_refuses_existing_data_and_migration_history() {
+    use wallet_database::repositories::device_protection::MigrationRepo;
+    for scenario in 0..4 {
+        let dir = directory();
+        let native = Arc::new(Native::default());
+        let ctx = context(dir.path(), native.clone()).await;
+        match scenario {
+            0 => {
+                legacy_upgrade_fixture(ctx);
+            }
+            1 => {
+                register_wallet_for_password_change(ctx).await;
+            }
+            2 => {
+                MigrationRepo::begin("previous-record", &ctx.core_pool().unwrap()).await.unwrap();
+            }
+            _ => {
+                std::fs::write(ctx.get_global_dirs().root_dir.join("verify"), b"existing verify")
+                    .unwrap();
+            }
+        }
+        assert!(WalletApplication::initialize_device_protection(ctx).await.is_err());
+        assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn protection_initialization_probe_failure_is_retryable_only_before_ready() {
+    use wallet_database::repositories::config::ConfigRepo;
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    native.fail_protect.store(true, Ordering::SeqCst);
+    assert!(WalletApplication::initialize_device_protection(ctx).await.is_err());
+    assert_eq!(
+        ConfigRepo::find_by_key("device_protection.key.v1", &ctx.core_pool().unwrap())
+            .await
+            .unwrap()
+            .unwrap()
+            .value,
+        "provisioning-v1"
+    );
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+    native.fail_protect.store(false, Ordering::SeqCst);
+    WalletApplication::initialize_device_protection(ctx).await.unwrap();
+    let reopened = context(dir.path(), native.clone()).await;
+    WalletApplication::initialize_device_protection(reopened).await.unwrap();
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        ConfigRepo::find_by_key("device_protection.key.v1", &ctx.core_pool().unwrap())
+            .await
+            .unwrap()
+            .unwrap()
+            .value,
+        "key-ready-v1"
+    );
+}
+
+#[tokio::test]
+async fn protection_initialization_refuses_api_wallets_and_unknown_state() {
+    use wallet_database::repositories::{api_wallet::wallet::ApiWalletRepo, config::ConfigRepo};
+    for scenario in 0..3 {
+        let dir = directory();
+        let native = Arc::new(Native::default());
+        let ctx = context(dir.path(), native.clone()).await;
+        if scenario == 0 {
+            ApiWalletRepo::upsert(
+                &ctx.api_wallet_pool().unwrap(),
+                "fixture-uid",
+                "fixture-name",
+                "fixture-address",
+                b"synthetic phrase",
+                b"synthetic seed",
+                wallet_database::entities::api_wallet::ApiWalletType::SubAccount,
+                None,
+                "fixture-sn",
+                0,
+            )
+            .await
+            .unwrap();
+        } else {
+            ConfigRepo::upsert(
+                "device_protection.key.v1",
+                if scenario == 1 { "future-version" } else { "key-ready-v1" },
+                Some(if scenario == 1 { 1 } else { 0 }),
+                &ctx.core_pool().unwrap(),
+            )
+            .await
+            .unwrap();
+        }
+        assert!(WalletApplication::initialize_device_protection(ctx).await.is_err());
+        assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    }
 }

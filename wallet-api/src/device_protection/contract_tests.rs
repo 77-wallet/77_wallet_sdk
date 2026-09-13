@@ -171,3 +171,15 @@ fn provider_identity_distinguishes_clone_replacement_and_disabled_mode() {
     assert!(!DeviceProtection::default().same_provider(&configured));
     assert!(DeviceProtection::default().same_provider(&DeviceProtection::default()));
 }
+
+#[test]
+fn provisioning_is_explicit_and_unsupported_by_default() {
+    assert_eq!(
+        run(DeviceProtection::default().provision_for_new_storage()),
+        Err(ProtectionError::NotConfigured)
+    );
+    let provider = Arc::new(RecordingProvider { calls: Mutex::new(Vec::new()), failure: None });
+    let protection = DeviceProtection::new(provider.clone());
+    assert_eq!(run(protection.provision_for_new_storage()), Err(ProtectionError::Unavailable));
+    assert!(provider.calls.lock().unwrap().is_empty());
+}

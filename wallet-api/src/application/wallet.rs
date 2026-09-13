@@ -1,5 +1,6 @@
 mod derived_store;
 mod legacy_upgrade;
+mod protection_initialization;
 mod wallet_deletion;
 
 use std::collections::HashSet;
