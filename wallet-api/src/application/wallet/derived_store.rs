@@ -32,8 +32,8 @@ pub(super) async fn lock() -> Arc<tokio::sync::OwnedMutexGuard<()>> {
 }
 
 #[derive(Default, serde::Deserialize, serde::Serialize)]
-struct Metadata {
-    accounts: BTreeMap<u32, Vec<KeyMeta>>,
+pub(super) struct Metadata {
+    pub(super) accounts: BTreeMap<u32, Vec<KeyMeta>>,
     #[serde(flatten)]
     extra: BTreeMap<String, serde_json::Value>,
 }

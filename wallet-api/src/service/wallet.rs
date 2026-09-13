@@ -705,6 +705,8 @@ impl WalletService {
         let core_pool = self.ctx.core_pool()?;
         tracing::info!("delete wallet ------------ -3");
 
+        WalletApplication::delete_wallet_files(self.ctx, Some(address)).await?;
+
         let mut tx = core_pool
             .as_ref()
             .begin()
@@ -726,8 +728,6 @@ impl WalletService {
 
         tracing::info!("delete wallet ------------ -2");
         let dirs = self.ctx.get_global_dirs();
-        let wallet_dir = dirs.get_wallet_dir(Some(address))?;
-        wallet_utils::file_func::remove_dir_all(wallet_dir)?;
         tracing::info!("delete wallet ------------ -1");
 
         let api_pool = self.ctx.api_wallet_pool()?;
@@ -819,6 +819,8 @@ impl WalletService {
             ));
         };
 
+        WalletApplication::delete_wallet_files(self.ctx, None).await?;
+
         let mut tx = core_pool
             .as_ref()
             .begin()
@@ -827,10 +829,6 @@ impl WalletService {
         WalletRepo::reset_all_wallet_with_executor(&mut tx).await?;
         AccountRepo::reset_all_account_with_executor(&mut tx).await?;
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
-
-        let dirs = self.ctx.get_global_dirs();
-        let wallet_dir = dirs.get_wallet_dir(None)?;
-        wallet_utils::file_func::remove_dir_all(wallet_dir)?;
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
 
@@ -863,6 +861,8 @@ impl WalletService {
         // 获取新的epoch值用于日志
         let new_epoch = ConfigDomain::get_keys_reset_epoch(self.ctx).await?;
         tracing::info!(epoch = new_epoch, "physical_reset: Epoch bumped, generation switched");
+
+        WalletApplication::delete_wallet_files(self.ctx, None).await?;
 
         let mut tx = core_pool
             .as_ref()
@@ -907,9 +907,6 @@ impl WalletService {
             .await?;
 
         let dirs = self.ctx.get_global_dirs();
-        let wallet_dir = dirs.get_wallet_dir(None)?;
-        wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
-        wallet_utils::file_func::create_dir_all(wallet_dir)?;
         ApiWalletDomain::new(self.ctx).clear_wallet_unlock_session().await?;
         KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;

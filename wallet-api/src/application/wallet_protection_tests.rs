@@ -1476,3 +1476,191 @@ async fn protection_account_delete_waits_for_cancelled_password_change_publicati
         serde_json::from_slice(&std::fs::read(subs.join("derived_meta.json")).unwrap()).unwrap();
     assert!(metadata["accounts"].get("0").is_none());
 }
+
+#[tokio::test]
+async fn protection_wallet_delete_reimports_root_and_all_account_files() {
+    use wallet_database::repositories::device_protection::{MigrationRepo, MigrationState};
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    let subs = derived_password_fixture(ctx).await;
+    let root = ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    let codec = KeystoreProtection::new(ctx.device_protection().clone());
+    codec
+        .store_root(
+            &root,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    for id in 0..2 {
+        codec
+            .migrate_file(
+                &subs.join(format!("key{id}.keystore")),
+                &ProtectionContext::new(WALLET, format!("derived:{id}")).unwrap(),
+                PASSWORD,
+                ReadPolicy::LegacyMigrationAllowed,
+            )
+            .await
+            .unwrap();
+    }
+    WalletApplication::delete_wallet_files(ctx, Some(WALLET)).await.unwrap();
+    WalletApplication::delete_wallet_files(ctx, Some(WALLET)).await.unwrap();
+    assert!(!ctx.get_global_dirs().get_wallet_dir(Some(WALLET)).unwrap().exists());
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    WalletApplication::store_subkeys(
+        ctx,
+        WALLET,
+        vec![appended_subkey(0, "reimport-a"), appended_subkey(1, "reimport-b")],
+        PASSWORD,
+    )
+    .await
+    .unwrap();
+    assert!(std::fs::read(root.join("root.keystore")).unwrap().starts_with(b"WDK\x01"));
+    for purpose in ["root-keystore", "derived:0", "derived:1"] {
+        let binding = ProtectionContext::new(WALLET, purpose).unwrap();
+        assert_eq!(
+            MigrationRepo::get(
+                &crate::device_protection::migration::record_scope(&binding),
+                &ctx.core_pool().unwrap()
+            )
+            .await
+            .unwrap(),
+            Some(MigrationState::DeviceRequired)
+        );
+    }
+    for id in 0..2 {
+        assert!(
+            std::fs::read(subs.join(format!("key{id}.keystore"))).unwrap().starts_with(b"WDK\x01")
+        );
+    }
+    assert!(WalletApplication::load_root(ctx, WALLET, PASSWORD).await.unwrap().phrase() == PHRASE);
+}
+
+#[tokio::test]
+async fn protection_wallet_delete_state_failure_preserves_directory() {
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    let subs = derived_password_fixture(ctx).await;
+    let root = ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .store_root(
+            &root,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    let original = std::fs::read(root.join("root.keystore")).unwrap();
+    let child = std::fs::read(subs.join("key0.keystore")).unwrap();
+    sqlx::query("CREATE TRIGGER reject_wallet_deletion BEFORE INSERT ON config WHEN NEW.key LIKE 'device_protection.migration.v1:%' BEGIN SELECT RAISE(ABORT, 'fixture refusal'); END").execute(ctx.core_pool().unwrap().write_ref()).await.unwrap();
+    assert!(WalletApplication::delete_wallet_files(ctx, Some(WALLET)).await.is_err());
+    assert_eq!(std::fs::read(root.join("root.keystore")).unwrap(), original);
+    assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), child);
+}
+
+#[tokio::test]
+async fn protection_wallet_delete_reset_keeps_base_and_unrelated_directories() {
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    derived_password_fixture(ctx).await;
+    WalletApplication::store_root(
+        ctx,
+        "otherwallet",
+        RootData::new(PHRASE, b"synthetic seed"),
+        PASSWORD,
+    )
+    .await
+    .unwrap();
+    let unrelated = ctx.get_global_dirs().export_dir.join("public-fixture");
+    std::fs::write(&unrelated, b"keep").unwrap();
+    WalletApplication::delete_wallet_files(ctx, None).await.unwrap();
+    assert!(ctx.get_global_dirs().wallet_dir.is_dir());
+    assert_eq!(std::fs::read_dir(&ctx.get_global_dirs().wallet_dir).unwrap().count(), 0);
+    assert_eq!(std::fs::read(&unrelated).unwrap(), b"keep");
+}
+
+#[tokio::test]
+async fn protection_wallet_delete_waits_for_cancelled_root_write() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    derived_password_fixture(ctx).await;
+    let root = ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    let codec = KeystoreProtection::new(ctx.device_protection().clone());
+    codec
+        .store_root(
+            &root,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    native.pause_protect.store(true, Ordering::SeqCst);
+    let writing = tokio::spawn(WalletApplication::store_root(
+        ctx,
+        WALLET,
+        RootData::new("synthetic replacement", b"replacement seed"),
+        PASSWORD,
+    ));
+    tokio::time::timeout(std::time::Duration::from_secs(10), native.protect_entered.notified())
+        .await
+        .unwrap();
+    writing.abort();
+    assert!(writing.await.unwrap_err().is_cancelled());
+    native.protect_resume.notify_one();
+    let guard = super::derived_store::lock().await;
+    assert!(
+        codec.load_root(&root, WALLET, PASSWORD).await.unwrap().phrase() == "synthetic replacement"
+    );
+    drop(guard);
+    WalletApplication::delete_wallet_files(ctx, Some(WALLET)).await.unwrap();
+    assert!(!root.exists());
+}
+
+#[tokio::test]
+async fn protection_wallet_delete_reset_includes_inactive_missing_wallets() {
+    use wallet_database::repositories::device_protection::{MigrationRepo, MigrationState};
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    register_wallet_for_password_change(ctx).await;
+    let binding = ProtectionContext::new(WALLET, "root-keystore").unwrap();
+    let scope = crate::device_protection::migration::record_scope(&binding);
+    let pool = ctx.core_pool().unwrap();
+    MigrationRepo::begin(&scope, &pool).await.unwrap();
+    MigrationRepo::complete(&scope, &pool).await.unwrap();
+    // A missing protected root cannot be silently recreated by ordinary writes.
+    assert!(
+        WalletApplication::store_root(
+            ctx,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD
+        )
+        .await
+        .is_err()
+    );
+    std::fs::remove_dir_all(ctx.get_global_dirs().get_wallet_dir(Some(WALLET)).unwrap()).unwrap();
+    sqlx::query("UPDATE wallet SET status=2 WHERE address=?")
+        .bind(WALLET)
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+    WalletApplication::delete_wallet_files(ctx, None).await.unwrap();
+    assert_eq!(
+        MigrationRepo::get(&scope, &pool).await.unwrap(),
+        Some(MigrationState::RecreationAllowed)
+    );
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    assert!(WalletApplication::load_root(ctx, WALLET, PASSWORD).await.unwrap().phrase() == PHRASE);
+}

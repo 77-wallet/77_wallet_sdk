@@ -221,3 +221,10 @@ was not expanded; searches found no callers in SDK API, plugin Dart or App Dart.
 - API regressions cover delete/retry/recreate with an otherwise legacy root, persistent device requirement after recreation, accidental subsequent loss, malformed index, SQLite intent-write failure, retry after file-only deletion, forbidden legacy migration under recreation permission, and old-format deletion compatibility. Other account files remain byte-identical.
 - State/metadata failure after file removal may leave a partial deletion; retry is supported. Business DB/backend operations are not in a filesystem transaction. Whole-wallet deletion and external writers remain separate rollout work.
 - Review found a cancelled protected password-change publisher could outlive the application gate and resurrect a deleted account file. The protected password task now owns that gate through completion; its cancellation regression first failed, then checks publication precedes deletion and removal stays complete.
+
+## Whole-wallet deletion/reset and reimport
+
+- Single-wallet deletion and both reset services use one storage boundary before business DB removals. The physical reset epoch still advances first. No hardware key is deleted; no cross-filesystem/DB/backend transaction is claimed.
+- Snapshot strict files, metadata and DB identities (including inactive wallets) before mutation. Save recreation authorization for protected roots/known accounts before removing any directory. Keep the wallet base and unrelated directories intact.
+- Root reimport retains device protection, requires explicit recreation permission if its protected file is missing, and revokes permission after successful publication. Root writes/password changes retain the shared gate when their waiters cancel.
+- Regressions cover root + multi-account deletion/reimport, intent-persistence failure preserving ciphertext, reset preserving unrelated data, cancelled root publication ordering, and inactive missing-wallet reset recovery. Partial deletion/DB failures remain retryable storage operations, not a global transaction.

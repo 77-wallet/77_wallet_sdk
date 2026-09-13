@@ -1,5 +1,6 @@
 mod derived_store;
 mod legacy_upgrade;
+mod wallet_deletion;
 
 use std::collections::HashSet;
 
@@ -62,16 +63,41 @@ impl WalletApplication {
         root: wallet_tree::file_ops::RootData,
         password: &str,
     ) -> Result<(), ServiceError> {
-        let _guard = derived_store::lock().await;
+        let guard = derived_store::lock().await;
         let dirs = ctx.get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let binding = ProtectionContext::new(wallet_address, "root-keystore")
             .map_err(KeystoreProtectionError::from)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
         if Self::record_requires_device(ctx, &binding, &root_dir.join("root.keystore")).await? {
-            return Ok(KeystoreProtection::new(ctx.device_protection().clone())
-                .store_root(&root_dir, wallet_address, root, password, algorithm)
-                .await?);
+            let pool = ctx.core_pool()?;
+            let scope = record_scope(&binding);
+            let recreate = MigrationRepo::get(&scope, &pool).await.map_err(|_| {
+                ServiceError::Context("Cannot read keystore migration progress".into())
+            })? == Some(MigrationState::RecreationAllowed);
+            if !root_dir
+                .join("root.keystore")
+                .try_exists()
+                .map_err(|_| KeystoreProtectionError::Storage)?
+                && !recreate
+            {
+                return Err(KeystoreProtectionError::Storage.into());
+            }
+            let codec = KeystoreProtection::new(ctx.device_protection().clone());
+            let address = wallet_address.to_owned();
+            let password = zeroize::Zeroizing::new(password.to_owned());
+            return tokio::spawn(async move {
+                let _guard = guard;
+                codec.store_root(&root_dir, &address, root, &password, algorithm).await?;
+                if recreate {
+                    MigrationRepo::complete(&scope, &pool).await.map_err(|_| {
+                        ServiceError::Context("Cannot complete root recreation".into())
+                    })?;
+                }
+                Ok::<_, ServiceError>(())
+            })
+            .await
+            .map_err(|_| KeystoreProtectionError::Worker)?;
         }
 
         // Preserve the existing unprotected creation path until provisioning/rollout is wired.
@@ -112,22 +138,30 @@ impl WalletApplication {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
-        let _guard = derived_store::lock().await;
+        let guard = derived_store::lock().await;
         let dirs = ctx.get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
         let binding = ProtectionContext::new(wallet_address, "root-keystore")
             .map_err(KeystoreProtectionError::from)?;
         if Self::record_requires_device(ctx, &binding, &root_dir.join("root.keystore")).await? {
-            return Ok(KeystoreProtection::new(ctx.device_protection().clone())
-                .change_file_password(
-                    &root_dir.join("root.keystore"),
-                    &binding,
-                    old_password,
-                    new_password,
-                    algorithm,
-                )
-                .await?);
+            let codec = KeystoreProtection::new(ctx.device_protection().clone());
+            let old_password = zeroize::Zeroizing::new(old_password.to_owned());
+            let new_password = zeroize::Zeroizing::new(new_password.to_owned());
+            return Ok(tokio::spawn(async move {
+                let _guard = guard;
+                codec
+                    .change_file_password(
+                        &root_dir.join("root.keystore"),
+                        &binding,
+                        &old_password,
+                        &new_password,
+                        algorithm,
+                    )
+                    .await
+            })
+            .await
+            .map_err(|_| KeystoreProtectionError::Worker)??);
         }
 
         let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
