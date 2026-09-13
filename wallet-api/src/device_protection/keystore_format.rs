@@ -64,6 +64,43 @@ impl KeystoreProtection {
         Self { protection }
     }
 
+    /// Common writer for any password-encrypted keystore content. Context is the
+    /// expected stable record identity supplied by the caller, not derived from disk.
+    /// Caller owns safe provisioning, authorization and concurrent-write ordering.
+    pub async fn store_file(
+        &self,
+        path: &std::path::Path,
+        context: &ProtectionContext,
+        plaintext: Zeroizing<Vec<u8>>,
+        password: &str,
+        algorithm: wallet_crypto::KdfAlgorithm,
+    ) -> Result<(), KeystoreProtectionError> {
+        wallet_tree::file_ops::protected::store(
+            path,
+            plaintext,
+            password,
+            algorithm,
+            |inner| async move { self.seal(context, &inner).await },
+        )
+        .await
+    }
+
+    /// Common read of an already device-protected file. No content schema is assumed.
+    /// Legacy migration is a separate explicit operation; this never silently upgrades
+    /// or drops an uncommitted replacement. Native/password errors remain distinct.
+    pub async fn load_file(
+        &self,
+        path: &std::path::Path,
+        context: &ProtectionContext,
+        password: &str,
+    ) -> Result<Zeroizing<Vec<u8>>, KeystoreProtectionError> {
+        wallet_tree::file_ops::protected::load(path, |stored| async move {
+            let opened = self.open(context, &stored, password, ReadPolicy::DeviceRequired).await?;
+            Ok(opened.plaintext)
+        })
+        .await
+    }
+
     /// Modern root write using the injected provider and existing root.keystore path.
     /// `wallet_id` must be the stable wallet identity, never a display name or path.
     /// Caller must provision safely and serialize authorized writes before entering.
@@ -77,11 +114,11 @@ impl KeystoreProtection {
         algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), KeystoreProtectionError> {
         let context = ProtectionContext::new(wallet_id, "root-keystore")?;
-        wallet_tree::wallet_hierarchy::v2::ModernWalletTree::default()
-            .io
-            .store_root_with_protection(root_dir, root, password, algorithm, |inner| async move {
-                self.seal(&context, &inner).await
-            })
+        let plaintext = Zeroizing::new(
+            serde_json::to_vec(&root).map_err(|_| KeystoreProtectionError::InvalidFormat)?,
+        );
+        drop(root);
+        self.store_file(&root_dir.join("root.keystore"), &context, plaintext, password, algorithm)
             .await
     }
 
@@ -95,15 +132,8 @@ impl KeystoreProtection {
         password: &str,
     ) -> Result<wallet_tree::file_ops::RootData, KeystoreProtectionError> {
         let context = ProtectionContext::new(wallet_id, "root-keystore")?;
-        wallet_tree::wallet_hierarchy::v2::ModernWalletTree::default()
-            .io
-            .load_root_with_protection(root_dir, |stored| async move {
-                let opened =
-                    self.open(&context, &stored, password, ReadPolicy::DeviceRequired).await?;
-                serde_json::from_slice(&opened.plaintext)
-                    .map_err(|_| KeystoreProtectionError::InvalidFormat)
-            })
-            .await
+        let plaintext = self.load_file(&root_dir.join("root.keystore"), &context, password).await?;
+        serde_json::from_slice(&plaintext).map_err(|_| KeystoreProtectionError::InvalidFormat)
     }
 
     /// New writes use this directly. Only accepts existing password-encrypted JSON,

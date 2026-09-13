@@ -54,6 +54,69 @@ fn root_dir() -> tempfile::TempDir {
 }
 
 #[tokio::test]
+async fn common_file_codec_roundtrips_every_keystore_kind_without_rewrap() {
+    let dir = root_dir();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    for (file, purpose) in [
+        ("root.keystore", "root-keystore"),
+        ("key0.keystore", "derived:0"),
+        ("verify", "password-verify"),
+    ] {
+        let path = dir.path().join(file);
+        let context = ProtectionContext::new("wallet-fixture", purpose).unwrap();
+        codec
+            .store_file(
+                &path,
+                &context,
+                Zeroizing::new(vec![0, 255, 128, 42]),
+                "fixture-password",
+                wallet_crypto::KdfAlgorithm::Scrypt,
+            )
+            .await
+            .unwrap();
+        let stored = std::fs::read(&path).unwrap();
+        assert!(stored.starts_with(b"WDK\x01"));
+        for _ in 0..2 {
+            let plain = codec.load_file(&path, &context, "fixture-password").await.unwrap();
+            assert!(plain.as_slice() == [0, 255, 128, 42]);
+        }
+        assert!(std::fs::read(path).unwrap() == stored);
+    }
+    assert_eq!(native.protects.load(Ordering::SeqCst), 3);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 3);
+}
+
+#[tokio::test]
+async fn common_file_codec_rejects_cross_record_substitution() {
+    let dir = root_dir();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    let root_context = ProtectionContext::new("wallet-fixture", "root-keystore").unwrap();
+    let derived_context = ProtectionContext::new("wallet-fixture", "derived:0").unwrap();
+    let root = dir.path().join("root.keystore");
+    let derived = dir.path().join("key0.keystore");
+    codec
+        .store_file(
+            &root,
+            &root_context,
+            Zeroizing::new(vec![1, 2, 3]),
+            "fixture-password",
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    std::fs::copy(&root, &derived).unwrap();
+    let original = std::fs::read(&derived).unwrap();
+    assert!(matches!(
+        codec.load_file(&derived, &derived_context, "fixture-password").await,
+        Err(KeystoreProtectionError::Protection(ProtectionError::AuthenticationFailed))
+    ));
+    assert!(std::fs::read(derived).unwrap() == original);
+    assert_eq!(native.protects.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn root_file_roundtrip_uses_device_codec_and_survives_reopening() {
     let dir = root_dir();
     let native = Arc::new(Fixture::default());

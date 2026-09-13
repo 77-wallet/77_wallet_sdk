@@ -68,3 +68,19 @@ from these tests. Tree I/O failures are sanitized as Storage; native/password er
 Protection/decoder failure invariants do not promise rollback after an atomic replacement's directory
 sync fails. Competing writes and blocking-worker cancellation require caller lifecycle coordination.
 Safe first-use provisioning, service cutover, other file/SQLite paths and durable migration remain pending.
+
+## Common SDK file binding
+
+`KeystoreProtection::store_file/load_file` are the common SDK byte interfaces for all
+keystore files. They use shared wallet-tree I/O and seal/open; root methods are only
+serialization/filename adapters. They require the caller's expected ProtectionContext,
+not an identity supplied by the file. Loaded plaintext uses Zeroizing<Vec<u8>>.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Same SDK API with root, derived and verify paths | WDK format, binary payload recovery, repeated reads do not rewrap, no extra files | common_file_codec_roundtrips_every_keystore_kind_without_rewrap |
+| Root ciphertext copied to derived path | Expected derived context rejects it; file unchanged; no rewrap | common_file_codec_rejects_cross_record_substitution |
+
+The tests use synthetic record-purpose labels and a deterministic provider; production
+callers still need stable record-identity conventions and activation/migration orchestration.
+This binding alone does not switch existing service I/O or protect SQLite fields.
