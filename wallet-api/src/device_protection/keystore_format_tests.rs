@@ -47,6 +47,125 @@ fn context() -> ProtectionContext {
     ProtectionContext::new("wallet-fixture", "root-keystore").unwrap()
 }
 
+fn root_dir() -> tempfile::TempDir {
+    let parent = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/sdk-root-tests");
+    std::fs::create_dir_all(&parent).unwrap();
+    tempfile::tempdir_in(parent).unwrap()
+}
+
+#[tokio::test]
+async fn root_file_roundtrip_uses_device_codec_and_survives_reopening() {
+    let dir = root_dir();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    codec
+        .store_root(
+            dir.path(),
+            "wallet-fixture",
+            wallet_tree::file_ops::RootData::new("synthetic phrase", b"synthetic seed"),
+            "fixture-password",
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    let path = dir.path().join("root.keystore");
+    let stored = std::fs::read(&path).unwrap();
+    assert!(stored.starts_with(b"WDK\x01"));
+    drop(codec);
+    let reopened = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    let root = reopened.load_root(dir.path(), "wallet-fixture", "fixture-password").await.unwrap();
+    assert!(root.phrase() == "synthetic phrase");
+    assert!(root.seed() == b"synthetic seed");
+    assert!(std::fs::read(path).unwrap() == stored);
+    assert_eq!(native.protects.load(Ordering::SeqCst), 1);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn root_read_errors_preserve_file_and_error_category() {
+    let dir = root_dir();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    codec
+        .store_root(
+            dir.path(),
+            "wallet-fixture",
+            wallet_tree::file_ops::RootData::new("synthetic phrase", b"synthetic seed"),
+            "fixture-password",
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    let path = dir.path().join("root.keystore");
+    let stored = std::fs::read(&path).unwrap();
+    assert!(matches!(
+        codec.load_root(dir.path(), "wallet-fixture", "wrong-password").await,
+        Err(KeystoreProtectionError::PasswordDecryption)
+    ));
+    assert!(matches!(
+        codec.load_root(dir.path(), "another-wallet", "fixture-password").await,
+        Err(KeystoreProtectionError::Protection(ProtectionError::AuthenticationFailed))
+    ));
+    let unavailable = KeystoreProtection::new(DeviceProtection::default());
+    assert!(matches!(
+        unavailable.load_root(dir.path(), "wallet-fixture", "fixture-password").await,
+        Err(KeystoreProtectionError::Protection(ProtectionError::NotConfigured))
+    ));
+    assert!(std::fs::read(path).unwrap() == stored);
+    assert_eq!(native.protects.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn root_missing_provider_write_does_not_replace_existing_file() {
+    let dir = root_dir();
+    let path = dir.path().join("root.keystore");
+    std::fs::write(&path, b"existing fixture ciphertext").unwrap();
+    let codec = KeystoreProtection::new(DeviceProtection::default());
+    let result = codec
+        .store_root(
+            dir.path(),
+            "wallet-fixture",
+            wallet_tree::file_ops::RootData::new("synthetic phrase", b"synthetic seed"),
+            "fixture-password",
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await;
+    assert!(matches!(
+        result,
+        Err(KeystoreProtectionError::Protection(ProtectionError::NotConfigured))
+    ));
+    assert!(std::fs::read(path).unwrap() == b"existing fixture ciphertext");
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn root_read_rejects_legacy_without_migration_or_rewrite() {
+    use wallet_tree::file_ops::IoStrategy;
+    let dir = root_dir();
+    wallet_tree::wallet_hierarchy::v2::ModernWalletTree::default()
+        .io
+        .store_root(
+            "wallet-fixture",
+            b"synthetic seed",
+            "synthetic phrase",
+            &dir.path(),
+            "fixture-password",
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .unwrap();
+    let path = dir.path().join("root.keystore");
+    let stored = std::fs::read(&path).unwrap();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    assert!(matches!(
+        codec.load_root(dir.path(), "wallet-fixture", "fixture-password").await,
+        Err(KeystoreProtectionError::LegacyForbidden)
+    ));
+    assert_eq!(native.protects.load(Ordering::SeqCst), 0);
+    assert_eq!(native.opens.load(Ordering::SeqCst), 0);
+    assert!(std::fs::read(path).unwrap() == stored);
+}
+
 #[tokio::test]
 async fn new_file_never_enters_migration_or_double_wraps() {
     let native = Arc::new(Fixture::default());

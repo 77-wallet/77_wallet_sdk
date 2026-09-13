@@ -1,4 +1,4 @@
-//! Byte transforms for existing keystore I/O; no filesystem or key provisioning.
+//! Device transforms and bindings to existing keystore I/O; no key provisioning.
 //! Caller owns durable migration policy and atomic publication at the existing path.
 use super::{DeviceProtection, ProtectionContext, ProtectionError};
 use wallet_crypto::EncryptedJsonDecryptor;
@@ -24,6 +24,7 @@ pub enum KeystoreProtectionError {
     UnsupportedKdfCost,
     Protection(ProtectionError),
     Worker,
+    Storage,
 }
 impl std::fmt::Display for KeystoreProtectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -34,6 +35,15 @@ impl std::error::Error for KeystoreProtectionError {}
 impl From<ProtectionError> for KeystoreProtectionError {
     fn from(error: ProtectionError) -> Self {
         Self::Protection(error)
+    }
+}
+impl From<wallet_tree::Error> for KeystoreProtectionError {
+    fn from(error: wallet_tree::Error) -> Self {
+        match error {
+            wallet_tree::Error::KeystoreWorker => Self::Worker,
+            wallet_tree::Error::InvalidKeyFormat => Self::InvalidFormat,
+            _ => Self::Storage,
+        }
     }
 }
 
@@ -52,6 +62,48 @@ pub struct KeystoreProtection {
 impl KeystoreProtection {
     pub fn new(protection: DeviceProtection) -> Self {
         Self { protection }
+    }
+
+    /// Modern root write using the injected provider and existing root.keystore path.
+    /// `wallet_id` must be the stable wallet identity, never a display name or path.
+    /// Caller must provision safely and serialize authorized writes before entering.
+    /// Do not activate until all root consumers understand the protected format.
+    pub async fn store_root(
+        &self,
+        root_dir: &std::path::Path,
+        wallet_id: &str,
+        root: wallet_tree::file_ops::RootData,
+        password: &str,
+        algorithm: wallet_crypto::KdfAlgorithm,
+    ) -> Result<(), KeystoreProtectionError> {
+        let context = ProtectionContext::new(wallet_id, "root-keystore")?;
+        wallet_tree::wallet_hierarchy::v2::ModernWalletTree::default()
+            .io
+            .store_root_with_protection(root_dir, root, password, algorithm, |inner| async move {
+                self.seal(&context, &inner).await
+            })
+            .await
+    }
+
+    /// Read a modern root that is already device-protected. This deliberately rejects
+    /// legacy files: migration must persist its replacement and durable policy first.
+    /// Native errors are preserved rather than being reported as password errors.
+    pub async fn load_root(
+        &self,
+        root_dir: &std::path::Path,
+        wallet_id: &str,
+        password: &str,
+    ) -> Result<wallet_tree::file_ops::RootData, KeystoreProtectionError> {
+        let context = ProtectionContext::new(wallet_id, "root-keystore")?;
+        wallet_tree::wallet_hierarchy::v2::ModernWalletTree::default()
+            .io
+            .load_root_with_protection(root_dir, |stored| async move {
+                let opened =
+                    self.open(&context, &stored, password, ReadPolicy::DeviceRequired).await?;
+                serde_json::from_slice(&opened.plaintext)
+                    .map_err(|_| KeystoreProtectionError::InvalidFormat)
+            })
+            .await
     }
 
     /// New writes use this directly. Only accepts existing password-encrypted JSON,

@@ -3,6 +3,20 @@
 Scope: `ModernIo::store_root_with_protection` and `load_root_with_protection`.
 Production callers still use the synchronous methods; this batch does not enable native protection.
 
+The implementation is now shared in public `file_ops::protected::{store,load}`.
+Root methods only serialize root data/select root.keystore and delegate; they no longer
+implement encryption or filesystem operations. The shared API accepts an existing path
+and opaque bytes, and its decoder can return any data type. It contains no wallet-record schema.
+
+| Shared I/O scenario | Invariant | Test |
+| --- | --- | --- |
+| root.keystore, key0.keystore and verify via identical API | Arbitrary binary payload roundtrips through existing password crypto and outer callback; exact requested filenames; no temp files remain | same_io_handles_root_derived_and_verify_as_opaque_bytes |
+| Protection fails for each filename | Existing bytes unchanged for every record kind | failed_protection_preserves_each_existing_file |
+
+Run all shared/root regressions: `cargo test -p wallet-tree --offline --lib file_ops`.
+This refactor provides the common entry point; existing derived/verify service callers have
+not yet been switched from KeystoreBuilder and must not be described as protected.
+
 | Scenario | Result / persisted invariant | Test |
 | --- | --- | --- |
 | Asynchronous protect and decode | Existing root.keystore filename; only transformed bytes on disk; existing password decryptor recovers RootData; no temp files | root_roundtrip_uses_existing_password_format_and_path |

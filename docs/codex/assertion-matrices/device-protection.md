@@ -31,7 +31,7 @@ Production export compilation: `cargo check -p wallet-api --offline`.
 | Unknown/truncated version or native failure | Error, never legacy fallback | required_policy_and_unknown_formats_never_fall_back |
 | Hardware unavailable during migration or wrong context on current data | No opened result/replacement; no rewrap | native_failure_does_not_release_legacy_migration_or_downgrade_current_data |
 
-Tests use real existing wallet_crypto password encryption/decryption and a deterministic hardware-provider fixture. The module transforms bytes only. Callers must supply durable policy, atomically persist and read back replacement at the existing path, then update migration state. Those call sites are not wired yet; no App rollout/migration completion claim. The earlier unused file-store component was removed per user direction.
+Tests use real existing wallet_crypto password encryption/decryption and a deterministic hardware-provider fixture. The seal/open methods transform bytes only. Callers must supply durable policy, atomically persist and read back replacement at the existing path, then update migration state. Those call sites are not wired yet; no App rollout/migration completion claim. The earlier unused file-store component was removed per user direction.
 
 | KDF compatibility | Invariant | Test |
 | --- | --- | --- |
@@ -48,3 +48,23 @@ Resource limits: Argon2 memory <=256 MiB, iterations <=10, parallelism <=16 and 
 | Replace provider or enable/disable after initialization | Identity mismatch; Context initializer rejects before WalletManager background startup | provider_identity_distinguishes_clone_replacement_and_disabled_mode |
 
 The unit test covers the identity predicate; constructor wiring is checked by compilation/review, not a live backend/global-context test. WalletManager::new preserves legacy initialization; new_with_device_protection binds the injected provider before Context publication. No runtime setter. The plugin must retain/reuse the same provider object across retries. Wallet keystore I/O still needs to consume Context.device_protection; constructor injection alone does not enable storage protection.
+
+## SDK modern-root codec binding
+
+`KeystoreProtection::store_root` and `load_root` now bind the tree's existing-path async
+root operations to the injected provider. AAD uses stable wallet identity as scope and
+`root-keystore` as purpose. These methods are not yet called by wallet services.
+
+| Scenario | Expected invariant | Test |
+| --- | --- | --- |
+| Store, recreate codec, read | WDK v1 persisted at root.keystore; correct root recovered; no rewrap or extra files | root_file_roundtrip_uses_device_codec_and_survives_reopening |
+| Wrong password / wrong wallet / missing provider | Respective password/authentication/configuration errors retained; stored bytes unchanged | root_read_errors_preserve_file_and_error_category |
+| Write without provider | NotConfigured; old file retained; no extra files | root_missing_provider_write_does_not_replace_existing_file |
+| Legacy root supplied to protected read | LegacyForbidden before native operations; file unchanged | root_read_rejects_legacy_without_migration_or_rewrite |
+
+Command: `cargo test -p wallet-api --offline --lib device_protection`.
+Real password crypto and temporary files, deterministic provider fixture only; no hardware assurance
+from these tests. Tree I/O failures are sanitized as Storage; native/password errors stay distinct.
+Protection/decoder failure invariants do not promise rollback after an atomic replacement's directory
+sync fails. Competing writes and blocking-worker cancellation require caller lifecycle coordination.
+Safe first-use provisioning, service cutover, other file/SQLite paths and durable migration remain pending.
