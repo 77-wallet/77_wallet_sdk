@@ -364,27 +364,16 @@ impl WalletService {
 
         let seed = seed.clone();
 
-        // 检查钱包状态
-        let account_ids = WalletApplication::restart_existing_wallet(pool.clone(), address).await?;
-        let storage_path = dirs.get_root_dir(address)?;
-        wallet_utils::file_func::recreate_dir_all(&storage_path)?;
-
-        let wallet_tree_start = std::time::Instant::now();
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        tracing::debug!("Wallet tree strategy retrieval took: {:?}", wallet_tree_start.elapsed());
-
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
         let initialize_root_keystore_start = std::time::Instant::now();
-        wallet_tree::api::KeystoreApi::initialize_root_keystore(
-            wallet_tree,
+        WalletApplication::store_root(
+            self.ctx,
             address,
-            // &private_key,
             RootData::new(&phrase, &seed),
-            &storage_path,
             wallet_password,
-            algorithm,
-        )?;
+        )
+        .await?;
+        // Do not reactivate existing DB records before a protected write succeeds.
+        let account_ids = WalletApplication::restart_existing_wallet(pool.clone(), address).await?;
         tracing::debug!(
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()

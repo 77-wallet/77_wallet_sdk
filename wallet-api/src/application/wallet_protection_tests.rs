@@ -746,3 +746,67 @@ async fn malformed_protected_account_payload_is_rejected_without_rewrite() {
         assert!(std::fs::read(&path).unwrap() == before);
     }
 }
+
+#[tokio::test]
+async fn root_store_preserves_existing_protection_and_files_on_failure() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    register_wallet_for_password_change(ctx).await;
+    let root = ctx.get_global_dirs().get_root_dir(WALLET).unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .store_root(
+            &root,
+            WALLET,
+            RootData::new(PHRASE, b"synthetic seed"),
+            PASSWORD,
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    let path = root.join("root.keystore");
+    let before = std::fs::read(&path).unwrap();
+    let sibling = root.join("fixture-public-marker");
+    std::fs::write(&sibling, b"keep").unwrap();
+    native.fail_protect.store(true, Ordering::SeqCst);
+    let failed = WalletApplication::store_root(
+        ctx,
+        WALLET,
+        RootData::new(PHRASE, b"synthetic seed"),
+        PASSWORD,
+    )
+    .await;
+    assert!(matches!(
+        failed,
+        Err(ServiceError::DeviceProtection(KeystoreProtectionError::Protection(
+            ProtectionError::PlatformFailure
+        )))
+    ));
+    assert!(std::fs::read(&path).unwrap() == before);
+    assert!(std::fs::read(&sibling).unwrap() == b"keep");
+    assert!(WalletService::new(ctx).get_phrase(WALLET, PASSWORD).await.unwrap().phrase == PHRASE);
+    native.fail_protect.store(false, Ordering::SeqCst);
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    assert!(std::fs::read(&path).unwrap().starts_with(b"WDK\x01"));
+    assert!(WalletService::new(ctx).get_phrase(WALLET, PASSWORD).await.unwrap().phrase == PHRASE);
+    assert!(std::fs::read(&sibling).unwrap() == b"keep");
+    assert_eq!(std::fs::read_dir(&root).unwrap().count(), 2);
+}
+
+#[tokio::test]
+async fn root_store_retains_legacy_creation_until_activation() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    register_wallet_for_password_change(ctx).await;
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    assert!(WalletService::new(ctx).get_phrase(WALLET, PASSWORD).await.unwrap().phrase == PHRASE);
+    assert_eq!(native.opens.load(Ordering::SeqCst), 0);
+    assert!(
+        ctx.get_global_dirs().get_root_dir(WALLET).unwrap().join("fixturewallet-seed").exists()
+    );
+}

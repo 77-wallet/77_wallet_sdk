@@ -53,6 +53,37 @@ impl WalletApplication {
         )?)
     }
 
+    pub(crate) async fn store_root(
+        ctx: &Context,
+        wallet_address: &str,
+        root: wallet_tree::file_ops::RootData,
+        password: &str,
+    ) -> Result<(), ServiceError> {
+        let dirs = ctx.get_global_dirs();
+        let root_dir = dirs.get_root_dir(wallet_address)?;
+        let binding = ProtectionContext::new(wallet_address, "root-keystore")
+            .map_err(KeystoreProtectionError::from)?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
+        if Self::record_requires_device(ctx, &binding, &root_dir.join("root.keystore")).await? {
+            return Ok(KeystoreProtection::new(ctx.device_protection().clone())
+                .store_root(&root_dir, wallet_address, root, password, algorithm)
+                .await?);
+        }
+
+        // Preserve the existing unprotected creation path until provisioning/rollout is wired.
+        let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
+        let wallet_tree = strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        wallet_utils::file_func::recreate_dir_all(&root_dir)?;
+        Ok(wallet_tree::api::KeystoreApi::initialize_root_keystore(
+            wallet_tree,
+            wallet_address,
+            root,
+            &root_dir,
+            password,
+            algorithm,
+        )?)
+    }
+
     // Shared policy for existing records. Not permission to provision or migrate.
     async fn record_requires_device(
         ctx: &Context,

@@ -176,3 +176,21 @@ Validation: `cargo test -p wallet-api --offline --lib protection`.
 These are offline component checks, not transaction signing, live-chain, or hardware tests.
 The existing algorithm-upgrade path still directly reads legacy subkeys intentionally;
 new-user write activation and migration ordering remain outstanding.
+
+## Create/reimport root persistence
+
+`WalletService::create_wallet` delegates root persistence to `WalletApplication::store_root`
+and only then calls `restart_existing_wallet`. Existing WDK/completed roots use common
+protected store without clearing the directory. Legacy/new unprotected roots retain the
+old writer until explicit provisioning and rollout are connected.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Protected root overwrite with native failure then success | Failure preserves old bytes and readability; sibling survives both paths; success remains WDK/readable with no temp files | root_store_preserves_existing_protection_and_files_on_failure |
+| Initial legacy root write | Existing legacy reader works; native remains unused | root_store_retains_legacy_creation_until_activation |
+
+Validation: `cargo test -p wallet-api --offline --lib protection`.
+This does not activate protected storage for new records or make create/reimport atomic
+across DB and derived files. Derived bulk writes still require integration before full
+wallet reimport can be described as device-protected. The unused set_sub_password method
+was not expanded; searches found no callers in SDK API, plugin Dart or App Dart.
