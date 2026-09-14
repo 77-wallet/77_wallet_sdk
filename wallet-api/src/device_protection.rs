@@ -75,11 +75,13 @@ impl ProtectionContext {
 
 /// Implemented by the native plugin, not Flutter UI business logic.
 ///
-/// Providers must enforce hardware-backed key use, bind the context as AAD,
-/// use fresh encryption randomness and return a versioned opaque envelope.
+/// Providers must keep device keys in the platform keystore, bind the context as
+/// AAD, use fresh encryption randomness and return a versioned opaque envelope.
+/// Native policy may report hardware-backed or software-keystore protection;
+/// callers that display or enforce a security tier query that native capability.
 /// They must fail on missing/invalidated keys during decryption, never create
-/// replacement keys to recover existing ciphertext, and never silently fall
-/// back to software or plaintext. SDK storage checks authorize provisioning;
+/// replacement keys to recover existing ciphertext, and never fall back to
+/// plaintext. SDK storage checks authorize provisioning;
 /// this interface grants no reset/delete capability.
 ///
 /// Futures must not block an executor thread while awaiting native callbacks.

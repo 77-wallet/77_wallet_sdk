@@ -10,7 +10,7 @@ Scope: platform-neutral provider contract. Production wallet routing is not conn
 | Context binding | Different scope/purpose pairs have unambiguous length-prefixed AAD; empty fields rejected | context_encoding_is_unambiguous_and_rejects_empty_fields |
 | Deferred native result | Pending yields to executor, later poll delivers native result | pending_native_callback_yields_before_returning_result |
 
-These fixture tests validate dispatch semantics, not encryption strength. Native adapters must enforce AAD, hardware security level, nonce generation and key lifecycle. No production storage protection claim until read/write paths are connected.
+These fixture tests validate dispatch semantics, not encryption strength. Native adapters must enforce AAD, platform-keystore policy, nonce generation and key lifecycle, and expose their actual hardware/software security level separately. No production storage protection claim until read/write paths are connected.
 
 Validation of contract and storage tests:
 
