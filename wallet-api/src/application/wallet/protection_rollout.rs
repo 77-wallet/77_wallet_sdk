@@ -6,9 +6,8 @@ use crate::{
         ProtectionContext,
         keystore_format::{
             KeystoreProtection, KeystoreProtectionError, ReadPolicy, has_device_header,
-            read_legacy_file,
         },
-        migration::{MigrationFile, MigrationSummary, record_scope},
+        migration::{MigrationSummary, PreparedMigrationFile, record_scope},
     },
     domain::app::config::ConfigDomain,
     error::service::ServiceError,
@@ -72,9 +71,9 @@ impl WalletApplication {
                     return Err(KeystoreProtectionError::Storage.into());
                 }
             }
-            protection_initialization::initialize_under_gate(ctx, Some(&password)).await?;
             let codec = KeystoreProtection::new(ctx.device_protection().clone());
-            // Validate every discovered record before publishing the first one.
+            // Run each password KDF once and retain its verified source until commit.
+            let mut prepared = Vec::with_capacity(inventory.len());
             for ((_, record, expected), binding) in inventory.iter().zip(&bindings) {
                 let state = MigrationRepo::get(&record_scope(binding), &pool)
                     .await
@@ -85,42 +84,51 @@ impl WalletApplication {
                         state,
                         Some(MigrationState::DeviceRequired | MigrationState::RecreationAllowed)
                     );
-                let plain = if required {
-                    codec.load_file(&record.path, binding, &password).await?
-                } else {
-                    read_legacy_file(&record.path, &password).await?
-                };
-                legacy_initialization::verify_payload(&record.identity, &plain, expected)?;
+                let file = codec
+                    .prepare_file_migration(
+                        &record.path,
+                        binding,
+                        &password,
+                        if required {
+                            ReadPolicy::DeviceRequired
+                        } else {
+                            ReadPolicy::LegacyMigrationAllowed
+                        },
+                    )
+                    .await?;
+                legacy_initialization::verify_payload(
+                    &record.identity,
+                    file.plaintext(),
+                    expected,
+                )?;
                 if record.identity == RecordIdentity::Root {
-                    let _root: wallet_tree::file_ops::RootData = serde_json::from_slice(&plain)
-                        .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
+                    let _root: wallet_tree::file_ops::RootData =
+                        serde_json::from_slice(file.plaintext())
+                            .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
                 }
+                prepared.push(PreparedMigrationFile {
+                    path: &record.path,
+                    context: binding,
+                    prepared: file,
+                });
             }
-            // Freeze all identities durably before any file is replaced. A missing
-            // unindexed file on retry must not disappear from migration coverage.
-            for binding in &bindings {
-                MigrationRepo::begin(&record_scope(binding), &pool)
-                    .await
-                    .map_err(|_| state_error())?;
-            }
+            protection_initialization::initialize_under_gate_after_file_verification(
+                ctx, &password,
+            )
+            .await?;
             if inventory.is_empty() {
                 mark_active(ctx).await?;
                 return Ok(MigrationSummary::default());
             }
-            let files: Vec<_> = inventory
-                .iter()
-                .zip(&bindings)
-                .map(|((_, record, _), context)| MigrationFile { path: &record.path, context })
-                .collect();
-            let summary = codec
-                .migrate_files(&pool, &files, &password, ReadPolicy::LegacyMigrationAllowed)
-                .await
-                .map_err(|error| match error {
-                    crate::device_protection::migration::TrackedMigrationError::Keystore(error) => {
-                        error.into()
-                    }
-                    _ => state_error(),
-                })?;
+            let summary =
+                codec.migrate_prepared_files(&pool, prepared).await.map_err(
+                    |error| match error {
+                        crate::device_protection::migration::TrackedMigrationError::Keystore(
+                            error,
+                        ) => error.into(),
+                        _ => state_error(),
+                    },
+                )?;
             mark_active(ctx).await?;
             Ok(summary)
         })

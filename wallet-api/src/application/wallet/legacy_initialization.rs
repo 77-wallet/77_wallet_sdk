@@ -12,6 +12,16 @@ use wallet_tree::file_ops::inventory::{InventoryEntry, RecordIdentity, scan_veri
 /// Called with the application storage gate held. First-use provisioning is
 /// allowed only after every discovered record is positively read as legacy.
 pub(super) async fn verify_storage(ctx: &Context, password: &str) -> Result<(), ServiceError> {
+    reject_migration_history(ctx).await?;
+    let paths = snapshot(ctx).await?;
+    for (_, record, expected) in paths {
+        let plain = read_legacy_file(&record.path, password).await?;
+        verify_payload(&record.identity, &plain, &expected)?;
+    }
+    verify_non_file_storage(ctx, password).await
+}
+
+async fn reject_migration_history(ctx: &Context) -> Result<(), ServiceError> {
     let core = ctx.core_pool()?;
     let migrated: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM config WHERE key LIKE 'device_protection.file.v1:%')",
@@ -22,12 +32,17 @@ pub(super) async fn verify_storage(ctx: &Context, password: &str) -> Result<(), 
     if migrated {
         return Err(KeystoreProtectionError::LegacyForbidden.into());
     }
-    let paths = snapshot(ctx).await?;
-    for (_, record, expected) in paths {
-        let plain = read_legacy_file(&record.path, password).await?;
-        verify_payload(&record.identity, &plain, &expected)?;
-    }
+    Ok(())
+}
 
+/// File payloads have already been password-verified by the rollout preparation.
+/// Check every remaining password-bound store before device-key provisioning.
+pub(super) async fn verify_non_file_storage(
+    ctx: &Context,
+    password: &str,
+) -> Result<(), ServiceError> {
+    reject_migration_history(ctx).await?;
+    let core = ctx.core_pool()?;
     let proofs: Vec<String> =
         sqlx::query_scalar("SELECT password_proof FROM device WHERE password_proof IS NOT NULL")
             .fetch_all(core.read_ref())

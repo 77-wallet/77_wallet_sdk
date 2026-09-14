@@ -105,6 +105,65 @@ async fn tracked_prepared_migration_completes_without_a_second_password_input() 
 }
 
 #[tokio::test]
+async fn prepared_migration_freezes_every_scope_before_first_publication() {
+    let dir = fixture();
+    let pool = database(dir.path()).await;
+    let first_path = dir.path().join("key0.keystore");
+    let second_path = dir.path().join("root.keystore");
+    std::fs::write(&first_path, legacy()).unwrap();
+    std::fs::write(&second_path, legacy()).unwrap();
+    let first = ProtectionContext::new("fixture-wallet", "derived:0").unwrap();
+    let second = ProtectionContext::new("fixture-wallet", "root-keystore").unwrap();
+    let native =
+        Arc::new(NativeFixture { fail_second: AtomicBool::new(true), seals: AtomicUsize::new(0) });
+    let codec = KeystoreProtection::new(DeviceProtection::new(native));
+    let first_prepared = codec
+        .prepare_file_migration(
+            &first_path,
+            &first,
+            "fixture-password",
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+    let second_prepared = codec
+        .prepare_file_migration(
+            &second_path,
+            &second,
+            "fixture-password",
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        codec
+            .migrate_prepared_files(
+                &pool,
+                [
+                    PreparedMigrationFile {
+                        path: &first_path,
+                        context: &first,
+                        prepared: first_prepared,
+                    },
+                    PreparedMigrationFile {
+                        path: &second_path,
+                        context: &second,
+                        prepared: second_prepared,
+                    },
+                ],
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        MigrationRepo::get(&record_scope(&second), &pool).await.unwrap(),
+        Some(MigrationState::Pending)
+    );
+    close(pool).await;
+}
+
+#[tokio::test]
 async fn partial_migration_resumes_after_database_reopen_without_rewrapping() {
     let dir = fixture();
     let pool = database(dir.path()).await;

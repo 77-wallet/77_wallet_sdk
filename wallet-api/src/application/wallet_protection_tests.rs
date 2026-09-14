@@ -2029,6 +2029,7 @@ async fn protection_rollout_resumes_published_file_after_progress_write_failure(
     assert_eq!(result.already_protected, 1);
     assert_eq!(std::fs::read(root).unwrap(), published);
     assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+    assert_eq!(native.opens.load(Ordering::SeqCst), 6);
 }
 
 #[tokio::test]

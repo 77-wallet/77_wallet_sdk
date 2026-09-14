@@ -104,6 +104,23 @@ pub(super) async fn initialize_under_gate(
     ctx: &Context,
     legacy_password: Option<&str>,
 ) -> Result<(), ServiceError> {
+    initialize_under_gate_inner(ctx, legacy_password, false).await
+}
+
+/// Caller has prepared and schema-validated the complete authoritative file inventory
+/// while holding both storage gates. Only non-file password stores remain to verify.
+pub(super) async fn initialize_under_gate_after_file_verification(
+    ctx: &Context,
+    password: &str,
+) -> Result<(), ServiceError> {
+    initialize_under_gate_inner(ctx, Some(password), true).await
+}
+
+async fn initialize_under_gate_inner(
+    ctx: &Context,
+    legacy_password: Option<&str>,
+    files_verified: bool,
+) -> Result<(), ServiceError> {
     let pool = ctx.core_pool()?;
     let ready = key_state(ctx).await? == Some(KeyState::Ready);
     if !ready {
@@ -111,7 +128,11 @@ pub(super) async fn initialize_under_gate(
             return Err(KeystoreProtectionError::LegacyForbidden.into());
         }
         if let Some(password) = legacy_password {
-            super::legacy_initialization::verify_storage(ctx, password).await?;
+            if files_verified {
+                super::legacy_initialization::verify_non_file_storage(ctx, password).await?;
+            } else {
+                super::legacy_initialization::verify_storage(ctx, password).await?;
+            }
         } else {
             require_empty_storage(ctx).await?;
         }

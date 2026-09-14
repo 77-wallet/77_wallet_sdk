@@ -47,12 +47,17 @@ impl KeystoreProtection {
     ) -> Result<MigrationSummary, TrackedMigrationError> {
         let files: Vec<_> = files.into_iter().collect();
         validate_prepared_inventory(&files).await?;
+        let mut states = Vec::with_capacity(files.len());
+        for file in &files {
+            states.push(
+                MigrationRepo::begin(&record_scope(file.context), pool)
+                    .await
+                    .map_err(|_| TrackedMigrationError::State)?,
+            );
+        }
         let mut summary = MigrationSummary::default();
-        for file in files {
+        for (file, state) in files.into_iter().zip(states) {
             let scope = record_scope(file.context);
-            let state = MigrationRepo::begin(&scope, pool)
-                .await
-                .map_err(|_| TrackedMigrationError::State)?;
             let converted =
                 self.publish_prepared_file(file.path, file.context, file.prepared).await?;
             if state != MigrationState::DeviceRequired {
