@@ -96,7 +96,6 @@ impl MigrationRepo {
         ).bind(&key).execute(pool.write_ref()).await.map_err(db_error)?;
         match Self::get(scope, pool).await? {
             Some(MigrationState::DeviceRequired) => Ok(MigrationState::DeviceRequired),
-            // A concurrent begin may insert Pending after our update affected no rows.
             Some(MigrationState::Pending | MigrationState::RecreationAllowed) | None => {
                 Err(MigrationError::NotStarted)
             }
@@ -112,7 +111,11 @@ fn state_key(scope: &str) -> Result<String, MigrationError> {
     {
         return Err(MigrationError::InvalidScope);
     }
-    Ok(format!("device_protection.migration.v1:{scope}"))
+    let digest = scope.strip_prefix("file-v1:").unwrap_or(scope);
+    if digest.is_empty() {
+        return Err(MigrationError::InvalidScope);
+    }
+    Ok(format!("device_protection.file.v1:{digest}"))
 }
 
 fn db_error(error: sqlx::Error) -> MigrationError {

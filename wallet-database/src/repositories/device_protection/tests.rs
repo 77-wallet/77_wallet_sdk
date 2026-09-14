@@ -32,6 +32,31 @@ async fn close(pool: crate::CoreDbPool) {
 }
 
 #[tokio::test]
+async fn fresh_state_uses_file_protection_key() {
+    let fixture = Fixture::new();
+    let pool = fixture.open().await;
+    let scope = "file-v1:0123456789abcdef";
+
+    assert_eq!(MigrationRepo::begin(scope, &pool).await.unwrap(), MigrationState::Pending);
+
+    let concise = crate::repositories::config::ConfigRepo::find_by_key(
+        "device_protection.file.v1:0123456789abcdef",
+        &pool,
+    )
+    .await
+    .unwrap();
+    let legacy = crate::repositories::config::ConfigRepo::find_by_key(
+        "device_protection.migration.v1:file-v1:0123456789abcdef",
+        &pool,
+    )
+    .await
+    .unwrap();
+    assert_eq!(concise.unwrap().value, "migrating-v1");
+    assert!(legacy.is_none());
+    close(pool).await;
+}
+
+#[tokio::test]
 async fn completed_state_survives_reopen_and_cannot_be_restarted() {
     let fixture = Fixture::new();
     let pool = fixture.open().await;
