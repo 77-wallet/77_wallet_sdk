@@ -1444,7 +1444,7 @@ async fn protection_account_delete_state_write_failure_preserves_file_and_index(
     let original = std::fs::read(&path).unwrap();
     let metadata = std::fs::read(subs.join("derived_meta.json")).unwrap();
     let pool = ctx.core_pool().unwrap();
-    sqlx::query("CREATE TRIGGER reject_deletion_state BEFORE INSERT ON config WHEN NEW.key LIKE 'device_protection.migration.v1:%' BEGIN SELECT RAISE(ABORT, 'fixture refusal'); END")
+    sqlx::query("CREATE TRIGGER reject_deletion_state BEFORE INSERT ON config WHEN NEW.key LIKE 'device_protection.file.v1:%' BEGIN SELECT RAISE(ABORT, 'fixture refusal'); END")
         .execute(pool.write_ref()).await.unwrap();
     assert!(WalletApplication::delete_account_files(ctx, WALLET, 0).await.is_err());
     assert_eq!(std::fs::read(&path).unwrap(), original);
@@ -1578,7 +1578,7 @@ async fn protection_wallet_delete_state_failure_preserves_directory() {
         .unwrap();
     let original = std::fs::read(root.join("root.keystore")).unwrap();
     let child = std::fs::read(subs.join("key0.keystore")).unwrap();
-    sqlx::query("CREATE TRIGGER reject_wallet_deletion BEFORE INSERT ON config WHEN NEW.key LIKE 'device_protection.migration.v1:%' BEGIN SELECT RAISE(ABORT, 'fixture refusal'); END").execute(ctx.core_pool().unwrap().write_ref()).await.unwrap();
+    sqlx::query("CREATE TRIGGER reject_wallet_deletion BEFORE INSERT ON config WHEN NEW.key LIKE 'device_protection.file.v1:%' BEGIN SELECT RAISE(ABORT, 'fixture refusal'); END").execute(ctx.core_pool().unwrap().write_ref()).await.unwrap();
     assert!(WalletApplication::delete_wallet_files(ctx, Some(WALLET)).await.is_err());
     assert_eq!(std::fs::read(root.join("root.keystore")).unwrap(), original);
     assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), child);

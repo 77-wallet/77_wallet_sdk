@@ -35,7 +35,7 @@ async fn close(pool: crate::CoreDbPool) {
 async fn fresh_state_uses_file_protection_key() {
     let fixture = Fixture::new();
     let pool = fixture.open().await;
-    let scope = "file-v1:0123456789abcdef";
+    let scope = "0123456789abcdef";
 
     assert_eq!(MigrationRepo::begin(scope, &pool).await.unwrap(), MigrationState::Pending);
 

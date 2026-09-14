@@ -14,7 +14,7 @@ use wallet_tree::file_ops::inventory::{InventoryEntry, RecordIdentity, scan_veri
 pub(super) async fn verify_storage(ctx: &Context, password: &str) -> Result<(), ServiceError> {
     let core = ctx.core_pool()?;
     let migrated: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM config WHERE key LIKE 'device_protection.migration.v1:%')",
+        "SELECT EXISTS(SELECT 1 FROM config WHERE key LIKE 'device_protection.file.v1:%')",
     )
     .fetch_one(core.read_ref())
     .await

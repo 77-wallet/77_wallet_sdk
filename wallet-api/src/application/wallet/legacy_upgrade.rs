@@ -9,7 +9,7 @@ use crate::{
 pub(super) async fn preflight(ctx: &Context) -> Result<(), ServiceError> {
     let pool = ctx.core_pool()?;
     let started: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM config WHERE key LIKE ?)")
-        .bind("device_protection.migration.v1:%")
+        .bind("device_protection.file.v1:%")
         .fetch_one(pool.read_ref())
         .await
         .map_err(|_| ServiceError::Context("Cannot read keystore migration progress".into()))?;

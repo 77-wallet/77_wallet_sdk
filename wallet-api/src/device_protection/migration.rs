@@ -77,7 +77,7 @@ impl KeystoreProtection {
 }
 
 pub(crate) fn record_scope(context: &ProtectionContext) -> String {
-    format!("file-v1:{}", hex::encode(sha2::Sha256::digest(context.authenticated_data())))
+    hex::encode(sha2::Sha256::digest(context.authenticated_data()))
 }
 
 async fn validate_inventory(files: &[MigrationFile<'_>]) -> Result<(), TrackedMigrationError> {

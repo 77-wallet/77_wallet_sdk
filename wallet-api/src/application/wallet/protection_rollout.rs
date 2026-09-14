@@ -59,14 +59,14 @@ impl WalletApplication {
             // Include progress for records with no DB/index entry (e.g. verify).
             // An intentional deletion may leave recreation permission without a file.
             let progress: Vec<String> = sqlx::query_scalar(
-                "SELECT key FROM config WHERE key LIKE 'device_protection.migration.v1:%'",
+                "SELECT key FROM config WHERE key LIKE 'device_protection.file.v1:%'",
             )
             .fetch_all(pool.read_ref())
             .await
             .map_err(|_| state_error())?;
             for key in progress {
                 let scope =
-                    key.strip_prefix("device_protection.migration.v1:").ok_or_else(state_error)?;
+                    key.strip_prefix("device_protection.file.v1:").ok_or_else(state_error)?;
                 let state = MigrationRepo::get(scope, &pool).await.map_err(|_| state_error())?;
                 if !scopes.contains(scope) && state != Some(MigrationState::RecreationAllowed) {
                     return Err(KeystoreProtectionError::Storage.into());

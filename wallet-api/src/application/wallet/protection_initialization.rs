@@ -52,7 +52,7 @@ impl WalletApplication {
 async fn require_empty_storage(ctx: &Context) -> Result<(), ServiceError> {
     let core = ctx.core_pool()?;
     let occupied: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM wallet) OR EXISTS(SELECT 1 FROM account) OR EXISTS(SELECT 1 FROM device WHERE password_proof IS NOT NULL) OR EXISTS(SELECT 1 FROM config WHERE key LIKE 'device_protection.migration.v1:%')",
+        "SELECT EXISTS(SELECT 1 FROM wallet) OR EXISTS(SELECT 1 FROM account) OR EXISTS(SELECT 1 FROM device WHERE password_proof IS NOT NULL) OR EXISTS(SELECT 1 FROM config WHERE key LIKE 'device_protection.file.v1:%')",
     ).fetch_one(core.read_ref()).await
         .map_err(|_| ServiceError::Context("Cannot inspect wallet initialization state".into()))?;
     let api = ctx.api_wallet_pool()?;
