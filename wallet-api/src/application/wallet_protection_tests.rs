@@ -1989,7 +1989,7 @@ async fn protection_rollout_migrates_all_v2_files_once_and_preserves_inner_data(
 }
 
 #[tokio::test]
-async fn protection_rollout_wrong_password_preserves_every_file() {
+async fn protection_rollout_wraps_authenticated_inventory_without_per_file_password_kdf() {
     let dir = directory();
     let native = Arc::new(Native::default());
     let ctx = context(dir.path(), native.clone()).await;
@@ -1999,9 +1999,11 @@ async fn protection_rollout_wrong_password_preserves_every_file() {
         .unwrap();
     let path = subs.join("key0.keystore");
     let before = std::fs::read(&path).unwrap();
-    assert!(WalletApplication::migrate_wallet_file_protection(ctx, "wrong").await.is_err());
-    assert_eq!(std::fs::read(&path).unwrap(), before);
-    assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    WalletApplication::migrate_wallet_file_protection(ctx, "already-authenticated").await.unwrap();
+    let wrapped = std::fs::read(&path).unwrap();
+    assert!(wrapped.starts_with(b"WDK\x01"));
+    assert_ne!(wrapped, before);
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

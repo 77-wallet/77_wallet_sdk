@@ -107,19 +107,18 @@ pub(super) async fn initialize_under_gate(
     initialize_under_gate_inner(ctx, legacy_password, false).await
 }
 
-/// Caller has prepared and schema-validated the complete authoritative file inventory
-/// while holding both storage gates. Only non-file password stores remain to verify.
-pub(super) async fn initialize_under_gate_after_file_verification(
+/// Caller has already authenticated the wallet password at the application entry point and
+/// prepared the complete encrypted-file inventory while holding both storage gates.
+pub(super) async fn initialize_under_gate_after_password_authentication(
     ctx: &Context,
-    password: &str,
 ) -> Result<(), ServiceError> {
-    initialize_under_gate_inner(ctx, Some(password), true).await
+    initialize_under_gate_inner(ctx, None, true).await
 }
 
 async fn initialize_under_gate_inner(
     ctx: &Context,
     legacy_password: Option<&str>,
-    files_verified: bool,
+    password_authenticated: bool,
 ) -> Result<(), ServiceError> {
     let pool = ctx.core_pool()?;
     let ready = key_state(ctx).await? == Some(KeyState::Ready);
@@ -127,12 +126,11 @@ async fn initialize_under_gate_inner(
         if super::protection_rollout::files_active(ctx).await? {
             return Err(KeystoreProtectionError::LegacyForbidden.into());
         }
-        if let Some(password) = legacy_password {
-            if files_verified {
-                super::legacy_initialization::verify_non_file_storage(ctx, password).await?;
-            } else {
-                super::legacy_initialization::verify_storage(ctx, password).await?;
-            }
+        if password_authenticated {
+            // The startup entry point already verified password_proof (or its database
+            // fallback). Repeating that KDF here would add no authentication value.
+        } else if let Some(password) = legacy_password {
+            super::legacy_initialization::verify_storage(ctx, password).await?;
         } else {
             require_empty_storage(ctx).await?;
         }

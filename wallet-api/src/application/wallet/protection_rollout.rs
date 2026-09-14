@@ -21,9 +21,8 @@ impl WalletApplication {
     /// first. The owned task retains the writer gates after caller cancellation.
     pub(crate) async fn migrate_wallet_file_protection(
         ctx: &'static Context,
-        password: &str,
+        _password: &str,
     ) -> Result<MigrationSummary, ServiceError> {
-        let password = zeroize::Zeroizing::new(password.to_owned());
         tokio::spawn(async move {
             let _guard = derived_store::lock().await;
             let api = ctx.api_wallet_pool()?;
@@ -72,9 +71,10 @@ impl WalletApplication {
                 }
             }
             let codec = KeystoreProtection::new(ctx.device_protection().clone());
-            // Run each password KDF once and retain its verified source until commit.
+            // Password authentication is owned by the startup entry point. Validate each
+            // encrypted envelope here and retain its source until atomic publication.
             let mut prepared = Vec::with_capacity(inventory.len());
-            for ((_, record, expected), binding) in inventory.iter().zip(&bindings) {
+            for ((_, record, _), binding) in inventory.iter().zip(&bindings) {
                 let state = MigrationRepo::get(&record_scope(binding), &pool)
                     .await
                     .map_err(|_| state_error())?;
@@ -85,10 +85,9 @@ impl WalletApplication {
                         Some(MigrationState::DeviceRequired | MigrationState::RecreationAllowed)
                     );
                 let file = codec
-                    .prepare_file_migration(
+                    .prepare_file_wrapping(
                         &record.path,
                         binding,
-                        &password,
                         if required {
                             ReadPolicy::DeviceRequired
                         } else {
@@ -96,26 +95,14 @@ impl WalletApplication {
                         },
                     )
                     .await?;
-                legacy_initialization::verify_payload(
-                    &record.identity,
-                    file.plaintext(),
-                    expected,
-                )?;
-                if record.identity == RecordIdentity::Root {
-                    let _root: wallet_tree::file_ops::RootData =
-                        serde_json::from_slice(file.plaintext())
-                            .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
-                }
                 prepared.push(PreparedMigrationFile {
                     path: &record.path,
                     context: binding,
                     prepared: file,
                 });
             }
-            protection_initialization::initialize_under_gate_after_file_verification(
-                ctx, &password,
-            )
-            .await?;
+            protection_initialization::initialize_under_gate_after_password_authentication(ctx)
+                .await?;
             if inventory.is_empty() {
                 mark_active(ctx).await?;
                 return Ok(MigrationSummary::default());

@@ -101,3 +101,16 @@ Tests use real password crypto and filesystem publication but a deterministic pr
 No mobile hardware migration is claimed. Wallet-wide persistent completion state,
 provisioning and service activation are still pending. After an uncertain directory-sync
 failure, callers must inspect/retry the file before marking migration complete.
+
+## Authenticated application rollout
+
+The password-entry application flow authenticates the wallet password once before entering
+the gated ordinary-file rollout. Rollout validates each encrypted envelope and wraps its
+existing ciphertext without repeating its password KDF.
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| Authenticated V2 inventory | Root, derived and verify ciphertexts are device-wrapped once; inner ciphertext remains usable | protection_rollout_migrates_all_v2_files_once_and_preserves_inner_data |
+| Rollout receives an irrelevant password value after entry authentication | Migration does not decrypt each file or depend on that value | protection_rollout_wraps_authenticated_inventory_without_per_file_password_kdf |
+| Wrong password at application entry | Reject before provisioning or file publication | protection_password_entry_activates_v2_once_without_extra_frontend_call |
+| Interrupted publication and retry | Published files remain protected and are not wrapped twice | protection_rollout_resumes_published_file_after_progress_write_failure |
