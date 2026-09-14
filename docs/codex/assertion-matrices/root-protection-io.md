@@ -157,6 +157,13 @@ This covers account-file password changes, not single-address `set_sub_password`
 private-key read activation, multi-file transactionality, or the pre-existing V1
 `load_account` unimplemented branch. No new protected-file activation is introduced.
 
+## Legacy algorithm-upgrade recovery
+
+| Scenario | Invariant | Test |
+| --- | --- | --- |
+| V2 strategy published, only part of obsolete V1 data remains, legacy marker still set | Verify all referenced V2 root/account/verify records before deleting the remaining V1 source; clear the marker only after cleanup; wallet stays readable | protection_password_entry_resumes_partially_cleaned_published_v2_upgrade |
+| Only API-wallet ciphertext remains while the legacy marker is set | Wrong password is rejected before format changes, verify-file creation, device provisioning or marker removal | protection_password_entry_rejects_wrong_password_for_api_only_legacy_state |
+
 ## Derived private-key reads
 
 The domain bulk-export and individual-key read paths now delegate storage reads to

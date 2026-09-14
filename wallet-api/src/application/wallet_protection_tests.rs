@@ -1211,6 +1211,42 @@ async fn protection_legacy_upgrade_retains_successful_conversion() {
 }
 
 #[tokio::test]
+async fn protection_password_entry_resumes_partially_cleaned_published_v2_upgrade() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native).await;
+    protection_device_fixture(ctx).await;
+    register_wallet_for_password_change(ctx).await;
+    let root = legacy_upgrade_fixture(ctx);
+    let legacy_phrase = std::fs::read(root.join("fixturewallet-phrase")).unwrap();
+    WalletApplication::upgrade_algorithm(ctx, PASSWORD).await.unwrap();
+
+    // Recreate the durable state left by a crash after one legacy source was removed
+    // but before the final legacy marker was cleared.
+    std::fs::write(root.join("fixturewallet-phrase"), legacy_phrase).unwrap();
+    wallet_database::repositories::device::DeviceRepo::update_password(
+        ctx.core_pool().unwrap(),
+        ctx.get_sn(),
+        Some("legacy"),
+    )
+    .await
+    .unwrap();
+
+    WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
+    assert!(!root.join("fixturewallet-phrase").exists());
+    let opened = WalletApplication::load_root(ctx, WALLET, PASSWORD).await.unwrap();
+    assert_eq!(opened.phrase(), PHRASE);
+    let device = wallet_database::repositories::device::DeviceRepo::get_device_info(
+        ctx.core_pool().unwrap(),
+        ctx.get_sn(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(device.password.is_none());
+}
+
+#[tokio::test]
 async fn protection_legacy_upgrade_refuses_migration_progress_even_if_file_missing() {
     use wallet_database::repositories::device_protection::{MigrationRepo, MigrationState};
     let dir = directory();
@@ -2343,6 +2379,74 @@ async fn protection_password_entry_upgrades_v1_then_protects_it() {
             .starts_with(b"WDK\x01")
     );
     assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn protection_password_entry_authenticates_v1_files_without_active_db_wallet() {
+    use wallet_database::repositories::device::DeviceRepo;
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    protection_device_fixture(ctx).await;
+    DeviceRepo::update_password(ctx.core_pool().unwrap(), ctx.get_sn(), Some("legacy"))
+        .await
+        .unwrap();
+    let root = legacy_upgrade_fixture(ctx);
+
+    WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
+    assert!(std::fs::read(root.join("root.keystore")).unwrap().starts_with(b"WDK\x01"));
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn protection_password_entry_rejects_wrong_password_for_api_only_legacy_state() {
+    use crate::{
+        domain::api_wallet::wallet::ApiWalletDomain,
+        infrastructure::phrase_package::PhrasePackageCodec,
+    };
+    use wallet_database::{
+        entities::api_wallet::ApiWalletType,
+        repositories::{api_wallet::wallet::ApiWalletRepo, device::DeviceRepo},
+    };
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    protection_device_fixture(ctx).await;
+    DeviceRepo::update_password(ctx.core_pool().unwrap(), ctx.get_sn(), Some("legacy"))
+        .await
+        .unwrap();
+    let phrase = PhrasePackageCodec::encrypt_phrase(PASSWORD, PHRASE).await.unwrap();
+    let seed = ApiWalletDomain::encrypt_seed_bundle(PASSWORD, b"synthetic api seed").await.unwrap();
+    ApiWalletRepo::upsert(
+        &ctx.api_wallet_pool().unwrap(),
+        "fixture-uid",
+        "fixture-name",
+        "fixture-address",
+        &phrase,
+        &seed,
+        ApiWalletType::SubAccount,
+        None,
+        "fixture-sn",
+        0,
+    )
+    .await
+    .unwrap();
+
+    assert!(WalletApplication::validate_password(ctx, "wrong-password").await.is_err());
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 0);
+    assert!(ctx.get_global_dirs().root_dir.join("verify").try_exists().unwrap() == false);
+    let device =
+        DeviceRepo::get_device_info(ctx.core_pool().unwrap(), ctx.get_sn()).await.unwrap().unwrap();
+    assert_eq!(device.password.as_deref(), Some("legacy"));
+
+    WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
+    assert_eq!(native.provisions.load(Ordering::SeqCst), 1);
+    let stored: (Vec<u8>, Vec<u8>) =
+        sqlx::query_as("SELECT phrase, seed FROM api_wallet WHERE address='fixture-address'")
+            .fetch_one(ctx.api_wallet_pool().unwrap().read_ref())
+            .await
+            .unwrap();
+    assert_eq!(stored, (phrase, seed));
 }
 
 #[tokio::test]

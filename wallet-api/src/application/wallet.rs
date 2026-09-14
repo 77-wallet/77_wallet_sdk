@@ -357,6 +357,16 @@ impl WalletApplication {
         };
 
         if device.password.is_some() {
+            let strategy = ConfigDomain::get_wallet_tree_strategy(ctx).await?;
+            if matches!(strategy, WalletTreeStrategy::V2) {
+                legacy_upgrade::resume_published_v2(ctx, password).await?;
+                return Ok(());
+            }
+            // A real V1 wallet authenticates through its source files in upgrade_algorithm.
+            // With no V1 wallet, authenticate proof/API ciphertext before an empty conversion.
+            if !legacy_upgrade::has_v1_wallets(ctx).await? {
+                legacy_initialization::verify_non_file_storage(ctx, password).await?;
+            }
             Self::upgrade_algorithm(ctx, password).await?;
             return Ok(());
         }
