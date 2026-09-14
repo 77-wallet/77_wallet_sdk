@@ -80,6 +80,26 @@ async fn prepared_migration_publishes_without_repeating_password_decryption() {
 }
 
 #[tokio::test]
+async fn authenticated_rollout_wraps_legacy_ciphertext_without_a_file_password() {
+    let dir = root_dir();
+    let path = dir.path().join("root.keystore");
+    let original = legacy();
+    std::fs::write(&path, &original).unwrap();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+
+    let prepared = codec
+        .prepare_file_wrapping(&path, &context(), ReadPolicy::LegacyMigrationAllowed)
+        .await
+        .unwrap();
+    assert!(codec.publish_prepared_file(&path, &context(), prepared).await.unwrap());
+
+    let stored = std::fs::read(&path).unwrap();
+    assert!(stored.starts_with(b"WDK\x01"));
+    assert_eq!(native.unprotect(&context(), &stored[4..]).await.unwrap(), original);
+}
+
+#[tokio::test]
 async fn prepared_migration_rejects_a_source_changed_before_publication() {
     let dir = root_dir();
     let path = dir.path().join("root.keystore");

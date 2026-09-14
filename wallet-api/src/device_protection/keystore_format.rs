@@ -85,13 +85,13 @@ pub struct OpenedKeystore {
 pub(crate) struct PreparedKeystore {
     original: Zeroizing<Vec<u8>>,
     inner: Zeroizing<Vec<u8>>,
-    plaintext: Zeroizing<Vec<u8>>,
+    plaintext: Option<Zeroizing<Vec<u8>>>,
     legacy: bool,
 }
 
 impl PreparedKeystore {
     pub(crate) fn plaintext(&self) -> &[u8] {
-        &self.plaintext
+        self.plaintext.as_deref().expect("password-verified preparation has plaintext")
     }
 }
 
@@ -172,7 +172,43 @@ impl KeystoreProtection {
                 (Zeroizing::new(original.to_vec()), true)
             };
             let plaintext = decrypt_inner(&inner, password).await?;
-            Ok(PreparedKeystore { original, inner, plaintext, legacy })
+            Ok(PreparedKeystore { original, inner, plaintext: Some(plaintext), legacy })
+        })
+        .await
+    }
+
+    /// Prepare an encrypted file for device wrapping after the application has
+    /// authenticated the wallet password. Parses and bounds the inner envelope but
+    /// deliberately performs no per-file password KDF.
+    pub(crate) async fn prepare_file_wrapping(
+        &self,
+        path: &std::path::Path,
+        context: &ProtectionContext,
+        policy: ReadPolicy,
+    ) -> Result<PreparedKeystore, KeystoreProtectionError> {
+        wallet_tree::file_ops::protected::load(path, |stored| async move {
+            if stored.len() > HEADER.len() + MAX_NATIVE {
+                return Err(KeystoreProtectionError::InvalidFormat);
+            }
+            let original = Zeroizing::new(stored);
+            let (inner, legacy) = if original.starts_with(MAGIC) {
+                if !original.starts_with(HEADER) || original.len() == HEADER.len() {
+                    return Err(KeystoreProtectionError::InvalidFormat);
+                }
+                (
+                    Zeroizing::new(
+                        self.protection.unprotect(context, &original[HEADER.len()..]).await?,
+                    ),
+                    false,
+                )
+            } else {
+                if matches!(policy, ReadPolicy::DeviceRequired) {
+                    return Err(KeystoreProtectionError::LegacyForbidden);
+                }
+                (Zeroizing::new(original.to_vec()), true)
+            };
+            validate_inner(&inner)?;
+            Ok(PreparedKeystore { original, inner, plaintext: None, legacy })
         })
         .await
     }
