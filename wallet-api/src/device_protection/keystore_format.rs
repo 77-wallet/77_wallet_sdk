@@ -80,6 +80,21 @@ pub struct OpenedKeystore {
     pub replacement: Option<Vec<u8>>,
 }
 
+/// Password-verified file data retained only until an atomic migration publication.
+/// No Debug implementation: both the decrypted payload and stored bytes are sensitive.
+pub(crate) struct PreparedKeystore {
+    original: Zeroizing<Vec<u8>>,
+    inner: Zeroizing<Vec<u8>>,
+    plaintext: Zeroizing<Vec<u8>>,
+    legacy: bool,
+}
+
+impl PreparedKeystore {
+    pub(crate) fn plaintext(&self) -> &[u8] {
+        &self.plaintext
+    }
+}
+
 #[derive(Clone)]
 pub struct KeystoreProtection {
     protection: DeviceProtection,
@@ -124,6 +139,64 @@ impl KeystoreProtection {
             Ok(opened.plaintext)
         })
         .await
+    }
+
+    /// Perform the password KDF once and retain the verified source for later
+    /// publication. This does not call the native protector or modify the file.
+    pub(crate) async fn prepare_file_migration(
+        &self,
+        path: &std::path::Path,
+        context: &ProtectionContext,
+        password: &str,
+        policy: ReadPolicy,
+    ) -> Result<PreparedKeystore, KeystoreProtectionError> {
+        wallet_tree::file_ops::protected::load(path, |stored| async move {
+            if stored.len() > HEADER.len() + MAX_NATIVE {
+                return Err(KeystoreProtectionError::InvalidFormat);
+            }
+            let original = Zeroizing::new(stored);
+            let (inner, legacy) = if original.starts_with(MAGIC) {
+                if !original.starts_with(HEADER) || original.len() == HEADER.len() {
+                    return Err(KeystoreProtectionError::InvalidFormat);
+                }
+                (
+                    Zeroizing::new(
+                        self.protection.unprotect(context, &original[HEADER.len()..]).await?,
+                    ),
+                    false,
+                )
+            } else {
+                if matches!(policy, ReadPolicy::DeviceRequired) {
+                    return Err(KeystoreProtectionError::LegacyForbidden);
+                }
+                (Zeroizing::new(original.to_vec()), true)
+            };
+            let plaintext = decrypt_inner(&inner, password).await?;
+            Ok(PreparedKeystore { original, inner, plaintext, legacy })
+        })
+        .await
+    }
+
+    /// Publish a prepared replacement only if the file still matches the bytes
+    /// verified during preparation. No password KDF is repeated here.
+    pub(crate) async fn publish_prepared_file(
+        &self,
+        path: &std::path::Path,
+        context: &ProtectionContext,
+        prepared: PreparedKeystore,
+    ) -> Result<bool, KeystoreProtectionError> {
+        let PreparedKeystore { original, inner, plaintext: _, legacy } = prepared;
+        wallet_tree::file_ops::protected::rewrite(path, |stored| async move {
+            if stored != *original {
+                return Err(KeystoreProtectionError::Storage);
+            }
+            if !legacy {
+                return Ok(None);
+            }
+            Ok(Some(self.seal(context, &inner).await?))
+        })
+        .await?;
+        Ok(legacy)
     }
 
     /// Change the inner password of an existing protected record. The shared rewrite

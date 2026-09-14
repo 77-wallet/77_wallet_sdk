@@ -54,6 +54,59 @@ fn root_dir() -> tempfile::TempDir {
 }
 
 #[tokio::test]
+async fn prepared_migration_publishes_without_repeating_password_decryption() {
+    let dir = root_dir();
+    let path = dir.path().join("root.keystore");
+    let original = legacy();
+    std::fs::write(&path, &original).unwrap();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+
+    let prepared = codec
+        .prepare_file_migration(
+            &path,
+            &context(),
+            "fixture-password",
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+    assert_eq!(prepared.plaintext(), b"synthetic-payload");
+    assert!(codec.publish_prepared_file(&path, &context(), prepared).await.unwrap());
+
+    let stored = std::fs::read(&path).unwrap();
+    assert!(stored.starts_with(b"WDK\x01"));
+    assert_eq!(native.protects.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn prepared_migration_rejects_a_source_changed_before_publication() {
+    let dir = root_dir();
+    let path = dir.path().join("root.keystore");
+    std::fs::write(&path, legacy()).unwrap();
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    let prepared = codec
+        .prepare_file_migration(
+            &path,
+            &context(),
+            "fixture-password",
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+    let changed = b"changed after validation";
+    std::fs::write(&path, changed).unwrap();
+
+    assert!(matches!(
+        codec.publish_prepared_file(&path, &context(), prepared).await,
+        Err(KeystoreProtectionError::Storage)
+    ));
+    assert_eq!(std::fs::read(&path).unwrap(), changed);
+    assert_eq!(native.protects.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn file_migration_converts_each_kind_once_after_password_verification() {
     let dir = root_dir();
     let native = Arc::new(Fixture::default());

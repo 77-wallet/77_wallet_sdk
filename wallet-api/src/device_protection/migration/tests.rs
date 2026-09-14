@@ -72,6 +72,39 @@ fn legacy() -> Vec<u8> {
 }
 
 #[tokio::test]
+async fn tracked_prepared_migration_completes_without_a_second_password_input() {
+    let dir = fixture();
+    let pool = database(dir.path()).await;
+    let path = dir.path().join("root.keystore");
+    std::fs::write(&path, legacy()).unwrap();
+    let context = ProtectionContext::new("fixture-wallet", "root-keystore").unwrap();
+    let native =
+        Arc::new(NativeFixture { fail_second: AtomicBool::new(false), seals: AtomicUsize::new(0) });
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    let prepared = codec
+        .prepare_file_migration(
+            &path,
+            &context,
+            "fixture-password",
+            ReadPolicy::LegacyMigrationAllowed,
+        )
+        .await
+        .unwrap();
+    let files = [PreparedMigrationFile { path: &path, context: &context, prepared }];
+
+    let summary = codec.migrate_prepared_files(&pool, files).await.unwrap();
+
+    assert_eq!(summary.converted, 1);
+    assert_eq!(summary.already_protected, 0);
+    assert_eq!(native.seals.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        MigrationRepo::get(&record_scope(&context), &pool).await.unwrap(),
+        Some(MigrationState::DeviceRequired)
+    );
+    close(pool).await;
+}
+
+#[tokio::test]
 async fn partial_migration_resumes_after_database_reopen_without_rewrapping() {
     let dir = fixture();
     let pool = database(dir.path()).await;
