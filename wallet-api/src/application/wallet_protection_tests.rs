@@ -1734,7 +1734,7 @@ async fn protection_initialization_probe_failure_is_retryable_only_before_ready(
     native.fail_protect.store(true, Ordering::SeqCst);
     assert!(WalletApplication::initialize_device_protection(ctx).await.is_err());
     assert_eq!(
-        ConfigRepo::find_by_key("device_protection.key.v1", &ctx.core_pool().unwrap())
+        ConfigRepo::find_by_key("device_protection.key", &ctx.core_pool().unwrap())
             .await
             .unwrap()
             .unwrap()
@@ -1748,12 +1748,12 @@ async fn protection_initialization_probe_failure_is_retryable_only_before_ready(
     WalletApplication::initialize_device_protection(reopened).await.unwrap();
     assert_eq!(native.provisions.load(Ordering::SeqCst), 2);
     assert_eq!(
-        ConfigRepo::find_by_key("device_protection.key.v1", &ctx.core_pool().unwrap())
+        ConfigRepo::find_by_key("device_protection.key", &ctx.core_pool().unwrap())
             .await
             .unwrap()
             .unwrap()
             .value,
-        "key-ready-v1"
+        "ready-v1"
     );
 }
 
@@ -1781,8 +1781,8 @@ async fn protection_initialization_refuses_api_wallets_and_unknown_state() {
             .unwrap();
         } else {
             ConfigRepo::upsert(
-                "device_protection.key.v1",
-                if scenario == 1 { "future-version" } else { "key-ready-v1" },
+                "device_protection.key",
+                if scenario == 1 { "future-version" } else { "ready-v1" },
                 Some(if scenario == 1 { 1 } else { 0 }),
                 &ctx.core_pool().unwrap(),
             )
@@ -2356,7 +2356,7 @@ async fn protection_password_entry_without_provider_retains_legacy_behavior() {
     WalletApplication::validate_password(ctx, PASSWORD).await.unwrap();
     assert_eq!(std::fs::read(subs.join("key0.keystore")).unwrap(), before);
     let state: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM config WHERE key='device_protection.files.v1'")
+        sqlx::query_scalar("SELECT count(*) FROM config WHERE key='device_protection.files'")
             .fetch_one(ctx.core_pool().unwrap().read_ref())
             .await
             .unwrap();

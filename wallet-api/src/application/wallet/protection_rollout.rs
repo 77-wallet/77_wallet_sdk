@@ -133,7 +133,7 @@ fn state_error() -> ServiceError {
     ServiceError::Context("Cannot validate wallet file migration progress".into())
 }
 
-const FILES_KEY: &str = "device_protection.files.v1";
+const FILES_KEY: &str = "device_protection.files";
 
 pub(super) async fn files_active(ctx: &Context) -> Result<bool, ServiceError> {
     let state: Option<(String, i64)> =

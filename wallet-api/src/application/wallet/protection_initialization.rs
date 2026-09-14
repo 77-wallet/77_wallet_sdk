@@ -6,9 +6,9 @@ use crate::{
 };
 use wallet_database::repositories::config::ConfigRepo;
 
-const KEY: &str = "device_protection.key.v1";
+const KEY: &str = "device_protection.key";
 const PENDING: &str = "provisioning-v1";
-const READY: &str = "key-ready-v1";
+const READY: &str = "ready-v1";
 
 impl WalletApplication {
     /// Explicit first-install initialization, not a migration/recovery shortcut.
