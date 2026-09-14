@@ -655,6 +655,39 @@ async fn password_only_derived_change_remains_compatible() {
 }
 
 #[tokio::test]
+async fn protected_sub_password_change_updates_the_grouped_account_file() {
+    let dir = directory();
+    let native = Arc::new(Native::default());
+    let ctx = context(dir.path(), native.clone()).await;
+    let subs = derived_password_fixture(ctx).await;
+    let path = subs.join("key0.keystore");
+    let binding = ProtectionContext::new(WALLET, "derived:0").unwrap();
+    KeystoreProtection::new(ctx.device_protection().clone())
+        .migrate_file(&path, &binding, PASSWORD, ReadPolicy::LegacyMigrationAllowed)
+        .await
+        .unwrap();
+
+    crate::service::account::change_sub_password(ctx, WALLET, 0, PASSWORD, "new-fixture-password")
+        .await
+        .unwrap();
+
+    assert!(std::fs::read(&path).unwrap().starts_with(b"WDK\x01"));
+    let account = wallet_utils::address::AccountIndexMap::from_account_id(0).unwrap();
+    let changed =
+        WalletApplication::load_account_data(ctx, WALLET, &account, "new-fixture-password")
+            .await
+            .unwrap();
+    assert_eq!(changed.len(), 2);
+    assert!(changed.iter().any(|(meta, key)| {
+        meta.address == "fixture-eth" && key.as_slice() == b"synthetic eth key"
+    }));
+    assert!(changed.iter().any(|(meta, key)| {
+        meta.address == "fixture-sol" && key.as_slice() == b"synthetic sol key"
+    }));
+    assert!(WalletApplication::load_account_data(ctx, WALLET, &account, PASSWORD).await.is_err());
+}
+
+#[tokio::test]
 async fn private_key_export_propagates_device_failure_before_conversion() {
     let dir = directory();
     let native = Arc::new(Native::default());

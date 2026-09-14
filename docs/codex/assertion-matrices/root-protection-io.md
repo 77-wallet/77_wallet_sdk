@@ -150,11 +150,12 @@ rebuilt, and this path never writes `derived_meta.json` or deletes the original 
 | Multi-key protected file: wrong password/native failure, then successful change | Exact plaintext retained; WDK retained; index and other account file byte-identical; failures preserve original; old password fails after success | derived_password_change_preserves_payload_index_and_other_accounts |
 | Completed account restored to password-only file | LegacyForbidden; ciphertext and index unchanged | completed_derived_password_change_rejects_legacy_rollback |
 | Existing password-only V2 file | New password recovers same payload; old password fails; no native calls | password_only_derived_change_remains_compatible |
+| Legacy single-address password entry on a protected grouped account | Routes by account id through the common password boundary; WDK remains and every key in the grouped file uses the new password | protected_sub_password_change_updates_the_grouped_account_file |
 
 Validation: `cargo test -p wallet-api --offline --lib protection`.
 Fixtures use the existing ModernIo writer to produce actual grouped account payloads.
-This covers account-file password changes, not single-address `set_sub_password`,
-private-key read activation, multi-file transactionality, or the pre-existing V1
+This covers account-file password changes including the legacy single-address service entry,
+but not private-key read activation, multi-file transactionality, or the pre-existing V1
 `load_account` unimplemented branch. No new protected-file activation is introduced.
 
 ## Legacy algorithm-upgrade recovery
@@ -199,8 +200,9 @@ old writer until explicit provisioning and rollout are connected.
 Validation: `cargo test -p wallet-api --offline --lib protection`.
 This does not activate protected storage for new records or make create/reimport atomic
 across DB and derived files. Derived bulk writes still require integration before full
-wallet reimport can be described as device-protected. The unused set_sub_password method
-was not expanded; searches found no callers in SDK API, plugin Dart or App Dart.
+wallet reimport can be described as device-protected. The legacy set_sub_password service method
+has no callers in SDK API, plugin Dart or App Dart, but now delegates to the grouped account
+password boundary so direct SDK use cannot bypass WDK.
 
 ## Derived bulk application writes
 

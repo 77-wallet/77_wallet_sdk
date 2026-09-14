@@ -35,6 +35,24 @@ pub struct AccountService {
     // keystore: wallet_crypto::Keystore
 }
 
+pub(crate) async fn change_sub_password(
+    ctx: &Context,
+    wallet_address: &str,
+    account_id: u32,
+    old_password: &str,
+    new_password: &str,
+) -> Result<(), crate::error::service::ServiceError> {
+    let account_index_map = AccountIndexMap::from_account_id(account_id)?;
+    AccountDomain::set_account_password(
+        ctx,
+        wallet_address,
+        &account_index_map,
+        old_password,
+        new_password,
+    )
+    .await
+}
+
 impl AccountService {
     pub fn new(ctx: &'static Context) -> Self {
         Self { ctx, wallet_domain: WalletDomain::new() }
@@ -485,7 +503,6 @@ impl AccountService {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let dirs = self.ctx.get_global_dirs();
         let core_pool = self.ctx.core_pool()?;
         // let req = wallet_database::entities::account::QueryReq {
         //     wallet_address: None,
@@ -501,33 +518,14 @@ impl AccountService {
                     crate::error::business::account::AccountError::NotFound(address.to_string()),
                 ))?;
 
-        // Get the path to the subkeys directory for the given wallet name.
-        let subs_dir = dirs.get_subs_dir(&account.wallet_address)?;
-
-        // Traverse the directory structure to obtain the current wallet tree.
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy(self.ctx).await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-        let node = ChainDomain::get_node_with_ctx(self.ctx, chain_code).await?;
-
-        let instance = wallet_chain_instance::instance::ChainObject::new(
-            chain_code,
-            account.address_type(),
-            crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
-        )?;
-
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(self.ctx).await?;
-        Ok(wallet_tree::api::KeystoreApi::update_child_password(
-            subs_dir,
-            instance,
-            wallet_tree,
+        change_sub_password(
+            self.ctx,
             &account.wallet_address,
-            address,
+            account.account_id,
             old_password,
             new_password,
-            algorithm,
         )
-        .map_err(|e| crate::error::system::SystemError::Service(e.to_string()))?)
+        .await
     }
 
     pub async fn get_account_private_key(
