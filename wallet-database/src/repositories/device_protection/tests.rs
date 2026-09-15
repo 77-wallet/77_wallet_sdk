@@ -179,6 +179,29 @@ async fn authorized_recreation_survives_reopen_and_completion_revokes_it() {
 }
 
 #[tokio::test]
+async fn first_creation_authorization_survives_reopen_and_cannot_overwrite_history() {
+    let fixture = Fixture::new();
+    let pool = fixture.open().await;
+    assert_eq!(
+        MigrationRepo::authorize_creation("new-account", &pool).await.unwrap(),
+        MigrationState::CreationAuthorized
+    );
+    close(pool).await;
+    let pool = fixture.open().await;
+    assert_eq!(
+        MigrationRepo::get("new-account", &pool).await.unwrap(),
+        Some(MigrationState::CreationAuthorized)
+    );
+    MigrationRepo::complete("new-account", &pool).await.unwrap();
+    assert!(MigrationRepo::authorize_creation("new-account", &pool).await.is_err());
+    assert_eq!(
+        MigrationRepo::get("new-account", &pool).await.unwrap(),
+        Some(MigrationState::DeviceRequired)
+    );
+    close(pool).await;
+}
+
+#[tokio::test]
 async fn recreation_authorization_preserves_unknown_state() {
     let fixture = Fixture::new();
     let pool = fixture.open().await;

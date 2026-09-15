@@ -171,7 +171,11 @@ impl WalletApplication {
         Ok(protected
             || matches!(
                 state,
-                Some(MigrationState::DeviceRequired | MigrationState::RecreationAllowed)
+                Some(
+                    MigrationState::DeviceRequired
+                        | MigrationState::CreationAuthorized
+                        | MigrationState::RecreationAllowed
+                )
             ))
     }
 
@@ -221,6 +225,42 @@ impl WalletApplication {
         Ok(())
     }
 
+    pub(crate) async fn resume_root_password_change(
+        ctx: &Context,
+        wallet_address: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), ServiceError> {
+        let dirs = ctx.get_global_dirs();
+        let root_dir = dirs.get_root_dir(wallet_address)?;
+        let path = root_dir.join("root.keystore");
+        let binding = ProtectionContext::new(wallet_address, "root-keystore")
+            .map_err(KeystoreProtectionError::from)?;
+        if !Self::record_requires_device(ctx, &binding, &path).await? {
+            return Self::change_root_password(ctx, wallet_address, old_password, new_password)
+                .await;
+        }
+        let guard = derived_store::lock().await;
+        let codec = KeystoreProtection::new(ctx.device_protection().clone());
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
+        let old_password = zeroize::Zeroizing::new(old_password.to_owned());
+        let new_password = zeroize::Zeroizing::new(new_password.to_owned());
+        Ok(tokio::spawn(async move {
+            let _guard = guard;
+            codec
+                .change_file_password_if_needed(
+                    &path,
+                    &binding,
+                    &old_password,
+                    &new_password,
+                    algorithm,
+                )
+                .await
+        })
+        .await
+        .map_err(|_| KeystoreProtectionError::Worker)??)
+    }
+
     pub(crate) async fn change_account_password(
         ctx: &Context,
         wallet_address: &str,
@@ -266,6 +306,53 @@ impl WalletApplication {
         )
         .map_err(|error| crate::error::system::SystemError::Service(error.to_string()))?;
         Ok(())
+    }
+
+    pub(crate) async fn resume_account_password_change(
+        ctx: &Context,
+        wallet_address: &str,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), ServiceError> {
+        let dirs = ctx.get_global_dirs();
+        let path = dirs
+            .get_subs_dir(wallet_address)?
+            .join(format!("key{}.keystore", account_index_map.account_id));
+        let binding = ProtectionContext::new(
+            wallet_address,
+            format!("derived:{}", account_index_map.account_id),
+        )
+        .map_err(KeystoreProtectionError::from)?;
+        if !Self::record_requires_device(ctx, &binding, &path).await? {
+            return Self::change_account_password(
+                ctx,
+                wallet_address,
+                account_index_map,
+                old_password,
+                new_password,
+            )
+            .await;
+        }
+        let guard = derived_store::lock().await;
+        let codec = KeystoreProtection::new(ctx.device_protection().clone());
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm(ctx).await?;
+        let old_password = zeroize::Zeroizing::new(old_password.to_owned());
+        let new_password = zeroize::Zeroizing::new(new_password.to_owned());
+        Ok(tokio::spawn(async move {
+            let _guard = guard;
+            codec
+                .change_file_password_if_needed(
+                    &path,
+                    &binding,
+                    &old_password,
+                    &new_password,
+                    algorithm,
+                )
+                .await
+        })
+        .await
+        .map_err(|_| KeystoreProtectionError::Worker)??)
     }
 
     pub(crate) async fn load_account_data(

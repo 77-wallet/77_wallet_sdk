@@ -93,7 +93,12 @@ impl KeystoreProtection {
                 .await
                 .map_err(|_| TrackedMigrationError::State)?;
             let effective_policy = match (state, policy) {
-                (MigrationState::DeviceRequired | MigrationState::RecreationAllowed, _)
+                (
+                    MigrationState::DeviceRequired
+                    | MigrationState::CreationAuthorized
+                    | MigrationState::RecreationAllowed,
+                    _,
+                )
                 | (_, ReadPolicy::DeviceRequired) => ReadPolicy::DeviceRequired,
                 _ => ReadPolicy::LegacyMigrationAllowed,
             };

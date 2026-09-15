@@ -2282,6 +2282,49 @@ async fn protection_rollout_pending_derived_loss_never_rebuilds_from_partial_key
     assert_eq!(std::fs::read(subs.join("derived_meta.json")).unwrap(), before);
 }
 
+#[tokio::test]
+async fn protected_derived_first_creation_resumes_after_prepublication_restart() {
+    use wallet_database::repositories::device_protection::{MigrationRepo, MigrationState};
+    use wallet_tree::file_ops::BulkSubkey;
+    use wallet_utils::address::AccountIndexMap;
+
+    let dir = directory();
+    let ctx = context(dir.path(), Arc::new(Native::default())).await;
+    derived_password_fixture(ctx).await;
+    WalletApplication::store_root(ctx, WALLET, RootData::new(PHRASE, b"synthetic seed"), PASSWORD)
+        .await
+        .unwrap();
+    WalletApplication::migrate_wallet_file_protection(ctx, PASSWORD).await.unwrap();
+    let binding = ProtectionContext::new(WALLET, "derived:7").unwrap();
+    let scope = crate::device_protection::migration::record_scope(&binding);
+    MigrationRepo::authorize_creation(&scope, &ctx.core_pool().unwrap()).await.unwrap();
+
+    WalletApplication::store_subkeys(
+        ctx,
+        WALLET,
+        vec![BulkSubkey::new(
+            AccountIndexMap::from_account_id(7).unwrap(),
+            "resumed-eth",
+            "eth",
+            "m/7",
+            b"synthetic resumed key".to_vec(),
+        )],
+        PASSWORD,
+    )
+    .await
+    .unwrap();
+
+    let subs = ctx.get_global_dirs().get_subs_dir(WALLET).unwrap();
+    assert!(std::fs::read(subs.join("key7.keystore")).unwrap().starts_with(b"WDK\x01"));
+    assert_eq!(
+        MigrationRepo::get(&scope, &ctx.core_pool().unwrap()).await.unwrap(),
+        Some(MigrationState::DeviceRequired)
+    );
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(subs.join("derived_meta.json")).unwrap()).unwrap();
+    assert!(metadata["accounts"].get("7").is_some());
+}
+
 async fn protection_device_fixture(ctx: &Context) {
     wallet_database::repositories::device::DeviceRepo::upsert(
         ctx.core_pool().unwrap(),

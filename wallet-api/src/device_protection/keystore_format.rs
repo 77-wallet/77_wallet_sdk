@@ -250,6 +250,46 @@ impl KeystoreProtection {
             Ok((plain, ()))
         })
         .await
+        .map(|_| ())
+    }
+
+    /// Resume a password rotation after an earlier record may already have been
+    /// published. The caller must authenticate `old_password` before using this:
+    /// accepting `new_password` here is recovery, not authentication.
+    pub(crate) async fn change_file_password_if_needed(
+        &self,
+        path: &std::path::Path,
+        context: &ProtectionContext,
+        old_password: &str,
+        new_password: &str,
+        algorithm: wallet_crypto::KdfAlgorithm,
+    ) -> Result<(), KeystoreProtectionError> {
+        wallet_tree::file_ops::protected::rewrite(path, |stored| async move {
+            let opened =
+                match self.open(context, &stored, old_password, ReadPolicy::DeviceRequired).await {
+                    Ok(opened) => opened,
+                    Err(KeystoreProtectionError::PasswordDecryption) => {
+                        self.open(context, &stored, new_password, ReadPolicy::DeviceRequired)
+                            .await?;
+                        return Ok(None);
+                    }
+                    Err(error) => return Err(error),
+                };
+            let password = Zeroizing::new(new_password.as_bytes().to_vec());
+            let inner = tokio::task::spawn_blocking(move || {
+                use wallet_crypto::EncryptedJsonGenerator;
+                let encrypted =
+                    wallet_crypto::KeystoreJsonGenerator::new(rand::thread_rng(), algorithm)
+                        .generate(&password, &opened.plaintext)
+                        .map_err(|_| KeystoreProtectionError::InvalidFormat)?;
+                serde_json::to_vec(&encrypted).map_err(|_| KeystoreProtectionError::InvalidFormat)
+            })
+            .await
+            .map_err(|_| KeystoreProtectionError::Worker)??;
+            Ok(Some(self.seal(context, &inner).await?))
+        })
+        .await?;
+        Ok(())
     }
 
     /// Transform an opaque protected payload under the shared file rewrite lock.

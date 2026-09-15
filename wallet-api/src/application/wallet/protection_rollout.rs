@@ -66,7 +66,14 @@ impl WalletApplication {
                 let scope =
                     key.strip_prefix("device_protection.file.v1:").ok_or_else(state_error)?;
                 let state = MigrationRepo::get(scope, &pool).await.map_err(|_| state_error())?;
-                if !scopes.contains(scope) && state != Some(MigrationState::RecreationAllowed) {
+                if !scopes.contains(scope)
+                    && !matches!(
+                        state,
+                        Some(
+                            MigrationState::CreationAuthorized | MigrationState::RecreationAllowed
+                        )
+                    )
+                {
                     return Err(KeystoreProtectionError::Storage.into());
                 }
             }
@@ -82,7 +89,11 @@ impl WalletApplication {
                     || has_device_header(&record.path).await?
                     || matches!(
                         state,
-                        Some(MigrationState::DeviceRequired | MigrationState::RecreationAllowed)
+                        Some(
+                            MigrationState::DeviceRequired
+                                | MigrationState::CreationAuthorized
+                                | MigrationState::RecreationAllowed
+                        )
                     );
                 let file = codec
                     .prepare_file_wrapping(

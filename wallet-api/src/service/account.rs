@@ -465,11 +465,16 @@ impl AccountService {
         let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
 
         for wallet in wallet_list {
-            AccountDomain::set_root_password(self.ctx, &wallet.address, old_password, new_password)
-                .await?;
+            AccountDomain::resume_root_password_change(
+                self.ctx,
+                &wallet.address,
+                old_password,
+                new_password,
+            )
+            .await?;
             for index in &indices {
                 let account_index_map = AccountIndexMap::from_account_id(*index)?;
-                AccountDomain::set_account_password(
+                AccountDomain::resume_account_password_change(
                     self.ctx,
                     &wallet.address,
                     &account_index_map,

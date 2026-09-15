@@ -266,8 +266,8 @@ password boundary so direct SDK use cannot bypass WDK.
 
 - Active policy is persisted only after complete file validation/migration. Active readers reject legacy fallback even without a per-record marker; unknown policy versions/types and per-record state still fail closed.
 - Fresh roots require no per-record state, no wallet/account DB references, an empty strict wallet inventory and no stale derived index. Explicit creation records retry permission before protected publication; accepted writes complete the device requirement. Existing missing DeviceRequired roots remain blocked.
-- Protected derived writes begin progress and complete only after ciphertext and index publication. Missing Pending files cannot be reconstructed from a partial new key set. Only a first creation's native Protection error (known to precede publish) grants explicit recreation retry permission; uncertain storage/worker errors do not.
-- Tests cover empty activation, failed first native root/derived writes and safe retry, WDK output and durable derived policy, active rejection of newly injected legacy records, and missing Pending derived loss preserving the index. Initialization cannot provision when active policy survives but initialization state is absent.
+- A first protected derived creation records `CreationAuthorized` before publishing bytes. That state may resume only while both the file and its metadata entry are absent, and it cannot overwrite older progress. Existing-file rewrites still use `Pending`; a missing `Pending` file remains blocked because its loss is ambiguous.
+- Tests cover empty activation, failed first native root/derived writes and safe retry, restart before first derived publication, WDK output and durable derived policy, active rejection of newly injected legacy records, and missing Pending derived loss preserving the index. Initialization cannot provision when active policy survives but initialization state is absent.
 - This policy becomes operational when the SDK startup/unlock integration invokes the migration boundary. Plugin callback availability alone does not invoke it; no App rollout or hardware integration result is implied.
 
 ## SDK startup and existing password entry activation
@@ -278,3 +278,9 @@ password boundary so direct SDK use cannot bypass WDK.
 - set_passwd_cache creates its session/system-ready state only after this flow returns successfully. The failure regression calls that service and asserts native failure preserves file bytes and leaves no session. Other regressions cover startup deferral/key loss, actual V2 password activation/repeat, first-install protected creation, token gating, V1 upgrade and no-provider legacy compatibility.
 - An owned setup task continues accepted storage work after caller cancellation, while its caller cannot publish an unlock session until success. No-provider callers keep legacy behavior only when no durable protection initialization/active state requests hardware.
 - Validation: cargo test -p wallet-api --offline --lib protection. SQLite API packages/password proofs still need outer protection; this step activates ordinary-file storage only. Full App and hardware validation are separate from these fake-provider SQLite/file regressions.
+
+## Password-rotation retry
+
+- The existing password proof authenticates the old password before rotation starts. If an interrupted retry reaches a protected ordinary file that already uses the requested new password, the file is validated and left byte-identical; files still using the old password are rewritten normally.
+- API-wallet rows use the same retry rule for their phrase and seed pair. Both fields must decrypt with the new password before an already-rotated row is skipped.
+- Regression coverage includes a protected file already published with the new password and verifies that retry neither rewrites it nor accepts an unrelated password.

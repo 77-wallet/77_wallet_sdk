@@ -182,8 +182,32 @@ impl ApiWalletDomain {
         let wallets = ApiWalletRepo::list(&pool, None).await?;
 
         for wallet in wallets {
-            let phrase = ApiWalletDomain::decrypt_phrase(old_password, &wallet.phrase).await?;
-            let seed = ApiWalletDomain::decrypt_seed(old_password, &wallet.seed).await?;
+            let current = async {
+                Ok::<_, ServiceError>((
+                    ApiWalletDomain::decrypt_phrase(old_password, &wallet.phrase).await?,
+                    ApiWalletDomain::decrypt_seed(old_password, &wallet.seed).await?,
+                ))
+            }
+            .await;
+            let (phrase, seed) = match current {
+                Ok(value) => value,
+                Err(old_error) => {
+                    // A previous set_all_password attempt may already have committed
+                    // this row. Verify both fields with the requested new password;
+                    // otherwise preserve the original failure.
+                    let already_rotated = async {
+                        ApiWalletDomain::decrypt_phrase(new_password, &wallet.phrase).await?;
+                        ApiWalletDomain::decrypt_seed(new_password, &wallet.seed).await?;
+                        Ok::<_, ServiceError>(())
+                    }
+                    .await
+                    .is_ok();
+                    if already_rotated {
+                        continue;
+                    }
+                    return Err(old_error);
+                }
+            };
             let (phrase_enc, seed_enc) =
                 Self::encrypt_phrase_and_seed(new_password, &phrase, &seed).await?;
             ApiWalletRepo::update_seed_and_phrase(&pool, &wallet.uid, &phrase_enc, &seed_enc)

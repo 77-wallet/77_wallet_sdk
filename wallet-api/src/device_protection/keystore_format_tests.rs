@@ -54,6 +54,58 @@ fn root_dir() -> tempfile::TempDir {
 }
 
 #[tokio::test]
+async fn password_rotation_retry_accepts_an_already_published_new_password() {
+    let dir = root_dir();
+    let path = dir.path().join("root.keystore");
+    let native = Arc::new(Fixture::default());
+    let codec = KeystoreProtection::new(DeviceProtection::new(native.clone()));
+    codec
+        .store_file(
+            &path,
+            &context(),
+            Zeroizing::new(b"synthetic-payload".to_vec()),
+            "fixture-password",
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+
+    codec
+        .change_file_password_if_needed(
+            &path,
+            &context(),
+            "fixture-password",
+            "rotated-password",
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+    let first_publication = std::fs::read(&path).unwrap();
+
+    codec
+        .change_file_password_if_needed(
+            &path,
+            &context(),
+            "fixture-password",
+            "rotated-password",
+            wallet_crypto::KdfAlgorithm::Scrypt,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(std::fs::read(&path).unwrap(), first_publication);
+    assert_eq!(
+        codec.load_file(&path, &context(), "rotated-password").await.unwrap().as_slice(),
+        b"synthetic-payload"
+    );
+    assert!(matches!(
+        codec.load_file(&path, &context(), "fixture-password").await,
+        Err(KeystoreProtectionError::PasswordDecryption)
+    ));
+    assert_eq!(native.protects.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
 async fn prepared_migration_publishes_without_repeating_password_decryption() {
     let dir = root_dir();
     let path = dir.path().join("root.keystore");

@@ -6,6 +6,8 @@ use crate::CoreDbPool;
 pub enum MigrationState {
     Pending,
     DeviceRequired,
+    /// A brand-new record was authorized before its first file publication.
+    CreationAuthorized,
     /// Explicit deletion permits protected recreation only after file/index removal.
     RecreationAllowed,
 }
@@ -45,6 +47,7 @@ impl MigrationRepo {
         match value.as_str() {
             "migrating-v1" => Ok(Some(MigrationState::Pending)),
             "device-required-v1" => Ok(Some(MigrationState::DeviceRequired)),
+            "creation-authorized-v1" => Ok(Some(MigrationState::CreationAuthorized)),
             "recreation-allowed-v1" => Ok(Some(MigrationState::RecreationAllowed)),
             _ => Err(MigrationError::InvalidState),
         }
@@ -60,6 +63,27 @@ impl MigrationRepo {
              ON CONFLICT(key) DO NOTHING",
         ).bind(&key).execute(pool.write_ref()).await.map_err(db_error)?;
         Self::get(scope, pool).await?.ok_or(MigrationError::NotStarted)
+    }
+
+    /// Persist first-creation intent without overwriting existing record history.
+    pub async fn authorize_creation(
+        scope: &str,
+        pool: &CoreDbPool,
+    ) -> Result<MigrationState, MigrationError> {
+        let key = state_key(scope)?;
+        sqlx::query(
+            "INSERT INTO config (key,value,types,created_at,updated_at)
+             VALUES (?, 'creation-authorized-v1', 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+             ON CONFLICT(key) DO NOTHING",
+        )
+        .bind(&key)
+        .execute(pool.write_ref())
+        .await
+        .map_err(db_error)?;
+        match Self::get(scope, pool).await? {
+            Some(MigrationState::CreationAuthorized) => Ok(MigrationState::CreationAuthorized),
+            _ => Err(MigrationError::NotStarted),
+        }
     }
 
     /// Record an explicit account deletion before removing its ciphertext/index.
@@ -92,13 +116,16 @@ impl MigrationRepo {
         let key = state_key(scope)?;
         sqlx::query(
             "UPDATE config SET value='device-required-v1', updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
-             WHERE key=? AND value IN ('migrating-v1', 'recreation-allowed-v1') AND types=1",
+             WHERE key=? AND value IN ('migrating-v1', 'creation-authorized-v1', 'recreation-allowed-v1') AND types=1",
         ).bind(&key).execute(pool.write_ref()).await.map_err(db_error)?;
         match Self::get(scope, pool).await? {
             Some(MigrationState::DeviceRequired) => Ok(MigrationState::DeviceRequired),
-            Some(MigrationState::Pending | MigrationState::RecreationAllowed) | None => {
-                Err(MigrationError::NotStarted)
-            }
+            Some(
+                MigrationState::Pending
+                | MigrationState::CreationAuthorized
+                | MigrationState::RecreationAllowed,
+            )
+            | None => Err(MigrationError::NotStarted),
         }
     }
 }

@@ -269,6 +269,21 @@ impl AccountDomain {
             .await
     }
 
+    pub(crate) async fn resume_root_password_change(
+        ctx: &Context,
+        wallet_address: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), ServiceError> {
+        WalletApplication::resume_root_password_change(
+            ctx,
+            wallet_address,
+            old_password,
+            new_password,
+        )
+        .await
+    }
+
     pub async fn set_account_password(
         ctx: &Context,
         wallet_address: &str,
@@ -277,6 +292,23 @@ impl AccountDomain {
         new_password: &str,
     ) -> Result<(), ServiceError> {
         WalletApplication::change_account_password(
+            ctx,
+            wallet_address,
+            account_index_map,
+            old_password,
+            new_password,
+        )
+        .await
+    }
+
+    pub(crate) async fn resume_account_password_change(
+        ctx: &Context,
+        wallet_address: &str,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), ServiceError> {
+        WalletApplication::resume_account_password_change(
             ctx,
             wallet_address,
             account_index_map,
