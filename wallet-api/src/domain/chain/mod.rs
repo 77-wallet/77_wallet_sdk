@@ -416,12 +416,8 @@ impl ChainDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let chain: wallet_types::chain::chain::ChainCode = chain_code.try_into()?;
 
-        match chain {
-            wallet_types::chain::chain::ChainCode::Ethereum
-            | wallet_types::chain::chain::ChainCode::BnbSmartChain => {
-                *token_address = wallet_utils::address::to_checksum_address(token_address);
-            }
-            _ => {}
+        if is_evm_chain(chain) {
+            *token_address = wallet_utils::address::to_checksum_address(token_address);
         }
 
         match chain {
@@ -567,6 +563,30 @@ impl NodeInfo {
             http_url: http_url.to_string(),
             network: network.to_string(),
             status,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ChainDomain;
+    use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
+
+    #[test]
+    fn check_token_address_normalizes_added_evm_chains() {
+        let raw = "0x52908400098527886e0f7030069857d2e4169ee7";
+        let expected = wallet_utils::address::to_checksum_address(raw);
+
+        for chain in [ChainCode::Polygon, ChainCode::Base] {
+            let mut token_address = raw.to_string();
+            ChainDomain::check_token_address(
+                &mut token_address,
+                &chain.to_string(),
+                NetworkKind::Mainnet,
+            )
+            .unwrap();
+
+            assert_eq!(token_address, expected);
         }
     }
 }
