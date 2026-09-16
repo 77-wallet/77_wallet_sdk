@@ -2,23 +2,18 @@
 use reqwest::{Client, Request, StatusCode, Url, multipart, redirect::Policy};
 use serde::Deserialize;
 use std::{fmt, time::Duration};
+use tokio::sync::Mutex;
 
 const MAX_ACK_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Deserialize)]
 pub struct LogUploadConfig {
     pub url: String,
-    pub key: String,
-    pub secret: String,
 }
 
 impl fmt::Debug for LogUploadConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("LogUploadConfig")
-            .field("url", &"[configured endpoint]")
-            .field("key", &"[redacted]")
-            .field("secret", &"[redacted]")
-            .finish()
+        f.debug_struct("LogUploadConfig").field("url", &"[configured endpoint]").finish()
     }
 }
 
@@ -43,11 +38,27 @@ pub enum LogUploadError {
     Rejected { code: String, message: String },
 }
 
-#[derive(Debug)]
 pub struct LogUploadClient {
     client: Client,
-    config: LogUploadConfig,
     endpoint: Url,
+    credential_endpoint: Url,
+    credentials: Mutex<Option<UploadCredentials>>,
+}
+
+impl fmt::Debug for LogUploadClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LogUploadClient")
+            .field("endpoint", &"[configured endpoint]")
+            .field("credential_endpoint", &"[configured endpoint]")
+            .field("credentials", &"[redacted]")
+            .finish()
+    }
+}
+
+#[derive(Clone)]
+struct UploadCredentials {
+    key: String,
+    secret: String,
 }
 
 impl LogUploadClient {
@@ -59,11 +70,11 @@ impl LogUploadClient {
             || endpoint.password().is_some()
             || endpoint.query().is_some()
             || endpoint.fragment().is_some()
-            || config.key.trim().is_empty()
-            || config.secret.trim().is_empty()
         {
             return Err(LogUploadError::InvalidConfig);
         }
+        let mut credential_endpoint = endpoint.clone();
+        credential_endpoint.set_path("/log/getKey");
         // A 307/308 redirect could otherwise forward authentication and log content.
         let client = Client::builder()
             .redirect(Policy::none())
@@ -71,17 +82,20 @@ impl LogUploadClient {
             .timeout(Duration::from_secs(60))
             .build()
             .map_err(|_| LogUploadError::Build)?;
-        Ok(Self { client, config, endpoint })
+        Ok(Self { client, endpoint, credential_endpoint, credentials: Mutex::new(None) })
     }
 
     fn build_request(
         &self,
+        credentials: &UploadCredentials,
         sn: &str,
         filename: &str,
         data: Vec<u8>,
     ) -> Result<Request, LogUploadError> {
         if sn.trim().is_empty()
             || filename.trim().is_empty()
+            || credentials.key.trim().is_empty()
+            || credentials.secret.trim().is_empty()
             || matches!(filename, "." | "..")
             || filename.chars().any(|c| c.is_control() || c == '/' || c == '\\')
         {
@@ -92,8 +106,8 @@ impl LogUploadClient {
             .mime_str("text/plain")
             .map_err(|_| LogUploadError::Build)?;
         let form = multipart::Form::new()
-            .text("key", self.config.key.clone())
-            .text("secret", self.config.secret.clone())
+            .text("key", credentials.key.clone())
+            .text("secret", credentials.secret.clone())
             .text("sn", sn.to_owned())
             .part("file", file);
         self.client
@@ -104,19 +118,95 @@ impl LogUploadClient {
     }
 
     /// Returns success only for HTTP 2xx with an explicit `success: true` envelope.
-    /// No automatic retry: callers retain pending log data until acknowledgement.
+    /// Refreshes authorization and retries once only when the backend returns business code 401.
     pub async fn upload(
         &self,
         sn: &str,
         filename: &str,
         data: Vec<u8>,
     ) -> Result<(), LogUploadError> {
-        let request = self.build_request(sn, filename, data)?;
-        let mut response = self.client.execute(request).await.map_err(transport_error)?;
-        let status = response.status();
+        for attempt in 0..=1 {
+            let credentials = self.get_credentials(sn, attempt == 1).await?;
+            let request = self.build_request(&credentials, sn, filename, data.clone())?;
+            let response = self.execute_bounded(request).await;
+            if attempt == 0
+                && matches!(
+                    &response,
+                    Err(LogUploadError::Rejected { code, .. }) if code == "401"
+                )
+            {
+                continue;
+            }
+            return response;
+        }
+        unreachable!("upload attempts are bounded")
+    }
+
+    async fn get_credentials(
+        &self,
+        sn: &str,
+        force_refresh: bool,
+    ) -> Result<UploadCredentials, LogUploadError> {
+        let mut cached = self.credentials.lock().await;
+        if !force_refresh {
+            if let Some(credentials) = cached.as_ref() {
+                return Ok(credentials.clone());
+            }
+        } else {
+            *cached = None;
+        }
+        let request = self
+            .client
+            .post(self.credential_endpoint.clone())
+            .json(&serde_json::json!({ "sn": sn }))
+            .build()
+            .map_err(|_| LogUploadError::Build)?;
+        let credentials = self.fetch_credentials(request).await?;
+        *cached = Some(credentials.clone());
+        Ok(credentials)
+    }
+
+    async fn fetch_credentials(
+        &self,
+        request: Request,
+    ) -> Result<UploadCredentials, LogUploadError> {
+        let (status, body) = self.execute_response(request).await?;
         if !status.is_success() {
             return Err(LogUploadError::Http(status.as_u16()));
         }
+        #[derive(Deserialize)]
+        struct CredentialEnvelope {
+            success: bool,
+            data: Option<UploadCredentialsBody>,
+        }
+        #[derive(Deserialize)]
+        struct UploadCredentialsBody {
+            key: String,
+            secret: String,
+        }
+        let envelope: CredentialEnvelope =
+            serde_json::from_slice(&body).map_err(|_| LogUploadError::InvalidAcknowledgement)?;
+        let data = envelope
+            .data
+            .filter(|_| envelope.success)
+            .ok_or(LogUploadError::InvalidAcknowledgement)?;
+        if data.key.trim().is_empty() || data.secret.trim().is_empty() {
+            return Err(LogUploadError::InvalidAcknowledgement);
+        }
+        Ok(UploadCredentials { key: data.key, secret: data.secret })
+    }
+
+    async fn execute_bounded(&self, request: Request) -> Result<(), LogUploadError> {
+        let (status, body) = self.execute_response(request).await?;
+        validate_acknowledgement(status, &body)
+    }
+
+    async fn execute_response(
+        &self,
+        request: Request,
+    ) -> Result<(StatusCode, Vec<u8>), LogUploadError> {
+        let mut response = self.client.execute(request).await.map_err(transport_error)?;
+        let status = response.status();
         let mut body = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(transport_error)? {
             if chunk.len() > MAX_ACK_BYTES - body.len() {
@@ -124,7 +214,7 @@ impl LogUploadClient {
             }
             body.extend_from_slice(&chunk);
         }
-        validate_acknowledgement(status, &body)
+        Ok((status, body))
     }
 }
 
