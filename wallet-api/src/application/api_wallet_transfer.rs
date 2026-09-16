@@ -368,7 +368,7 @@ impl ApiTransferApplication {
         }
     }
 
-    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
+    async fn get_evm_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
         let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
         let nonce = nonce_engine.allocate_ordinary_transfer_nonce(from_addr, chain_code).await?;
         Ok(nonce as i64)
@@ -382,7 +382,7 @@ impl ApiTransferApplication {
     ) -> Result<i64, ServiceError> {
         match chain_code_enum {
             ChainCode::Ethereum | ChainCode::BnbSmartChain => {
-                self.get_eth_nonce(from_addr, chain_code).await
+                self.get_evm_nonce(from_addr, chain_code).await
             }
             _ => Ok(0),
         }

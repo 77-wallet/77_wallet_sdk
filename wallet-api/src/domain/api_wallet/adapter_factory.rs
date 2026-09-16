@@ -25,6 +25,35 @@ struct AdapterEntry {
     created_at: SystemTime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdapterKind {
+    Tron,
+    Bitcoin,
+    Solana,
+    Evm,
+    Litecoin,
+    Dogecoin,
+    Sui,
+    Ton,
+}
+
+fn adapter_kind(chain_code: ChainCode) -> AdapterKind {
+    if crate::domain::chain::is_evm_chain(chain_code) {
+        return AdapterKind::Evm;
+    }
+
+    match chain_code {
+        ChainCode::Tron => AdapterKind::Tron,
+        ChainCode::Bitcoin => AdapterKind::Bitcoin,
+        ChainCode::Solana => AdapterKind::Solana,
+        ChainCode::Litecoin => AdapterKind::Litecoin,
+        ChainCode::Dogcoin => AdapterKind::Dogecoin,
+        ChainCode::Sui => AdapterKind::Sui,
+        ChainCode::Ton => AdapterKind::Ton,
+        _ => unreachable!("EVM chains are handled before adapter kind matching"),
+    }
+}
+
 pub struct ApiChainAdapterFactory {
     transaction_adapter: DashMap<String, AdapterEntry>,
     // 适配器过期时间（不应超过rpc token本地TTL）
@@ -122,13 +151,17 @@ impl ApiChainAdapterFactory {
                 None
             };
 
-            let adapter: Arc<dyn Tx + Send + Sync> = match chain_code {
-                ChainCode::Tron => Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-                ChainCode::Bitcoin => {
+            let adapter: Arc<dyn Tx + Send + Sync> = match adapter_kind(chain_code) {
+                AdapterKind::Tron => {
+                    Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
+                }
+                AdapterKind::Bitcoin => {
                     Arc::new(BtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
                 }
-                ChainCode::Solana => Arc::new(SolTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-                ChainCode::Ethereum => Arc::new(EthTx::new_with_ctx(
+                AdapterKind::Solana => {
+                    Arc::new(SolTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
+                }
+                AdapterKind::Evm => Arc::new(EthTx::new_with_ctx(
                     ctx,
                     chain_code,
                     &node.rpc_url,
@@ -137,23 +170,14 @@ impl ApiChainAdapterFactory {
                     ),
                     header_opt,
                 )?),
-                ChainCode::BnbSmartChain => Arc::new(EthTx::new_with_ctx(
-                    ctx,
-                    chain_code,
-                    &node.rpc_url,
-                    crate::domain::chain::ChainDomain::network_kind_from_node_network(
-                        &node.network,
-                    ),
-                    header_opt,
-                )?),
-                ChainCode::Litecoin => {
+                AdapterKind::Litecoin => {
                     Arc::new(LtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
                 }
-                ChainCode::Dogcoin => {
+                AdapterKind::Dogecoin => {
                     Arc::new(DogeTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
                 }
-                ChainCode::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-                ChainCode::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+                AdapterKind::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+                AdapterKind::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
             };
 
             // 存入缓存，包含创建时间
@@ -192,28 +216,23 @@ impl ApiChainAdapterFactory {
         let header_opt =
             if rpc_need_header(&node.rpc_url)? { Some(ctx.get_rpc_header().await?) } else { None };
 
-        let adapter: Arc<dyn Tx + Send + Sync> = match chain_code {
-            ChainCode::Tron => Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Bitcoin => Arc::new(BtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Solana => Arc::new(SolTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Ethereum => Arc::new(EthTx::new_with_ctx(
+        let adapter: Arc<dyn Tx + Send + Sync> = match adapter_kind(chain_code) {
+            AdapterKind::Tron => Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Bitcoin => Arc::new(BtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Solana => Arc::new(SolTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Evm => Arc::new(EthTx::new_with_ctx(
                 ctx,
                 chain_code,
                 &node.rpc_url,
                 crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
                 header_opt,
             )?),
-            ChainCode::BnbSmartChain => Arc::new(EthTx::new_with_ctx(
-                ctx,
-                chain_code,
-                &node.rpc_url,
-                crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
-                header_opt,
-            )?),
-            ChainCode::Litecoin => Arc::new(LtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Dogcoin => Arc::new(DogeTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Litecoin => Arc::new(LtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Dogecoin => {
+                Arc::new(DogeTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
+            }
+            AdapterKind::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
         };
 
         // 存入缓存，包含创建时间
@@ -251,5 +270,27 @@ impl ApiChainAdapterFactory {
                 "api tron adapter type mismatch".to_string(),
             ))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AdapterKind, adapter_kind};
+    use wallet_types::chain::chain::ChainCode;
+
+    #[test]
+    fn adapter_kind_routes_all_evm_chains_to_eth() {
+        for chain in [
+            ChainCode::Ethereum,
+            ChainCode::BnbSmartChain,
+            ChainCode::Polygon,
+            ChainCode::Avalanche,
+            ChainCode::Fantom,
+            ChainCode::Arbitrum,
+            ChainCode::Base,
+            ChainCode::Scroll,
+        ] {
+            assert_eq!(adapter_kind(chain), AdapterKind::Evm);
+        }
     }
 }

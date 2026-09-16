@@ -3766,7 +3766,14 @@ impl ShadowCollectWorker {
                 let res: CommonFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
                 res.estimate_fee.amount.to_string()
             }
-            ChainCode::Ethereum | ChainCode::BnbSmartChain => super::evm_propose_max_fee(&fee)?,
+            ChainCode::Ethereum
+            | ChainCode::BnbSmartChain
+            | ChainCode::Polygon
+            | ChainCode::Avalanche
+            | ChainCode::Fantom
+            | ChainCode::Arbitrum
+            | ChainCode::Base
+            | ChainCode::Scroll => super::evm_propose_max_fee(&fee)?,
             ChainCode::Litecoin => todo!(),
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),

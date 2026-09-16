@@ -8,8 +8,8 @@ use wallet_types::chain::chain::ChainCode;
 pub(crate) const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
 
 pub(crate) fn is_evm_chain(chain_code: &str) -> bool {
-    chain_code.eq_ignore_ascii_case(&ChainCode::Ethereum.to_string())
-        || chain_code.eq_ignore_ascii_case(&ChainCode::BnbSmartChain.to_string())
+    let normalized = chain_code.to_ascii_lowercase();
+    ChainCode::try_from(normalized.as_str()).is_ok_and(crate::domain::chain::is_evm_chain)
 }
 
 pub(crate) fn is_sol_chain(chain_code: &str) -> bool {
@@ -334,8 +334,13 @@ mod tests {
 
     #[test]
     fn chain_kind_helpers_are_case_insensitive() {
-        assert!(is_evm_chain("eth"));
-        assert!(is_evm_chain("BNB"));
+        for chain_code in
+            ["eth", "BNB", "polygon", "AVALANCHE", "fantom", "ARBITRUM", "base", "SCROLL"]
+        {
+            assert!(is_evm_chain(chain_code), "{chain_code} must be classified as EVM");
+        }
+        assert!(!is_evm_chain("matic"));
+        assert!(!is_evm_chain("unknown"));
         assert!(is_sol_chain("sol"));
         assert!(is_sol_chain("SOL"));
         assert!(is_tron_chain("tron"));

@@ -750,6 +750,7 @@ impl ProcessCollectTx {
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,
             ChainCode::Ton => 0,
+            _ => 0,
         };
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 计算nonce成功, nonce={}", nonce);
 
@@ -1124,6 +1125,7 @@ impl CheckFee for CollectTxWorkerCtx {
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),
             ChainCode::Ton => todo!(),
+            _ => todo!(),
         };
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%parse_start.elapsed().as_millis(), "collect_tx:send: 解析手续费结果完成");
 

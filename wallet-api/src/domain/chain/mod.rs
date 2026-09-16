@@ -70,6 +70,26 @@ pub fn rpc_need_header(_url: &str) -> Result<bool, crate::error::service::Servic
     Ok(true)
 }
 
+pub(crate) fn is_evm_chain(chain: ChainCode) -> bool {
+    match chain {
+        ChainCode::Ethereum
+        | ChainCode::BnbSmartChain
+        | ChainCode::Polygon
+        | ChainCode::Avalanche
+        | ChainCode::Fantom
+        | ChainCode::Arbitrum
+        | ChainCode::Base
+        | ChainCode::Scroll => true,
+        ChainCode::Tron
+        | ChainCode::Bitcoin
+        | ChainCode::Solana
+        | ChainCode::Litecoin
+        | ChainCode::Dogcoin
+        | ChainCode::Sui
+        | ChainCode::Ton => false,
+    }
+}
+
 pub fn check_address(
     address: &str,
     chain: wallet_types::chain::chain::ChainCode,
@@ -85,7 +105,13 @@ pub fn check_address(
             })?
         }
         wallet_types::chain::chain::ChainCode::BnbSmartChain
-        | wallet_types::chain::chain::ChainCode::Ethereum => {
+        | wallet_types::chain::chain::ChainCode::Ethereum
+        | wallet_types::chain::chain::ChainCode::Polygon
+        | wallet_types::chain::chain::ChainCode::Avalanche
+        | wallet_types::chain::chain::ChainCode::Fantom
+        | wallet_types::chain::chain::ChainCode::Arbitrum
+        | wallet_types::chain::chain::ChainCode::Base
+        | wallet_types::chain::chain::ChainCode::Scroll => {
             wallet_utils::address::parse_eth_address(address).map(|_| true).map_err(|_| {
                 crate::error::business::BusinessError::Account(
                     crate::error::business::account::AccountError::AddressNotCorrect,

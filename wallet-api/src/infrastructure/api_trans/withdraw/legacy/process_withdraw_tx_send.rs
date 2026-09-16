@@ -634,6 +634,7 @@ impl ProcessWithdrawTx {
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,
             ChainCode::Ton => 0,
+            _ => 0,
         };
         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 计算nonce成功, nonce={}", nonce);
 

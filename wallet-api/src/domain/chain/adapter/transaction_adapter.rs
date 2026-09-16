@@ -72,7 +72,14 @@ impl TransactionAdapter {
                 let btc_chain = chain::btc::BtcChain::new(config, network, header_opt, timeout)?;
                 Ok(TransactionAdapter::BitCoin(btc_chain))
             }
-            ChainType::Ethereum | ChainType::BnbSmartChain => {
+            ChainType::Ethereum
+            | ChainType::BnbSmartChain
+            | ChainType::Polygon
+            | ChainType::Avalanche
+            | ChainType::Fantom
+            | ChainType::Arbitrum
+            | ChainType::Base
+            | ChainType::Scroll => {
                 let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
                 let eth_chain = chain::eth::EthChain::new(provider, network, chain_code)?;

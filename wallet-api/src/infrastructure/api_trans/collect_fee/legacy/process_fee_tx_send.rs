@@ -490,6 +490,7 @@ impl ProcessFeeTx {
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,
             ChainCode::Ton => 0,
+            _ => 0,
         };
         tracing::info!(trade_no=%req.trade_no, nonce=%nonce, "[手续费归集] 转账请求生成完成");
         Ok(ApiTransferReq { base: params, password: unlock_token, nonce: nonce as u64 })
