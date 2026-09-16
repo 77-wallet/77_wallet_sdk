@@ -28,7 +28,7 @@ where
     Fut: Future<Output = Result<Value, ServiceError>>,
 {
     let address = address.trim();
-    if !matches!(chain_code, "eth" | "bnb")
+    if !crate::domain::api_wallet::trans::shared_mechanism::is_evm_chain(chain_code)
         || nonce < 0
         || !hex(address, 20)
         || !hex(original_hash, 32)
@@ -169,14 +169,15 @@ mod tests {
 
     const ADDRESS: &str = "0x08932ba7a633FdEA40Dfd68afab610340e6375BF";
 
-    async fn run(
+    async fn run_on_chain(
+        chain_code: &str,
         mode: &str,
     ) -> (Result<Option<FinalizedCollectNonceConflict>, ServiceError>, usize) {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let recorded = calls.clone();
         let probe_address =
             if mode == "padded" { format!(" {ADDRESS} ") } else { ADDRESS.to_owned() };
-        let result = probe("eth", &probe_address, 1, &format!("0x{}", "11".repeat(32)), |method, params| {
+        let result = probe(chain_code, &probe_address, 1, &format!("0x{}", "11".repeat(32)), |method, params| {
             recorded.lock().unwrap().push((method, params.clone()));
             let value = match method {
                 "eth_getTransactionCount" if params[1].is_object() => {
@@ -224,6 +225,12 @@ mod tests {
         (result, count)
     }
 
+    async fn run(
+        mode: &str,
+    ) -> (Result<Option<FinalizedCollectNonceConflict>, ServiceError>, usize) {
+        run_on_chain("eth", mode).await
+    }
+
     #[tokio::test]
     async fn finalized_inclusion_proves_different_transaction_consumed_nonce() {
         for mode in ["conflict", "padded"] {
@@ -235,6 +242,16 @@ mod tests {
             assert!(calls <= 13);
             assert_eq!(evidence.from_addr, ADDRESS);
         }
+    }
+
+    #[tokio::test]
+    async fn added_evm_chain_can_prove_nonce_conflict() {
+        let (result, calls) = run_on_chain("polygon", "conflict").await;
+
+        let evidence = result.unwrap().unwrap();
+        assert_eq!(evidence.chain_code, "polygon");
+        assert_eq!(evidence.nonce, 1);
+        assert!(calls <= 13);
     }
 
     #[tokio::test]

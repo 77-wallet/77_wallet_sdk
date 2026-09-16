@@ -349,8 +349,11 @@ mod tests {
 
     #[test]
     fn uncertain_state_tracking_chains_are_explicit() {
-        assert!(tracks_broadcast_uncertain_state("eth"));
-        assert!(tracks_broadcast_uncertain_state("bnb"));
+        for chain_code in
+            ["eth", "bnb", "polygon", "avalanche", "fantom", "arbitrum", "base", "scroll"]
+        {
+            assert!(tracks_broadcast_uncertain_state(chain_code));
+        }
         assert!(tracks_broadcast_uncertain_state("sol"));
         assert!(tracks_broadcast_uncertain_state("tron"));
         assert!(!tracks_broadcast_uncertain_state("unknown"));

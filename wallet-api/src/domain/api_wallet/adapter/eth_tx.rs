@@ -224,7 +224,7 @@ impl EthTx {
                         crate::error::business::chain::ChainError::insufficient_balance_with_detail(
                             crate::error::business::chain::InsufficientBalanceDetail::new()
                                 .from_addr(from.to_string())
-                                .chain_code("eth")
+                                .chain_code(self.chain.chain_code.to_string())
                                 .token_addr(token.to_string())
                                 .value(transfer_amount.to_string())
                                 .balance(token_balance.to_string())
@@ -241,7 +241,7 @@ impl EthTx {
                         crate::error::business::chain::ChainError::insufficient_balance_with_detail(
                             crate::error::business::chain::InsufficientBalanceDetail::new()
                                 .from_addr(from.to_string())
-                                .chain_code("eth")
+                                .chain_code(self.chain.chain_code.to_string())
                                 .value(transfer_amount.to_string())
                                 .balance(balance.to_string())
                                 .need(transfer_amount.to_string())
@@ -654,7 +654,7 @@ impl Tx for EthTx {
                 crate::error::business::chain::ChainError::insufficient_balance_with_detail(
                     crate::error::business::chain::InsufficientBalanceDetail::new()
                         .from_addr(req.from.clone())
-                        .chain_code("eth")
+                        .chain_code(self.chain.chain_code.to_string())
                         .token_addr(token.clone().unwrap_or_default())
                         .value(value.to_string())
                         .balance(balance.to_string())
@@ -1061,6 +1061,15 @@ impl Tx for EthTx {
 mod tests {
     use super::*;
 
+    fn insufficient_balance_chain_code(err: ServiceError) -> Option<String> {
+        match err {
+            ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance(detail),
+            )) => detail.chain_code,
+            _ => None,
+        }
+    }
+
     #[test]
     fn metadata_free_fee_uses_propose_total_instead_of_adding_fast_total() {
         let oracle = GasOracle {
@@ -1096,5 +1105,55 @@ mod tests {
                 crate::error::business::api_wallet::ApiWalletError::GasOracle
             ))
         ));
+    }
+
+    #[tokio::test]
+    async fn api_wallet_balance_error_reports_actual_evm_chain() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let tx = EthTx::new_for_test(
+            ctx,
+            ChainCode::Polygon,
+            "https://example.invalid",
+            NetworkKind::Mainnet,
+            None,
+        )
+        .expect("EVM adapter should be creatable without network access");
+
+        let err = tx
+            .check_eth_balance(
+                "0x0000000000000000000000000000000000000001",
+                U256::ZERO,
+                None,
+                U256::from(1),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(insufficient_balance_chain_code(err).as_deref(), Some("polygon"));
+    }
+
+    #[tokio::test]
+    async fn standard_wallet_balance_error_reports_actual_evm_chain() {
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let tx = EthTx::new_for_test(
+            ctx,
+            ChainCode::Base,
+            "https://example.invalid",
+            NetworkKind::Mainnet,
+            None,
+        )
+        .expect("EVM adapter should be creatable without network access");
+
+        let err = crate::domain::chain::transaction::ChainTransDomain::check_eth_balance(
+            "0x0000000000000000000000000000000000000001",
+            U256::ZERO,
+            None,
+            &tx.chain,
+            U256::from(1),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(insufficient_balance_chain_code(err).as_deref(), Some("base"));
     }
 }
