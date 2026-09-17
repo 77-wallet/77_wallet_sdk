@@ -131,6 +131,12 @@ impl CoinService {
 
         CoinDomain::upsert_hot_coin_list(&core_pool, data).await?;
 
+        if CoinDomain::should_restore_local_defaults_after_backend(
+            crate::config::Config::active_feature_profile(),
+        ) {
+            CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(self.ctx).await?;
+        }
+
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
         let api = self.ctx.get_global_backend_api();
         let coin = api.swappable_coin().await?;
