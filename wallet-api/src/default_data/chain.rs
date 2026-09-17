@@ -1,5 +1,5 @@
 use crate::error::service::ServiceError;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct DefaultChain {
@@ -52,6 +52,32 @@ pub(crate) fn default_chain_lists_for_feature(
     }
 }
 
+pub(crate) fn enabled_chain_codes_for_feature(
+    profile: &'static str,
+    backend_chain_codes: &[String],
+) -> Result<Vec<String>, ServiceError> {
+    match profile {
+        "prod" | "test" => Ok(backend_chain_codes.to_vec()),
+        "dev" => {
+            let mut enabled = backend_chain_codes.to_vec();
+            let mut seen: HashSet<String> = enabled.iter().cloned().collect();
+
+            for list in default_chain_lists_for_feature(profile)? {
+                for (chain_code, chain) in &list.chains {
+                    if chain.active && seen.insert(chain_code.clone()) {
+                        enabled.push(chain_code.clone());
+                    }
+                }
+            }
+
+            Ok(enabled)
+        }
+        other => Err(ServiceError::Parameter(format!(
+            "unsupported default chain config profile: {other}"
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,5 +117,30 @@ mod tests {
         assert!(prod[0].chains.contains_key("eth"));
         assert!(dev.iter().any(|list| list.chains.contains_key("polygon")));
         assert!(test.iter().any(|list| list.chains.contains_key("scroll")));
+    }
+
+    #[test]
+    fn dev_preserves_local_chains_when_backend_is_incomplete() {
+        let enabled = enabled_chain_codes_for_feature("dev", &["tron".to_string()])
+            .expect("merge dev chain codes");
+
+        assert!(enabled.iter().any(|chain| chain == "tron"));
+        assert!(enabled.iter().any(|chain| chain == "eth"));
+        assert!(enabled.iter().any(|chain| chain == "polygon"));
+        assert!(enabled.iter().any(|chain| chain == "scroll"));
+    }
+
+    #[test]
+    fn test_and_prod_keep_backend_chain_selection() {
+        let backend = vec!["tron".to_string()];
+
+        assert_eq!(
+            enabled_chain_codes_for_feature("test", &backend).expect("test chain codes"),
+            backend
+        );
+        assert_eq!(
+            enabled_chain_codes_for_feature("prod", &backend).expect("prod chain codes"),
+            backend
+        );
     }
 }

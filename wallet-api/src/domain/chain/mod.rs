@@ -284,7 +284,11 @@ impl ChainDomain {
         }
 
         ChainRepo::upsert_multi_chain(&pool, input).await?;
-        Self::toggle_chains_with_ctx(ctx, &chain_codes).await?;
+        let enabled_chain_codes = crate::default_data::chain::enabled_chain_codes_for_feature(
+            crate::config::Config::active_feature_profile(),
+            &chain_codes,
+        )?;
+        Self::toggle_chains_with_ctx(ctx, &enabled_chain_codes).await?;
 
         if !chain_codes.is_empty() {
             let chain_rpc_list_req = BackendApiTaskData::new(
