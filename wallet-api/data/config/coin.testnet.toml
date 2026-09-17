@@ -206,3 +206,69 @@ protocol = ""
 default = true
 popular = true
 active = true
+
+[[coins]]
+name = "Polygon"
+chain_code = "polygon"
+symbol = "POL"
+decimals = 18
+token_address = ""
+protocol = "ERC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Avalanche"
+chain_code = "avalanche"
+symbol = "AVAX"
+decimals = 18
+token_address = ""
+protocol = "ERC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Fantom"
+chain_code = "fantom"
+symbol = "FTM"
+decimals = 18
+token_address = ""
+protocol = "ERC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Arbitrum"
+chain_code = "arbitrum"
+symbol = "ETH"
+decimals = 18
+token_address = ""
+protocol = "ERC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Base"
+chain_code = "base"
+symbol = "ETH"
+decimals = 18
+token_address = ""
+protocol = "ERC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Scroll"
+chain_code = "scroll"
+symbol = "ETH"
+decimals = 18
+token_address = ""
+protocol = "ERC20"
+default = true
+popular = true
+active = true

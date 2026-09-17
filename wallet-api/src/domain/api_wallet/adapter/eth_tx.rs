@@ -1060,6 +1060,69 @@ impl Tx for EthTx {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::RngCore as _;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::{Arc, Mutex},
+        thread,
+    };
+
+    fn start_chain_id_rpc(
+        expected_calls: usize,
+    ) -> (String, Arc<Mutex<Vec<String>>>, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = calls.clone();
+        let worker = thread::spawn(move || {
+            for _ in 0..expected_calls {
+                let (mut socket, _) = listener.accept().unwrap();
+                let mut bytes = Vec::new();
+                let mut buf = [0_u8; 4096];
+                let (body_start, length) = loop {
+                    let count = socket.read(&mut buf).unwrap();
+                    assert!(count > 0, "incomplete HTTP headers");
+                    bytes.extend_from_slice(&buf[..count]);
+                    if let Some(end) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                        let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+                        let length = headers
+                            .lines()
+                            .find_map(|line| {
+                                let (name, value) = line.split_once(':')?;
+                                name.eq_ignore_ascii_case("content-length")
+                                    .then(|| value.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap();
+                        break (end + 4, length);
+                    }
+                };
+                while bytes.len() < body_start + length {
+                    let count = socket.read(&mut buf).unwrap();
+                    assert!(count > 0, "incomplete HTTP body");
+                    bytes.extend_from_slice(&buf[..count]);
+                }
+                let request: Value =
+                    serde_json::from_slice(&bytes[body_start..body_start + length]).unwrap();
+                let method = request["method"].as_str().unwrap().to_string();
+                recorded.lock().unwrap().push(method);
+                let response = json!({
+                    "jsonrpc": "2.0",
+                    "id": request["id"],
+                    "result": "0x1"
+                })
+                .to_string();
+                write!(
+                    socket,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    response.len(),
+                    response
+                )
+                .unwrap();
+            }
+        });
+        (url, calls, worker)
+    }
 
     fn insufficient_balance_chain_code(err: ServiceError) -> Option<String> {
         match err {
@@ -1155,5 +1218,62 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(insufficient_balance_chain_code(err).as_deref(), Some("base"));
+    }
+
+    #[tokio::test]
+    async fn added_evm_chains_build_signed_transfer_offline() {
+        let chains = [
+            ChainCode::Polygon,
+            ChainCode::Avalanche,
+            ChainCode::Fantom,
+            ChainCode::Arbitrum,
+            ChainCode::Base,
+            ChainCode::Scroll,
+        ];
+        let (rpc_url, calls, worker) = start_chain_id_rpc(chains.len());
+        let ctx = crate::testkit::context::api_trans_test_ctx().await;
+        let mut private_key = [0_u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut private_key);
+        let private_key_hex = hex::encode(private_key);
+        let signer: alloy::signers::local::PrivateKeySigner =
+            private_key_hex.parse().expect("runtime-generated secp256k1 key must parse");
+        let from = signer.address().to_string();
+        let private_key = ChainPrivateKey::from(private_key_hex);
+
+        for chain_code in chains {
+            let tx = EthTx::new_for_test(ctx, chain_code, &rpc_url, NetworkKind::Mainnet, None)
+                .expect("EVM adapter should be creatable with a local fake RPC");
+            let mut base = ApiBaseTransferReq::new(
+                &from,
+                "0x0000000000000000000000000000000000000002",
+                "1",
+                &chain_code.to_string(),
+            );
+            base.metadata = Some(
+                json!({
+                    "baseFee": "1",
+                    "priorityFee": "1",
+                    "maxFeePerGas": "3",
+                    "gasLimit": "21000"
+                })
+                .to_string(),
+            );
+            let request = ApiTransferReq { base, password: String::new(), nonce: 7 };
+
+            let (hash, raw, _) = tx
+                .build_transfer_raw(&request, private_key.clone())
+                .await
+                .unwrap_or_else(|err| panic!("{chain_code} must build and sign offline: {err}"));
+
+            let RawTx::Evm(raw, fee) = raw else {
+                panic!("{chain_code} must produce EVM raw transaction bytes");
+            };
+            assert!(!raw.is_empty(), "{chain_code} raw transaction must not be empty");
+            assert_eq!(hash, EthTx::evm_raw_tx_hash_hex(&raw), "{chain_code}");
+            assert_eq!(fee, U256::from(63_000_u64), "{chain_code}");
+        }
+
+        worker.join().unwrap();
+        assert_eq!(*calls.lock().unwrap(), vec!["eth_chainId"; chains.len()]);
     }
 }

@@ -75,6 +75,41 @@ scanner entrypoints.
   retry behavior should not double-send a transaction after a successful chain
   response.
 
+## Added EVM chain offline signing matrix
+
+- Layer: component-style unit test with a process-local fake JSON-RPC endpoint.
+- Entrypoint:
+
+  ```text
+  domain::api_wallet::adapter::eth_tx::tests::added_evm_chains_build_signed_transfer_offline
+  ```
+
+- Matrix: Polygon, Avalanche, Fantom, Arbitrum, Base and Scroll.
+- Input: native transfer with explicit fee metadata and a runtime-generated test key.
+- RPC boundary: exactly one `eth_chainId` request per chain; no backend, public RPC,
+  balance lookup, fee lookup or broadcast.
+- Result: signed EIP-1559 raw bytes are non-empty and the returned transaction hash
+  equals local `keccak(raw)` for every chain.
+- Invariant: every newly supported EVM chain can reach the SDK's shared offline
+  transaction construction and signing path without chain-specific adapters.
+
+## Added EVM chain read-only live-node smoke
+
+- Layer: ignored manual smoke test.
+- Entrypoint:
+
+  ```text
+  smoke::transactions::evm_added::added_evm_chains_read_live_nodes_without_funds
+  ```
+
+- Matrix: Polygon, Avalanche, Fantom, Arbitrum, Base and Scroll mainnet nodes.
+- Calls: `eth_chainId`, `eth_blockNumber`, `eth_gasPrice`, `eth_getBalance` and
+  `eth_getTransactionCount` only.
+- Result: each node reports the expected chain ID, a positive block height and gas
+  price, and valid hex quantities for a fixed read-only address.
+- Safety: no wallet credentials, backend calls, transaction broadcast or on-chain
+  state changes. RPC URLs can be overridden with `WALLET_SMOKE_*_RPC` variables.
+
 ## Nonce alignment reservation safety (2026-09-07)
 
 - `nonce_alignment_preserves_reserved_nonces`: reserve 9, 10, 11; an RPC next

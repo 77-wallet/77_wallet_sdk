@@ -3,6 +3,7 @@ mod bnb;
 mod btc;
 mod doge;
 mod eth;
+mod evm_added;
 mod ltc;
 mod sol;
 mod sui;

@@ -437,23 +437,28 @@ impl ChainDomain {
         ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.core_pool()?;
+        let profile = crate::config::Config::active_feature_profile();
+        let lists = crate::default_data::chain::default_chain_lists_for_feature(profile)?;
 
-        let list = crate::default_data::chain::get_default_chains_list()?;
+        for list in lists {
+            for default_chain in list.chains.values() {
+                let status = if default_chain.active { 1 } else { 0 };
+                let req = wallet_database::entities::chain::ChainCreateVo::new(
+                    &default_chain.name,
+                    &default_chain.chain_code,
+                    &default_chain.protocols,
+                    NodeBindType::AutoLocal,
+                    &default_chain.main_symbol,
+                )
+                .with_status(status);
 
-        for (_, default_chain) in &list.chains {
-            let status = if default_chain.active { 1 } else { 0 };
-            let req = wallet_database::entities::chain::ChainCreateVo::new(
-                &default_chain.name,
-                &default_chain.chain_code,
-                &default_chain.protocols,
-                NodeBindType::AutoLocal,
-                &default_chain.main_symbol,
-            )
-            .with_status(status);
-
-            if let Err(e) = ChainRepo::add(&pool, req).await {
-                tracing::error!("Init load default chain: failed to create default chain: {:?}", e);
-                continue;
+                if let Err(e) = ChainRepo::add(&pool, req).await {
+                    tracing::error!(
+                        "Init load default chain: failed to create default chain: {:?}",
+                        e
+                    );
+                    continue;
+                }
             }
         }
 

@@ -130,6 +130,19 @@ mod tests {
     }
 
     #[test]
+    fn added_evm_chains_have_active_testnet_nodes() {
+        let nodes = &testnet_default_nodes_list().expect("load testnet nodes").nodes;
+
+        for chain_code in ["polygon", "avalanche", "fantom", "arbitrum", "base", "scroll"] {
+            let chain_nodes =
+                nodes.get(chain_code).unwrap_or_else(|| panic!("missing {chain_code} nodes"));
+            assert!(chain_nodes.nodes.iter().any(|node| {
+                node.active && node.network == "testnet" && node.rpc_url.starts_with("https://")
+            }));
+        }
+    }
+
+    #[test]
     fn validate_default_node_list_rejects_mixed_networks() {
         let node_list = build_node_list(
             "tron",
