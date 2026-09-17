@@ -19,9 +19,9 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 use crate::{
     context::Context,
     error::service::ServiceError,
-    infrastructure::api_trans::collect::{
-        legacy::AddressLockManager,
-        shadow::{
+    infrastructure::api_trans::{
+        AddressLockManager,
+        collect::shadow::{
             ChainIntent, CollectIntent, DispatcherConfig, ScannerConfig, ShadowAdvancer,
             ShadowCollectCommand, ShadowCollectWorker, ShadowDispatcher, ShadowScanner,
             SideEffectCommand, SideEffectIntent, SideEffectWorker,

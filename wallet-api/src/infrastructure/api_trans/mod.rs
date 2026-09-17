@@ -178,6 +178,7 @@
 //! ============================================================================
 //! END
 //! ============================================================================
+mod address_lock;
 pub(crate) mod collect;
 pub(crate) mod collect_fee;
 pub(crate) mod diagnose_common;
@@ -199,7 +200,5 @@ pub(crate) mod rpc_auth_retry_mechanism;
 pub(crate) mod shadow_rpc_policy;
 pub(crate) mod withdraw;
 
-pub use collect::{
-    legacy::AddressLockManager,
-    shadow::{ShadowAdvancer, ShadowCollectCommand, ShadowCollectWorker},
-};
+pub use address_lock::AddressLockManager;
+pub use collect::shadow::{ShadowAdvancer, ShadowCollectCommand, ShadowCollectWorker};

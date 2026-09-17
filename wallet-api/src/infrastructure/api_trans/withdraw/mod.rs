@@ -1,6 +1,5 @@
-mod command;
 pub(crate) mod diagnose;
-pub(crate) mod legacy;
+pub(crate) mod handle;
 mod shadow;
 pub(crate) mod tx_ack_gate;
 

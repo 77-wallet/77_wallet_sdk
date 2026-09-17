@@ -24,12 +24,10 @@ use wallet_database::ApiTransactionDbPool;
 use crate::{
     error::service::ServiceError,
     infrastructure::api_trans::{
-        collect::{
-            legacy::AddressLockManager,
-            shadow::{
-                dispatcher::ShadowDispatcher,
-                worker::{ShadowCollectWorker, SideEffectWorker},
-            },
+        AddressLockManager,
+        collect::shadow::{
+            dispatcher::ShadowDispatcher,
+            worker::{ShadowCollectWorker, SideEffectWorker},
         },
         shadow_rpc_policy,
     },

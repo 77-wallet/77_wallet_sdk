@@ -8,10 +8,12 @@ use wallet_database::ApiTransactionDbPool;
 
 use crate::{
     error::service::ServiceError,
-    infrastructure::api_trans::collect_fee::{
-        diagnose::{CachedDiagnoser, DiagnoseEvent, FeeStuckMonitor},
-        legacy::AddressLockManager,
-        shadow::worker::{ShadowFeeWorker, SideEffectWorker},
+    infrastructure::api_trans::{
+        AddressLockManager,
+        collect_fee::{
+            diagnose::{CachedDiagnoser, DiagnoseEvent, FeeStuckMonitor},
+            shadow::worker::{ShadowFeeWorker, SideEffectWorker},
+        },
     },
 };
 

@@ -40,6 +40,10 @@ impl WalletManager {
         SwapServer::new(self.ctx)?.chain_list().await
     }
 
+    /// Grants token allowance for a swap.
+    ///
+    /// A request value of `"-1"` or `"0"` means unlimited allowance.
+    /// Use [`Self::approve_cancel`] when the existing allowance must be revoked.
     pub async fn approve(&self, req: ApproveReq, password: String) -> ReturnType<String> {
         SwapServer::new(self.ctx)?.approve(req, password).await
     }
@@ -56,6 +60,7 @@ impl WalletManager {
         SwapServer::new(self.ctx)?.approve_list(uid, account_id).await
     }
 
+    /// Revokes the token allowance described by `req`.
     pub async fn approve_cancel(&self, req: ApproveReq, password: String) -> ReturnType<String> {
         SwapServer::new(self.ctx)?.approve_cancel(req, password).await
     }

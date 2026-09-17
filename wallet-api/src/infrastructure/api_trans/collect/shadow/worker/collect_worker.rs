@@ -76,8 +76,7 @@ use crate::{
         service::ServiceError,
     },
     infrastructure::api_trans::{
-        collect::legacy::AddressLockManager,
-        nonce_recovery_mechanism,
+        AddressLockManager, nonce_recovery_mechanism,
         resource_amount::energy_shortfall_to_apply_amounts,
         resource_apply_outcome::PlatformApplyOutcome,
         resource_delegation::{
@@ -5479,7 +5478,7 @@ oss:
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             ctx,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
                 ctx, intent_tx, None,
             )),
@@ -5540,7 +5539,7 @@ oss:
         let (intent_tx, mut intent_rx) = mpsc::channel(4);
         let worker = ShadowCollectWorker::new(
             ctx,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
                 ctx,
                 intent_tx.clone(),
@@ -5624,7 +5623,7 @@ oss:
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             ctx,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
                 ctx,
                 intent_tx.clone(),
@@ -5720,7 +5719,7 @@ oss:
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             ctx,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
                 ctx, intent_tx, None,
             )),
@@ -5823,7 +5822,7 @@ oss:
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             test_ctx().await,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
                 test_ctx().await,
                 intent_tx,
@@ -5939,7 +5938,7 @@ oss:
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
             ctx,
-            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
                 ctx,
                 intent_tx.clone(),
