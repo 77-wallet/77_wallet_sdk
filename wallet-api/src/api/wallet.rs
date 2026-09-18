@@ -4,12 +4,19 @@ use crate::{
 };
 
 impl WalletManager {
+    /// Derives a password value using the current device serial number.
+    ///
+    /// This is a pure derivation helper: it returns the derived value and does not
+    /// create or update the wallet password stored by the SDK.
+    #[deprecated(
+        note = "This fixed-salt compatibility helper is not used by the current password flow; pass the user's password to validate_password instead"
+    )]
     pub async fn encrypt_password(&self, password: &str) -> ReturnType<String> {
         WalletService::new(self.ctx).encrypt_password(password).await
     }
 
-    pub async fn validate_password(&self, encrypted_password: &str) -> ReturnType<()> {
-        WalletService::new(self.ctx).validate_password(encrypted_password).await
+    pub async fn validate_password(&self, password: &str) -> ReturnType<()> {
+        WalletService::new(self.ctx).validate_password(password).await
     }
 
     pub async fn switch_wallet(&self, wallet_address: &str) -> ReturnType<()> {

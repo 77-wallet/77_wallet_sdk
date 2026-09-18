@@ -221,9 +221,9 @@ pub async fn allocate_collect_fee_nonce(
     address: &str,
     chain: &str,
 ) -> Result<u64, ServiceError> {
-    use crate::infrastructure::api_trans::collect_fee::{
-        legacy::AddressLockManager,
-        shadow::{ScannerConfig, ShadowScanner},
+    use crate::infrastructure::api_trans::{
+        AddressLockManager,
+        collect_fee::shadow::{ScannerConfig, ShadowScanner},
     };
     use std::sync::Arc;
     let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);

@@ -144,7 +144,6 @@
 //! > **这个模块已经在高并发下稳定运行过。**
 //!
 //! ------------------------------------------------------------
-mod command;
 pub(crate) mod diagnose;
-pub(crate) mod legacy;
+pub(crate) mod handle;
 pub(crate) mod shadow;

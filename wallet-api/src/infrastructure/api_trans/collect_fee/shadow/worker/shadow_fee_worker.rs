@@ -28,8 +28,8 @@ use crate::{
     },
     infrastructure::{
         api_trans::{
-            collect_fee::{legacy::AddressLockManager, shadow::ShadowScanner},
-            nonce_recovery_mechanism, shadow_rpc_policy,
+            AddressLockManager, collect_fee::shadow::ShadowScanner, nonce_recovery_mechanism,
+            shadow_rpc_policy,
         },
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
     },
