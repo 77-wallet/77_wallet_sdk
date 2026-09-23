@@ -54,17 +54,23 @@ pub(crate) fn default_chain_lists_for_feature(
 
 pub(crate) fn enabled_chain_codes_for_feature(
     profile: &'static str,
-    backend_chain_codes: &[String],
+    backend_enabled_chain_codes: &[String],
+    backend_returned_chain_codes: &[String],
 ) -> Result<Vec<String>, ServiceError> {
     match profile {
-        "prod" | "test" => Ok(backend_chain_codes.to_vec()),
+        "test" | "prod" => Ok(backend_enabled_chain_codes.to_vec()),
         "dev" => {
-            let mut enabled = backend_chain_codes.to_vec();
+            let backend_returned: HashSet<&str> =
+                backend_returned_chain_codes.iter().map(String::as_str).collect();
+            let mut enabled = backend_enabled_chain_codes.to_vec();
             let mut seen: HashSet<String> = enabled.iter().cloned().collect();
 
             for list in default_chain_lists_for_feature(profile)? {
                 for (chain_code, chain) in &list.chains {
-                    if chain.active && seen.insert(chain_code.clone()) {
+                    if chain.active
+                        && !backend_returned.contains(chain_code.as_str())
+                        && seen.insert(chain_code.clone())
+                    {
                         enabled.push(chain_code.clone());
                     }
                 }
@@ -120,14 +126,27 @@ mod tests {
     }
 
     #[test]
-    fn dev_preserves_local_chains_when_backend_is_incomplete() {
-        let enabled = enabled_chain_codes_for_feature("dev", &["tron".to_string()])
-            .expect("merge dev chain codes");
+    fn dev_does_not_restore_backend_disabled_local_chain() {
+        let enabled = vec!["tron".to_string()];
+        let returned = vec!["tron".to_string(), "polygon".to_string()];
 
-        assert!(enabled.iter().any(|chain| chain == "tron"));
-        assert!(enabled.iter().any(|chain| chain == "eth"));
-        assert!(enabled.iter().any(|chain| chain == "polygon"));
-        assert!(enabled.iter().any(|chain| chain == "scroll"));
+        let selected =
+            enabled_chain_codes_for_feature("dev", &enabled, &returned).expect("dev chain codes");
+
+        assert!(selected.iter().any(|chain| chain == "tron"));
+        assert!(!selected.iter().any(|chain| chain == "polygon"));
+    }
+
+    #[test]
+    fn dev_restores_local_chain_missing_from_backend() {
+        let enabled = vec!["tron".to_string()];
+        let returned = vec!["tron".to_string()];
+
+        let selected =
+            enabled_chain_codes_for_feature("dev", &enabled, &returned).expect("dev chain codes");
+
+        assert!(selected.iter().any(|chain| chain == "tron"));
+        assert!(selected.iter().any(|chain| chain == "polygon"));
     }
 
     #[test]
@@ -135,11 +154,11 @@ mod tests {
         let backend = vec!["tron".to_string()];
 
         assert_eq!(
-            enabled_chain_codes_for_feature("test", &backend).expect("test chain codes"),
+            enabled_chain_codes_for_feature("test", &backend, &backend).expect("test chain codes"),
             backend
         );
         assert_eq!(
-            enabled_chain_codes_for_feature("prod", &backend).expect("prod chain codes"),
+            enabled_chain_codes_for_feature("prod", &backend, &backend).expect("prod chain codes"),
             backend
         );
     }

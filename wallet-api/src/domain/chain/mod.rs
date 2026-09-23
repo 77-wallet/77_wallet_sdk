@@ -207,6 +207,7 @@ impl ChainDomain {
 
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
+        let mut backend_chain_codes = Vec::new();
         let mut has_new_chain = false;
 
         let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
@@ -218,6 +219,7 @@ impl ChainDomain {
         }
 
         for chain in chains.list {
+            backend_chain_codes.push(chain.chain_code.clone());
             let Some(master_token_code) = chain.master_token_code else {
                 continue;
             };
@@ -287,6 +289,7 @@ impl ChainDomain {
         let enabled_chain_codes = crate::default_data::chain::enabled_chain_codes_for_feature(
             crate::config::Config::active_feature_profile(),
             &chain_codes,
+            &backend_chain_codes,
         )?;
         Self::toggle_chains_with_ctx(ctx, &enabled_chain_codes).await?;
 

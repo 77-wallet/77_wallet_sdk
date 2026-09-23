@@ -135,10 +135,12 @@ impl ApiChainDomain {
 
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
+        let mut backend_chain_codes = Vec::new();
         // let mut has_new_chain = false;
         let mut new_chains = Vec::new();
         let app_version = ConfigDomain::get_app_version(ctx).await?.app_version;
         for chain in chains.0 {
+            backend_chain_codes.push(chain.chain_code.clone());
             let Some(master_token_code) = chain.master_token_code else {
                 continue;
             };
@@ -206,6 +208,7 @@ impl ApiChainDomain {
         let enabled_chain_codes = crate::default_data::chain::enabled_chain_codes_for_feature(
             crate::config::Config::active_feature_profile(),
             &chain_codes,
+            &backend_chain_codes,
         )?;
         Self::toggle_api_chains(ctx, &enabled_chain_codes).await?;
 
