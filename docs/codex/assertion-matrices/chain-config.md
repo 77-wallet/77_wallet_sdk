@@ -8,6 +8,8 @@ Scope: `wallet-api` default chain selection for Core and API Wallet.
 | A locally active chain absent from the backend response remains available for early dev testing | `dev_restores_local_chain_missing_from_backend` |
 | Test and prod use only the backend-enabled chain selection | `test_and_prod_keep_backend_chain_selection` |
 | Added EVM chains remain confined to testnet defaults | `added_evm_chains_are_testnet_only` |
+| An enabled chain missing from any wallet/account mapping requests chain synchronization | `enabled_chain_is_missing_when_any_wallet_account_lacks_it` |
+| An enabled chain already present for every wallet/account mapping does not request redundant synchronization | `enabled_chain_is_complete_when_every_wallet_account_has_it` |
 
 Test layer: unit. The tests use static local configuration and synthetic backend chain-code lists;
 they perform no backend calls, database writes, or network requests.
@@ -19,4 +21,7 @@ set and the enabled subset through the same selection rule.
 Known coverage gap: repository-level status persistence is covered by existing chain repository
 tests rather than repeated here.
 
-Run: `cargo test -p wallet-api --lib --no-default-features default_data::chain::tests`.
+Run:
+
+- `cargo test -p wallet-api --lib --no-default-features default_data::chain::tests`
+- `cargo test -p wallet-api --lib --no-default-features domain::chain::tests`

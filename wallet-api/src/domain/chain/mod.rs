@@ -21,8 +21,12 @@ use wallet_chain_interact::{
     ltc::ParseLtcAddress, ton::address::parse_addr_from_bs64_url,
 };
 use wallet_database::{
-    entities::{api_chain::NodeBindType, coin::CoinEntity},
-    repositories::{account::AccountRepo, chain::ChainRepo, node::NodeRepo, wallet::WalletRepo},
+    entities::{
+        account::{AccountEntity, AccountWalletMapping},
+        api_chain::NodeBindType,
+        coin::CoinEntity,
+    },
+    repositories::{account::AccountRepo, chain::ChainRepo, node::NodeRepo},
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
 use wallet_types::chain::{
@@ -37,6 +41,21 @@ pub struct TransferResp {
     pub consumer: Option<BillResourceConsume>,
     pub transaction_time_ms: Option<u128>,
 }
+
+fn has_missing_chain_account(
+    mappings: &[AccountWalletMapping],
+    accounts: &[AccountEntity],
+    chain_code: &str,
+) -> bool {
+    mappings.iter().any(|mapping| {
+        !accounts.iter().any(|account| {
+            account.wallet_address == mapping.wallet_address
+                && account.account_id == mapping.account_id
+                && account.chain_code == chain_code
+        })
+    })
+}
+
 impl TransferResp {
     pub fn new(tx_hash: String, fee: String) -> Self {
         Self { tx_hash, fee, consumer: None, transaction_time_ms: None }
@@ -210,11 +229,11 @@ impl ChainDomain {
         let mut backend_chain_codes = Vec::new();
         let mut has_new_chain = false;
 
-        let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
+        let account_wallet_mappings = AccountRepo::account_wallet_mapping(pool.clone()).await?;
         let account_list = AccountRepo::list(pool.clone()).await?;
         let app_version = super::app::config::ConfigDomain::get_app_version(ctx).await?.app_version;
 
-        if wallet_list.is_empty() {
+        if account_wallet_mappings.is_empty() {
             return Ok(false);
         }
 
@@ -236,9 +255,12 @@ impl ChainDomain {
                 (_, false) => 0,
             };
 
-            if !wallet_list.is_empty()
-                && chain.enable
-                && !account_list.iter().any(|acc_chain| acc_chain.chain_code == chain.chain_code)
+            if chain.enable
+                && has_missing_chain_account(
+                    &account_wallet_mappings,
+                    &account_list,
+                    &chain.chain_code,
+                )
             {
                 has_new_chain = true;
             }
@@ -581,8 +603,42 @@ impl NodeInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::ChainDomain;
+    use super::{ChainDomain, has_missing_chain_account};
+    use wallet_database::entities::account::{AccountEntity, AccountWalletMapping};
     use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
+
+    fn mapping(wallet_address: &str, account_id: u32) -> AccountWalletMapping {
+        AccountWalletMapping {
+            account_id,
+            account_name: format!("account-{account_id}"),
+            wallet_address: wallet_address.to_string(),
+            uid: format!("uid-{wallet_address}"),
+        }
+    }
+
+    fn account(wallet_address: &str, account_id: u32, chain_code: &str) -> AccountEntity {
+        let mut account = AccountEntity::default();
+        account.wallet_address = wallet_address.to_string();
+        account.account_id = account_id;
+        account.chain_code = chain_code.to_string();
+        account
+    }
+
+    #[test]
+    fn enabled_chain_is_missing_when_any_wallet_account_lacks_it() {
+        let mappings = vec![mapping("wallet-a", 1), mapping("wallet-b", 1)];
+        let accounts = vec![account("wallet-a", 1, "eth"), account("wallet-b", 1, "tron")];
+
+        assert!(has_missing_chain_account(&mappings, &accounts, "eth"));
+    }
+
+    #[test]
+    fn enabled_chain_is_complete_when_every_wallet_account_has_it() {
+        let mappings = vec![mapping("wallet-a", 1), mapping("wallet-b", 1)];
+        let accounts = vec![account("wallet-a", 1, "eth"), account("wallet-b", 1, "eth")];
+
+        assert!(!has_missing_chain_account(&mappings, &accounts, "eth"));
+    }
 
     #[test]
     fn check_token_address_normalizes_added_evm_chains() {
