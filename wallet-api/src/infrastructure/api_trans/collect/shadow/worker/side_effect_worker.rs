@@ -1628,6 +1628,11 @@ impl SideEffectWorker {
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),
             ChainCode::Ton => todo!(),
+            _ => {
+                return Err(crate::error::service::ServiceError::Parameter(format!(
+                    "unsupported collect chain: {chain_code}"
+                )));
+            }
         };
         info!(chain_code=%chain_code.to_string(), amount=%amount, source = "side_effect_worker", "Parsed fee estimate successfully");
 

@@ -129,6 +129,7 @@ impl TransactionAdapter {
                 let provider = sui::Provider::new(rpc);
                 Ok(TransactionAdapter::Sui(sui::SuiChain::new(provider)?))
             }
+            _ => Err(chain::Error::Other(format!("unsupported transaction chain: {chain_code}"))),
         }
     }
 }

@@ -154,6 +154,7 @@ impl ApiChainAdapterFactory {
                 }
                 ChainCode::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
                 ChainCode::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+                _ => continue,
             };
 
             // 存入缓存，包含创建时间
@@ -214,6 +215,11 @@ impl ApiChainAdapterFactory {
             ChainCode::Dogcoin => Arc::new(DogeTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
             ChainCode::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
             ChainCode::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            _ => {
+                return Err(ServiceError::Parameter(format!(
+                    "unsupported transaction chain: {chain_code}"
+                )));
+            }
         };
 
         // 存入缓存，包含创建时间

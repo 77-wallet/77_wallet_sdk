@@ -85,7 +85,13 @@ pub fn check_address(
             })?
         }
         wallet_types::chain::chain::ChainCode::BnbSmartChain
-        | wallet_types::chain::chain::ChainCode::Ethereum => {
+        | wallet_types::chain::chain::ChainCode::Ethereum
+        | wallet_types::chain::chain::ChainCode::Polygon
+        | wallet_types::chain::chain::ChainCode::Avalanche
+        | wallet_types::chain::chain::ChainCode::Fantom
+        | wallet_types::chain::chain::ChainCode::Arbitrum
+        | wallet_types::chain::chain::ChainCode::Base
+        | wallet_types::chain::chain::ChainCode::Scroll => {
             wallet_utils::address::parse_eth_address(address).map(|_| true).map_err(|_| {
                 crate::error::business::BusinessError::Account(
                     crate::error::business::account::AccountError::AddressNotCorrect,

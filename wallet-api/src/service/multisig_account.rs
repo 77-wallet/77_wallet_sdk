@@ -52,6 +52,25 @@ use wallet_types::{
 };
 use wallet_utils::serde_func;
 
+fn needs_tron_multisig_account_inspection(chain_code: &str) -> bool {
+    chain_code == chain_code::TRON
+}
+
+#[cfg(test)]
+mod evm_multisig_address_status_tests {
+    use super::needs_tron_multisig_account_inspection;
+
+    #[test]
+    fn polygon_status_does_not_require_a_transaction_adapter() {
+        assert!(!needs_tron_multisig_account_inspection("polygon"));
+    }
+
+    #[test]
+    fn tron_status_still_requires_on_chain_account_inspection() {
+        assert!(needs_tron_multisig_account_inspection("tron"));
+    }
+}
+
 pub struct MultisigAccountService {
     ctx: &'static crate::context::Context,
     backend: Arc<BackendApi>,
@@ -926,13 +945,6 @@ impl MultisigAccountService {
         chain_code: String,
     ) -> Result<AddressStatus, crate::error::service::ServiceError> {
         let core_pool = self.ctx.core_pool()?;
-        let adapter =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
-                &self.ctx,
-                &chain_code,
-            )
-            .await?;
-
         let mut status = AddressStatus { address_status: 0 };
 
         if wallet_database::repositories::multisig_account::MultisigAccountRepo::find_doing_account(
@@ -946,12 +958,17 @@ impl MultisigAccountService {
             status.address_status = 2;
         }
 
-        if let domain::chain::adapter::TransactionAdapter::Tron(tron_chain) = adapter {
-            let account = tron_chain.get_provider().account_info(&address).await?;
-            if account.is_multisig_account() {
-                status.address_status = 1;
+        if needs_tron_multisig_account_inspection(&chain_code) {
+            let adapter =
+                ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &chain_code)
+                    .await?;
+            if let domain::chain::adapter::TransactionAdapter::Tron(tron_chain) = adapter {
+                let account = tron_chain.get_provider().account_info(&address).await?;
+                if account.is_multisig_account() {
+                    status.address_status = 1;
+                }
             }
-        };
+        }
         Ok(status)
     }
 }

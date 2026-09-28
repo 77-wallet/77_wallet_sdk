@@ -37,6 +37,37 @@ pub enum MultisigAdapter {
     Ton(chain::ton::chain::TonChain),
     Sui(chain::sui::SuiChain),
 }
+
+#[cfg(test)]
+mod evm_chain_tests {
+    use super::MultisigAdapter;
+    use wallet_database::entities::chain::ChainWithNode;
+    use wallet_types::chain::chain::ChainCode;
+
+    fn node(chain_code: &str) -> ChainWithNode {
+        ChainWithNode {
+            chain_code: chain_code.to_owned(),
+            rpc_url: "http://127.0.0.1:8545".to_owned(),
+            network: "mainnet".to_owned(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn polygon_uses_evm_multisig_adapter_without_network_access() {
+        let adapter = MultisigAdapter::new(ChainCode::Polygon, node("polygon"), None).unwrap();
+
+        match adapter {
+            MultisigAdapter::Ethereum(chain) => assert_eq!(chain.chain_code, ChainCode::Polygon),
+            _ => panic!("Polygon must use the EVM multisig adapter"),
+        }
+    }
+
+    #[test]
+    fn fantom_remains_outside_this_rollout() {
+        assert!(MultisigAdapter::new(ChainCode::Fantom, node("fantom"), None).is_err());
+    }
+}
 impl std::fmt::Display for MultisigAdapter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -73,7 +104,7 @@ impl MultisigAdapter {
                 let btc_chain = chain::btc::BtcChain::new(config, network, header_opt, timeout)?;
                 Ok(MultisigAdapter::BitCoin(btc_chain))
             }
-            ChainType::Ethereum | ChainType::BnbSmartChain => {
+            ChainType::Ethereum | ChainType::BnbSmartChain | ChainType::Polygon => {
                 let rpc_client = RpcClient::new(&chian_node.rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
 
