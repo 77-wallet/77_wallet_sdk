@@ -1456,6 +1456,7 @@ impl ShadowScanner {
 mod tests {
     use super::*;
     use chrono::Utc;
+    use tempfile::TempDir;
     use tokio::sync::mpsc;
     use wallet_database::{
         entities::{
@@ -1473,6 +1474,31 @@ mod tests {
 
     async fn test_ctx() -> &'static crate::context::Context {
         crate::testkit::context::api_trans_test_ctx().await
+    }
+
+    async fn isolated_test_ctx() -> anyhow::Result<(TempDir, &'static crate::context::Context)> {
+        let temp_dir = tempfile::tempdir()?;
+        let config = crate::config::Config::new(
+            r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+"#,
+        )?;
+        let dirs = crate::dirs::Dirs::new(temp_dir.path().to_str().expect("UTF-8 temp path"))?;
+        let ctx = Box::leak(Box::new(
+            crate::context::Context::new_without_handles_for_test(dirs, config).await?,
+        ));
+        Ok((temp_dir, ctx))
     }
 
     fn base_withdraw(trade_no: &str) -> ApiWithdrawEntity {
@@ -1702,8 +1728,12 @@ mod tests {
 
     #[tokio::test]
     async fn withdraw_fee_estimate_snapshot_scan_dispatches_before_audit() -> anyhow::Result<()> {
-        let ctx = test_ctx().await;
+        let (_temp_dir, ctx) = isolated_test_ctx().await?;
         let pool = ctx.api_transaction_pool()?;
+        let trade_no = format!(
+            "W_fee_estimate_before_audit_{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        );
         let (intent_tx, mut intent_rx) = mpsc::channel(100);
         let scanner = ShadowScanner::new(ctx, ScannerConfig::default(), intent_tx, None);
 
@@ -1718,7 +1748,7 @@ mod tests {
             "tron",
             AssetTokenKey::Native,
             "TRX",
-            "W_fee_estimate_before_audit",
+            &trade_no,
             None,
             None,
             None,
@@ -1739,8 +1769,8 @@ mod tests {
         let intent = intent_rx.try_recv().expect("fee estimate intent should be dispatched");
         assert!(matches!(
             intent,
-            WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(ref trade_no))
-                if trade_no == "W_fee_estimate_before_audit"
+            WithdrawIntent::Chain(WithdrawChainIntent::EstimateFee(ref dispatched_trade_no))
+                if dispatched_trade_no == &trade_no
         ));
 
         Ok(())

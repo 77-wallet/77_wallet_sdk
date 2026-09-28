@@ -71,10 +71,10 @@ async fn collect_repeat_should_still_write_transaction_time() {
 }
 
 #[tokio::test]
-async fn collect_not_found_should_error() {
+async fn collect_not_found_is_ignored_idempotently() {
     let db = TestFundsDb::new().await;
     let res = ApiCollectDomain::confirm_tx_in_pool(&db.pool, "T_collect_missing", true, 0).await;
-    assert!(res.is_err(), "missing trade_no must error to avoid ACK");
+    assert!(res.is_ok(), "a cleaned collect row is an idempotent no-op");
 }
 
 #[tokio::test]
@@ -232,10 +232,10 @@ async fn fee_repeat_should_still_write_transaction_time() {
 }
 
 #[tokio::test]
-async fn fee_not_found_should_error() {
+async fn fee_not_found_is_ignored_idempotently() {
     let db = TestFundsDb::new().await;
     let res = ApiFeeDomain::confirm_tx_in_pool(&db.pool, "T_fee_missing", true).await;
-    assert!(res.is_err(), "missing trade_no must error to avoid ACK");
+    assert!(res.is_ok(), "a cleaned fee row is an idempotent no-op");
 }
 
 #[tokio::test]

@@ -1290,7 +1290,10 @@ mod tests {
             ApiTradeType::Withdraw,
         )
         .await?;
-        assert!(withdraw.resource_gate_released_at.is_some());
+        assert!(
+            withdraw.resource_gate_released_at.is_none(),
+            "the result fact must not release the origin gate before its ACK is sent"
+        );
         assert_eq!(
             withdraw.resource_gate_result,
             Some(ApiResourceGateResult::PlatformDelegateSuccess)

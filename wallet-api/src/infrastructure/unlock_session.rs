@@ -61,6 +61,12 @@ pub(crate) async fn wallet_unlock_session_snapshot() -> Option<WalletUnlockSessi
 
 pub(crate) async fn rotate_wallet_unlock_session_if_due() -> Result<bool, ServiceError> {
     let context = runtime()?.context;
+    rotate_wallet_unlock_session_if_due_in_context(context).await
+}
+
+async fn rotate_wallet_unlock_session_if_due_in_context(
+    context: &'static Context,
+) -> Result<bool, ServiceError> {
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Ok(false);
     };
@@ -115,6 +121,10 @@ pub(crate) async fn start_wallet_unlock_session_rotation_task(
 
 pub(crate) async fn wallet_unlock_token() -> Result<String, ServiceError> {
     let context = runtime()?.context;
+    wallet_unlock_token_from_context(context).await
+}
+
+async fn wallet_unlock_token_from_context(context: &Context) -> Result<String, ServiceError> {
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Err(crate::error::system::SystemError::SystemNotReady.into());
     };
@@ -124,6 +134,13 @@ pub(crate) async fn wallet_unlock_token() -> Result<String, ServiceError> {
 
 pub(crate) async fn wallet_unlock_token_is_active(token: &str) -> Result<bool, ServiceError> {
     let context = runtime()?.context;
+    wallet_unlock_token_is_active_in_context(context, token).await
+}
+
+async fn wallet_unlock_token_is_active_in_context(
+    context: &Context,
+    token: &str,
+) -> Result<bool, ServiceError> {
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Ok(false);
     };
@@ -135,6 +152,13 @@ pub(crate) async fn wallet_unlock_material(
     wallet_address: &str,
 ) -> Result<WalletUnlockMaterial, ServiceError> {
     let context = runtime()?.context;
+    wallet_unlock_material_from_context(context, wallet_address).await
+}
+
+async fn wallet_unlock_material_from_context(
+    context: &Context,
+    wallet_address: &str,
+) -> Result<WalletUnlockMaterial, ServiceError> {
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Err(crate::error::system::SystemError::SystemNotReady.into());
     };
@@ -150,6 +174,14 @@ pub(crate) async fn upsert_wallet_unlock_material(
     wallet_password: &str,
 ) -> Result<(), ServiceError> {
     let context = runtime()?.context;
+    upsert_wallet_unlock_material_in_context(context, wallet_address, wallet_password).await
+}
+
+async fn upsert_wallet_unlock_material_in_context(
+    context: &'static Context,
+    wallet_address: &str,
+    wallet_password: &str,
+) -> Result<(), ServiceError> {
     let pool = context.api_wallet_pool()?;
     let Some(wallet) =
         wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_address(
@@ -202,13 +234,9 @@ pub(crate) async fn upsert_wallet_unlock_material(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        ApiWalletBackend,
-        context::{get_context, init_context_with_api_wallet_backend},
-        dirs::Dirs,
-        domain::api_wallet::wallet::ApiWalletDomain,
-    };
+    use crate::{ApiWalletBackend, dirs::Dirs, domain::api_wallet::wallet::ApiWalletDomain};
     use async_trait::async_trait;
+    use serial_test::serial;
     use std::{
         collections::HashMap,
         sync::{Arc, Once},
@@ -236,8 +264,6 @@ mod tests {
         },
     };
 
-    const TEST_SN: &str = "context-unlock-session-sn";
-    const TEST_DEVICE_TYPE: &str = "ANDROID";
     static TEST_TRACING: Once = Once::new();
 
     fn init_test_tracing() {
@@ -249,9 +275,8 @@ mod tests {
         });
     }
 
-    #[derive(Clone)]
     struct UnlockSessionTestEnv {
-        _tempdir: Arc<TempDir>,
+        _tempdir: TempDir,
         context: &'static Context,
     }
 
@@ -337,19 +362,10 @@ mod tests {
         }
     }
 
-    static TEST_ENV: once_cell::sync::Lazy<tokio::sync::OnceCell<UnlockSessionTestEnv>> =
-        once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
-
-    async fn unlock_session_env() -> &'static UnlockSessionTestEnv {
+    async fn unlock_session_env() -> UnlockSessionTestEnv {
         init_test_tracing();
-        TEST_ENV
-            .get_or_init(|| async {
-                unsafe {
-                    std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
-                }
-
-                let config = crate::config::Config::new(
-                    r#"
+        let config = crate::config::Config::new(
+            r#"
 app_code: "test"
 crypto:
   aes_key: "1234567890abcdef"
@@ -368,34 +384,25 @@ oss:
   bucket_name: "bucket"
   endpoint: "oss-endpoint"
 "#,
-                )
-                .expect("parse test config");
-
-                let tempdir = TempDir::new().expect("create tempdir");
-                let dirs = Dirs::new(tempdir.path().to_str().expect("utf8 root dir"))
-                    .expect("create dirs");
-                let context = init_context_with_api_wallet_backend(
-                    TEST_SN,
-                    TEST_DEVICE_TYPE,
-                    dirs,
-                    None,
-                    config,
-                    Arc::new(NoopApiWalletBackend::default()),
-                )
+        )
+        .expect("parse test config");
+        let tempdir = TempDir::new().expect("create tempdir");
+        let dirs =
+            Dirs::new(tempdir.path().to_str().expect("utf8 temp path")).expect("create dirs");
+        let context = Box::leak(Box::new(
+            Context::new_without_handles_for_test(dirs, config)
                 .await
-                .expect("init test context");
-
-                UnlockSessionTestEnv { _tempdir: Arc::new(tempdir), context }
-            })
-            .await
+                .expect("create isolated test context"),
+        ));
+        UnlockSessionTestEnv { _tempdir: tempdir, context }
     }
 
     #[tokio::test]
+    #[serial]
     async fn wallet_unlock_session_rotation_logs() {
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = _env.context;
-        start_wallet_unlock_session_rotation_task(context).await.expect("init runtime");
 
         let wallet_address = "0xcontext-unlock-session";
         let unlock_material = WalletUnlockMaterial::new(vec![0x11; 32]);
@@ -415,14 +422,19 @@ oss:
         context.set_wallet_unlock_session(unlock_session).await.expect("store unlock session");
 
         eprintln!("[context-unlock] 3) read token from context");
-        let stored_token = wallet_unlock_token().await.expect("read token");
+        let stored_token = wallet_unlock_token_from_context(context).await.expect("read token");
         eprintln!("[context-unlock] 3.1) token roundtrip ok");
-        assert!(wallet_unlock_token_is_active(&stored_token).await.expect("check token active"));
+        assert!(
+            wallet_unlock_token_is_active_in_context(context, &stored_token)
+                .await
+                .expect("check token active")
+        );
         assert_eq!(stored_token, session_token);
 
         eprintln!("[context-unlock] 4) read wallet material from context");
-        let stored_material =
-            wallet_unlock_material(wallet_address).await.expect("read wallet material");
+        let stored_material = wallet_unlock_material_from_context(context, wallet_address)
+            .await
+            .expect("read wallet material");
         eprintln!("[context-unlock] 4.1) wallet material ready");
         assert_eq!(stored_material.smk(), unlock_material.smk());
 
@@ -432,15 +444,19 @@ oss:
                 + Duration::from_millis(100),
         )
         .await;
-        let rotated = rotate_wallet_unlock_session_if_due().await.expect("rotate due session");
+        let rotated = rotate_wallet_unlock_session_if_due_in_context(context)
+            .await
+            .expect("rotate due session");
         eprintln!("[context-unlock] 5.1) rotate helper returned {rotated}");
 
-        let token_after_rotate = wallet_unlock_token().await.expect("read token after rotate");
+        let token_after_rotate =
+            wallet_unlock_token_from_context(context).await.expect("read token after rotate");
         eprintln!("[context-unlock] 5.2) token after rotate");
         assert!(!token_after_rotate.is_empty());
 
-        let material_after_rotate =
-            wallet_unlock_material(wallet_address).await.expect("read material after rotate");
+        let material_after_rotate = wallet_unlock_material_from_context(context, wallet_address)
+            .await
+            .expect("read material after rotate");
         eprintln!("[context-unlock] 5.3) material after rotate");
         assert_eq!(material_after_rotate.smk(), unlock_material.smk());
         if rotated {
@@ -449,11 +465,11 @@ oss:
     }
 
     #[tokio::test]
+    #[serial]
     async fn wallet_unlock_session_rotation_rebuild_logs() {
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = _env.context;
-        start_wallet_unlock_session_rotation_task(context).await.expect("init runtime");
 
         let wallet_address = "0xcontext-unlock-session-expired";
         let unlock_material = WalletUnlockMaterial::new(vec![0x22; 32]);
@@ -472,27 +488,31 @@ oss:
             .expect("store rotation-due unlock session");
 
         eprintln!("[context-unlock] rotation 2) run rotation helper");
-        let rotated = rotate_wallet_unlock_session_if_due().await.expect("rotate due session");
+        let rotated = rotate_wallet_unlock_session_if_due_in_context(context)
+            .await
+            .expect("rotate due session");
         eprintln!("[context-unlock] rotation 2.1) rotate returned {rotated}");
         assert!(rotated);
 
         eprintln!("[context-unlock] rotation 3) verify token/material are still available");
-        let token = wallet_unlock_token().await.expect("token should remain available");
+        let token =
+            wallet_unlock_token_from_context(context).await.expect("token should remain available");
         eprintln!("[context-unlock] rotation 3.1) token read ok");
         assert!(!token.is_empty());
 
-        let material =
-            wallet_unlock_material(wallet_address).await.expect("material should remain available");
+        let material = wallet_unlock_material_from_context(context, wallet_address)
+            .await
+            .expect("material should remain available");
         eprintln!("[context-unlock] rotation 3.2) material read ok");
         assert_eq!(material.smk(), unlock_material.smk());
     }
 
     #[tokio::test]
+    #[serial]
     async fn upsert_wallet_unlock_material_keeps_existing_session() {
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = _env.context;
-        start_wallet_unlock_session_rotation_task(context).await.expect("init runtime");
 
         let wallet1_address = "0xcontext-unlock-wallet-1";
         let wallet2_address = "0xcontext-unlock-wallet-2";
@@ -568,19 +588,25 @@ oss:
         );
         context.set_wallet_unlock_session(unlock_session).await.expect("store initial session");
 
-        upsert_wallet_unlock_material(wallet3_address, password1)
+        upsert_wallet_unlock_material_in_context(context, wallet3_address, password1)
             .await
             .expect("upsert wallet 3 unlock material");
 
-        let stored_token = wallet_unlock_token().await.expect("token remains available");
+        let stored_token =
+            wallet_unlock_token_from_context(context).await.expect("token remains available");
         assert_eq!(stored_token, session_token);
-        assert!(wallet_unlock_token_is_active(&stored_token).await.expect("token active"));
+        assert!(
+            wallet_unlock_token_is_active_in_context(context, &stored_token)
+                .await
+                .expect("token active")
+        );
 
-        let wallet3_material =
-            wallet_unlock_material(wallet3_address).await.expect("wallet 3 material");
+        let wallet3_material = wallet_unlock_material_from_context(context, wallet3_address)
+            .await
+            .expect("wallet 3 material");
         assert!(!wallet3_material.smk().is_empty());
 
-        let wallet2_material = wallet_unlock_material(wallet2_address)
+        let wallet2_material = wallet_unlock_material_from_context(context, wallet2_address)
             .await
             .expect_err("wallet 2 should not be touched by wallet 3 upsert");
         assert!(matches!(
@@ -592,11 +618,11 @@ oss:
     }
 
     #[tokio::test]
+    #[serial]
     async fn upsert_wallet_unlock_material_creates_session_when_absent() {
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = _env.context;
-        start_wallet_unlock_session_rotation_task(context).await.expect("init runtime");
 
         let wallet_address = "0xcontext-unlock-wallet-new";
         let password = "unlock-password-new";
@@ -617,15 +643,21 @@ oss:
             .await
             .expect("upsert wallet");
 
-        upsert_wallet_unlock_material(wallet_address, password)
+        upsert_wallet_unlock_material_in_context(context, wallet_address, password)
             .await
             .expect("upsert wallet unlock material");
 
-        let stored_token = wallet_unlock_token().await.expect("token available");
-        assert!(wallet_unlock_token_is_active(&stored_token).await.expect("token active"));
+        let stored_token =
+            wallet_unlock_token_from_context(context).await.expect("token available");
+        assert!(
+            wallet_unlock_token_is_active_in_context(context, &stored_token)
+                .await
+                .expect("token active")
+        );
 
-        let material =
-            wallet_unlock_material(wallet_address).await.expect("wallet material available");
+        let material = wallet_unlock_material_from_context(context, wallet_address)
+            .await
+            .expect("wallet material available");
         assert!(!material.smk().is_empty());
     }
 }
