@@ -1,3 +1,4 @@
+mod evm_fee;
 mod transaction_adapter;
 use crate::context::Context;
 pub use transaction_adapter::*;
