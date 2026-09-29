@@ -1,8 +1,5 @@
-mod scroll;
-
-use super::ChainAdapterFactory;
 use crate::{
-    context::Context, domain::chain::transaction::ChainTransDomain, error::service::ServiceError,
+    domain::chain::transaction::ChainTransDomain, error::service::ServiceError,
     request::transaction::BaseTransferReq, response_vo::FeeDetails,
 };
 use wallet_chain_interact::{
@@ -10,24 +7,12 @@ use wallet_chain_interact::{
     types::Transaction as _,
 };
 use wallet_transport_backend::{api::BackendApi, response_vo::coin::TokenCurrency};
-use wallet_types::chain::chain::ChainCode;
 use wallet_utils::unit;
 
-#[derive(Debug, PartialEq, Eq)]
-enum AdditionalFeePolicy {
-    None,
-    ScrollRpc,
-}
-
-fn additional_fee_policy(chain_code: ChainCode) -> AdditionalFeePolicy {
-    match chain_code {
-        ChainCode::Scroll => AdditionalFeePolicy::ScrollRpc,
-        _ => AdditionalFeePolicy::None,
-    }
-}
+#[cfg(test)]
+mod flow_tests;
 
 pub(super) async fn estimate_transfer_fee(
-    ctx: &'static Context,
     chain: &EthChain,
     req: &BaseTransferReq,
     backend_api: &BackendApi,
@@ -56,19 +41,7 @@ pub(super) async fn estimate_transfer_fee(
     let gas_oracle =
         ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api).await?;
     let params = TransferOpt::new(&req.from, &req.to, value, token_address)?;
-    let additional_fee = match additional_fee_policy(chain.chain_code) {
-        AdditionalFeePolicy::None => None,
-        AdditionalFeePolicy::ScrollRpc => {
-            let tx = params.build_transaction()?;
-            let node = ChainAdapterFactory::get_chain_node_with_ctx(ctx, &req.chain_code).await?;
-            let headers = if super::rpc_need_header(&node.rpc_url)? {
-                Some(ctx.get_rpc_header().await?)
-            } else {
-                None
-            };
-            Some(scroll::estimate_l1_data_fee(&node.rpc_url, headers, tx).await?)
-        }
-    };
+    let additional_fee = chain.estimate_additional_fee(params.build_transaction()?).await?;
     let gas = chain.estimate_gas(params).await?;
     let fee = FeeDetails::try_from((gas_oracle, gas.consume))?;
     let fee = match additional_fee {
@@ -77,6 +50,3 @@ pub(super) async fn estimate_transfer_fee(
     };
     Ok(wallet_utils::serde_func::serde_to_string(&fee.to_resp(token_currency, currency))?)
 }
-
-#[cfg(test)]
-mod tests;

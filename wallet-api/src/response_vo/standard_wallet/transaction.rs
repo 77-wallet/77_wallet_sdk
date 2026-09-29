@@ -427,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn scroll_l1_fee_is_added_to_each_quote_without_changing_execution_fee_setting() {
+    fn evm_additional_fee_is_added_to_each_quote_without_changing_execution_fee_setting() {
         let gas_oracle = || GasOracle {
             safe_gas_price: Some("1".to_string()),
             propose_gas_price: Some("2".to_string()),

@@ -716,7 +716,6 @@ impl TransactionAdapter {
 
         let res = match self {
             Self::Ethereum(chain) => Ok(evm_fee::estimate_transfer_fee(
-                ctx,
                 chain,
                 &req,
                 backend_api,
