@@ -5,6 +5,44 @@ use support::{EvmDeployScenario, FakeEvmRpc};
 
 #[tokio::test]
 #[serial]
+async fn evm_safe_pending_receipt_does_not_rebroadcast_deployment() {
+    for (chain_code, chain_name, chain_id) in [
+        ("eth", "Ethereum", None),
+        ("bnb", "BNB", None),
+        ("polygon", "Polygon", Some("0x89")),
+        ("avalanche", "Avalanche", Some("0xa86a")),
+        ("arbitrum", "Arbitrum", Some("0xa4b1")),
+        ("base", "Base", Some("0x2105")),
+        ("scroll", "Scroll", Some("0x82750")),
+    ] {
+        // Given an already broadcast Safe deployment with no available receipt.
+        let mut responses = Vec::new();
+        if let Some(chain_id) = chain_id {
+            responses.extend([
+                ("eth_chainId", chain_id),
+                ("eth_getCode", "0x6001"),
+                ("eth_getCode", "0x6002"),
+            ]);
+        }
+        responses.push(("eth_getTransactionReceipt", "unavailable"));
+        let rpc = FakeEvmRpc::new(&responses);
+        let scenario = EvmDeployScenario::given(chain_code, chain_name, &rpc.url).await;
+        scenario.given_paid_pending_deployment_with_hash().await;
+
+        // When the user retries before a receipt can be read.
+        scenario.when_retry_pending_deployment().await.expect("retain pending deployment");
+
+        // Then the original transaction and Safe identity stay pending with no broadcast.
+        scenario.then_pending_deployment_is_unchanged().await;
+        scenario.then_stop_syncing().await;
+        let methods = rpc.finish();
+        assert_eq!(methods.last().map(String::as_str), Some("eth_getTransactionReceipt"));
+        assert_eq!(methods.len(), if chain_id.is_some() { 4 } else { 1 });
+    }
+}
+
+#[tokio::test]
+#[serial]
 async fn legacy_evm_safe_paid_retry_reuses_stored_address() {
     for (chain_code, chain_name) in [("eth", "Ethereum"), ("bnb", "BNB")] {
         // Given a paid Safe account whose previous attempt persisted an address and salt.
@@ -75,6 +113,39 @@ fn polygon_deployment_receipt(success: bool) -> Vec<(&'static str, serde_json::V
         "transactions": [], "uncles": []
     });
     vec![("eth_getTransactionReceipt", receipt), ("eth_getBlockByHash", block)]
+}
+
+#[tokio::test]
+#[serial]
+async fn polygon_failed_receipt_allows_retry_to_reach_signer_lookup() {
+    // Given a paid deployment with a confirmed failed receipt.
+    let mut responses = vec![
+        ("eth_chainId", serde_json::json!("0x89")),
+        ("eth_getCode", serde_json::json!("0x6001")),
+        ("eth_getCode", serde_json::json!("0x6002")),
+    ];
+    responses.extend(polygon_deployment_receipt(false));
+    let rpc = FakeEvmRpc::new_json(responses);
+    let scenario = EvmDeployScenario::given("polygon", "Polygon", &rpc.url).await;
+    scenario.given_paid_pending_deployment_with_hash().await;
+    scenario.then_stop_syncing().await;
+
+    // When retrying without a signer after the failed receipt is read.
+    let error = scenario.when_retry_pending_deployment().await.unwrap_err();
+
+    // Then retry reaches signer lookup, retaining the original Safe identity.
+    assert!(error.contains("Account not found"), "{error}");
+    scenario.then_failed_deployment_with_hash_is_unchanged().await;
+    assert_eq!(
+        rpc.finish(),
+        [
+            "eth_chainId",
+            "eth_getCode",
+            "eth_getCode",
+            "eth_getTransactionReceipt",
+            "eth_getBlockByHash"
+        ]
+    );
 }
 
 #[tokio::test]

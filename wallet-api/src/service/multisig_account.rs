@@ -56,6 +56,19 @@ fn needs_tron_multisig_account_inspection(chain_code: &str) -> bool {
     chain_code == chain_code::TRON
 }
 
+fn is_evm_safe_chain(chain_code: &str) -> bool {
+    matches!(
+        chain_code,
+        chain_code::ETHEREUM
+            | chain_code::BNB
+            | chain_code::POLYGON
+            | chain_code::AVALANCHE
+            | chain_code::ARBITRUM
+            | chain_code::BASE
+            | chain_code::SCROLL
+    )
+}
+
 #[cfg(test)]
 mod evm_multisig_address_status_tests {
     use super::needs_tron_multisig_account_inspection;
@@ -647,6 +660,9 @@ impl MultisigAccountService {
                     if tx.status != 3 {
                         return Ok(());
                     }
+                } else if is_evm_safe_chain(&multisig_account.chain_code) {
+                    // An unknown receipt is not proof that the deployment failed.
+                    return Ok(());
                 }
             }
 
@@ -657,16 +673,8 @@ impl MultisigAccountService {
                 MultisigAccountStatus::OnChianPending.to_i8().to_string()
             };
 
-            let multisig_account = if matches!(
-                multisig_account.chain_code.as_str(),
-                chain_code::ETHEREUM
-                    | chain_code::BNB
-                    | chain_code::POLYGON
-                    | chain_code::AVALANCHE
-                    | chain_code::ARBITRUM
-                    | chain_code::BASE
-                    | chain_code::SCROLL
-            ) && !multisig_account.address.is_empty()
+            let multisig_account = if is_evm_safe_chain(&multisig_account.chain_code)
+                && !multisig_account.address.is_empty()
                 && !multisig_account.salt.is_empty()
             {
                 // A retry must deploy the Safe whose address was already persisted.
