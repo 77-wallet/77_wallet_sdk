@@ -650,9 +650,6 @@ impl MultisigAccountService {
                 }
             }
 
-            // fetch multisig account address
-            let resp = multisig_adapter.multisig_address(&multisig_account, &member).await?;
-
             // if chain_code is bitcoin the status is success on chain
             let status = if multisig_account.chain_code == chain_code::BTC {
                 MultisigAccountStatus::OnChain.to_i8().to_string()
@@ -660,38 +657,55 @@ impl MultisigAccountService {
                 MultisigAccountStatus::OnChianPending.to_i8().to_string()
             };
 
-            let hash_map = HashMap::from([
-                ("address".to_string(), resp.multisig_address.clone()),
-                ("salt".to_string(), resp.salt.clone()),
-                ("authority_addr".to_string(), resp.authority_address.clone()),
-                ("updated_at".to_string(), time.clone()),
-            ]);
-            let multisig_account =
-                wallet_database::repositories::multisig_account::MultisigAccountRepo::update_by_id(
+            let multisig_account = if matches!(
+                multisig_account.chain_code.as_str(),
+                chain_code::ETHEREUM
+                    | chain_code::BNB
+                    | chain_code::POLYGON
+                    | chain_code::AVALANCHE
+                    | chain_code::ARBITRUM
+                    | chain_code::BASE
+                    | chain_code::SCROLL
+            ) && !multisig_account.address.is_empty()
+                && !multisig_account.salt.is_empty()
+            {
+                // A retry must deploy the Safe whose address was already persisted.
+                multisig_account.clone()
+            } else {
+                let resp = multisig_adapter.multisig_address(&multisig_account, &member).await?;
+                let hash_map = HashMap::from([
+                    ("address".to_string(), resp.multisig_address.clone()),
+                    ("salt".to_string(), resp.salt.clone()),
+                    ("authority_addr".to_string(), resp.authority_address.clone()),
+                    ("updated_at".to_string(), time.clone()),
+                ]);
+                let multisig_account = wallet_database::repositories::multisig_account::MultisigAccountRepo::update_by_id(
                     &core_pool,
                     &multisig_account.id,
                     hash_map,
                 )
                 .await?;
 
-            let pool = self.ctx.core_pool()?;
+                multisig_account
+            };
 
-            // 初始化默认资产资产(发起方如果是波场的情况单独处理,将这个地址的其他资产也同步为多签的)
+            // 地址保存后若资产初始化曾中断，重试仍需补齐默认资产。
             AssetsDomain::init_default_multisig_assets(
                 self.ctx,
-                resp.multisig_address.clone(),
+                multisig_account.address.clone(),
                 multisig_account.chain_code.clone(),
             )
             .await?;
             if multisig_account.chain_code.as_str() == chain_code::TRON {
+                let pool = self.ctx.core_pool()?;
                 AssetsRepo::update_tron_multisig_assets(
                     &pool,
-                    &resp.multisig_address,
+                    &multisig_account.address,
                     &multisig_account.chain_code,
                     CoinMultisigStatus::IsMultisig.to_i8(),
                 )
                 .await?;
-            };
+            }
 
             // 部署多签账户到链上
             let hash = self

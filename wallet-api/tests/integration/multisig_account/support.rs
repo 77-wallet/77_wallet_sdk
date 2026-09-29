@@ -95,6 +95,45 @@ impl EvmDeployScenario {
         .expect("mark deployment pending");
     }
 
+    pub(super) async fn given_paid_failed_deployment_with_address(&self) {
+        let pool = open_core_pool(&self.env.db_dir).await;
+        MultisigAccountRepo::update_by_id(
+            &pool,
+            &self.account_id,
+            [
+                ("pay_status".to_string(), "1".to_string()),
+                ("status".to_string(), "4".to_string()),
+                ("address".to_string(), "0x2222222222222222222222222222222222222222".to_string()),
+                ("salt".to_string(), "12345".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        )
+        .await
+        .expect("seed failed deployment with stored Safe address");
+    }
+
+    pub(super) async fn when_retry_deployment_without_signer(&self) -> String {
+        self.env
+            .manager
+            .deploy_multisig_account(self.account_id.clone(), None, None, "unused".to_string())
+            .await
+            .expect_err("missing signer must reject deployment")
+            .to_string()
+    }
+
+    pub(super) async fn then_stored_address_is_unchanged(&self) {
+        let pool = open_core_pool(&self.env.db_dir).await;
+        let account = MultisigAccountRepo::find_by_id(&pool, &self.account_id)
+            .await
+            .expect("load account")
+            .expect("account exists");
+        assert_eq!(account.address, "0x2222222222222222222222222222222222222222");
+        assert_eq!(account.salt, "12345");
+        assert_eq!(account.status, 4);
+        assert!(account.deploy_hash.is_empty());
+    }
+
     pub(super) async fn when_sync_deployment(&self) -> i8 {
         self.env
             .manager

@@ -3,6 +3,54 @@ mod support;
 use serial_test::serial;
 use support::{EvmDeployScenario, FakeEvmRpc};
 
+#[tokio::test]
+#[serial]
+async fn legacy_evm_safe_paid_retry_reuses_stored_address() {
+    for (chain_code, chain_name) in [("eth", "Ethereum"), ("bnb", "BNB")] {
+        // Given a paid Safe account whose previous attempt persisted an address and salt.
+        let rpc = FakeEvmRpc::new(&[]);
+        let scenario = EvmDeployScenario::given(chain_code, chain_name, &rpc.url).await;
+        scenario.given_paid_failed_deployment_with_address().await;
+
+        // When the retry reaches the unavailable initiator signer.
+        let error = scenario.when_retry_deployment_without_signer().await;
+
+        // Then no new address is derived and the original Safe identity remains.
+        assert!(error.contains("Account not found"), "{chain_code}: {error}");
+        scenario.then_stored_address_is_unchanged().await;
+        assert!(rpc.finish().is_empty());
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn new_evm_chains_paid_retry_reuses_stored_safe_address_before_signer_lookup() {
+    for (chain_code, chain_name, chain_id) in [
+        ("polygon", "Polygon", "0x89"),
+        ("avalanche", "Avalanche", "0xa86a"),
+        ("arbitrum", "Arbitrum", "0xa4b1"),
+        ("base", "Base", "0x2105"),
+        ("scroll", "Scroll", "0x82750"),
+    ] {
+        // Given a paid Safe account whose previous deployment saved its address.
+        let rpc = FakeEvmRpc::new(&[
+            ("eth_chainId", chain_id),
+            ("eth_getCode", "0x6001"),
+            ("eth_getCode", "0x6002"),
+        ]);
+        let scenario = EvmDeployScenario::given(chain_code, chain_name, &rpc.url).await;
+        scenario.given_paid_failed_deployment_with_address().await;
+
+        // When retrying without an available initiator signer.
+        let error = scenario.when_retry_deployment_without_signer().await;
+
+        // Then derivation is skipped and the stored Safe identity is retained.
+        assert!(error.contains("Account not found"), "{chain_code}: {error}");
+        scenario.then_stored_address_is_unchanged().await;
+        assert_eq!(rpc.finish(), ["eth_chainId", "eth_getCode", "eth_getCode"]);
+    }
+}
+
 fn polygon_deployment_receipt(success: bool) -> Vec<(&'static str, serde_json::Value)> {
     let hash = format!("0x{}", "11".repeat(32));
     let zero_hash = format!("0x{}", "00".repeat(32));
