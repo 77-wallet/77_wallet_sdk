@@ -77,6 +77,15 @@ mod evm_chain_tests {
     }
 
     #[test]
+    fn arbitrum_uses_evm_multisig_adapter_without_network_access() {
+        let adapter = MultisigAdapter::new(ChainCode::Arbitrum, node("arbitrum"), None).unwrap();
+        match adapter {
+            MultisigAdapter::Ethereum(chain) => assert_eq!(chain.chain_code, ChainCode::Arbitrum),
+            _ => panic!("Arbitrum must use the EVM multisig adapter"),
+        }
+    }
+
+    #[test]
     fn fantom_remains_outside_this_rollout() {
         assert!(MultisigAdapter::new(ChainCode::Fantom, node("fantom"), None).is_err());
     }
@@ -145,7 +154,10 @@ impl std::fmt::Display for MultisigAdapter {
 impl MultisigAdapter {
     pub(crate) async fn preflight_safe_deployment(&self) -> Result<(), chain::Error> {
         if let Self::Ethereum(chain) = self {
-            if matches!(chain.chain_code, ChainType::Polygon | ChainType::Avalanche) {
+            if matches!(
+                chain.chain_code,
+                ChainType::Polygon | ChainType::Avalanche | ChainType::Arbitrum
+            ) {
                 chain.preflight_safe_deployment().await?;
             }
         }
@@ -176,7 +188,8 @@ impl MultisigAdapter {
             ChainType::Ethereum
             | ChainType::BnbSmartChain
             | ChainType::Polygon
-            | ChainType::Avalanche => {
+            | ChainType::Avalanche
+            | ChainType::Arbitrum => {
                 let rpc_client = RpcClient::new(&chian_node.rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
 

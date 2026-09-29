@@ -116,3 +116,39 @@ async fn avalanche_address_derivation_stops_when_safe_singleton_is_missing() {
     scenario.then_account_unchanged().await;
     assert_eq!(rpc.finish(), ["eth_chainId", "eth_getCode", "eth_getCode"]);
 }
+
+#[tokio::test]
+#[serial]
+async fn wrong_arbitrum_rpc_stops_before_service_fee_and_keeps_account_unchanged() {
+    // Given an unpaid Arbitrum multisig account and an RPC for Ethereum.
+    let rpc = FakeEvmRpc::new(&[("eth_chainId", "0x1")]);
+    let scenario = EvmDeployScenario::given("arbitrum", "Arbitrum", &rpc.url).await;
+
+    // When deployment starts, Safe preflight rejects the RPC.
+    let error = scenario.when_deploy_without_payer().await.unwrap_err();
+
+    // Then no service fee is attempted and durable account state is unchanged.
+    assert!(error.contains("expected 42161"), "{error}");
+    scenario.then_account_unchanged().await;
+    assert_eq!(rpc.finish(), ["eth_chainId"]);
+}
+
+#[tokio::test]
+#[serial]
+async fn valid_arbitrum_rpc_reaches_service_fee_payer_gate_without_mutating_account() {
+    // Given an unpaid Arbitrum multisig account and both Safe contracts.
+    let rpc = FakeEvmRpc::new(&[
+        ("eth_chainId", "0xa4b1"),
+        ("eth_getCode", "0x6001"),
+        ("eth_getCode", "0x6002"),
+    ]);
+    let scenario = EvmDeployScenario::given("arbitrum", "Arbitrum", &rpc.url).await;
+
+    // When deployment starts without a service fee payer.
+    let error = scenario.when_deploy_without_payer().await.unwrap_err();
+
+    // Then preflight completed before payer validation and no account write occurred.
+    assert!(error.contains("PayerNeed"), "{error}");
+    scenario.then_account_unchanged().await;
+    assert_eq!(rpc.finish(), ["eth_chainId", "eth_getCode", "eth_getCode"]);
+}
