@@ -6,19 +6,29 @@ use std::{
     time::{Duration, Instant},
 };
 
+use wallet_api::domain::chain::adapter::MultisigAdapter;
 use wallet_database::{
     entities::{
-        api_chain::NodeBindType, chain::ChainCreateVo, multisig_account::NewMultisigAccountEntity,
-        multisig_member::MemberVo, node::NodeCreateVo,
+        api_chain::NodeBindType,
+        chain::{ChainCreateVo, ChainWithNode},
+        multisig_account::NewMultisigAccountEntity,
+        multisig_member::MemberVo,
+        node::NodeCreateVo,
     },
-    repositories::{chain::ChainRepo, multisig_account::MultisigAccountRepo, node::NodeRepo},
+    repositories::{
+        chain::ChainRepo, multisig_account::MultisigAccountRepo,
+        multisig_member::MultisigMemberRepo, node::NodeRepo,
+    },
 };
+use wallet_types::chain::chain::ChainCode;
 
 use crate::harness::{TestEnv, ensure_env, next_tag, open_core_pool};
 
 pub(super) struct EvmDeployScenario {
     env: &'static TestEnv,
     account_id: String,
+    chain_code: String,
+    rpc_url: String,
 }
 
 impl EvmDeployScenario {
@@ -66,7 +76,33 @@ impl EvmDeployScenario {
         MultisigAccountRepo::create_with_member(&pool, &account)
             .await
             .expect("seed EVM multisig account");
-        Self { env, account_id }
+        Self { env, account_id, chain_code: chain_code.to_string(), rpc_url: rpc_url.to_string() }
+    }
+
+    pub(super) async fn when_derive_address(&self) -> Result<(String, String), String> {
+        let pool = open_core_pool(&self.env.db_dir).await;
+        let account = MultisigAccountRepo::find_by_id(&pool, &self.account_id)
+            .await
+            .map_err(|error| format!("{error:?}"))?
+            .expect("account exists");
+        let members = MultisigMemberRepo::list_by_account_id(&pool, &self.account_id)
+            .await
+            .map_err(|error| format!("{error:?}"))?;
+        let node = ChainWithNode {
+            chain_code: self.chain_code.clone(),
+            rpc_url: self.rpc_url.clone(),
+            network: "mainnet".to_string(),
+            ..Default::default()
+        };
+        let chain_code =
+            ChainCode::try_from(self.chain_code.as_str()).map_err(|error| format!("{error:?}"))?;
+        let adapter =
+            MultisigAdapter::new(chain_code, node, None).map_err(|error| format!("{error:?}"))?;
+        let address = adapter
+            .multisig_address(&account, &members)
+            .await
+            .map_err(|error| format!("{error:?}"))?;
+        Ok((address.multisig_address, address.salt))
     }
 
     pub(super) async fn when_deploy_without_payer(&self) -> Result<(), String> {
