@@ -215,24 +215,44 @@ impl MultisigDomain {
         data: &mut MultisigAccountEntity,
         check_expiration: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let adapter =
-            ChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, &data.chain_code).await?;
-
         // solana 多签账号来判断是否完成,其余链根据hash来判断
         match data.chain_code.as_str() {
-            chain_code::SOLANA => match adapter {
-                domain::chain::adapter::TransactionAdapter::Solana(solana_chain) => {
-                    let addr = wallet_utils::address::parse_sol_address(&data.authority_addr)?;
-                    let account = solana_chain.get_provider().account_info(addr).await?;
-                    if account.value.is_some() {
-                        data.status = MultisigAccountStatus::OnChain.to_i8();
-                    } else if check_expiration && data.expiration_check() {
-                        data.status = MultisigAccountStatus::OnChainFail.to_i8();
+            chain_code::SOLANA => {
+                match ChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, &data.chain_code)
+                    .await?
+                {
+                    domain::chain::adapter::TransactionAdapter::Solana(solana_chain) => {
+                        let addr = wallet_utils::address::parse_sol_address(&data.authority_addr)?;
+                        let account = solana_chain.get_provider().account_info(addr).await?;
+                        if account.value.is_some() {
+                            data.status = MultisigAccountStatus::OnChain.to_i8();
+                        } else if check_expiration && data.expiration_check() {
+                            data.status = MultisigAccountStatus::OnChainFail.to_i8();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            chain_code::POLYGON
+            | chain_code::AVALANCHE
+            | chain_code::ARBITRUM
+            | chain_code::BASE
+            | chain_code::SCROLL => {
+                let adapter =
+                    ChainAdapterFactory::get_multisig_adapter_with_ctx(ctx, &data.chain_code)
+                        .await?;
+                if let Some(tx_result) = adapter.query_tx_res(&data.deploy_hash).await? {
+                    data.status = if tx_result.status == 2 {
+                        MultisigAccountStatus::OnChain.to_i8()
+                    } else {
+                        MultisigAccountStatus::OnChainFail.to_i8()
                     }
                 }
-                _ => {}
-            },
+            }
             _ => {
+                let adapter =
+                    ChainAdapterFactory::get_transaction_adapter_with_ctx(ctx, &data.chain_code)
+                        .await?;
                 if let Some(tx_result) = adapter.query_tx_res(&data.deploy_hash).await? {
                     data.status = if tx_result.status == 2 {
                         MultisigAccountStatus::OnChain.to_i8()

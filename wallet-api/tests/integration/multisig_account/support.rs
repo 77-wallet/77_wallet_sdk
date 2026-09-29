@@ -79,6 +79,47 @@ impl EvmDeployScenario {
         Self { env, account_id, chain_code: chain_code.to_string(), rpc_url: rpc_url.to_string() }
     }
 
+    pub(super) async fn given_pending_deployment(&self) {
+        let pool = open_core_pool(&self.env.db_dir).await;
+        MultisigAccountRepo::update_by_id(
+            &pool,
+            &self.account_id,
+            [
+                ("status".to_string(), "5".to_string()),
+                ("deploy_hash".to_string(), format!("0x{}", "11".repeat(32))),
+            ]
+            .into_iter()
+            .collect(),
+        )
+        .await
+        .expect("mark deployment pending");
+    }
+
+    pub(super) async fn when_sync_deployment(&self) -> i8 {
+        self.env
+            .manager
+            .multisig_account_lists(true, Some(self.chain_code.clone()), 1, 10)
+            .await
+            .expect("list accounts");
+        let pool = open_core_pool(&self.env.db_dir).await;
+        MultisigAccountRepo::find_by_id(&pool, &self.account_id)
+            .await
+            .expect("load account")
+            .expect("account exists")
+            .status
+    }
+
+    pub(super) async fn then_stop_syncing(&self) {
+        let pool = open_core_pool(&self.env.db_dir).await;
+        MultisigAccountRepo::update_by_id(
+            &pool,
+            &self.account_id,
+            [("status".to_string(), "4".to_string())].into_iter().collect(),
+        )
+        .await
+        .expect("clear pending test account");
+    }
+
     pub(super) async fn when_derive_address(&self) -> Result<(String, String), String> {
         let pool = open_core_pool(&self.env.db_dir).await;
         let account = MultisigAccountRepo::find_by_id(&pool, &self.account_id)
@@ -133,10 +174,18 @@ pub(super) struct FakeEvmRpc {
 
 impl FakeEvmRpc {
     pub(super) fn new(responses: &[(&'static str, &'static str)]) -> Self {
+        Self::new_json(
+            responses
+                .iter()
+                .map(|(method, result)| (*method, serde_json::Value::String((*result).to_string())))
+                .collect(),
+        )
+    }
+
+    pub(super) fn new_json(responses: Vec<(&'static str, serde_json::Value)>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake EVM RPC");
         listener.set_nonblocking(true).expect("nonblocking fake RPC");
         let url = format!("http://{}", listener.local_addr().unwrap());
-        let responses = responses.to_vec();
         let worker = thread::spawn(move || {
             let mut methods = Vec::new();
             for (expected_method, result) in responses {

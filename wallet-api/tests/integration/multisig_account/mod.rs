@@ -3,6 +3,69 @@ mod support;
 use serial_test::serial;
 use support::{EvmDeployScenario, FakeEvmRpc};
 
+fn polygon_deployment_receipt(success: bool) -> Vec<(&'static str, serde_json::Value)> {
+    let hash = format!("0x{}", "11".repeat(32));
+    let zero_hash = format!("0x{}", "00".repeat(32));
+    let zero_bloom = format!("0x{}", "00".repeat(256));
+    let receipt = serde_json::json!({
+        "type": "0x0", "status": if success { "0x1" } else { "0x0" },
+        "cumulativeGasUsed": "0x5208", "logsBloom": zero_bloom,
+        "logs": [], "transactionHash": hash, "blockHash": hash,
+        "blockNumber": "0x1", "transactionIndex": "0x0",
+        "gasUsed": "0x5208", "effectiveGasPrice": "0x1",
+        "from": "0x1111111111111111111111111111111111111111",
+        "to": "0x2222222222222222222222222222222222222222",
+        "contractAddress": null
+    });
+    let block = serde_json::json!({
+        "hash": hash, "parentHash": zero_hash, "sha3Uncles": zero_hash,
+        "miner": "0x0000000000000000000000000000000000000000",
+        "stateRoot": zero_hash, "transactionsRoot": zero_hash,
+        "receiptsRoot": zero_hash, "logsBloom": format!("0x{}", "00".repeat(256)),
+        "difficulty": "0x0", "number": "0x1", "gasLimit": "0x100000",
+        "gasUsed": "0x5208", "timestamp": "0x1", "extraData": "0x",
+        "transactions": [], "uncles": []
+    });
+    vec![("eth_getTransactionReceipt", receipt), ("eth_getBlockByHash", block)]
+}
+
+#[tokio::test]
+#[serial]
+async fn polygon_successful_deployment_receipt_marks_account_on_chain() {
+    let rpc = FakeEvmRpc::new_json(polygon_deployment_receipt(true));
+    let scenario = EvmDeployScenario::given("polygon", "Polygon", &rpc.url).await;
+    scenario.given_pending_deployment().await;
+    assert_eq!(scenario.when_sync_deployment().await, 3);
+    assert_eq!(rpc.finish(), ["eth_getTransactionReceipt", "eth_getBlockByHash"]);
+}
+
+#[tokio::test]
+#[serial]
+async fn polygon_failed_deployment_receipt_marks_account_failed() {
+    let rpc = FakeEvmRpc::new_json(polygon_deployment_receipt(false));
+    let scenario = EvmDeployScenario::given("polygon", "Polygon", &rpc.url).await;
+    scenario.given_pending_deployment().await;
+    assert_eq!(scenario.when_sync_deployment().await, 4);
+    assert_eq!(rpc.finish(), ["eth_getTransactionReceipt", "eth_getBlockByHash"]);
+}
+
+#[tokio::test]
+#[serial]
+async fn polygon_pending_deployment_queries_safe_receipt_and_keeps_status_on_rpc_error() {
+    // Given a pending Polygon Safe deployment and an unavailable receipt response.
+    let rpc = FakeEvmRpc::new(&[("eth_getTransactionReceipt", "unavailable")]);
+    let scenario = EvmDeployScenario::given("polygon", "Polygon", &rpc.url).await;
+    scenario.given_pending_deployment().await;
+
+    // When the account list synchronizes deployment status.
+    let status = scenario.when_sync_deployment().await;
+
+    // Then it queries through the Safe adapter and preserves the pending DB status.
+    assert_eq!(status, 5);
+    scenario.then_stop_syncing().await;
+    assert_eq!(rpc.finish(), ["eth_getTransactionReceipt"]);
+}
+
 #[tokio::test]
 #[serial]
 async fn wrong_polygon_rpc_stops_before_service_fee_and_keeps_account_unchanged() {
