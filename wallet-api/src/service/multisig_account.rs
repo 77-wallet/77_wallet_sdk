@@ -574,7 +574,7 @@ impl MultisigAccountService {
         // Reject a misconfigured Safe RPC before charging the service fee.
         if matches!(
             multisig_account.chain_code.as_str(),
-            chain_code::POLYGON | chain_code::AVALANCHE | chain_code::ARBITRUM
+            chain_code::POLYGON | chain_code::AVALANCHE | chain_code::ARBITRUM | chain_code::BASE
         ) {
             let adapter = ChainAdapterFactory::get_multisig_adapter_with_ctx(
                 &self.ctx,

@@ -86,6 +86,15 @@ mod evm_chain_tests {
     }
 
     #[test]
+    fn base_uses_evm_multisig_adapter_without_network_access() {
+        let adapter = MultisigAdapter::new(ChainCode::Base, node("base"), None).unwrap();
+        match adapter {
+            MultisigAdapter::Ethereum(chain) => assert_eq!(chain.chain_code, ChainCode::Base),
+            _ => panic!("Base must use the EVM multisig adapter"),
+        }
+    }
+
+    #[test]
     fn fantom_remains_outside_this_rollout() {
         assert!(MultisigAdapter::new(ChainCode::Fantom, node("fantom"), None).is_err());
     }
@@ -156,7 +165,7 @@ impl MultisigAdapter {
         if let Self::Ethereum(chain) = self {
             if matches!(
                 chain.chain_code,
-                ChainType::Polygon | ChainType::Avalanche | ChainType::Arbitrum
+                ChainType::Polygon | ChainType::Avalanche | ChainType::Arbitrum | ChainType::Base
             ) {
                 chain.preflight_safe_deployment().await?;
             }
@@ -189,7 +198,8 @@ impl MultisigAdapter {
             | ChainType::BnbSmartChain
             | ChainType::Polygon
             | ChainType::Avalanche
-            | ChainType::Arbitrum => {
+            | ChainType::Arbitrum
+            | ChainType::Base => {
                 let rpc_client = RpcClient::new(&chian_node.rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
 
