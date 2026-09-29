@@ -571,6 +571,16 @@ impl MultisigAccountService {
                 ),
             ))?;
 
+        // Reject a misconfigured Polygon RPC before charging the service fee.
+        if multisig_account.chain_code == chain_code::POLYGON {
+            let adapter = ChainAdapterFactory::get_multisig_adapter_with_ctx(
+                &self.ctx,
+                &multisig_account.chain_code,
+            )
+            .await?;
+            adapter.preflight_safe_deployment().await?;
+        }
+
         let time = wallet_utils::time::now_utc_format_time();
         // service fee
         if multisig_account.pay_status != MultisigAccountPayStatus::Paid.to_i8() {
