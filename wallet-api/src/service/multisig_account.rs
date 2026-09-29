@@ -571,8 +571,11 @@ impl MultisigAccountService {
                 ),
             ))?;
 
-        // Reject a misconfigured Polygon RPC before charging the service fee.
-        if multisig_account.chain_code == chain_code::POLYGON {
+        // Reject a misconfigured Safe RPC before charging the service fee.
+        if matches!(
+            multisig_account.chain_code.as_str(),
+            chain_code::POLYGON | chain_code::AVALANCHE
+        ) {
             let adapter = ChainAdapterFactory::get_multisig_adapter_with_ctx(
                 &self.ctx,
                 &multisig_account.chain_code,

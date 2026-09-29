@@ -16,45 +16,45 @@ use wallet_database::{
 
 use crate::harness::{TestEnv, ensure_env, next_tag, open_core_pool};
 
-pub(super) struct PolygonDeployScenario {
+pub(super) struct EvmDeployScenario {
     env: &'static TestEnv,
     account_id: String,
 }
 
-impl PolygonDeployScenario {
-    pub(super) async fn given(rpc_url: &str) -> Self {
+impl EvmDeployScenario {
+    pub(super) async fn given(chain_code: &str, chain_name: &str, rpc_url: &str) -> Self {
         let env = ensure_env().await;
         let pool = open_core_pool(&env.db_dir).await;
-        let node_id = next_tag("polygon-safe-node");
+        let node_id = next_tag("evm-safe-node");
         ChainRepo::add(
             &pool,
             ChainCreateVo::new(
-                "Polygon",
-                "polygon",
+                chain_name,
+                chain_code,
                 &["evm".to_string()],
                 NodeBindType::ManualUser,
-                "POL",
+                "SAFE",
             ),
         )
         .await
-        .expect("seed Polygon chain");
+        .expect("seed EVM chain");
         NodeRepo::upsert(
             &pool,
-            NodeCreateVo::new(&node_id, "Polygon fake RPC", "polygon", rpc_url, None),
+            NodeCreateVo::new(&node_id, "Safe fake RPC", chain_code, rpc_url, None),
         )
         .await
-        .expect("seed Polygon node");
-        ChainRepo::set_chain_node_with_type(&pool, "polygon", &node_id, NodeBindType::ManualUser)
+        .expect("seed EVM node");
+        ChainRepo::set_chain_node_with_type(&pool, chain_code, &node_id, NodeBindType::ManualUser)
             .await
-            .expect("select Polygon node");
+            .expect("select EVM node");
 
-        let account_id = next_tag("polygon-safe-account");
+        let account_id = next_tag("evm-safe-account");
         let account = NewMultisigAccountEntity::new(
             Some(account_id.clone()),
-            "Polygon preflight test".to_string(),
+            format!("{chain_name} preflight test"),
             "0x1111111111111111111111111111111111111111".to_string(),
             "".to_string(),
-            "polygon".to_string(),
+            chain_code.to_string(),
             1,
             "".to_string(),
             vec![MemberVo::new(
@@ -65,7 +65,7 @@ impl PolygonDeployScenario {
         );
         MultisigAccountRepo::create_with_member(&pool, &account)
             .await
-            .expect("seed Polygon multisig account");
+            .expect("seed EVM multisig account");
         Self { env, account_id }
     }
 
@@ -90,14 +90,14 @@ impl PolygonDeployScenario {
     }
 }
 
-pub(super) struct FakePolygonRpc {
+pub(super) struct FakeEvmRpc {
     pub(super) url: String,
     worker: thread::JoinHandle<Vec<String>>,
 }
 
-impl FakePolygonRpc {
+impl FakeEvmRpc {
     pub(super) fn new(responses: &[(&'static str, &'static str)]) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake Polygon RPC");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake EVM RPC");
         listener.set_nonblocking(true).expect("nonblocking fake RPC");
         let url = format!("http://{}", listener.local_addr().unwrap());
         let responses = responses.to_vec();

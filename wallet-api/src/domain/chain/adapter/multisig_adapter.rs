@@ -68,6 +68,15 @@ mod evm_chain_tests {
     }
 
     #[test]
+    fn avalanche_uses_evm_multisig_adapter_without_network_access() {
+        let adapter = MultisigAdapter::new(ChainCode::Avalanche, node("avalanche"), None).unwrap();
+        match adapter {
+            MultisigAdapter::Ethereum(chain) => assert_eq!(chain.chain_code, ChainCode::Avalanche),
+            _ => panic!("Avalanche must use the EVM multisig adapter"),
+        }
+    }
+
+    #[test]
     fn fantom_remains_outside_this_rollout() {
         assert!(MultisigAdapter::new(ChainCode::Fantom, node("fantom"), None).is_err());
     }
@@ -136,7 +145,7 @@ impl std::fmt::Display for MultisigAdapter {
 impl MultisigAdapter {
     pub(crate) async fn preflight_safe_deployment(&self) -> Result<(), chain::Error> {
         if let Self::Ethereum(chain) = self {
-            if chain.chain_code == ChainType::Polygon {
+            if matches!(chain.chain_code, ChainType::Polygon | ChainType::Avalanche) {
                 chain.preflight_safe_deployment().await?;
             }
         }
@@ -164,7 +173,10 @@ impl MultisigAdapter {
                 let btc_chain = chain::btc::BtcChain::new(config, network, header_opt, timeout)?;
                 Ok(MultisigAdapter::BitCoin(btc_chain))
             }
-            ChainType::Ethereum | ChainType::BnbSmartChain | ChainType::Polygon => {
+            ChainType::Ethereum
+            | ChainType::BnbSmartChain
+            | ChainType::Polygon
+            | ChainType::Avalanche => {
                 let rpc_client = RpcClient::new(&chian_node.rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
 
