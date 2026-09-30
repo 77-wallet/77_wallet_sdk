@@ -232,21 +232,20 @@ impl TransactionAdapter {
                 )
                 .await?;
 
-                let fee = fee_setting.transaction_fee();
-                // check transaction_fee
-                if remain_balance < fee {
-                    return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientFeeBalance,
-                    ))?;
-                }
-
                 let params = chain::eth::operations::TransferOpt::try_from(&params.base)?;
+                let execution_fee = fee_setting.transaction_fee();
+                let execution_reserve =
+                    evm_fee::execution_fee_reserve(chain.chain_code, &fee_setting);
+                let required_fee =
+                    evm_fee::required_send_fee(chain, &params, execution_reserve).await?;
+                evm_fee::ensure_send_fee_balance(remain_balance, required_fee)?;
+
                 let tx_hash =
                     chain.exec_transaction(params, fee_setting, private_key, None).await?;
 
                 Ok(TransferResp::new(
                     tx_hash,
-                    unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
+                    unit::format_to_string(execution_fee, eth::consts::ETH_DECIMAL)?,
                 ))
             }
             Self::BitCoin(chain) => {

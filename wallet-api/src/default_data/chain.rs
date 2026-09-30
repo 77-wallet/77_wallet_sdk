@@ -95,7 +95,6 @@ mod tests {
         let expected = [
             ("polygon", "POL"),
             ("avalanche", "AVAX"),
-            ("fantom", "FTM"),
             ("arbitrum", "ETH"),
             ("base", "ETH"),
             ("scroll", "ETH"),
@@ -109,6 +108,7 @@ mod tests {
             assert_eq!(chain.protocols, ["ERC20"]);
             assert!(chain.active);
         }
+        assert!(!testnet.contains_key("fantom"));
     }
 
     #[test]
@@ -147,6 +147,7 @@ mod tests {
 
         assert!(selected.iter().any(|chain| chain == "tron"));
         assert!(selected.iter().any(|chain| chain == "polygon"));
+        assert!(!selected.iter().any(|chain| chain == "fantom"));
     }
 
     #[test]

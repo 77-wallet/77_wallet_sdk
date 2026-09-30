@@ -230,17 +230,6 @@ popular = true
 active = true
 
 [[coins]]
-name = "Fantom"
-chain_code = "fantom"
-symbol = "FTM"
-decimals = 18
-token_address = ""
-protocol = "ERC20"
-default = true
-popular = true
-active = true
-
-[[coins]]
 name = "Arbitrum"
 chain_code = "arbitrum"
 symbol = "ETH"

@@ -49,13 +49,6 @@ http_url = ""
 network = "testnet"
 active = true
 
-[[nodes.fantom.nodes]]
-node_name = "Fantom Testnet"
-rpc_url = "https://fantom-testnet.rpc.thirdweb.com"
-http_url = ""
-network = "testnet"
-active = true
-
 [[nodes.arbitrum.nodes]]
 node_name = "Arbitrum Sepolia"
 rpc_url = "https://sepolia-rollup.arbitrum.io/rpc"

@@ -68,7 +68,6 @@ mod tests {
         let expected = [
             ("polygon", "POL"),
             ("avalanche", "AVAX"),
-            ("fantom", "FTM"),
             ("arbitrum", "ETH"),
             ("base", "ETH"),
             ("scroll", "ETH"),
@@ -84,5 +83,6 @@ mod tests {
             assert!(coin.token_address.as_db_str().is_empty());
             assert!(coin.default && coin.popular && coin.active);
         }
+        assert!(!coins.iter().any(|coin| coin.chain_code == "fantom"));
     }
 }

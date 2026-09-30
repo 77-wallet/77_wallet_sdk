@@ -2,15 +2,45 @@ use crate::{
     domain::chain::transaction::ChainTransDomain, error::service::ServiceError,
     request::transaction::BaseTransferReq, response_vo::FeeDetails,
 };
+use alloy::primitives::U256;
 use wallet_chain_interact::{
-    eth::{EthChain, operations::TransferOpt},
+    eth::{EthChain, FeeSetting, operations::TransferOpt},
     types::Transaction as _,
 };
 use wallet_transport_backend::{api::BackendApi, response_vo::coin::TokenCurrency};
+use wallet_types::chain::chain::ChainCode;
 use wallet_utils::unit;
 
 #[cfg(test)]
 mod flow_tests;
+
+pub(super) fn execution_fee_reserve(chain_code: ChainCode, fee: &FeeSetting) -> U256 {
+    match chain_code {
+        ChainCode::BnbSmartChain => fee.transaction_fee(),
+        _ => fee.gas_limit * fee.max_fee_per_gas,
+    }
+}
+
+pub(super) async fn required_send_fee(
+    chain: &EthChain,
+    transfer: &TransferOpt,
+    execution_fee: U256,
+) -> Result<U256, ServiceError> {
+    let additional_fee = chain.estimate_additional_fee(transfer.build_transaction()?).await?;
+    Ok(execution_fee + additional_fee.unwrap_or_default())
+}
+
+pub(super) fn ensure_send_fee_balance(
+    available_native: U256,
+    required_fee: U256,
+) -> Result<(), ServiceError> {
+    if available_native < required_fee {
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
+    }
+    Ok(())
+}
 
 pub(super) async fn estimate_transfer_fee(
     chain: &EthChain,

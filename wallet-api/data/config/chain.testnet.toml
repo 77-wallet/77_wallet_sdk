@@ -12,13 +12,6 @@ main_symbol = "AVAX"
 protocols = ["ERC20"]
 active = true
 
-[chains.fantom]
-name = "Fantom"
-chain_code = "fantom"
-main_symbol = "FTM"
-protocols = ["ERC20"]
-active = true
-
 [chains.arbitrum]
 name = "Arbitrum One"
 chain_code = "arbitrum"
