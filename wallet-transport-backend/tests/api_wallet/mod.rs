@@ -1,6 +1,7 @@
 mod address;
 mod chain;
 mod coin;
+mod msg_compensation;
 mod resource_delegation;
 mod strategy;
 mod swap;

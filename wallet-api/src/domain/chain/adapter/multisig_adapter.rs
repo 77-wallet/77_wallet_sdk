@@ -37,6 +37,124 @@ pub enum MultisigAdapter {
     Ton(chain::ton::chain::TonChain),
     Sui(chain::sui::SuiChain),
 }
+
+#[cfg(test)]
+mod evm_chain_tests {
+    use super::MultisigAdapter;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        thread,
+    };
+    use wallet_database::entities::chain::ChainWithNode;
+    use wallet_types::chain::chain::ChainCode;
+
+    fn node(chain_code: &str) -> ChainWithNode {
+        ChainWithNode {
+            chain_code: chain_code.to_owned(),
+            rpc_url: "http://127.0.0.1:8545".to_owned(),
+            network: "mainnet".to_owned(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn polygon_uses_evm_multisig_adapter_without_network_access() {
+        let adapter = MultisigAdapter::new(ChainCode::Polygon, node("polygon"), None).unwrap();
+        match adapter {
+            MultisigAdapter::Ethereum(chain) => assert_eq!(chain.chain_code, ChainCode::Polygon),
+            _ => panic!("Polygon must use the EVM multisig adapter"),
+        }
+    }
+
+    #[test]
+    fn avalanche_uses_evm_multisig_adapter_without_network_access() {
+        let adapter = MultisigAdapter::new(ChainCode::Avalanche, node("avalanche"), None).unwrap();
+        match adapter {
+            MultisigAdapter::Ethereum(chain) => assert_eq!(chain.chain_code, ChainCode::Avalanche),
+            _ => panic!("Avalanche must use the EVM multisig adapter"),
+        }
+    }
+
+    #[test]
+    fn arbitrum_uses_evm_multisig_adapter_without_network_access() {
+        let adapter = MultisigAdapter::new(ChainCode::Arbitrum, node("arbitrum"), None).unwrap();
+        match adapter {
+            MultisigAdapter::Ethereum(chain) => assert_eq!(chain.chain_code, ChainCode::Arbitrum),
+            _ => panic!("Arbitrum must use the EVM multisig adapter"),
+        }
+    }
+
+    #[test]
+    fn base_uses_evm_multisig_adapter_without_network_access() {
+        let adapter = MultisigAdapter::new(ChainCode::Base, node("base"), None).unwrap();
+        match adapter {
+            MultisigAdapter::Ethereum(chain) => assert_eq!(chain.chain_code, ChainCode::Base),
+            _ => panic!("Base must use the EVM multisig adapter"),
+        }
+    }
+
+    #[test]
+    fn scroll_uses_evm_multisig_adapter_without_network_access() {
+        let adapter = MultisigAdapter::new(ChainCode::Scroll, node("scroll"), None).unwrap();
+        match adapter {
+            MultisigAdapter::Ethereum(chain) => assert_eq!(chain.chain_code, ChainCode::Scroll),
+            _ => panic!("Scroll must use the EVM multisig adapter"),
+        }
+    }
+
+    #[test]
+    fn fantom_remains_outside_this_rollout() {
+        assert!(MultisigAdapter::new(ChainCode::Fantom, node("fantom"), None).is_err());
+    }
+
+    #[tokio::test]
+    async fn polygon_adapter_rejects_wrong_rpc_before_safe_lookup() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut polygon_node = node("polygon");
+        polygon_node.rpc_url = format!("http://{}", listener.local_addr().unwrap());
+        let worker = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut bytes = Vec::new();
+            let mut buffer = [0; 4096];
+            let (body_start, body_len) = loop {
+                let n = socket.read(&mut buffer).unwrap();
+                assert!(n > 0);
+                bytes.extend_from_slice(&buffer[..n]);
+                if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+                    let len = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (key, value) = line.split_once(':')?;
+                            key.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap();
+                    break (end + 4, len);
+                }
+            };
+            while bytes.len() < body_start + body_len {
+                let n = socket.read(&mut buffer).unwrap();
+                assert!(n > 0);
+                bytes.extend_from_slice(&buffer[..n]);
+            }
+            let request: serde_json::Value =
+                serde_json::from_slice(&bytes[body_start..body_start + body_len]).unwrap();
+            assert_eq!(request["method"], "eth_chainId");
+            let response = serde_json::json!({
+                "jsonrpc": "2.0", "id": request["id"], "result": "0x1"
+            })
+            .to_string();
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+        });
+
+        let adapter = MultisigAdapter::new(ChainCode::Polygon, polygon_node, None).unwrap();
+        let error = adapter.preflight_safe_deployment().await.unwrap_err();
+        assert!(error.to_string().contains("expected 137"));
+        worker.join().unwrap();
+    }
+}
 impl std::fmt::Display for MultisigAdapter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -52,6 +170,22 @@ impl std::fmt::Display for MultisigAdapter {
     }
 }
 impl MultisigAdapter {
+    pub(crate) async fn preflight_safe_deployment(&self) -> Result<(), chain::Error> {
+        if let Self::Ethereum(chain) = self {
+            if matches!(
+                chain.chain_code,
+                ChainType::Polygon
+                    | ChainType::Avalanche
+                    | ChainType::Arbitrum
+                    | ChainType::Base
+                    | ChainType::Scroll
+            ) {
+                chain.preflight_safe_deployment().await?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn new(
         chain_code: ChainType,
         chian_node: wallet_database::entities::chain::ChainWithNode,
@@ -73,7 +207,13 @@ impl MultisigAdapter {
                 let btc_chain = chain::btc::BtcChain::new(config, network, header_opt, timeout)?;
                 Ok(MultisigAdapter::BitCoin(btc_chain))
             }
-            ChainType::Ethereum | ChainType::BnbSmartChain => {
+            ChainType::Ethereum
+            | ChainType::BnbSmartChain
+            | ChainType::Polygon
+            | ChainType::Avalanche
+            | ChainType::Arbitrum
+            | ChainType::Base
+            | ChainType::Scroll => {
                 let rpc_client = RpcClient::new(&chian_node.rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
 
@@ -118,6 +258,7 @@ impl MultisigAdapter {
     ) -> Result<types::FetchMultisigAddressResp, crate::error::service::ServiceError> {
         match self {
             Self::Ethereum(chain) => {
+                self.preflight_safe_deployment().await?;
                 let params = operations::MultisigAccountOpt::new(
                     &account.initiator_addr,
                     account.threshold,
@@ -162,6 +303,7 @@ impl MultisigAdapter {
     ) -> Result<(String, String), crate::error::service::ServiceError> {
         match self {
             Self::Ethereum(chain) => {
+                self.preflight_safe_deployment().await?;
                 let params = operations::MultisigAccountOpt::new(
                     &account.initiator_addr,
                     account.threshold,
@@ -291,6 +433,7 @@ impl MultisigAdapter {
 
         match self {
             Self::Ethereum(chain) => {
+                self.preflight_safe_deployment().await?;
                 let owner = member.get_owner_str_vec();
 
                 let params = operations::MultisigAccountOpt::new(

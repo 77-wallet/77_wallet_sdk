@@ -52,6 +52,38 @@ use wallet_types::{
 };
 use wallet_utils::serde_func;
 
+fn needs_tron_multisig_account_inspection(chain_code: &str) -> bool {
+    chain_code == chain_code::TRON
+}
+
+fn is_evm_safe_chain(chain_code: &str) -> bool {
+    matches!(
+        chain_code,
+        chain_code::ETHEREUM
+            | chain_code::BNB
+            | chain_code::POLYGON
+            | chain_code::AVALANCHE
+            | chain_code::ARBITRUM
+            | chain_code::BASE
+            | chain_code::SCROLL
+    )
+}
+
+#[cfg(test)]
+mod evm_multisig_address_status_tests {
+    use super::needs_tron_multisig_account_inspection;
+
+    #[test]
+    fn polygon_status_does_not_require_a_transaction_adapter() {
+        assert!(!needs_tron_multisig_account_inspection("polygon"));
+    }
+
+    #[test]
+    fn tron_status_still_requires_on_chain_account_inspection() {
+        assert!(needs_tron_multisig_account_inspection("tron"));
+    }
+}
+
 pub struct MultisigAccountService {
     ctx: &'static crate::context::Context,
     backend: Arc<BackendApi>,
@@ -552,6 +584,23 @@ impl MultisigAccountService {
                 ),
             ))?;
 
+        // Reject a misconfigured Safe RPC before charging the service fee.
+        if matches!(
+            multisig_account.chain_code.as_str(),
+            chain_code::POLYGON
+                | chain_code::AVALANCHE
+                | chain_code::ARBITRUM
+                | chain_code::BASE
+                | chain_code::SCROLL
+        ) {
+            let adapter = ChainAdapterFactory::get_multisig_adapter_with_ctx(
+                &self.ctx,
+                &multisig_account.chain_code,
+            )
+            .await?;
+            adapter.preflight_safe_deployment().await?;
+        }
+
         let time = wallet_utils::time::now_utc_format_time();
         // service fee
         if multisig_account.pay_status != MultisigAccountPayStatus::Paid.to_i8() {
@@ -611,11 +660,11 @@ impl MultisigAccountService {
                     if tx.status != 3 {
                         return Ok(());
                     }
+                } else if is_evm_safe_chain(&multisig_account.chain_code) {
+                    // An unknown receipt is not proof that the deployment failed.
+                    return Ok(());
                 }
             }
-
-            // fetch multisig account address
-            let resp = multisig_adapter.multisig_address(&multisig_account, &member).await?;
 
             // if chain_code is bitcoin the status is success on chain
             let status = if multisig_account.chain_code == chain_code::BTC {
@@ -624,38 +673,47 @@ impl MultisigAccountService {
                 MultisigAccountStatus::OnChianPending.to_i8().to_string()
             };
 
-            let hash_map = HashMap::from([
-                ("address".to_string(), resp.multisig_address.clone()),
-                ("salt".to_string(), resp.salt.clone()),
-                ("authority_addr".to_string(), resp.authority_address.clone()),
-                ("updated_at".to_string(), time.clone()),
-            ]);
-            let multisig_account =
-                wallet_database::repositories::multisig_account::MultisigAccountRepo::update_by_id(
+            let multisig_account = if is_evm_safe_chain(&multisig_account.chain_code)
+                && !multisig_account.address.is_empty()
+                && !multisig_account.salt.is_empty()
+            {
+                // A retry must deploy the Safe whose address was already persisted.
+                multisig_account.clone()
+            } else {
+                let resp = multisig_adapter.multisig_address(&multisig_account, &member).await?;
+                let hash_map = HashMap::from([
+                    ("address".to_string(), resp.multisig_address.clone()),
+                    ("salt".to_string(), resp.salt.clone()),
+                    ("authority_addr".to_string(), resp.authority_address.clone()),
+                    ("updated_at".to_string(), time.clone()),
+                ]);
+                let multisig_account = wallet_database::repositories::multisig_account::MultisigAccountRepo::update_by_id(
                     &core_pool,
                     &multisig_account.id,
                     hash_map,
                 )
                 .await?;
 
-            let pool = self.ctx.core_pool()?;
+                multisig_account
+            };
 
-            // 初始化默认资产资产(发起方如果是波场的情况单独处理,将这个地址的其他资产也同步为多签的)
+            // 地址保存后若资产初始化曾中断，重试仍需补齐默认资产。
             AssetsDomain::init_default_multisig_assets(
                 self.ctx,
-                resp.multisig_address.clone(),
+                multisig_account.address.clone(),
                 multisig_account.chain_code.clone(),
             )
             .await?;
             if multisig_account.chain_code.as_str() == chain_code::TRON {
+                let pool = self.ctx.core_pool()?;
                 AssetsRepo::update_tron_multisig_assets(
                     &pool,
-                    &resp.multisig_address,
+                    &multisig_account.address,
                     &multisig_account.chain_code,
                     CoinMultisigStatus::IsMultisig.to_i8(),
                 )
                 .await?;
-            };
+            }
 
             // 部署多签账户到链上
             let hash = self
@@ -926,13 +984,6 @@ impl MultisigAccountService {
         chain_code: String,
     ) -> Result<AddressStatus, crate::error::service::ServiceError> {
         let core_pool = self.ctx.core_pool()?;
-        let adapter =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
-                &self.ctx,
-                &chain_code,
-            )
-            .await?;
-
         let mut status = AddressStatus { address_status: 0 };
 
         if wallet_database::repositories::multisig_account::MultisigAccountRepo::find_doing_account(
@@ -946,12 +997,17 @@ impl MultisigAccountService {
             status.address_status = 2;
         }
 
-        if let domain::chain::adapter::TransactionAdapter::Tron(tron_chain) = adapter {
-            let account = tron_chain.get_provider().account_info(&address).await?;
-            if account.is_multisig_account() {
-                status.address_status = 1;
+        if needs_tron_multisig_account_inspection(&chain_code) {
+            let adapter =
+                ChainAdapterFactory::get_transaction_adapter_with_ctx(&self.ctx, &chain_code)
+                    .await?;
+            if let domain::chain::adapter::TransactionAdapter::Tron(tron_chain) = adapter {
+                let account = tron_chain.get_provider().account_info(&address).await?;
+                if account.is_multisig_account() {
+                    status.address_status = 1;
+                }
             }
-        };
+        }
         Ok(status)
     }
 }

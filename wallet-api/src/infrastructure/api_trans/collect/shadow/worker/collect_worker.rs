@@ -3777,6 +3777,11 @@ impl ShadowCollectWorker {
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),
             ChainCode::Ton => todo!(),
+            _ => {
+                return Err(ServiceError::Parameter(format!(
+                    "unsupported collect chain: {chain_code}"
+                )));
+            }
         };
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%parse_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 解析手续费结果完成");
 
