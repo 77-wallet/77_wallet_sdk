@@ -20,7 +20,7 @@ struct DevBackendConfig {
     aes_iv: String,
 }
 
-fn dev_backend() -> BackendApi {
+fn dev_backend() -> (BackendApi, String) {
     let config = if let Ok(base_url) = std::env::var("WALLET_BACKEND_TEST_BASE_URL") {
         DevBackendConfig {
             base_url,
@@ -38,31 +38,40 @@ fn dev_backend() -> BackendApi {
         )
         .expect("dev backend test config must be valid TOML")
     };
+    let client_id = config.client_id.clone();
     let headers = HashMap::from([
         ("clientId".to_owned(), config.client_id),
         ("AW-SEC-ID".to_owned(), config.aw_sec_id),
     ]);
     let cryptor = wallet_utils::cbc::AesCbcCryptor::new(&config.aes_key, &config.aes_iv);
-    BackendApi::new(Some(config.base_url), Some(headers), cryptor).unwrap()
+    (BackendApi::new(Some(config.base_url), Some(headers), cryptor).unwrap(), client_id)
 }
 
 #[tokio::test]
 #[ignore = "manual live smoke: dev backend and mainnet RPC, no signing or broadcast"]
 async fn added_evm_chains_quote_with_dev_tracker_and_real_nodes() {
-    let backend = dev_backend();
+    let (backend, client_id) = dev_backend();
+    let rpc_token = backend.rpc_token(&client_id).await.expect("dev RPC token request");
+    assert!(!rpc_token.is_empty(), "dev RPC token must not be empty");
     for (code, rpc, symbol, expected_chain_id) in [
-        (ChainCode::Polygon, "https://polygon.drpc.org", "POL", 137),
-        (ChainCode::Avalanche, "https://api.avax.network/ext/bc/C/rpc", "AVAX", 43_114),
-        (ChainCode::Arbitrum, "https://arb1.arbitrum.io/rpc", "ETH", 42_161),
-        (ChainCode::Base, "https://mainnet.base.org", "ETH", 8_453),
+        (ChainCode::Polygon, "https://apprpc.77wapp.vip/polygon", "POL", 137),
+        (ChainCode::Avalanche, "https://apprpc.77wapp.vip/avalanche", "AVAX", 43_114),
+        (ChainCode::Arbitrum, "https://apprpc.77wapp.vip/arbitrum", "ETH", 42_161),
+        (ChainCode::Base, "https://apprpc.77wapp.vip/base", "ETH", 8_453),
     ] {
         // Require the backend tracker itself to work; SDK fallback must not mask its failure.
         let tracker = backend.gas_oracle(&code.to_string()).await.unwrap();
         assert!(tracker.propose_gas_price.is_some(), "{code}: missing backend propose tier");
 
-        let rpc = std::env::var(format!("WALLET_SMOKE_{}_RPC", code.to_string().to_uppercase()))
-            .unwrap_or_else(|_| rpc.to_owned());
-        let client = RpcClient::new(&rpc, None, Some(Duration::from_secs(20))).unwrap();
+        let override_rpc =
+            std::env::var(format!("WALLET_SMOKE_{}_RPC", code.to_string().to_uppercase())).ok();
+        let (rpc, headers) = match override_rpc {
+            Some(rpc) => (rpc, None),
+            None => {
+                (rpc.to_owned(), Some(HashMap::from([("token".to_owned(), rpc_token.clone())])))
+            }
+        };
+        let client = RpcClient::new(&rpc, headers, Some(Duration::from_secs(20))).unwrap();
         let provider = Provider::new(client).unwrap();
         assert_eq!(provider.chain_id().await.unwrap(), expected_chain_id, "{code}: wrong RPC");
         let chain = EthChain::new(provider, NetworkKind::Mainnet, code).unwrap();
