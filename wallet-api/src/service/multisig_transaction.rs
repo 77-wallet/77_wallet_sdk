@@ -1053,6 +1053,7 @@ impl MultisigTransactionService {
             bill_kind,
             queue.notes.clone(),
         )
+        .with_token(queue.token_addr.as_db_str())
         .with_queue_id(queue_id)
         .with_resource_consume(&tx_resp.resource_consume()?)
         .with_transaction_fee(&tx_resp.fee);

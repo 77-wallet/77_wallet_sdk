@@ -2,7 +2,10 @@ use crate::{
     domain,
     domain::{
         bill::BillDomain,
-        chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
+        chain::{
+            adapter::{ChainAdapterFactory, MultisigAdapter},
+            transaction::ChainTransDomain,
+        },
         coin::CoinDomain,
     },
     request::transaction::{self},
@@ -29,6 +32,7 @@ use wallet_database::{
         coin::CoinRepo, multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
     },
 };
+use wallet_types::constant::chain_code;
 use wallet_utils::unit;
 
 pub struct TransactionService {
@@ -458,21 +462,43 @@ impl TransactionService {
         &self,
         transaction: &BillEntity,
     ) -> Result<Option<SyncBillEntity>, crate::error::service::ServiceError> {
-        let adapter =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter_with_ctx(
+        let token_key = transaction.token.clone();
+        let (tx_result, balance) = if transaction.is_multisig == 1
+            && !transaction.queue_id.is_empty()
+            && matches!(
+                transaction.chain_code.as_str(),
+                chain_code::POLYGON
+                    | chain_code::AVALANCHE
+                    | chain_code::ARBITRUM
+                    | chain_code::BASE
+                    | chain_code::SCROLL
+            ) {
+            let adapter = ChainAdapterFactory::get_multisig_adapter_with_ctx(
                 &self.ctx,
                 &transaction.chain_code,
             )
             .await?;
-
-        let Some(tx_result) = adapter.query_tx_res(&transaction.hash).await? else {
-            return Ok(None);
+            let Some(tx_result) = adapter.query_tx_res(&transaction.hash).await? else {
+                return Ok(None);
+            };
+            let MultisigAdapter::Ethereum(chain) = adapter else {
+                unreachable!("new EVM Safe chains use the Ethereum multisig adapter")
+            };
+            let balance =
+                chain.balance(&transaction.owner, token_key.to_chain_token_option()).await?;
+            (tx_result, balance)
+        } else {
+            let adapter = ChainAdapterFactory::get_transaction_adapter_with_ctx(
+                &self.ctx,
+                &transaction.chain_code,
+            )
+            .await?;
+            let Some(tx_result) = adapter.query_tx_res(&transaction.hash).await? else {
+                return Ok(None);
+            };
+            let balance = adapter.balance(&transaction.owner, token_key.clone()).await?;
+            (tx_result, balance)
         };
-
-        let token_key = transaction.token.clone();
-
-        // 查询余额
-        let balance = adapter.balance(&transaction.owner, token_key.clone()).await?;
 
         let coin = CoinDomain::get_coin_by_token_key_with_ctx(
             self.ctx,
