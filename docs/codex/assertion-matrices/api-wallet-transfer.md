@@ -75,6 +75,19 @@ scanner entrypoints.
   retry behavior should not double-send a transaction after a successful chain
   response.
 
+## API adapter factory routing during 2.2 integration
+
+- Layer: offline unit tests in `domain::api_wallet::adapter_factory::tests`.
+- Entrypoints: `adapter_kind_routes_all_evm_chains_to_eth` and
+  `adapter_kind_preserves_non_evm_routes`.
+- Invariant: all currently supported EVM chains use the shared `EthTx` kind;
+  Tron, Bitcoin, Solana, Litecoin, Dogecoin, Sui and Ton retain their own kinds.
+  An unsupported future `ChainCode` maps to no kind: startup pre-initialization
+  skips it and an explicit adapter request returns `ServiceError::Parameter`
+  before querying a node, instead of panicking. The current Core enum has no
+  unsupported constructible variant, so that future-only branch is not
+  exercised by these unit tests.
+
 ## Added EVM chain offline signing matrix
 
 - Layer: component-style unit test with a process-local fake JSON-RPC endpoint.

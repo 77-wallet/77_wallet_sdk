@@ -161,7 +161,7 @@ async fn send_preflight_uses_erc20_transfer_shape_for_base_and_scroll() {
                 let calldata = requests[0].1["params"][0]["data"].as_str().unwrap();
                 let unsigned_size =
                     u64::from_str_radix(&calldata[calldata.len() - 64..], 16).unwrap();
-                assert_eq!(unsigned_size, 228);
+                assert_eq!(unsigned_size, 324);
             }
             ChainCode::Scroll => {
                 assert_eq!(requests[0].1["method"], "scroll_estimateL1DataFee");
@@ -355,7 +355,7 @@ async fn assert_quote(code: ChainCode, token: Option<&str>) {
             );
             let data = requests[2].1["params"][0]["data"].as_str().unwrap();
             let unsigned_size = u64::from_str_radix(&data[data.len() - 64..], 16).unwrap();
-            assert_eq!(unsigned_size, if token.is_some() { 228 } else { 160 });
+            assert_eq!(unsigned_size, if token.is_some() { 324 } else { 256 });
         }
         ChainCode::Scroll => {
             assert_eq!(requests[2].1["method"], "scroll_estimateL1DataFee");

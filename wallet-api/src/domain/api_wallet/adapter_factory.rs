@@ -37,12 +37,12 @@ enum AdapterKind {
     Ton,
 }
 
-fn adapter_kind(chain_code: ChainCode) -> AdapterKind {
+fn adapter_kind(chain_code: ChainCode) -> Option<AdapterKind> {
     if crate::domain::chain::is_evm_chain(chain_code) {
-        return AdapterKind::Evm;
+        return Some(AdapterKind::Evm);
     }
 
-    match chain_code {
+    Some(match chain_code {
         ChainCode::Tron => AdapterKind::Tron,
         ChainCode::Bitcoin => AdapterKind::Bitcoin,
         ChainCode::Solana => AdapterKind::Solana,
@@ -50,8 +50,8 @@ fn adapter_kind(chain_code: ChainCode) -> AdapterKind {
         ChainCode::Dogcoin => AdapterKind::Dogecoin,
         ChainCode::Sui => AdapterKind::Sui,
         ChainCode::Ton => AdapterKind::Ton,
-        _ => unreachable!("EVM chains are handled before adapter kind matching"),
-    }
+        _ => return None,
+    })
 }
 
 pub struct ApiChainAdapterFactory {
@@ -133,6 +133,9 @@ impl ApiChainAdapterFactory {
                     continue;
                 }
             };
+            let Some(kind) = adapter_kind(chain_code) else {
+                continue;
+            };
 
             // 使用chain_code和rpc_url组合作为缓存键
             let cache_key = format!("{}:{}", chain_code.to_string(), node.rpc_url);
@@ -151,7 +154,7 @@ impl ApiChainAdapterFactory {
                 None
             };
 
-            let adapter: Arc<dyn Tx + Send + Sync> = match adapter_kind(chain_code) {
+            let adapter: Arc<dyn Tx + Send + Sync> = match kind {
                 AdapterKind::Tron => {
                     Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
                 }
@@ -196,6 +199,9 @@ impl ApiChainAdapterFactory {
         ctx: &'static Context,
         chain_code: ChainCode,
     ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
+        let kind = adapter_kind(chain_code).ok_or_else(|| {
+            ServiceError::Parameter(format!("unsupported transaction chain: {chain_code}"))
+        })?;
         let node = Self::get_chain_node(ctx, chain_code).await?;
 
         // 使用chain_code和rpc_url组合作为缓存键，确保不同节点的适配器不会被混用
@@ -216,7 +222,7 @@ impl ApiChainAdapterFactory {
         let header_opt =
             if rpc_need_header(&node.rpc_url)? { Some(ctx.get_rpc_header().await?) } else { None };
 
-        let adapter: Arc<dyn Tx + Send + Sync> = match adapter_kind(chain_code) {
+        let adapter: Arc<dyn Tx + Send + Sync> = match kind {
             AdapterKind::Tron => Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
             AdapterKind::Bitcoin => Arc::new(BtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
             AdapterKind::Solana => Arc::new(SolTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
@@ -290,7 +296,22 @@ mod tests {
             ChainCode::Base,
             ChainCode::Scroll,
         ] {
-            assert_eq!(adapter_kind(chain), AdapterKind::Evm);
+            assert_eq!(adapter_kind(chain), Some(AdapterKind::Evm));
+        }
+    }
+
+    #[test]
+    fn adapter_kind_preserves_non_evm_routes() {
+        for (chain, expected) in [
+            (ChainCode::Tron, AdapterKind::Tron),
+            (ChainCode::Bitcoin, AdapterKind::Bitcoin),
+            (ChainCode::Solana, AdapterKind::Solana),
+            (ChainCode::Litecoin, AdapterKind::Litecoin),
+            (ChainCode::Dogcoin, AdapterKind::Dogecoin),
+            (ChainCode::Sui, AdapterKind::Sui),
+            (ChainCode::Ton, AdapterKind::Ton),
+        ] {
+            assert_eq!(adapter_kind(chain), Some(expected));
         }
     }
 }

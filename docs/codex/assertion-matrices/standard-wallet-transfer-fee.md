@@ -26,7 +26,7 @@
 
 Scope: standard wallet ordinary native/ERC-20 transfer fee estimation and pre-broadcast fee guard. The backend gas tracker remains the source of L2 execution prices. No durable transaction facts or broadcast side effects are changed by the quote path. Live RPC verification is separate from these offline tests.
 
-The Base fee is a conservative upper-bound before signing, not the exact final L1 charge. Core owns the chain-specific RPC; SDK adds its result to displayed totals while leaving `feeSetting` unchanged.
+The Base fee is a conservative upper-bound before signing, not the exact final L1 charge. Core reserves a 256-byte unsigned EIP-1559 envelope plus calldata (256 bytes for native transfers, 324 for ERC-20 transfers) when querying the oracle. Core owns the chain-specific RPC; SDK adds its result to displayed totals while leaving `feeSetting` unchanged.
 
 Live read-only verification (2026-09-29): the authenticated 77 Scroll mainnet node returned chain ID 534352 and nonzero `scroll_estimateL1DataFee` results for native-transfer and ERC-20-transfer-shaped requests. The authenticated 77 Base mainnet node returned chain ID 8453 and nonzero `GasPriceOracle.getL1FeeUpperBound(uint256)` results for unsigned sizes 160 and 228 bytes. Base Sepolia also returned a nonzero oracle result for 160 bytes. No transaction was signed or broadcast. This verifies node method availability and response shape, not the complete app/backend tracker-to-UI quote flow or final charged fee.
 
