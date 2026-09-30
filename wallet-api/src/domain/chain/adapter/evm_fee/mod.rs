@@ -14,6 +14,10 @@ use wallet_utils::unit;
 #[cfg(test)]
 mod flow_tests;
 
+#[cfg(all(test, feature = "smoke-live"))]
+#[path = "../../../../../tests/smoke/transactions/evm_fee_live.rs"]
+mod live_smoke_tests;
+
 pub(super) fn execution_fee_reserve(chain_code: ChainCode, fee: &FeeSetting) -> U256 {
     match chain_code {
         ChainCode::BnbSmartChain => fee.transaction_fee(),
