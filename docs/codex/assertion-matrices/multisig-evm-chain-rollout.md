@@ -46,7 +46,38 @@
 | Polygon Safe ERC-20 queue execution | The public Service broadcasts a signed token transfer and persists the chain hash, confirmation status, and pending bill with the token contract address | Insufficient initiator gas leaves the signed queue ready and creates no bill or broadcast | SDK `integration::multisig_account::polygon_token_safe_service_exec*`, offline fake RPC; live RPC remains pending |
 | Polygon Safe rejected broadcast recovery | A rejected raw-transaction RPC response leaves the signed token queue ready with no bill; retry broadcasts successfully and persists one hash and bill | Once the queue is in confirmation, a repeated execution fails before RPC and cannot broadcast again | SDK `integration::multisig_account::{polygon_token_safe_service_retries_rejected_broadcast_once,polygon_token_safe_service_executes_signed_queue_with_token_bill}`, offline fake RPC |
 | Polygon Safe ERC-20 execution receipt | A successful receipt settles the multisig queue and bill, and refreshes the token asset balance through the multisig EVM adapter | An explicit failed receipt marks queue and bill failed; an unavailable receipt keeps both pending and leaves balance unchanged | SDK `integration::multisig_account::polygon_token_safe_{receipt_confirms_queue_and_bill,failed_receipt_marks_queue_and_bill_failed,missing_receipt_keeps_confirmation_pending}`, offline fake RPC; ordinary transaction adapter stays unsupported for Polygon |
-| Remaining live validation | Confirm Safe factory and singleton bytecode, signed deployment and transfers, fee behavior, and receipts against real RPCs before release | Stop rollout if a real RPC or fee behavior differs from the fake-RPC assumptions | Manual smoke/live gate; no network calls in default integration tests |
+| Five-chain live Safe address derivation | Polygon, Avalanche, Arbitrum, Base, and Scroll mainnet RPCs report the expected chain ID and deployed Safe factory/singleton code; SDK factory calls return a nonzero deterministic Safe address and salt | Wrong chain ID or missing contract code fails before the factory call in the corresponding offline regressions | `smoke::multisig_tx::evm_safe::*_safe_address_derivation_live`, all five passed against public mainnet RPCs on 2026-09-30; ignored by default |
+| Remaining live validation | Confirm signed deployment and transfers, fee behavior, and receipts against real RPCs before release | Stop rollout if a real RPC or fee behavior differs from the fake-RPC assumptions | Manual funded smoke/live gate; no network calls in default integration tests |
+
+## Read-only live Safe address check
+
+The ignored `wallet-api/tests/smoke/multisig_tx/evm_safe.rs` tests call the SDK's
+`MultisigAdapter::multisig_address` with a throwaway 1-of-1 account. That path
+checks the configured mainnet chain ID and Safe factory/singleton bytecode,
+then reads the deterministic address from the factory. It neither signs nor
+broadcasts a transaction. Set the matching `SAFE_POLYGON_RPC_URL`,
+`SAFE_AVALANCHE_RPC_URL`, `SAFE_ARBITRUM_RPC_URL`, `SAFE_BASE_RPC_URL`, or
+`SAFE_SCROLL_RPC_URL` environment variable, then run one chain at a time:
+
+```sh
+CARGO_TARGET_DIR=target cargo test -p wallet-api --no-default-features \
+  --features integration-tests,api-wallet-console --test mod \
+  smoke::multisig_tx::evm_safe::polygon_safe_address_derivation_live \
+  --offline -- --ignored --exact
+```
+
+Replace `polygon` in the test name with the desired chain. Do not paste
+credential-bearing RPC URLs into test output or commit them. A passing
+read-only check is not evidence that signed deployment, transfer execution,
+or receipt accounting succeeded; those remain separate live gates.
+
+On 2026-09-30 all five checks passed using the public mainnet endpoints listed
+by [Polygon](https://docs.polygon.technology/pos/reference/rpc-endpoints),
+[Avalanche](https://build.avax.network/docs/primary-network),
+[Arbitrum](https://docs.arbitrum.io/arbitrum-bridge/quickstart),
+[Base](https://docs.base.org/chain/network-information), and
+[Scroll](https://docs.scroll.io/en/developers/faucet/). Public RPC availability
+can change; repeat against the configured project RPCs before release.
 
 This first batch does not enable ordinary transfer, API wallet transfer,
 collect, or withdrawal for a new chain. Their new enum cases fail closed or
