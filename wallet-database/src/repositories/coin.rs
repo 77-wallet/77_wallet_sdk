@@ -12,12 +12,29 @@ use crate::{
 };
 
 pub struct CoinRepo;
+#[path = "coin/precision.rs"]
+mod precision;
+#[cfg(test)]
+#[path = "coin/precision_tests.rs"]
+mod precision_tests;
+
 impl CoinRepo {
     pub async fn upsert_multi_coin(
         pool: &CoreDbPool,
         coin: Vec<CoinData>,
     ) -> Result<(), crate::Error> {
-        CoinDao::upsert_multi_coin(pool.write_ref(), coin).await
+        if coin.is_empty() {
+            return Ok(());
+        }
+        let keys: Vec<_> = coin
+            .iter()
+            .map(|coin| (coin.chain_code.clone(), coin.token_address.clone(), coin.decimals))
+            .collect();
+        let mut tx = pool.write_ref().begin().await.map_err(crate::DatabaseError::from)?;
+        CoinDao::upsert_multi_coin(tx.as_mut(), coin).await?;
+        precision::sync_asset_precision_batch(tx.as_mut(), &keys).await?;
+        tx.commit().await.map_err(crate::DatabaseError::from)?;
+        Ok(())
     }
 
     pub async fn drop_coin_just_null_token_address(pool: &CoreDbPool) -> Result<(), crate::Error> {
@@ -194,8 +211,9 @@ impl CoinRepo {
         time: Option<DateTime<Utc>>,
         symbols: Option<String>,
     ) -> Result<(), crate::Error> {
+        let mut tx = pool.write_ref().begin().await.map_err(crate::DatabaseError::from)?;
         CoinDao::update_price_unit(
-            pool.write_ref(),
+            tx.as_mut(),
             coin_id,
             price,
             unit,
@@ -204,7 +222,18 @@ impl CoinRepo {
             time,
             symbols,
         )
-        .await
+        .await?;
+        if let Some(decimals) = unit {
+            precision::sync_asset_precision(
+                tx.as_mut(),
+                &coin_id.chain_code,
+                &coin_id.token_address,
+                decimals,
+            )
+            .await?;
+        }
+        tx.commit().await.map_err(crate::DatabaseError::from)?;
+        Ok(())
     }
 
     pub async fn coin_list_with_symbols(
