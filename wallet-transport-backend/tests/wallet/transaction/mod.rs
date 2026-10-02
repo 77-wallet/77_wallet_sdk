@@ -46,3 +46,14 @@ pub async fn test_records_list() -> Result<(), wallet_transport_backend::Error> 
 
     Ok(())
 }
+
+#[tokio::test]
+pub async fn test_gas_oracle() -> Result<(), wallet_transport_backend::Error> {
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize using init()
+
+    let cc = backend_api.gas_oracle("scroll").await.unwrap();
+
+    println!("[gas oracle] res: {cc:#?}");
+
+    Ok(())
+}
