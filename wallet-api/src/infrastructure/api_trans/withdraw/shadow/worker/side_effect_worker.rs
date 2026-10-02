@@ -1098,24 +1098,19 @@ oss:
     #[tokio::test]
     async fn original_order_resource_success_releases_gate_after_ack_projection()
     -> anyhow::Result<()> {
-        let dir = tempfile::tempdir()?;
-        let db_root = dir.path().to_string_lossy().to_string();
-        let tx_pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
-            .await?
-            .into_transaction_db_pool()?;
-        let resource_pool = SqliteContext::new(&db_root, Some("api_resource.db"))
-            .await?
-            .into_api_resource_db_pool()?;
-        let core_pool =
-            SqliteContext::new(&db_root, Some("api_wallet.db")).await?.into_api_wallet_db_pool()?;
+        let ctx = test_ctx().await;
+        let tx_pool = ctx.api_transaction_pool()?;
+        let resource_pool = ctx.api_resource_pool()?;
+        let trade_no =
+            format!("W_rsc_ack_release_{}", Utc::now().timestamp_nanos_opt().unwrap_or_default());
         let (intent_tx, _intent_rx) = mpsc::channel(8);
         let scanner = Arc::new(ShadowScanner::new(
-            test_ctx().await,
+            ctx,
             crate::infrastructure::api_trans::withdraw::shadow::scanner::ScannerConfig::default(),
             intent_tx,
             None,
         ));
-        let worker = SideEffectWorker::new(test_ctx().await, scanner);
+        let worker = SideEffectWorker::new(ctx, scanner);
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &tx_pool,
@@ -1128,7 +1123,7 @@ oss:
             "tron",
             AssetTokenKey::Native,
             "TRX",
-            "W_rsc_ack_release",
+            &trade_no,
             None,
             None,
             None,
@@ -1143,13 +1138,24 @@ oss:
             None,
         )
         .await?;
+        ApiWithdrawRepo::mark_resource_blocked(
+            &tx_pool,
+            &trade_no,
+            wallet_database::entities::api_resource_gate::ApiResourceBlockReason::NeedPlatformDelegate,
+            None,
+            Some(
+                wallet_database::entities::api_resource_gate::ApiResourceDependencyType::PlatformDelegate,
+            ),
+        )
+        .await?;
 
+        let result_payload = format!(r#"{{"tradeNo":"{trade_no}","status":true}}"#);
         ApiResourceDelegationRepo::upsert_original_order_result_fact(
             &resource_pool,
             NewApiResourceDelegation::platform_delegate(
                 "uid_1",
-                "W_rsc_ack_release",
-                "W_rsc_ack_release",
+                &trade_no,
+                &trade_no,
                 ApiTradeType::Withdraw as i64,
                 "",
                 "",
@@ -1157,29 +1163,16 @@ oss:
             ),
             ApiResourceDelegationResultStatus::Success,
             None,
-            Some(r#"{"tradeNo":"W_rsc_ack_release","status":true}"#),
+            Some(&result_payload),
         )
         .await?;
-        ApiResourceDelegationRepo::mark_result_ack_sent(&resource_pool, "W_rsc_ack_release")
-            .await?;
-
-        let resource_task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &resource_pool,
-            "W_rsc_ack_release",
-        )
-        .await?;
-        worker
-            .project_resource_task_outcome_to_withdraw_gate(
-                &resource_task,
-                ResourceGateReleaseOutcome::Success(
-                    ApiResourceGateResult::ResourceDelegationSuccess,
-                ),
-            )
-            .await?;
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, &trade_no).await?;
+        worker.mark_resource_result_ack_and_project_withdraw_gate(&resource_task).await?;
 
         let withdraw = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &tx_pool,
-            "W_rsc_ack_release",
+            &trade_no,
             ApiTradeType::Withdraw,
         )
         .await?;

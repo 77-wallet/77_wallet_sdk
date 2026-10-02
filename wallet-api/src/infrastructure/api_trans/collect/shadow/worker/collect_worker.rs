@@ -2881,7 +2881,7 @@ impl ShadowCollectWorker {
         // so a later, higher maxFeePerGas re-enters the service-fee cycle
         // instead of failing at node admission.
         let final_fee_chain = ChainCode::try_from(req.chain_code.as_str())?;
-        if matches!(final_fee_chain, ChainCode::Ethereum | ChainCode::BnbSmartChain) {
+        if crate::domain::chain::is_evm_chain(final_fee_chain) {
             let main_coin = ApiChainTransDomain::main_coin(self.ctx, &req.chain_code).await?;
             let latest_balance = self
                 .query_balance(
@@ -3765,7 +3765,14 @@ impl ShadowCollectWorker {
                 let res: CommonFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
                 res.estimate_fee.amount.to_string()
             }
-            ChainCode::Ethereum | ChainCode::BnbSmartChain => super::evm_propose_max_fee(&fee)?,
+            ChainCode::Ethereum
+            | ChainCode::BnbSmartChain
+            | ChainCode::Polygon
+            | ChainCode::Avalanche
+            | ChainCode::Fantom
+            | ChainCode::Arbitrum
+            | ChainCode::Base
+            | ChainCode::Scroll => super::evm_propose_max_fee(&fee)?,
             ChainCode::Litecoin => todo!(),
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),
@@ -3894,15 +3901,6 @@ impl ShadowCollectWorker {
         Ok(transfer_req)
     }
 
-    /// Check if a chain is EVM-compatible
-    ///
-    /// EVM chains require nonce management for transaction ordering.
-    /// This function centralizes the EVM chain detection to avoid
-    /// scattered match statements and ensure consistency.
-    fn is_evm_chain(chain: &ChainCode) -> bool {
-        matches!(chain, ChainCode::Ethereum | ChainCode::BnbSmartChain)
-    }
-
     /// Allocate nonce for transaction.
     ///
     /// ⚠️ NONCE INVARIANT:
@@ -3929,7 +3927,7 @@ impl ShadowCollectWorker {
         // ⚠️ EVM nonce MUST be allocated via DB atomic upsert.
         // Any read-modify-write logic here is forbidden.
         match chain {
-            c if Self::is_evm_chain(&c) => {
+            c if crate::domain::chain::is_evm_chain(c) => {
                 // 对于以太坊类链，使用NonceEngine来分配nonce
                 // ⚠️ INVARIANT:
                 // This method MUST guarantee DB-level atomic CAS for nonce allocation.
@@ -5813,32 +5811,24 @@ oss:
 
     #[tokio::test]
     async fn platform_delegation_failure_does_not_mark_backend_result_received() {
-        let dir = tempdir().expect("tempdir");
-        let dir_path = dir.path().to_string_lossy().to_string();
-
-        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
-            .await
-            .expect("init api_transaction.db");
-        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
-        let resource_ctx = SqliteContext::new(&dir_path, Some("api_resource.db"))
-            .await
-            .expect("init api_resource.db");
-        let resource_pool = resource_ctx.into_api_resource_db_pool().expect("resource pool");
+        let ctx = test_ctx().await;
+        let collect_pool = ctx.api_transaction_pool().expect("transaction pool");
+        let resource_pool = ctx.api_resource_pool().expect("resource pool");
+        let trade_no =
+            format!("rsc_platform_failed_{}", Utc::now().timestamp_nanos_opt().unwrap_or_default());
         let (intent_tx, _intent_rx) = mpsc::channel(1);
         let worker = ShadowCollectWorker::new(
-            test_ctx().await,
+            ctx,
             Arc::new(crate::infrastructure::api_trans::AddressLockManager::new()),
             Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
-                test_ctx().await,
-                intent_tx,
-                None,
+                ctx, intent_tx, None,
             )),
         );
         ApiResourceDelegationRepo::upsert(
             &resource_pool,
             NewApiResourceDelegation::platform_delegate_task(
                 "uid",
-                "rsc_platform_failed",
+                &trade_no,
                 ApiTradeType::Collect,
                 ApiResourceDelegationOperationType::Delegate,
                 "tron",
@@ -5853,7 +5843,7 @@ oss:
         .expect("insert platform delegation");
         ApiResourceDelegationRepo::mark_failed_if_unfinished(
             &resource_pool,
-            "rsc_platform_failed",
+            &trade_no,
             "ERR_6008",
             "platform delegate failed locally",
         )
@@ -5861,23 +5851,20 @@ oss:
         .expect("mark failed");
 
         worker
-            .release_collect_gate_after_local_delegation_failure("rsc_platform_failed")
+            .release_collect_gate_after_local_delegation_failure(&trade_no)
             .await
             .expect("ignore platform failure");
 
-        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(
-            &resource_pool,
-            "rsc_platform_failed",
-        )
-        .await
-        .expect("load platform task");
-        assert!(task.finished_at.is_none());
+        let task = ApiResourceDelegationRepo::get_by_resource_trade_no(&resource_pool, &trade_no)
+            .await
+            .expect("load platform task");
+        assert!(task.finished_at.is_some(), "a confirmed local failure is terminal");
         assert!(task.result_ack_sent_at.is_none());
 
         let rows = ApiResourceDelegationRepo::scan_need_result_ack(&resource_pool, 100)
             .await
             .expect("scan result ack");
-        assert!(!rows.iter().any(|row| row.resource_trade_no == "rsc_platform_failed"));
+        assert!(!rows.iter().any(|row| row.resource_trade_no == trade_no));
     }
 
     #[tokio::test]

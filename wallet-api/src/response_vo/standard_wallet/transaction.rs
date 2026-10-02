@@ -148,6 +148,18 @@ pub struct FeeDetailsVo<T> {
 }
 
 impl FeeDetails<EthereumFeeDetails> {
+    pub fn with_additional_native_fee(
+        mut self,
+        additional_fee_wei: U256,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let additional_fee = unit::format_to_f64(additional_fee_wei, eth::consts::ETH_DECIMAL)?;
+        for fee in &mut self.0 {
+            fee.estimate_fee += additional_fee;
+            fee.max_fee += additional_fee;
+        }
+        Ok(self)
+    }
+
     pub fn to_resp(
         self,
         token_price: TokenCurrency,
@@ -412,6 +424,45 @@ mod tests {
         assert_eq!(fee.data[0].fee_setting.gas_limit, 331_311);
         assert_eq!(fee.data[0].fee_setting.priority_fee, "100000000");
         assert!((fee.data[0].estimate_fee.amount - 0.00003313).abs() < 0.00000001);
+    }
+
+    #[test]
+    fn evm_additional_fee_is_added_to_each_quote_without_changing_execution_fee_setting() {
+        let gas_oracle = || GasOracle {
+            safe_gas_price: Some("1".to_string()),
+            propose_gas_price: Some("2".to_string()),
+            fast_gas_price: Some("3".to_string()),
+            suggest_base_fee: Some("1".to_string()),
+            gas_used_ratio: None,
+        };
+        let token_currency =
+            || TokenCurrency::new("eth", "ETH", "ETH", Some(2_000.0), Some(2_000.0), 1.0, 18);
+
+        let baseline =
+            FeeDetails::try_from((gas_oracle(), 21_000)).unwrap().to_resp(token_currency(), "USD");
+
+        let fee = FeeDetails::try_from((gas_oracle(), 21_000))
+            .unwrap()
+            .with_additional_native_fee(U256::from(10_000_000_000_000_u64))
+            .unwrap()
+            .to_resp(token_currency(), "USD");
+
+        assert_eq!(fee.data.len(), 3);
+        for (actual, original) in fee.data.iter().zip(&baseline.data) {
+            assert!(
+                (actual.estimate_fee.amount - original.estimate_fee.amount - 0.00001).abs() < 1e-12
+            );
+            assert!((actual.max_fee.amount - original.max_fee.amount - 0.00001).abs() < 1e-12);
+            assert_eq!(
+                serde_json::to_value(&actual.fee_setting).unwrap(),
+                serde_json::to_value(&original.fee_setting).unwrap()
+            );
+        }
+        assert!((fee.data[1].estimate_fee.amount - 0.000052).abs() < 1e-12);
+        assert!((fee.data[1].max_fee.amount - 0.0000604).abs() < 1e-12);
+        assert_eq!(fee.data[1].estimate_fee.fiat_value, Some(0.104));
+        assert_eq!(fee.data[1].fee_setting.gas_limit, 21_000);
+        assert_eq!(fee.data[1].fee_setting.max_fee_per_gas, "2400000000");
     }
 }
 

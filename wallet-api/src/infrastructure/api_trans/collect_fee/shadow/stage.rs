@@ -38,7 +38,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "tx_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND transaction_time IS NULL AND finished_at IS NULL".to_string()
             }
             AdvancementPoint::CanBroadcast => {
-                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (chain_code NOT IN ('bnb','eth','sol','tron') OR broadcast_uncertain_since_at IS NULL)".to_string()
+                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (chain_code NOT IN ('bnb','eth','polygon','avalanche','fantom','arbitrum','base','scroll','sol','tron') OR broadcast_uncertain_since_at IS NULL)".to_string()
             }
             AdvancementPoint::NeedRecover => {
                 "tx_hash IS NOT NULL AND transaction_time IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
@@ -70,7 +70,9 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                     && fee.transaction_time.is_none()
                     && fee.finished_at.is_none()
                     && fee.err_code.is_none()
-                    && (!matches!(fee.chain_code.as_str(), "bnb" | "eth" | "sol" | "tron")
+                    && (!crate::domain::api_wallet::trans::shared_mechanism::tracks_broadcast_uncertain_state(
+                        &fee.chain_code,
+                    )
                         || fee.broadcast_uncertain_since_at.is_none())
             },
             AdvancementPoint::NeedRecover => |fee| {
@@ -203,5 +205,25 @@ mod tests {
         let pred = DefaultStageQueryBuilder::rust_predicate(AdvancementPoint::CanBuild);
         assert!(!pred(&committed));
         assert!(!pred(&finished));
+    }
+
+    #[test]
+    fn can_broadcast_blocks_added_evm_uncertain_state() {
+        let mut blocked = base_fee();
+        blocked.chain_code = "polygon".to_string();
+        blocked.broadcast_uncertain_since_at = Some(Utc::now());
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(AdvancementPoint::CanBroadcast);
+        assert!(!pred(&blocked));
+    }
+
+    #[test]
+    fn can_broadcast_sql_tracks_added_evm_chains() {
+        let sql = DefaultStageQueryBuilder::sql_filter(AdvancementPoint::CanBroadcast);
+
+        for chain_code in ["polygon", "avalanche", "fantom", "arbitrum", "base", "scroll"] {
+            assert!(sql.contains(&format!("'{chain_code}'")));
+        }
+        assert!(sql.contains("broadcast_uncertain_since_at IS NULL"));
     }
 }

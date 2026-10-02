@@ -25,6 +25,35 @@ struct AdapterEntry {
     created_at: SystemTime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdapterKind {
+    Tron,
+    Bitcoin,
+    Solana,
+    Evm,
+    Litecoin,
+    Dogecoin,
+    Sui,
+    Ton,
+}
+
+fn adapter_kind(chain_code: ChainCode) -> Option<AdapterKind> {
+    if crate::domain::chain::is_evm_chain(chain_code) {
+        return Some(AdapterKind::Evm);
+    }
+
+    Some(match chain_code {
+        ChainCode::Tron => AdapterKind::Tron,
+        ChainCode::Bitcoin => AdapterKind::Bitcoin,
+        ChainCode::Solana => AdapterKind::Solana,
+        ChainCode::Litecoin => AdapterKind::Litecoin,
+        ChainCode::Dogcoin => AdapterKind::Dogecoin,
+        ChainCode::Sui => AdapterKind::Sui,
+        ChainCode::Ton => AdapterKind::Ton,
+        _ => return None,
+    })
+}
+
 pub struct ApiChainAdapterFactory {
     transaction_adapter: DashMap<String, AdapterEntry>,
     // 适配器过期时间（不应超过rpc token本地TTL）
@@ -104,6 +133,9 @@ impl ApiChainAdapterFactory {
                     continue;
                 }
             };
+            let Some(kind) = adapter_kind(chain_code) else {
+                continue;
+            };
 
             // 使用chain_code和rpc_url组合作为缓存键
             let cache_key = format!("{}:{}", chain_code.to_string(), node.rpc_url);
@@ -122,13 +154,17 @@ impl ApiChainAdapterFactory {
                 None
             };
 
-            let adapter: Arc<dyn Tx + Send + Sync> = match chain_code {
-                ChainCode::Tron => Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-                ChainCode::Bitcoin => {
+            let adapter: Arc<dyn Tx + Send + Sync> = match kind {
+                AdapterKind::Tron => {
+                    Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
+                }
+                AdapterKind::Bitcoin => {
                     Arc::new(BtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
                 }
-                ChainCode::Solana => Arc::new(SolTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-                ChainCode::Ethereum => Arc::new(EthTx::new_with_ctx(
+                AdapterKind::Solana => {
+                    Arc::new(SolTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
+                }
+                AdapterKind::Evm => Arc::new(EthTx::new_with_ctx(
                     ctx,
                     chain_code,
                     &node.rpc_url,
@@ -137,24 +173,14 @@ impl ApiChainAdapterFactory {
                     ),
                     header_opt,
                 )?),
-                ChainCode::BnbSmartChain => Arc::new(EthTx::new_with_ctx(
-                    ctx,
-                    chain_code,
-                    &node.rpc_url,
-                    crate::domain::chain::ChainDomain::network_kind_from_node_network(
-                        &node.network,
-                    ),
-                    header_opt,
-                )?),
-                ChainCode::Litecoin => {
+                AdapterKind::Litecoin => {
                     Arc::new(LtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
                 }
-                ChainCode::Dogcoin => {
+                AdapterKind::Dogecoin => {
                     Arc::new(DogeTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
                 }
-                ChainCode::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-                ChainCode::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-                _ => continue,
+                AdapterKind::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+                AdapterKind::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
             };
 
             // 存入缓存，包含创建时间
@@ -173,6 +199,9 @@ impl ApiChainAdapterFactory {
         ctx: &'static Context,
         chain_code: ChainCode,
     ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
+        let kind = adapter_kind(chain_code).ok_or_else(|| {
+            ServiceError::Parameter(format!("unsupported transaction chain: {chain_code}"))
+        })?;
         let node = Self::get_chain_node(ctx, chain_code).await?;
 
         // 使用chain_code和rpc_url组合作为缓存键，确保不同节点的适配器不会被混用
@@ -193,33 +222,23 @@ impl ApiChainAdapterFactory {
         let header_opt =
             if rpc_need_header(&node.rpc_url)? { Some(ctx.get_rpc_header().await?) } else { None };
 
-        let adapter: Arc<dyn Tx + Send + Sync> = match chain_code {
-            ChainCode::Tron => Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Bitcoin => Arc::new(BtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Solana => Arc::new(SolTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Ethereum => Arc::new(EthTx::new_with_ctx(
+        let adapter: Arc<dyn Tx + Send + Sync> = match kind {
+            AdapterKind::Tron => Arc::new(TronTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Bitcoin => Arc::new(BtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Solana => Arc::new(SolTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Evm => Arc::new(EthTx::new_with_ctx(
                 ctx,
                 chain_code,
                 &node.rpc_url,
                 crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
                 header_opt,
             )?),
-            ChainCode::BnbSmartChain => Arc::new(EthTx::new_with_ctx(
-                ctx,
-                chain_code,
-                &node.rpc_url,
-                crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
-                header_opt,
-            )?),
-            ChainCode::Litecoin => Arc::new(LtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Dogcoin => Arc::new(DogeTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            ChainCode::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
-            _ => {
-                return Err(ServiceError::Parameter(format!(
-                    "unsupported transaction chain: {chain_code}"
-                )));
+            AdapterKind::Litecoin => Arc::new(LtcTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Dogecoin => {
+                Arc::new(DogeTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?)
             }
+            AdapterKind::Sui => Arc::new(SuiTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
+            AdapterKind::Ton => Arc::new(TonTx::new_with_ctx(ctx, &node.rpc_url, header_opt)?),
         };
 
         // 存入缓存，包含创建时间
@@ -257,5 +276,42 @@ impl ApiChainAdapterFactory {
                 "api tron adapter type mismatch".to_string(),
             ))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AdapterKind, adapter_kind};
+    use wallet_types::chain::chain::ChainCode;
+
+    #[test]
+    fn adapter_kind_routes_all_evm_chains_to_eth() {
+        for chain in [
+            ChainCode::Ethereum,
+            ChainCode::BnbSmartChain,
+            ChainCode::Polygon,
+            ChainCode::Avalanche,
+            ChainCode::Fantom,
+            ChainCode::Arbitrum,
+            ChainCode::Base,
+            ChainCode::Scroll,
+        ] {
+            assert_eq!(adapter_kind(chain), Some(AdapterKind::Evm));
+        }
+    }
+
+    #[test]
+    fn adapter_kind_preserves_non_evm_routes() {
+        for (chain, expected) in [
+            (ChainCode::Tron, AdapterKind::Tron),
+            (ChainCode::Bitcoin, AdapterKind::Bitcoin),
+            (ChainCode::Solana, AdapterKind::Solana),
+            (ChainCode::Litecoin, AdapterKind::Litecoin),
+            (ChainCode::Dogcoin, AdapterKind::Dogecoin),
+            (ChainCode::Sui, AdapterKind::Sui),
+            (ChainCode::Ton, AdapterKind::Ton),
+        ] {
+            assert_eq!(adapter_kind(chain), Some(expected));
+        }
     }
 }

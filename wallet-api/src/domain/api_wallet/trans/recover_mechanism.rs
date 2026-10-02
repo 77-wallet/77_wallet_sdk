@@ -115,9 +115,7 @@ pub(super) fn classify_recover_missing_tx_route(chain_code: &str) -> RecoverMiss
         RecoverMissingTxRoute::SolanaVisibilityProbe
     } else if chain_code == ChainCode::Tron.to_string() {
         RecoverMissingTxRoute::TronPendingPool
-    } else if chain_code == ChainCode::Ethereum.to_string()
-        || chain_code == ChainCode::BnbSmartChain.to_string()
-    {
+    } else if super::shared_mechanism::is_evm_chain(chain_code) {
         RecoverMissingTxRoute::EvmNonceCheck
     } else {
         RecoverMissingTxRoute::WaitForScanner
@@ -374,7 +372,17 @@ mod tests {
 
     #[test]
     fn recover_missing_tx_routes_evm_chains_to_nonce_check() {
-        for chain_code in [ChainCode::Ethereum.to_string(), ChainCode::BnbSmartChain.to_string()] {
+        for chain_code in [
+            ChainCode::Ethereum,
+            ChainCode::BnbSmartChain,
+            ChainCode::Polygon,
+            ChainCode::Avalanche,
+            ChainCode::Fantom,
+            ChainCode::Arbitrum,
+            ChainCode::Base,
+            ChainCode::Scroll,
+        ] {
+            let chain_code = chain_code.to_string();
             let route = classify_recover_missing_tx_route(&chain_code);
             assert_eq!(route, RecoverMissingTxRoute::EvmNonceCheck);
             assert_eq!(route.wait_reason(), None);

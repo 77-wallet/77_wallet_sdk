@@ -57,3 +57,32 @@ pub(crate) fn mainnet_default_coins_list() -> Result<&'static DefaultCoinList, S
 pub(crate) fn testnet_default_coins_list() -> Result<&'static DefaultCoinList, ServiceError> {
     init_default_coins_list_by_profile("testnet")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn added_evm_chains_have_native_testnet_coins() {
+        let coins = &testnet_default_coins_list().expect("load testnet coins").coins;
+        let expected = [
+            ("polygon", "POL"),
+            ("avalanche", "AVAX"),
+            ("arbitrum", "ETH"),
+            ("base", "ETH"),
+            ("scroll", "ETH"),
+        ];
+
+        for (chain_code, symbol) in expected {
+            let coin = coins
+                .iter()
+                .find(|coin| coin.chain_code == chain_code && coin.symbol == symbol)
+                .unwrap_or_else(|| panic!("missing native coin for {chain_code}"));
+            assert_eq!(coin.decimals, 18);
+            assert_eq!(coin.protocol.as_deref(), Some("ERC20"));
+            assert!(coin.token_address.as_db_str().is_empty());
+            assert!(coin.default && coin.popular && coin.active);
+        }
+        assert!(!coins.iter().any(|coin| coin.chain_code == "fantom"));
+    }
+}

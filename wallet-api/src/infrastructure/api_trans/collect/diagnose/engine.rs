@@ -59,9 +59,17 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
                 };
             }
 
+            let reasons = if *stage == CollectStage::NeedServiceFeeUpload
+                && collect.service_fee_order_received_at.is_some()
+            {
+                vec!["Backend fee order received; waiting for service fee upload".to_string()]
+            } else {
+                eval.reasons.into_iter().map(|r| r.message).collect()
+            };
+
             return DiagnoseResult {
                 stage: *stage,
-                reasons: eval.reasons.into_iter().map(|r| r.message).collect(),
+                reasons,
                 facts_snapshot: dump_fact_snapshot(collect),
                 facts_mask: fact_mask(collect),
                 stuck_score: calculate_severity(*stage, collect),
@@ -317,8 +325,9 @@ mod tests {
     }
 
     #[test]
-    fn diagnose_waiting_for_service_fee_upload_when_service_fee_not_uploaded() {
+    fn diagnose_service_fee_upload_without_backend_order_fact() {
         let mut c = base_collect();
+        c.resource_gate_released_at = Some(Utc::now());
         c.raw_tx = None;
         c.tx_hash = None;
         c.need_service_fee = Some(true);
@@ -327,14 +336,14 @@ mod tests {
         c.tx_fee_res_ack_sent_at = None;
 
         let diag = diagnose_collect(&c);
-        assert_eq!(diag.stage, CollectStage::FullyBlocked);
-        assert!(diag.reasons.iter().any(|r| r.contains("Waiting for service fee upload")));
+        assert_eq!(diag.stage, CollectStage::NeedServiceFeeUpload);
         assert_eq!(diag.next_expected_fact, Some("service_fee_uploaded_at"));
     }
 
     #[test]
     fn diagnose_service_fee_order_received_routes_to_upload_stage() {
         let mut c = base_collect();
+        c.resource_gate_released_at = Some(Utc::now());
         c.raw_tx = None;
         c.tx_hash = None;
         c.need_service_fee = Some(true);

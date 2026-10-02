@@ -1411,8 +1411,9 @@ impl ApiWalletAcctChange {
                             // A signed EVM submission is resolved by its receipt observer.
                             // Account-change success can describe a fee/native event for
                             // the same hash, not the token transfer's execution result.
-                            if matches!(tx.chain_code.as_str(), "eth" | "bnb")
-                                && tx.raw_tx.as_deref().is_some_and(|raw| !raw.is_empty())
+                            if crate::domain::api_wallet::trans::shared_mechanism::is_evm_chain(
+                                &tx.chain_code,
+                            ) && tx.raw_tx.as_deref().is_some_and(|raw| !raw.is_empty())
                             {
                                 tracing::info!(trade_no = %tx.trade_no, tx_hash = %self.0.tx_hash,
                                     message_success = self.0.status,

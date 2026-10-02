@@ -426,11 +426,13 @@ mod tests {
     use super::{
         AwmOrderTransMsg, AwmOrderTransNormalMsg, AwmResourceDelegationMsg, AwmResourceOperationMsg,
     };
-    use crate::testkit::{
-        env::get_manager,
-        mqtt::{api_transaction_pool, api_wallet_pool},
+    use crate::{
+        context::Context,
+        dirs::Dirs,
+        testkit::mqtt::{api_transaction_pool, api_wallet_pool},
     };
     use serial_test::serial;
+    use tempfile::TempDir;
     use tokio::sync::mpsc;
     use wallet_database::{
         entities::{
@@ -450,19 +452,42 @@ mod tests {
         },
     };
 
+    async fn isolated_test_context() -> anyhow::Result<(TempDir, &'static Context)> {
+        let temp_dir = tempfile::tempdir()?;
+        let config = crate::config::Config::new(
+            r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+"#,
+        )?;
+        let dirs = Dirs::new(temp_dir.path().to_str().expect("UTF-8 temp path"))?;
+        let ctx = Box::leak(Box::new(Context::new_without_handles_for_test(dirs, config).await?));
+        Ok((temp_dir, ctx))
+    }
+
     #[tokio::test]
     #[serial]
     async fn transfer_fee_does_not_touch_collect_row_by_fee_trade_no() -> anyhow::Result<()> {
-        let (manager, _params) = get_manager().await?;
+        let (_temp_dir, ctx) = isolated_test_context().await?;
         let (frontend_tx, _frontend_rx) = mpsc::unbounded_channel();
-        manager.set_frontend_notify_sender(frontend_tx).await?;
+        ctx.set_frontend_notify_sender(Some(frontend_tx)).await?;
 
         let wallet_uid =
             format!("fee-order-regression-{}", wallet_utils::time::now().timestamp_millis());
         let trade_no =
             format!("CF_fee_order_regression_{}", wallet_utils::time::now().timestamp_millis());
 
-        let wallet_pool = api_wallet_pool(manager.ctx)?;
+        let wallet_pool = api_wallet_pool(ctx)?;
         let seed_enc: Vec<u8> =
             crate::domain::api_wallet::wallet::ApiWalletDomain::encrypt_seed_bundle(
                 "q1111111",
@@ -484,7 +509,7 @@ mod tests {
         )
         .await?;
 
-        let tx_pool = api_transaction_pool(manager.ctx)?;
+        let tx_pool = api_transaction_pool(ctx)?;
         ApiCollectRepo::upsert_api_collect(
             &tx_pool,
             &wallet_uid,
@@ -521,7 +546,7 @@ mod tests {
             client_id: None,
         });
 
-        msg.transfer_fee(manager.ctx).await?;
+        msg.transfer_fee(ctx).await?;
 
         let collect = ApiCollectRepo::get_api_collect_by_trade_no(&tx_pool, &trade_no).await?;
         assert!(
@@ -538,7 +563,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn resource_operation_trade_type_4_persists_backend_stake_task() -> anyhow::Result<()> {
-        let (manager, _params) = get_manager().await?;
+        let (_temp_dir, ctx) = isolated_test_context().await?;
         let trade_no =
             format!("RSC_STK_order_regression_{}", wallet_utils::time::now().timestamp_millis());
         let wallet_uid =
@@ -555,9 +580,9 @@ mod tests {
             uid: wallet_uid,
         });
 
-        msg.resource_operation(manager.ctx).await?;
+        msg.resource_operation(ctx).await?;
 
-        let resource_pool = manager.ctx.api_resource_pool()?;
+        let resource_pool = ctx.api_resource_pool()?;
         let got =
             ApiResourceOperationRepo::get_by_resource_trade_no(&resource_pool, &trade_no).await?;
         assert_eq!(got.task_source, ApiResourceOperationTaskSource::Backend);

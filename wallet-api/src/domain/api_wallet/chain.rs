@@ -135,10 +135,12 @@ impl ApiChainDomain {
 
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
+        let mut backend_chain_codes = Vec::new();
         // let mut has_new_chain = false;
         let mut new_chains = Vec::new();
         let app_version = ConfigDomain::get_app_version(ctx).await?.app_version;
         for chain in chains.0 {
+            backend_chain_codes.push(chain.chain_code.clone());
             let Some(master_token_code) = chain.master_token_code else {
                 continue;
             };
@@ -203,7 +205,12 @@ impl ApiChainDomain {
         }
 
         ApiChainRepo::upsert_multi_chain(&pool, input).await?;
-        Self::toggle_api_chains(ctx, &chain_codes).await?;
+        let enabled_chain_codes = crate::default_data::chain::enabled_chain_codes_for_feature(
+            crate::config::Config::active_feature_profile(),
+            &chain_codes,
+            &backend_chain_codes,
+        )?;
+        Self::toggle_api_chains(ctx, &enabled_chain_codes).await?;
 
         if !chain_codes.is_empty() {
             let chain_rpc_list_req = BackendApiTaskData::new(
@@ -232,30 +239,33 @@ impl ApiChainDomain {
         ctx: &'static Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.api_wallet_pool()?;
-        let list = crate::default_data::chain::get_default_chains_list()?;
+        let profile = crate::config::Config::active_feature_profile();
+        let lists = crate::default_data::chain::default_chain_lists_for_feature(profile)?;
 
         // tracing::warn!("list {:#?}", list);
 
         let mut chain_codes = Vec::new();
-        for (chain_code, default_chain) in &list.chains {
-            let status = if default_chain.active { 1 } else { 0 };
-            // let node_id =
-            //     NodeDomain::gen_node_id(&default_chain.node_name, &default_chain.chain_code);
-            let req = wallet_database::entities::api_chain::ApiChainCreateVo::new(
-                &default_chain.name,
-                &default_chain.chain_code,
-                &default_chain.protocols,
-                NodeBindType::AutoLocal,
-                &default_chain.main_symbol,
-            )
-            .with_status(status);
+        for list in lists {
+            for (chain_code, default_chain) in &list.chains {
+                let status = if default_chain.active { 1 } else { 0 };
+                // let node_id =
+                //     NodeDomain::gen_node_id(&default_chain.node_name, &default_chain.chain_code);
+                let req = wallet_database::entities::api_chain::ApiChainCreateVo::new(
+                    &default_chain.name,
+                    &default_chain.chain_code,
+                    &default_chain.protocols,
+                    NodeBindType::AutoLocal,
+                    &default_chain.main_symbol,
+                )
+                .with_status(status);
 
-            if let Err(e) = ApiChainRepo::add(&pool, req).await {
-                tracing::error!("Failed to create default chain: {:?}", e);
-                continue;
-            }
-            if status == 1 {
-                chain_codes.push(chain_code.to_string());
+                if let Err(e) = ApiChainRepo::add(&pool, req).await {
+                    tracing::error!("Failed to create default chain: {:?}", e);
+                    continue;
+                }
+                if status == 1 {
+                    chain_codes.push(chain_code.to_string());
+                }
             }
         }
         let app_version = ConfigDomain::get_app_version(ctx).await?;

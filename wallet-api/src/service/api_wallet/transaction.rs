@@ -630,7 +630,7 @@ impl ApiTransService {
         };
         let transaction_time = bill.transaction_time.unwrap_or_else(Utc::now);
         let signed_evm_self_transfer = bill.trade_type == ApiTradeType::SelfWithdraw
-            && matches!(bill.chain_code.as_str(), "eth" | "bnb")
+            && crate::domain::api_wallet::trans::shared_mechanism::is_evm_chain(&bill.chain_code)
             && bill.raw_tx.as_deref().is_some_and(|raw| !raw.is_empty());
         // Receipt facts take precedence over legacy MQTT narrative status,
         // including rows overwritten before the account-change guard was added.

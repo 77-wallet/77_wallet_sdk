@@ -287,7 +287,7 @@ impl ApiTransferApplication {
             password: params.password.to_string(),
             nonce: nonce as u64,
         };
-        if matches!(chain_code, ChainCode::Ethereum | ChainCode::BnbSmartChain) {
+        if crate::domain::chain::is_evm_chain(chain_code) {
             let (tx_hash, raw, fee) =
                 ApiTransDomain::build_transfer_raw(self.ctx, req, Some(private_key)).await?;
             let raw_json = wallet_utils::serde_func::serde_to_string(&raw)?;
@@ -368,7 +368,7 @@ impl ApiTransferApplication {
         }
     }
 
-    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
+    async fn get_evm_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
         let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
         let nonce = nonce_engine.allocate_ordinary_transfer_nonce(from_addr, chain_code).await?;
         Ok(nonce as i64)
@@ -380,11 +380,10 @@ impl ApiTransferApplication {
         chain_code: &str,
         chain_code_enum: ChainCode,
     ) -> Result<i64, ServiceError> {
-        match chain_code_enum {
-            ChainCode::Ethereum | ChainCode::BnbSmartChain => {
-                self.get_eth_nonce(from_addr, chain_code).await
-            }
-            _ => Ok(0),
+        if crate::domain::chain::is_evm_chain(chain_code_enum) {
+            self.get_evm_nonce(from_addr, chain_code).await
+        } else {
+            Ok(0)
         }
     }
 

@@ -70,6 +70,7 @@ impl WalletManager {
 mod test {
 
     #[tokio::test]
+    #[ignore = "smoke/live: queries address status through a configured chain RPC"]
     async fn test_address_status() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>

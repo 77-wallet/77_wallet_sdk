@@ -43,6 +43,10 @@ impl Default for CoinDomain {
     }
 }
 impl CoinDomain {
+    pub(crate) fn should_restore_local_defaults_after_backend(profile: &str) -> bool {
+        matches!(profile, "dev")
+    }
+
     pub fn new() -> Self {
         Self {}
     }
@@ -367,6 +371,18 @@ impl CoinDomain {
             .await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::CoinDomain;
+
+    #[test]
+    fn only_dev_restores_local_defaults_after_backend_coin_sync() {
+        assert!(CoinDomain::should_restore_local_defaults_after_backend("dev"));
+        assert!(!CoinDomain::should_restore_local_defaults_after_backend("test"));
+        assert!(!CoinDomain::should_restore_local_defaults_after_backend("prod"));
     }
 }
 

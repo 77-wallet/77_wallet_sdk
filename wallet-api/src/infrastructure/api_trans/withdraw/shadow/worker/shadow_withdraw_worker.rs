@@ -2267,15 +2267,6 @@ impl ShadowWithdrawWorker {
         Ok(entity)
     }
 
-    /// Check if a chain is EVM-compatible
-    ///
-    /// EVM chains require nonce management for transaction ordering.
-    /// This function centralizes the EVM chain detection to avoid
-    /// scattered match statements and ensure consistency.
-    fn is_evm_chain(chain: &ChainCode) -> bool {
-        matches!(chain, ChainCode::Ethereum | ChainCode::BnbSmartChain)
-    }
-
     /// Allocate nonce for transaction.
     ///
     /// Observe chain next nonce before reserving via an atomic DB increment.
@@ -2293,7 +2284,7 @@ impl ShadowWithdrawWorker {
         // ⚠️ EVM nonce MUST be allocated via DB atomic upsert.
         // Any read-modify-write logic here is forbidden.
         match chain {
-            c if Self::is_evm_chain(&c) => {
+            c if crate::domain::chain::is_evm_chain(c) => {
                 // 对于以太坊类链，使用NonceEngine来分配nonce
                 // ⚠️ INVARIANT:
                 // This method MUST guarantee DB-level atomic CAS for nonce allocation.

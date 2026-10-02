@@ -18,6 +18,7 @@ default = ["dev", "token", "integration-tests", "api-mqtt", "api-wallet-console"
 # ]
 
 integration-tests = []
+smoke-live = []
 api-mqtt = []
 
 response = []

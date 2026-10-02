@@ -3,11 +3,25 @@ use wallet_transport_backend::request::SignedTranUpdateHashReq;
 use crate::init;
 
 #[tokio::test]
+#[ignore = "manual live smoke: queries dev gas tracker without broadcasting"]
 pub async fn test_fee_oracle() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize using init()
 
-    let res = backend_api.gas_oracle("eth").await.unwrap();
-    tracing::info!("res  {:?}", res);
+    for chain_code in ["eth", "polygon", "avalanche", "arbitrum", "base"] {
+        let oracle = backend_api.gas_oracle(chain_code).await?;
+        for (tier, value) in [
+            ("safe", oracle.safe_gas_price),
+            ("propose", oracle.propose_gas_price),
+            ("fast", oracle.fast_gas_price),
+        ] {
+            let price = value
+                .as_deref()
+                .and_then(|value| value.parse::<f64>().ok())
+                .filter(|price| price.is_finite() && *price > 0.0)
+                .unwrap_or_else(|| panic!("{chain_code} {tier} gas price must be positive"));
+            tracing::info!(chain_code, tier, price, "dev gas tracker tier");
+        }
+    }
 
     Ok(())
 }

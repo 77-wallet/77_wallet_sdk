@@ -1,4 +1,4 @@
-use super::{TIME_OUT, eth_tx, ton_tx, tron_tx};
+use super::{TIME_OUT, eth_tx, evm_fee, ton_tx, tron_tx};
 use crate::{
     dispatch,
     domain::{
@@ -72,7 +72,14 @@ impl TransactionAdapter {
                 let btc_chain = chain::btc::BtcChain::new(config, network, header_opt, timeout)?;
                 Ok(TransactionAdapter::BitCoin(btc_chain))
             }
-            ChainType::Ethereum | ChainType::BnbSmartChain => {
+            ChainType::Ethereum
+            | ChainType::BnbSmartChain
+            | ChainType::Polygon
+            | ChainType::Avalanche
+            | ChainType::Fantom
+            | ChainType::Arbitrum
+            | ChainType::Base
+            | ChainType::Scroll => {
                 let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
                 let eth_chain = chain::eth::EthChain::new(provider, network, chain_code)?;
@@ -226,21 +233,20 @@ impl TransactionAdapter {
                 )
                 .await?;
 
-                let fee = fee_setting.transaction_fee();
-                // check transaction_fee
-                if remain_balance < fee {
-                    return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientFeeBalance,
-                    ))?;
-                }
-
                 let params = chain::eth::operations::TransferOpt::try_from(&params.base)?;
+                let execution_fee = fee_setting.transaction_fee();
+                let execution_reserve =
+                    evm_fee::execution_fee_reserve(chain.chain_code, &fee_setting);
+                let required_fee =
+                    evm_fee::required_send_fee(chain, &params, execution_reserve).await?;
+                evm_fee::ensure_send_fee_balance(remain_balance, required_fee)?;
+
                 let tx_hash =
                     chain.exec_transaction(params, fee_setting, private_key, None).await?;
 
                 Ok(TransferResp::new(
                     tx_hash,
-                    unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
+                    unit::format_to_string(execution_fee, eth::consts::ETH_DECIMAL)?,
                 ))
             }
             Self::BitCoin(chain) => {
@@ -709,41 +715,14 @@ impl TransactionAdapter {
             .await?;
 
         let res = match self {
-            Self::Ethereum(chain) => {
-                let value = unit::convert_to_u256(&req.value, req.decimals)?;
-                let balance = chain.balance(&req.from, token_address.clone()).await?;
-                if balance < value {
-                    return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
-                            crate::error::business::chain::InsufficientBalanceDetail::new()
-                                .from_addr(req.from.clone())
-                                .to_addr(req.to.clone())
-                                .chain_code(req.chain_code.clone())
-                                .token_addr(token_address.clone().unwrap_or_default())
-                                .value(value.to_string())
-                                .balance(balance.to_string())
-                                .need(value.to_string())
-                                .reason("token balance is insufficient for fee estimation"),
-                        ),
-                    ))?;
-                }
-
-                let gas_oracle =
-                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
-                        .await?;
-
-                let params = eth::operations::TransferOpt::new(
-                    &req.from,
-                    &req.to,
-                    value,
-                    token_address.clone(),
-                )?;
-                let fee = chain.estimate_gas(params).await?;
-                let fee = FeeDetails::try_from((gas_oracle, fee.consume))?
-                    .to_resp(token_currency, currency);
-
-                wallet_utils::serde_func::serde_to_string(&fee)
-            }
+            Self::Ethereum(chain) => Ok(evm_fee::estimate_transfer_fee(
+                chain,
+                &req,
+                backend_api,
+                currency,
+                token_currency,
+            )
+            .await?),
             Self::BitCoin(chain) => {
                 let account = ChainTransDomain::account(ctx, &req.chain_code, &req.from).await?;
                 let params = btc::operations::transfer::TransferArg::new(
