@@ -103,3 +103,21 @@ failure, below-threshold balance, exact-threshold balance, and snapshot retentio
   covers twelve reminders across pages (one resolved history item), idempotent all-read, unchanged active
   state and payloads, cross-UID isolation and invalid UID no-op on stored state.
   Unread count includes history; reading never resolves a banner.
+
+## No-UID public withdrawal-wallet message center (2026-10-06)
+
+These current public contracts supersede UID-only message-center statements above;
+internal per-UID repo/service paths remain for ingestion and background work.
+
+| Action | Required invariant | Component test |
+| --- | --- | --- |
+| Global list/count/read | Active Withdrawal scope, duplicate wallet rows do not duplicate reminders, global ordering precedes pagination; resolved unread history counts | `withdrawal_message_center_tests::global_message_center_filters_orders_pages_and_read_writes_by_active_wallet` |
+| ID read and all-read | Recheck eligibility in SQL, exclude subaccounts/disabled/orphan/blank owner; repeated reads preserve payload and resolution | same SQLite test |
+| Scope-table failure | Return errors, never mark out-of-scope or unread records read on failure | `missing_wallet_scope_table_fails_without_marking_any_message_read` |
+| Public no-UID API | Preserve record ownership, no balance lock/chain IO on ordinary list/count/read; invalid page/ID rejected | `no_uid_message_api_keeps_owner_and_reads_without_balance_checks` |
+| Existing unresolved refresh | Filter eligible scope before balance IO, resolve exact threshold with payload CAS, failed checks retain messages, repage after resolution | `global_unresolved_refresh_filters_before_chain_io_and_repages_after_resolution` |
+
+No scale benchmark, App integration or live chain verification. Count/page are
+separate existing SQL reads; concurrent mutations may change offset pagination.
+Direct unresolved refresh retains serial balance IO and has no added total deadline;
+background directed checks and pure local balance query remain separate.

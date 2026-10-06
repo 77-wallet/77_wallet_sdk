@@ -155,3 +155,13 @@
 - 功能改动优先最小影响路径
 - 非必要不改公共接口与跨模块契约
 - 任何流程改动必须补测试与断言矩阵
+
+### API message-center scope (user confirmation, 2026-10-06)
+
+The user confirms public API message-center parameters do not require a UID;
+for now aggregate existing business reminder records across active API Withdrawal
+wallets only. Records retain internal UID ownership. Existing pagination remains;
+this is not a wallet-list API. Read state remains independent of resolution.
+Ordinary wallets, SubAccount wallets and paused phase-two chain work are excluded.
+Source: user voice confirmation relayed by coordinating thread; applies to this
+message-center change, not permission to commit/push/release or transact.

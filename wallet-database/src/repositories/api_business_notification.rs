@@ -8,6 +8,45 @@ use crate::{
 pub struct ApiBusinessNotificationRepo;
 
 impl ApiBusinessNotificationRepo {
+    pub async fn list_for_withdrawal_wallets(
+        pool: &ApiWalletDbPool,
+        unresolved_only: bool,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiBusinessNotification>, Error> {
+        let offset = page.checked_mul(page_size).ok_or_else(|| {
+            Error::Database(sqlx::Error::Protocol("pagination offset overflow".into()).into())
+        })?;
+        let total_count = ApiBusinessNotificationDao::count_for_withdrawal_wallets(
+            pool.read_ref(),
+            unresolved_only,
+        )
+        .await?;
+        let data = ApiBusinessNotificationDao::list_for_withdrawal_wallets(
+            pool.read_ref(),
+            unresolved_only,
+            page_size,
+            offset,
+        )
+        .await?;
+        Ok(Pagination { page, page_size, total_count, data })
+    }
+
+    pub async fn unread_count_for_withdrawal_wallets(pool: &ApiWalletDbPool) -> Result<i64, Error> {
+        ApiBusinessNotificationDao::unread_count_for_withdrawal_wallets(pool.read_ref()).await
+    }
+
+    pub async fn mark_read_for_withdrawal_wallets(
+        pool: &ApiWalletDbPool,
+        id: &str,
+    ) -> Result<(), Error> {
+        ApiBusinessNotificationDao::mark_read_for_withdrawal_wallets(pool.write_ref(), id).await
+    }
+
+    pub async fn mark_all_read_for_withdrawal_wallets(pool: &ApiWalletDbPool) -> Result<(), Error> {
+        ApiBusinessNotificationDao::mark_all_read_for_withdrawal_wallets(pool.write_ref()).await
+    }
+
     pub async fn find(
         pool: &ApiWalletDbPool,
         uid: &str,
@@ -376,3 +415,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "api_business_notification/withdrawal_message_center_tests.rs"]
+mod withdrawal_message_center_tests;

@@ -5,6 +5,67 @@ use sqlx::{Executor, Sqlite};
 
 pub(crate) struct ApiBusinessNotificationDao;
 impl ApiBusinessNotificationDao {
+    // EXISTS avoids multiplying messages when several wallet rows share an owner.
+    const WITHDRAWAL_SCOPE: &'static str = "EXISTS (
+        SELECT 1 FROM api_wallet w WHERE w.uid = api_business_notification.uid
+        AND w.status = 1 AND w.api_wallet_type = 2 AND TRIM(w.uid) <> '')";
+
+    pub async fn count_for_withdrawal_wallets<'a, E>(
+        exec: E,
+        unresolved_only: bool,
+    ) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_scalar(&format!("SELECT count(*) FROM api_business_notification WHERE {} AND (? = 0 OR resolved_at IS NULL)", Self::WITHDRAWAL_SCOPE))
+            .bind(unresolved_only).fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_for_withdrawal_wallets<'a, E>(
+        exec: E,
+        unresolved_only: bool,
+        page_size: i64,
+        offset: i64,
+    ) -> Result<Vec<ApiBusinessNotification>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as(&format!("SELECT * FROM api_business_notification WHERE {} AND (? = 0 OR resolved_at IS NULL) ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?", Self::WITHDRAWAL_SCOPE))
+            .bind(unresolved_only).bind(page_size).bind(offset).fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn unread_count_for_withdrawal_wallets<'a, E>(exec: E) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_scalar(&format!(
+            "SELECT count(*) FROM api_business_notification WHERE {} AND is_read = 0",
+            Self::WITHDRAWAL_SCOPE
+        ))
+        .fetch_one(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn mark_read_for_withdrawal_wallets<'a, E>(
+        exec: E,
+        id: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query(&format!("UPDATE api_business_notification SET is_read = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE {} AND id = ? AND is_read = 0", Self::WITHDRAWAL_SCOPE))
+            .bind(id).execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn mark_all_read_for_withdrawal_wallets<'a, E>(exec: E) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query(&format!("UPDATE api_business_notification SET is_read = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE {} AND is_read = 0", Self::WITHDRAWAL_SCOPE))
+            .execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn find<'a, E>(
         exec: E,
         uid: &str,

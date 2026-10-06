@@ -293,6 +293,86 @@ impl ApiBusinessNotificationService {
         }
     }
 
+    pub async fn list_for_withdrawal_wallets(
+        &self,
+        unresolved_only: bool,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiBusinessNotification>, ServiceError> {
+        if page < 0 || page_size <= 0 || page.checked_mul(page_size).is_none() {
+            return Err(ServiceError::Parameter("page or page_size is invalid".into()));
+        }
+        ApiBusinessNotificationRepo::list_for_withdrawal_wallets(
+            &self.ctx.api_wallet_pool()?,
+            unresolved_only,
+            page,
+            page_size,
+        )
+        .await
+        .map_err(ServiceError::from)
+    }
+
+    pub async fn unread_count_for_withdrawal_wallets(&self) -> Result<i64, ServiceError> {
+        ApiBusinessNotificationRepo::unread_count_for_withdrawal_wallets(
+            &self.ctx.api_wallet_pool()?,
+        )
+        .await
+        .map_err(ServiceError::from)
+    }
+
+    pub async fn mark_read_for_withdrawal_wallets(&self, id: &str) -> Result<(), ServiceError> {
+        if id.trim().is_empty() {
+            return Err(ServiceError::Parameter("notification id is empty".into()));
+        }
+        ApiBusinessNotificationRepo::mark_read_for_withdrawal_wallets(
+            &self.ctx.api_wallet_pool()?,
+            id,
+        )
+        .await
+        .map_err(ServiceError::from)
+    }
+
+    pub async fn mark_all_read_for_withdrawal_wallets(&self) -> Result<(), ServiceError> {
+        ApiBusinessNotificationRepo::mark_all_read_for_withdrawal_wallets(
+            &self.ctx.api_wallet_pool()?,
+        )
+        .await
+        .map_err(ServiceError::from)
+    }
+
+    pub async fn list_unresolved_for_withdrawal_wallets_with_refresh(
+        &self,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiBusinessNotification>, ServiceError> {
+        self.list_unresolved_scoped_with_refresh_using(
+            None,
+            page,
+            page_size,
+            |address, chain, token| async move {
+                let value =
+                    ApiAssetsService::new(self.ctx).chain_balance(&address, &chain, &token).await?;
+                Decimal::from_str(&value.balance).map_err(|error| {
+                    ServiceError::Parameter(format!("invalid current balance: {error}"))
+                })
+            },
+        )
+        .await
+    }
+
+    async fn list_in_scope(
+        &self,
+        uid: Option<&str>,
+        unresolved_only: bool,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiBusinessNotification>, ServiceError> {
+        match uid {
+            Some(uid) => self.list(uid, unresolved_only, page, page_size).await,
+            None => self.list_for_withdrawal_wallets(unresolved_only, page, page_size).await,
+        }
+    }
+
     pub async fn list(
         &self,
         uid: &str,
@@ -359,6 +439,21 @@ impl ApiBusinessNotificationService {
         uid: &str,
         page: i64,
         page_size: i64,
+        balance_for: F,
+    ) -> Result<Pagination<ApiBusinessNotification>, ServiceError>
+    where
+        F: FnMut(String, String, String) -> Fut,
+        Fut: std::future::Future<Output = Result<Decimal, ServiceError>>,
+    {
+        self.list_unresolved_scoped_with_refresh_using(Some(uid), page, page_size, balance_for)
+            .await
+    }
+
+    async fn list_unresolved_scoped_with_refresh_using<F, Fut>(
+        &self,
+        uid: Option<&str>,
+        page: i64,
+        page_size: i64,
         mut balance_for: F,
     ) -> Result<Pagination<ApiBusinessNotification>, ServiceError>
     where
@@ -366,13 +461,13 @@ impl ApiBusinessNotificationService {
         Fut: std::future::Future<Output = Result<Decimal, ServiceError>>,
     {
         // Validate the requested page before doing any balance IO.
-        self.list(uid, true, page, page_size).await?;
+        self.list_in_scope(uid, true, page, page_size).await?;
         let pool = self.ctx.api_wallet_pool()?;
         // Snapshot candidates before resolution changes their pagination offsets.
         let mut candidates = Vec::new();
         let mut scan_page = 0;
         loop {
-            let batch = self.list(uid, true, scan_page, 100).await?;
+            let batch = self.list_in_scope(uid, true, scan_page, 100).await?;
             let count = batch.data.len();
             candidates.extend(batch.data);
             if count < 100 {
@@ -397,7 +492,7 @@ impl ApiBusinessNotificationService {
                     .await;
             Self::apply_balance_result(&pool, notification, &body, balance).await?;
         }
-        self.list(uid, true, page, page_size).await
+        self.list_in_scope(uid, true, page, page_size).await
     }
 
     async fn apply_balance_result(
@@ -445,6 +540,12 @@ mod tests {
         fn check(ctx: &'static crate::context::Context) {
             let service = ApiBusinessNotificationService::new(ctx);
             assert_send(service.unresolved_address_balance_notifications());
+            let manager = crate::manager::WalletManager { ctx, handles: None };
+            assert_send(manager.page_api_business_notifications(0, 10));
+            assert_send(manager.page_unresolved_api_business_notifications(0, 10));
+            assert_send(manager.count_unread_api_business_notifications());
+            assert_send(manager.mark_api_business_notification_read("record"));
+            assert_send(manager.mark_all_api_business_notifications_read());
             assert_send(super::super::withdraw::WithdrawService::new(ctx).pending_withdrawals());
         }
         // Type-check the public future without constructing a global SDK or using RPC.
@@ -1039,3 +1140,7 @@ mod synced_balance_tests;
 #[cfg(test)]
 #[path = "business_notification/global_business_query_tests.rs"]
 pub(crate) mod global_business_query_tests;
+
+#[cfg(test)]
+#[path = "business_notification/withdrawal_message_center_tests.rs"]
+mod withdrawal_message_center_tests;
