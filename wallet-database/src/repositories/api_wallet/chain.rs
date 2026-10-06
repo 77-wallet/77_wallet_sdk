@@ -58,6 +58,13 @@ impl ApiChainRepo {
         Ok(ApiChainDao::upsert(pool.write_ref(), input).await?)
     }
 
+    pub async fn insert_missing(
+        pool: &ApiWalletDbPool,
+        input: ApiChainCreateVo,
+    ) -> Result<(), crate::Error> {
+        ApiChainDao::insert_missing(pool.write_ref(), input).await
+    }
+
     pub async fn detail_with_main_symbol(
         pool: &ApiWalletDbPool,
         main_symbol: &str,
@@ -70,6 +77,14 @@ impl ApiChainRepo {
         chain_codes: &[String],
     ) -> Result<Vec<ApiChainEntity>, crate::Error> {
         Ok(ApiChainDao::toggle_chains_status(pool.write_ref(), chain_codes).await?)
+    }
+
+    pub async fn toggle_chains_status_except(
+        pool: &ApiWalletDbPool,
+        chain_codes: &[String],
+        preserved: &[String],
+    ) -> Result<Vec<ApiChainEntity>, crate::Error> {
+        ApiChainDao::toggle_chains_status_except(pool.write_ref(), chain_codes, preserved).await
     }
 
     pub async fn upsert_multi_chain(
@@ -171,6 +186,42 @@ mod tests {
         entities::api_chain::{ApiChainCreateVo, NodeBindType},
         repositories::test_helper::setup_api_wallet_pool,
     };
+
+    #[tokio::test]
+    async fn default_status_refresh_preserves_a_backend_disable_after_snapshot() {
+        let pool = setup_api_wallet_pool("api_chain_status_race").await;
+        ApiChainRepo::add(&pool, make_chain("base", "ETH")).await.unwrap();
+        ApiChainRepo::add(&pool, make_chain("legacy", "OLD")).await.unwrap();
+        let earlier_enabled = vec!["base".to_owned()];
+        ApiChainRepo::upsert_multi_chain(&pool, vec![make_chain("base", "ETH").with_status(0)])
+            .await
+            .unwrap();
+        ApiChainRepo::toggle_chains_status_except(&pool, &earlier_enabled, &["base".into()])
+            .await
+            .unwrap();
+        let rows = ApiChainRepo::get_chain_list_all_status(&pool).await.unwrap();
+        assert!(rows.iter().all(|row| row.status == 0));
+    }
+
+    #[tokio::test]
+    async fn default_chain_insert_does_not_overwrite_backend_disable() {
+        let pool = setup_api_wallet_pool("api_chain_default_race").await;
+        // The default loader may have observed absence before the backend write.
+        ApiChainRepo::upsert_multi_chain(&pool, vec![make_chain("polygon", "POL").with_status(0)])
+            .await
+            .unwrap();
+        ApiChainRepo::insert_missing(&pool, make_chain("polygon", "POL")).await.unwrap();
+        assert_eq!(ApiChainRepo::get_chain_list_all_status(&pool).await.unwrap()[0].status, 0);
+        let (backend, local) = tokio::join!(
+            ApiChainRepo::upsert_multi_chain(&pool, vec![make_chain("base", "ETH").with_status(0)]),
+            ApiChainRepo::insert_missing(&pool, make_chain("base", "ETH")),
+        );
+        backend.unwrap();
+        local.unwrap();
+        let rows = ApiChainRepo::get_chain_list_all_status(&pool).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|row| row.status == 0));
+    }
 
     fn make_chain(chain_code: &str, symbol: &str) -> ApiChainCreateVo {
         let protocols = vec!["evm".to_string()];

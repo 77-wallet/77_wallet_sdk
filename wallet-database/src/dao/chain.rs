@@ -9,6 +9,23 @@ use crate::sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuil
 use sqlx::{Executor, QueryBuilder, Sqlite};
 
 impl ChainDao {
+    /// Default initialization adds missing rows without replacing saved chain state.
+    /// Keep the same INSERT columns and node-binding default as the legacy upsert.
+    pub async fn insert_missing<'c, E>(
+        executor: E,
+        input: ChainCreateVo,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'c, Database = Sqlite>,
+    {
+        let protocols = wallet_utils::serde_func::serde_to_string(&input.protocols)?;
+        let result = sqlx::query("INSERT INTO chain (name, chain_code, protocols, main_symbol, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) ON CONFLICT(chain_code) DO NOTHING")
+            .bind(input.name).bind(input.chain_code).bind(protocols)
+            .bind(input.main_symbol).bind(input.status)
+            .execute(executor).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result.rows_affected() != 0)
+    }
+
     pub async fn upsert<'c, E>(
         executor: E,
         input: ChainCreateVo,

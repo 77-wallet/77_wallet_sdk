@@ -1,5 +1,7 @@
 mod acct_change;
 mod activation_info;
+#[cfg(all(feature = "dev", not(feature = "prod")))]
+mod chain_sync;
 mod collect_fee;
 mod collect_fee_cycle;
 mod collect_local_reclaim;

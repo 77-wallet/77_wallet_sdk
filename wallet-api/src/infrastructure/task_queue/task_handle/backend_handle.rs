@@ -504,6 +504,7 @@ impl EndpointHandler for SpecialHandler {
                 // 3. 兜底保证每条链都有 node
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
+                crate::domain::api_wallet::coin::ApiCoinDomain::sync_dev_native_coins(ctx).await?;
                 crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx)
                     .await?;
             }

@@ -65,6 +65,17 @@ impl NodeDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn insert_missing<'a, E>(exec: E, req: NodeCreateVo) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let result = sqlx::query("INSERT INTO node (node_id, name, chain_code, status, is_local, rpc_url, ws_url, http_url, network, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) ON CONFLICT(node_id) DO NOTHING")
+            .bind(req.node_id).bind(req.name).bind(req.chain_code).bind(req.status).bind(req.is_local)
+            .bind(req.rpc_url).bind(req.ws_url).bind(req.http_url).bind(req.network)
+            .execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result.rows_affected() != 0)
+    }
+
     pub async fn upsert<'a, E>(exec: E, req: NodeCreateVo) -> Result<NodeEntity, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

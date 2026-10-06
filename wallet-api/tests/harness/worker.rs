@@ -252,7 +252,7 @@ impl WorkerTestEnv {
     }
 }
 
-fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)> {
+pub(crate) fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let addr = listener.local_addr()?;
     let recorder = MockBackendRecorder::default();

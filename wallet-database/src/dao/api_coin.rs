@@ -149,6 +149,27 @@ impl ApiCoinDao {
         query.fetch_all(tx).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn insert_missing_native_coin_for_bound_chain<'a, E>(
+        tx: E,
+        coin: ApiCoinData,
+        node_id: &str,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if !coin.token_address.is_native() {
+            return Ok(false);
+        }
+        let result = sqlx::query("INSERT INTO api_coin (name, symbol, chain_code, token_address, price, protocol, decimals, is_default, is_popular, is_custom, status, created_at, updated_at) SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13 WHERE EXISTS (SELECT 1 FROM api_chain WHERE chain_code = $3 AND status = 1 AND main_symbol = $2 AND node_id = $14) ON CONFLICT(chain_code, token_address) DO NOTHING")
+            .bind(coin.name).bind(coin.symbol).bind(coin.chain_code).bind(coin.token_address)
+            .bind(coin.price).bind(coin.protocol).bind(coin.decimals).bind(coin.is_default)
+            .bind(coin.is_popular).bind(coin.is_custom).bind(coin.status)
+            .bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
+            .bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true)).bind(node_id)
+            .execute(tx).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result.rows_affected() != 0)
+    }
+
     pub async fn list_v2<'a, E>(
         exec: E,
         symbol: Option<String>,

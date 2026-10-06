@@ -481,7 +481,13 @@ impl ChainDomain {
                 )
                 .with_status(status);
 
-                if let Err(e) = ChainRepo::add(&pool, req).await {
+                let result =
+                    if crate::default_data::chain::is_dev_evm_chain(&default_chain.chain_code) {
+                        ChainRepo::insert_missing(&pool, req).await.map(|_| ())
+                    } else {
+                        ChainRepo::add(&pool, req).await.map(|_| ())
+                    };
+                if let Err(e) = result {
                     tracing::error!(
                         "Init load default chain: failed to create default chain: {:?}",
                         e

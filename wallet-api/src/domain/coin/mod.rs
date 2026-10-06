@@ -171,6 +171,10 @@ impl CoinDomain {
             let list: Vec<CoinData> = crate::default_data::coin::mainnet_default_coins_list()?
                 .coins
                 .iter()
+                .filter(|coin| {
+                    crate::config::Config::active_feature_profile() == "dev"
+                        || !crate::default_data::chain::is_dev_evm_chain(&coin.chain_code)
+                })
                 .chain(crate::default_data::coin::testnet_default_coins_list()?.coins.iter())
                 .map(|coin| coin.to_owned().into())
                 .collect();
@@ -194,7 +198,11 @@ impl CoinDomain {
             return Ok(());
         }
 
-        let mainnet_defaults = crate::default_data::coin::mainnet_default_coins_list()?;
+        let mut mainnet_defaults = crate::default_data::coin::mainnet_default_coins_list()?.clone();
+        mainnet_defaults.coins.retain(|coin| {
+            crate::config::Config::active_feature_profile() == "dev"
+                || !crate::default_data::chain::is_dev_evm_chain(&coin.chain_code)
+        });
         let testnet_defaults = crate::default_data::coin::testnet_default_coins_list()?;
 
         let mut activate: Vec<CoinData> = Vec::new();
@@ -237,6 +245,14 @@ impl CoinDomain {
                 inactive_profile.iter().filter(|c| c.chain_code.eq_ignore_ascii_case(&chain_code))
             {
                 if !active_symbols.contains(&(coin.chain_code.clone(), coin.symbol.clone())) {
+                    continue;
+                }
+                // Native coins can have the same key in both network catalogs.
+                // Do not disable a key activated for the selected network above.
+                if active_profile.iter().any(|active| {
+                    active.chain_code.eq_ignore_ascii_case(&chain_code)
+                        && active.token_address.as_db_str() == coin.token_address.as_db_str()
+                }) {
                     continue;
                 }
                 let key = (

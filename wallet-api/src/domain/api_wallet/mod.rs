@@ -11,5 +11,7 @@ pub use adapter_factory::ApiChainAdapterFactory;
 pub mod assets;
 pub(crate) mod chain;
 pub(crate) mod coin;
+#[cfg(all(feature = "dev", not(feature = "prod")))]
+mod dev_defaults;
 pub(crate) mod resource;
 pub(crate) mod strategy;

@@ -77,6 +77,22 @@ impl ApiChainDao {
         Ok(())
     }
 
+    /// Local defaults never update an existing backend/user-owned chain row.
+    pub async fn insert_missing<'a, E>(
+        executor: E,
+        input: ApiChainCreateVo,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query("INSERT INTO api_chain (name, chain_code, protocols, main_symbol, node_bind_type, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) ON CONFLICT(chain_code) DO NOTHING")
+            .bind(input.name).bind(input.chain_code)
+            .bind(wallet_utils::serde_func::serde_to_string(&input.protocols)?)
+            .bind(input.main_symbol).bind(input.node_bind_type).bind(input.status)
+            .execute(executor).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
+    }
+
     pub async fn detail_with_main_symbol<'a, E>(
         exec: E,
         main_symbol: &str,
@@ -142,6 +158,17 @@ impl ApiChainDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        Self::toggle_chains_status_except(executor, chain_codes, &[]).await
+    }
+
+    pub async fn toggle_chains_status_except<'a, E>(
+        executor: E,
+        chain_codes: &[String],
+        preserved: &[String],
+    ) -> Result<Vec<ApiChainEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
         let mut query = QueryBuilder::<Sqlite>::new(
             "UPDATE api_chain
             SET 
@@ -161,8 +188,17 @@ impl ApiChainDao {
                             ELSE 0 
                         END,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            RETURNING *",
+            ",
         );
+        if !preserved.is_empty() {
+            query.push(" WHERE chain_code NOT IN (");
+            let mut values = query.separated(", ");
+            for code in preserved {
+                values.push_bind(code);
+            }
+            values.push_unseparated(")");
+        }
+        query.push(" RETURNING *");
 
         query
             .build_query_as::<ApiChainEntity>()

@@ -21,6 +21,13 @@ impl ChainRepo {
         Ok(ChainDao::delete(pool.write_ref(), chain_code).await?)
     }
 
+    pub async fn insert_missing(
+        pool: &CoreDbPool,
+        input: ChainCreateVo,
+    ) -> Result<bool, crate::Error> {
+        ChainDao::insert_missing(pool.write_ref(), input).await
+    }
+
     pub async fn add(pool: &CoreDbPool, input: ChainCreateVo) -> Result<ChainEntity, crate::Error> {
         Ok(ChainDao::upsert(pool.write_ref(), input).await?)
     }
@@ -103,6 +110,86 @@ mod tests {
             NodeBindType::AutoBackend,
             "TRX",
         )
+    }
+
+    #[tokio::test]
+    async fn default_insert_preserves_manual_disabled_row_and_backend_write_races() {
+        let pool = setup_core_pool("five_chain_default_insert_guard").await;
+        ChainRepo::add(
+            &pool,
+            ChainCreateVo::new("Backend Polygon", "polygon", &[], NodeBindType::AutoBackend, "POL")
+                .with_status(0),
+        )
+        .await
+        .unwrap();
+        ChainRepo::user_select(&pool, "polygon", "manual-selected").await.unwrap();
+        sqlx::query(
+            "UPDATE chain SET updated_at='2000-01-01T00:00:00Z' WHERE chain_code='polygon'",
+        )
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+        let before = sqlx::query_as::<_, crate::entities::chain::ChainEntity>(
+            "SELECT * FROM chain WHERE chain_code='polygon'",
+        )
+        .fetch_one(pool.read_ref())
+        .await
+        .unwrap();
+        assert!(
+            !ChainRepo::insert_missing(
+                &pool,
+                ChainCreateVo::new("Local Polygon", "polygon", &[], NodeBindType::AutoLocal, "POL")
+            )
+            .await
+            .unwrap()
+        );
+        let after = sqlx::query_as::<_, crate::entities::chain::ChainEntity>(
+            "SELECT * FROM chain WHERE chain_code='polygon'",
+        )
+        .fetch_one(pool.read_ref())
+        .await
+        .unwrap();
+        assert_eq!(serde_json::to_value(before).unwrap(), serde_json::to_value(after).unwrap());
+        let (backend, local) = tokio::join!(
+            ChainRepo::upsert_multi_chain(
+                &pool,
+                vec![
+                    ChainCreateVo::new(
+                        "Backend Base",
+                        "base",
+                        &[],
+                        NodeBindType::AutoBackend,
+                        "ETH"
+                    )
+                    .with_status(0)
+                ]
+            ),
+            ChainRepo::insert_missing(
+                &pool,
+                ChainCreateVo::new("Local Base", "base", &[], NodeBindType::AutoLocal, "ETH")
+            )
+        );
+        backend.unwrap();
+        local.unwrap();
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT status FROM chain WHERE chain_code='base'")
+                .fetch_one(pool.read_ref())
+                .await
+                .unwrap(),
+            0
+        );
+        let (a, b) = tokio::join!(
+            ChainRepo::insert_missing(&pool, build_chain("scroll")),
+            ChainRepo::insert_missing(&pool, build_chain("scroll"))
+        );
+        assert_ne!(a.unwrap(), b.unwrap());
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM chain WHERE chain_code='scroll'")
+                .fetch_one(pool.read_ref())
+                .await
+                .unwrap(),
+            1
+        );
     }
 
     #[tokio::test]

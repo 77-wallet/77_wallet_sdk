@@ -44,6 +44,14 @@ impl NodeRepo {
         .await?)
     }
 
+    /// Local fallback creation must not revive or overwrite an existing node.
+    pub async fn insert_missing(
+        pool: &CoreDbPool,
+        req: NodeCreateVo,
+    ) -> Result<bool, crate::Error> {
+        NodeDao::insert_missing(pool.write_ref(), req).await
+    }
+
     pub async fn upsert(pool: &CoreDbPool, req: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
         Ok(NodeDao::upsert(pool.write_ref(), req).await?)
     }
@@ -94,6 +102,22 @@ mod tests {
         NodeCreateVo::new(node_id, "node_name", chain_code, "https://rpc.test", None)
             .with_network("mainnet")
             .with_is_local(1)
+    }
+
+    #[tokio::test]
+    async fn default_node_insert_does_not_revive_disabled_or_replace_existing_node() {
+        let pool = setup_core_pool("default_node_insert_race").await;
+        NodeRepo::upsert(&pool, build_node("fallback", "base").with_status(0)).await.unwrap();
+        assert!(!NodeRepo::insert_missing(&pool, build_node("fallback", "base")).await.unwrap());
+        let row = NodeRepo::detail(&pool, "fallback").await.unwrap().unwrap();
+        assert_eq!(row.status, 0);
+        assert_eq!(row.rpc_url, "https://rpc.test");
+        let (a, b) = tokio::join!(
+            NodeRepo::insert_missing(&pool, build_node("second", "scroll")),
+            NodeRepo::insert_missing(&pool, build_node("second", "scroll"))
+        );
+        assert_ne!(a.unwrap(), b.unwrap());
+        assert_eq!(NodeRepo::list(&pool, None).await.unwrap().len(), 2);
     }
 
     #[tokio::test]

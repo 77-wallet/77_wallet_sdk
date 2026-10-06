@@ -55,3 +55,40 @@ rpc_url = "https://apprpc.77wapp.vip/sui"
 http_url = ""
 network = "mainnet"
 active = true
+
+# 77 Official Nodes fallback metadata; application loaders enforce rollout scope.
+
+[[nodes.polygon.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://polygon.drpc.org"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.avalanche.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://api.avax.network/ext/bc/C/rpc"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.arbitrum.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://arb1.arbitrum.io/rpc"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.base.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://mainnet.base.org"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.scroll.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://rpc.scroll.io"
+http_url = ""
+network = "mainnet"
+active = true

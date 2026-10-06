@@ -99,6 +99,14 @@ impl ApiCoinDomain {
         Ok(res)
     }
 
+    pub(crate) async fn sync_dev_native_coins(
+        _ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        #[cfg(all(feature = "dev", not(feature = "prod")))]
+        super::dev_defaults::sync_native_coins(_ctx).await?;
+        Ok(())
+    }
+
     pub async fn pull_api_coins(
         ctx: &Context,
     ) -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError> {
@@ -112,6 +120,20 @@ impl ApiCoinDomain {
             coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<ApiCoinData>>();
 
         let res = ApiCoinDomain::upsert_hot_coin_list(ctx, data).await?;
+        #[cfg(all(feature = "dev", not(feature = "prod")))]
+        let mut res = res;
+        #[cfg(all(feature = "dev", not(feature = "prod")))]
+        {
+            // Only after a valid backend response; transport/protocol errors still propagate.
+            super::dev_defaults::sync_native_coins(ctx).await?;
+            for coin in super::dev_defaults::eligible_native_coins(ctx).await? {
+                if !res.iter().any(|row| {
+                    row.chain_code == coin.chain_code && row.token_address == coin.token_address
+                }) {
+                    res.push(coin);
+                }
+            }
+        }
 
         Ok(res)
     }

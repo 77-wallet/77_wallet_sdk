@@ -14,6 +14,16 @@ use crate::{
 pub struct ApiCoinRepo;
 
 impl ApiCoinRepo {
+    /// Recheck API-chain enable/master/binding atomically with native default insertion.
+    pub async fn insert_missing_native_coin_for_bound_chain(
+        pool: &ApiWalletDbPool,
+        coin: ApiCoinData,
+        node_id: &str,
+    ) -> Result<bool, crate::Error> {
+        ApiCoinDao::insert_missing_native_coin_for_bound_chain(pool.write_ref(), coin, node_id)
+            .await
+    }
+
     pub async fn upsert_multi_coin(
         pool: &ApiWalletDbPool,
         coin: Vec<ApiCoinData>,
@@ -225,6 +235,62 @@ mod tests {
             Utc::now(),
             None,
         )
+    }
+
+    #[tokio::test]
+    async fn default_native_insert_rechecks_chain_status_symbol_and_binding() {
+        use crate::{
+            entities::api_chain::{ApiChainCreateVo, NodeBindType},
+            repositories::api_wallet::chain::ApiChainRepo,
+        };
+        let pool = setup_api_wallet_pool("default_native_chain_guard").await;
+        let chain = || ApiChainCreateVo::new("Base", "base", &[], NodeBindType::AutoBackend, "ETH");
+        let coin = || {
+            let mut c = make_coin("base", AssetTokenKey::default(), "0");
+            c.symbol = "ETH".into();
+            c
+        };
+        ApiChainRepo::add(&pool, chain()).await.unwrap();
+        ApiChainRepo::set_chain_node_with_type(&pool, "base", "main", NodeBindType::AutoBackend)
+            .await
+            .unwrap();
+        // Disable arrives after the default loader observed an enabled binding.
+        ApiChainRepo::upsert_multi_chain(&pool, vec![chain().with_status(0)]).await.unwrap();
+        assert!(
+            !ApiCoinRepo::insert_missing_native_coin_for_bound_chain(&pool, coin(), "main")
+                .await
+                .unwrap()
+        );
+        ApiChainRepo::upsert_multi_chain(
+            &pool,
+            vec![ApiChainCreateVo::new("Base", "base", &[], NodeBindType::AutoBackend, "OTHER")],
+        )
+        .await
+        .unwrap();
+        assert!(
+            !ApiCoinRepo::insert_missing_native_coin_for_bound_chain(&pool, coin(), "main")
+                .await
+                .unwrap()
+        );
+        ApiChainRepo::upsert_multi_chain(&pool, vec![chain()]).await.unwrap();
+        ApiChainRepo::user_select(&pool, "base", "manual").await.unwrap();
+        assert!(
+            !ApiCoinRepo::insert_missing_native_coin_for_bound_chain(&pool, coin(), "main")
+                .await
+                .unwrap()
+        );
+        assert_eq!(ApiCoinRepo::coin_count(&pool).await.unwrap(), 0);
+        assert!(
+            ApiCoinRepo::insert_missing_native_coin_for_bound_chain(&pool, coin(), "manual")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !ApiCoinRepo::insert_missing_native_coin_for_bound_chain(&pool, coin(), "manual")
+                .await
+                .unwrap()
+        );
+        assert_eq!(ApiCoinRepo::coin_count(&pool).await.unwrap(), 1);
     }
 
     #[tokio::test]

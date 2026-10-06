@@ -247,6 +247,15 @@ impl NodeDomain {
         for node_list in node_lists {
             for (chain_code, nodes) in node_list.nodes.iter() {
                 for default_node in nodes.nodes.iter() {
+                    let dev_evm = crate::default_data::chain::is_dev_evm_chain(chain_code);
+                    // Fresh dev installs use shared mainnet defaults for the rollout.
+                    // Existing nodes/bindings remain owned by their original source.
+                    if dev_evm
+                        && default_node.network
+                            != if profile == "dev" { "mainnet" } else { "testnet" }
+                    {
+                        continue;
+                    }
                     let status = if default_node.active {
                         crate::config::Config::node_visibility_status(&default_node.network)
                     } else {
@@ -265,17 +274,16 @@ impl NodeDomain {
                     .with_network(&default_node.network)
                     .with_status(status)
                     .with_is_local(1);
-                    let r = NodeRepo::upsert(&pool, node).await;
-                    tracing::debug!("Created node {}: {:?}", id, r);
+                    if dev_evm {
+                        NodeRepo::insert_missing(&pool, node).await?;
+                    } else {
+                        let r = NodeRepo::upsert(&pool, node).await;
+                        tracing::debug!("Created node {}: {:?}", id, r);
+                    }
                 }
             }
         }
 
-        NodeRepo::refresh_visibility_for_networks(
-            &pool,
-            crate::config::Config::visible_node_networks(),
-        )
-        .await?;
         Ok(())
     }
 }

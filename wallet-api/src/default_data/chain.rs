@@ -164,3 +164,11 @@ mod tests {
         );
     }
 }
+
+/// Five-chain development rollout shared by ordinary and API wallets.
+pub(crate) const DEV_EVM_CHAIN_CODES: [&str; 5] =
+    ["polygon", "avalanche", "arbitrum", "base", "scroll"];
+
+pub(crate) fn is_dev_evm_chain(code: &str) -> bool {
+    DEV_EVM_CHAIN_CODES.contains(&code)
+}

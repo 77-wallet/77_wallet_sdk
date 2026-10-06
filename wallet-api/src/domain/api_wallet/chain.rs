@@ -32,6 +32,10 @@ use crate::{
 
 pub struct ApiChainDomain {}
 
+#[cfg(test)]
+#[path = "chain/config_tests.rs"]
+mod config_tests;
+
 impl ApiChainDomain {
     pub(crate) async fn network_kind_by_chain_code(
         chain_code: &str,
@@ -65,7 +69,7 @@ impl ApiChainDomain {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Ok(node) = ChainDomain::get_node_with_ctx(ctx, chain).await else {
+            let Ok(node) = Self::get_node(chain, ctx).await else {
                 continue;
             };
 
@@ -142,6 +146,18 @@ impl ApiChainDomain {
         for chain in chains.0 {
             backend_chain_codes.push(chain.chain_code.clone());
             let Some(master_token_code) = chain.master_token_code else {
+                // Persist the backend's unusable configuration even before defaults exist.
+                // Otherwise a later dev initialization can silently enable this chain.
+                input.push(
+                    wallet_database::entities::api_chain::ApiChainCreateVo::new(
+                        &chain.name,
+                        &chain.chain_code,
+                        &[],
+                        NodeBindType::AutoBackend,
+                        "",
+                    )
+                    .with_status(0),
+                );
                 continue;
             };
 
@@ -211,6 +227,9 @@ impl ApiChainDomain {
             &backend_chain_codes,
         )?;
         Self::toggle_api_chains(ctx, &enabled_chain_codes).await?;
+        let ensurer = ChainNodeEnsurer::new(ctx.core_pool()?, pool.clone());
+        ensurer.ensure_all().await?;
+        super::coin::ApiCoinDomain::sync_dev_native_coins(ctx).await?;
 
         if !chain_codes.is_empty() {
             let chain_rpc_list_req = BackendApiTaskData::new(
@@ -259,18 +278,33 @@ impl ApiChainDomain {
                 )
                 .with_status(status);
 
-                if let Err(e) = ApiChainRepo::add(&pool, req).await {
+                let result = ApiChainRepo::insert_missing(&pool, req).await;
+                if let Err(e) = result {
                     tracing::error!("Failed to create default chain: {:?}", e);
                     continue;
                 }
                 if status == 1 {
+                    #[cfg(all(feature = "dev", not(feature = "prod")))]
+                    if super::dev_defaults::contains(chain_code) {
+                        continue;
+                    }
                     chain_codes.push(chain_code.to_string());
                 }
             }
         }
         let app_version = ConfigDomain::get_app_version(ctx).await?;
 
+        #[cfg(all(feature = "dev", not(feature = "prod")))]
+        ApiChainRepo::toggle_chains_status_except(
+            &pool,
+            &chain_codes,
+            &super::dev_defaults::chain_codes(),
+        )
+        .await?;
+        #[cfg(not(all(feature = "dev", not(feature = "prod"))))]
         ApiChainRepo::toggle_chains_status(&pool, &chain_codes).await?;
+        ChainNodeEnsurer::new(ctx.core_pool()?, pool.clone()).ensure_all().await?;
+        super::coin::ApiCoinDomain::sync_dev_native_coins(ctx).await?;
         let chain_list_req = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::api_wallet::API_WALLET_CHAIN_LIST,
             &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),

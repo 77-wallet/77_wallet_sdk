@@ -10,6 +10,8 @@ pub mod adapter_factory;
 #[cfg(any(test, feature = "integration-tests"))]
 pub mod api_wallet_resource;
 #[cfg(any(test, feature = "integration-tests"))]
+pub mod chain_sync;
+#[cfg(any(test, feature = "integration-tests"))]
 pub mod collect;
 #[cfg(any(test, feature = "integration-tests"))]
 pub mod collect_fee;
