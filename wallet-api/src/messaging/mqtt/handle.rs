@@ -22,6 +22,7 @@ use crate::{
             OutgoingPayload,
             api_wallet::{
                 acct_change::ApiWalletAcctChange,
+                address_insufficient::AwmAddressInsufficient,
                 cmd::{
                     address_allock::AwmCmdAddrExpandMsg, dev_change::AwmCmdDevChangeMsg,
                     fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,
@@ -219,6 +220,13 @@ pub(crate) async fn exec_payload(
         }
         BizType::CleanPermission => {
             exec_task::<CleanPermission, _, _>(&payload, ctx, MqttTask::CleanPermission).await?
+        }
+        BizType::AwmAddressInsufficient => {
+            let alert = AwmAddressInsufficient::from_message(&payload)?;
+            Tasks::new()
+                .push_with_id(&payload.msg_id, MqttTask::AwmAddressInsufficient(alert))
+                .send_with_ctx(ctx)
+                .await?;
         }
         // api wallet
         BizType::AwmOrderTrans

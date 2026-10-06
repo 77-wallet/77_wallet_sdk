@@ -236,6 +236,12 @@ impl ApiWalletRepo {
     }
 
     // TODO: 想办法用ApiWalletDbPool替换executor
+    pub async fn active_withdrawal_uids(
+        pool: &ApiWalletDbPool,
+    ) -> Result<Vec<(String,)>, crate::Error> {
+        ApiWalletDao::active_withdrawal_uids(pool.read_ref()).await
+    }
+
     pub async fn uid_list(pool: &ApiWalletDbPool) -> Result<Vec<(String,)>, crate::Error> {
         Ok(ApiWalletDao::uid_list(pool.read_ref()).await?)
     }

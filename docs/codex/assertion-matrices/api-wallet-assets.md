@@ -299,3 +299,63 @@ scanner entrypoints.
 - Asset sync token filtering:
   explicit symbol filters should be covered once the filter contract is
   standardized.
+
+## Asset sync resolves funded balance reminders (2026-10-03)
+
+- Trigger: successful API withdrawal-wallet asset synchronization and persistence.
+- Reuse formatted balances from that synchronization; do not query RPC again.
+- Match reminder UID, address, chain, token; compare its current threshold and
+  resolve using payload compare-and-set before the existing asset frontend event.
+- Resolution preserves unread/read state and unrelated reminders.
+- Below-threshold, invalid, failed-query and unpersisted observations stay active.
+- Existing five-second banner buffer cannot hide a resolved reminder.
+- Integration regressions: `sync_api_assets_resolves_funded_reminder_without_another_balance_query`,
+  `sync_api_assets_keeps_reminder_when_balance_is_insufficient`,
+  `sync_api_assets_keeps_reminder_when_balance_query_fails`.
+- Component regressions: `synced_balance_removes_only_matching_reminder_inside_banner_buffer`,
+  `synced_balance_keeps_reminder_for_insufficient_invalid_or_unpersisted_balance`.
+- Fake chain plus temporary SQLite only; frontend page/navigation and live
+  transaction delivery are outside this offline verification.
+
+### 2026-10-06 Global withdrawal banner query
+- Current API pool active Withdrawal UIDs only (DISTINCT); exclude subaccounts, inactive wallets, empty UID and orphaned notification/order history. No seed/address-account bulk scan.
+- `get_api_wallet_banners()` accepts no UID; message-center entrypoints keep UID. Both groups retain count/latestAt/items across eligible owners.
+- Component regression: `global_banners_include_only_active_withdrawal_owners_and_keep_failures` covers empty scope, duplicate owner, two eligible wallets, funded resolution, failed RPC retention, untouched unread state, buffered reread, and all wallets disabled. Existing per-UID/CAS/synced-balance tests remain.
+- Final verification: business-notification lib tests 11/11 and asset-sync integration 8/8 pass offline with wallet-api test debug=0/incremental=false; rustfmt/check-diff pass. Independent SDK and generated-binding review found no important findings. First full-debug compile was stopped for disk capacity, then compact validation completed; no cleanup. No new controlled concurrency/DB failure test; prior per-UID behavior reused.
+
+### 2026-10-06 Independent business queries (supersedes combined banner contract)
+- `get_pending_api_withdrawals()` lives in withdraw and returns existing order records; `get_unresolved_api_address_balance_notifications()` lives in business notifications and returns existing notification records. Neither accepts UID; no SDK UI grouping/count/latestAt.
+- Reuse DISTINCT active Withdrawal UID selection, exclude subaccounts/disabled/orphan history. Pending predicate: Init and neither approved nor rejected; no balance lock/RPC dependency.
+- `global_business_queries_scope_cache_and_failure_independence` uses isolated SQLite to cover multi-owner aggregation/deduplication, exclusion, perUID buffer, controlled held balance lock, and independent errors from each underlying table. Existing exact payload CAS, failed/timeout checks, synchronized asset resolution and UID message-center tests remain.
+- Prior combined-interface evidence and review do not verify this revision. New results are recorded in the split implementation freeze evidence; independent review is pending parent coordination.
+
+- Timeout coverage: `current_balance_resolves_only_after_successful_threshold_check` now also holds the injected RPC pending and verifies the existing three-second timeout preserves the unresolved row and read state; only this affected test is rerun after adding assertions. Production code remains identical to the 11-test and 8-sync-test checkpoints.
+
+### 2026-10-06 Local reads and directed checks (supersedes synchronous balance refresh)
+
+- Both queries complete while the observation mutex and existing background permits are held; local database failures remain independent.
+- Directed checks work without an asset/account row, coalesce identical UID/id/payload observations for five seconds, and skip obsolete payloads.
+- Exact replay preserves resolved/read state; changed payload reopens. Startup seed scopes active Withdrawal owners and delivery task IDs deduplicate.
+- Resolution write failures retain the notification and persist compensation in the task database; cached successful observations can retry the failed CAS. RPC failure/timeout retains rows.
+- Backend serialization strictly emits targetAddress/waddressType; no aliases or historical-data migration.
+- Fresh verification is recorded under target/local-business-*.log; prior synchronous-query checkpoints do not validate this revision.
+
+### 2026-10-06 Approved readiness wait-order regression
+
+- Existing monotonic AtomicBool/Notify contract retained. Create Notified before the Acquire readiness check so a Release publication plus notify_waiters in the false-check/first-poll gap is observed. No new lifecycle, retry, global mutex or scheduler.
+- Local-state unit tests cover that controlled gap, already-ready bypass, and one broadcast releasing multiple waiters. Old wait order must time out at the controlled gap; corrected order must complete.
+- Standalone harness imports the actual source module against locked Tokio1.52.1. It verifies this module only; project test coverage is reported separately under target/readiness-validation.
+
+### 2026-10-06 Notification production SQL moved to existing DAO
+
+- Seven repository methods/eight SQL statements delegate to ApiBusinessNotificationDao; SQL text, bind order, deduplication and exact UID/id/payload CAS remain unchanged. Repo retains read/write pool selection, offset arithmetic and Pagination assembly. No schema change.
+- SQLite regression pagination_count_and_unresolved_filter_remain_uid_scoped covers owner-only count, filter-before-offset, empty pages, resolved history and read-state independence; existing six notification tests cover durable reopening/replay, UID isolation, read/resolve state and stale-payload CAS.
+- Current starting index captured separately because previously frozen files were staged by an unknown actor without content changes; migration preserves that index. Validation and new full freeze recorded under target/notification-dao-validation and target/notification-dao-review-snapshot.
+
+### Test-only isolation and legacy live replay conditions
+
+The three wallet session tests run their complete fixture in separate child processes because Context and unlock state are process-global. Balance coalescing uses one shared fake-check counter; either overlapping caller may win, and exactly one check must execute.
+
+The legacy account-change and address-expansion replays now reside in `tests/smoke/api_wallet/mqtt_replay.rs` and are explicitly ignored by default. They initialize the real configured client and may update backend wallet/account state. Run only with separately authorized development/test access, a matching local `examples/config.yaml`, test device/account/wallet fixtures matching the payload UIDs, and no production configuration. They are not offline regressions. Manual command after those prerequisites: `cargo test -p wallet-api --test mod smoke::api_wallet::mqtt_replay:: -- --ignored --test-threads=1`.
+
+Collect/fee missing rows are idempotent success; SQL/table failures remain database errors. The MQTT resource-result regression asserts the gate remains blocked before result ACK; the existing fake-backend resource-gate integration tests cover ACK release and invalid origins.

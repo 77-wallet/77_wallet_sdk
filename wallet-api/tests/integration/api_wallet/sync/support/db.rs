@@ -155,3 +155,80 @@ pub(crate) async fn prepare_empty_withdrawal_wallet(env: &TestEnv) -> String {
     let wallet_uid = next_tag("api-wallet-empty");
     upsert_wallet(&env.db_dir, "sn-sync-empty", &wallet_uid, ApiWalletType::Withdrawal, None).await
 }
+
+pub(crate) async fn seed_balance_reminder(
+    env: &TestEnv,
+    fixture: &SyncAssetsFixture,
+    threshold: &str,
+) -> anyhow::Result<()> {
+    use wallet_database::{
+        entities::api_business_notification::NewApiBusinessNotification,
+        repositories::api_business_notification::ApiBusinessNotificationRepo,
+    };
+    let pool = open_api_wallet_pool(&env.db_dir).await;
+    let account =
+        ApiAccountRepo::find_one_by_address_chain_code(&fixture.account_address, CHAIN_CODE, &pool)
+            .await?
+            .unwrap();
+    let key = format!("{}:{}:{}:", account.uid, CHAIN_CODE, fixture.account_address);
+    let payload = serde_json::json!({"remaining":"0", "thresholdValue":threshold,
+        "token":"", "symbol":"BNB", "merchantName":"fixture", "waddressType":"1",
+        "chainCode":CHAIN_CODE, "targetAddress":fixture.account_address})
+    .to_string();
+    ApiBusinessNotificationRepo::upsert(
+        &pool,
+        NewApiBusinessNotification {
+            id: &key,
+            uid: &account.uid,
+            kind: "AWM_ADDRESS_INSUFFICIENT",
+            business_key: &key,
+            payload: &payload,
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+pub(crate) async fn assert_balance_reminder_resolved(
+    env: &TestEnv,
+    fixture: &SyncAssetsFixture,
+    resolved: bool,
+) -> anyhow::Result<()> {
+    use wallet_database::repositories::api_business_notification::ApiBusinessNotificationRepo;
+    let pool = open_api_wallet_pool(&env.db_dir).await;
+    let account =
+        ApiAccountRepo::find_one_by_address_chain_code(&fixture.account_address, CHAIN_CODE, &pool)
+            .await?
+            .unwrap();
+    let history = ApiBusinessNotificationRepo::list(&pool, &account.uid, false, 0, 10).await?;
+    assert_eq!(history.total_count, 1);
+    assert_eq!(history.data[0].resolved_at.is_some(), resolved);
+    assert!(!history.data[0].is_read);
+    Ok(())
+}
+
+pub(crate) async fn seed_same_address_on_other_chain(
+    env: &TestEnv,
+    fixture: &SyncAssetsFixture,
+) -> anyhow::Result<()> {
+    let pool = open_api_wallet_pool(&env.db_dir).await;
+    let account =
+        ApiAccountRepo::find_one_by_address_chain_code(&fixture.account_address, CHAIN_CODE, &pool)
+            .await?
+            .unwrap();
+    let other = CreateApiAccountVo::new(
+        1,
+        &fixture.account_address,
+        "pubkey",
+        &fixture.wallet_address,
+        &account.uid,
+        "m/44'/60'/0'/0/0",
+        0,
+        "eth",
+        "account",
+        ApiWalletType::Withdrawal,
+    )
+    .with_is_init(true);
+    ApiAccountRepo::upsert_account_multi(&pool, vec![other]).await?;
+    Ok(())
+}

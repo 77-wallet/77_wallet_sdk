@@ -1222,9 +1222,34 @@ oss:
         token
     }
 
+    // Each session fixture owns process-global Context and unlock state.
+    fn run_in_isolated_session_process(test_name: &str) -> bool {
+        const CHILD: &str = "WALLET_SESSION_TEST_CHILD";
+        if std::env::var(CHILD).as_deref() == Ok(test_name) {
+            return false;
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([test_name, "--exact", "--test-threads=1"])
+            .env(CHILD, test_name)
+            .output()
+            .expect("run isolated session test");
+        assert!(
+            output.status.success(),
+            "isolated session test failed: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        true
+    }
+
     #[tokio::test]
     #[serial]
     async fn wallet_unlock_session_rotation_replaces_token() {
+        if run_in_isolated_session_process(
+            "domain::api_wallet::wallet::tests::wallet_unlock_session_rotation_replaces_token",
+        ) {
+            return;
+        }
         init_test_tracing();
         let env = seed_cache_test_env().await;
         let context = env.context;
@@ -1252,6 +1277,11 @@ oss:
     #[tokio::test]
     #[serial]
     async fn session_key_rotation_rewraps_seed_without_password() {
+        if run_in_isolated_session_process(
+            "domain::api_wallet::wallet::tests::session_key_rotation_rewraps_seed_without_password",
+        ) {
+            return;
+        }
         init_test_tracing();
         let env = seed_cache_test_env().await;
         let context = env.context;
@@ -1327,6 +1357,11 @@ oss:
     #[tokio::test]
     #[serial]
     async fn seed_cache_is_not_retained() {
+        if run_in_isolated_session_process(
+            "domain::api_wallet::wallet::tests::seed_cache_is_not_retained",
+        ) {
+            return;
+        }
         init_test_tracing();
         let env = seed_cache_test_env().await;
         let context = env.context;

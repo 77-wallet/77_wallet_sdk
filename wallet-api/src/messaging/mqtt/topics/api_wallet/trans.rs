@@ -431,7 +431,6 @@ mod tests {
         dirs::Dirs,
         testkit::mqtt::{api_transaction_pool, api_wallet_pool},
     };
-    use serial_test::serial;
     use tempfile::TempDir;
     use tokio::sync::mpsc;
     use wallet_database::{
@@ -476,7 +475,6 @@ aggregate_api:
     }
 
     #[tokio::test]
-    #[serial]
     async fn transfer_fee_does_not_touch_collect_row_by_fee_trade_no() -> anyhow::Result<()> {
         let (_temp_dir, ctx) = isolated_test_context().await?;
         let (frontend_tx, _frontend_rx) = mpsc::unbounded_channel();
@@ -561,7 +559,6 @@ aggregate_api:
     }
 
     #[tokio::test]
-    #[serial]
     async fn resource_operation_trade_type_4_persists_backend_stake_task() -> anyhow::Result<()> {
         let (_temp_dir, ctx) = isolated_test_context().await?;
         let trade_no =

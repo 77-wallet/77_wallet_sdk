@@ -20,6 +20,13 @@ pub async fn start_api_asset_sync_worker(
         crate::infrastructure::system_ready::wait_system_ready().await;
         tracing::info!("API 钱包资产同步恢复Worker检测到系统就绪，开始扫描可恢复任务");
 
+        // One directed reminder seed after the existing readiness gate, not a new poller.
+        if let Err(e) =
+            crate::application::api_wallet_balance_check::seed_ready_unresolved(ctx).await
+        {
+            tracing::warn!(%e, "startup reminder-check seed failed; durable reminders remain for next startup");
+        }
+
         if let Err(e) = scan_and_dispatch(ctx, true, background_task_pool.clone()).await {
             tracing::error!("API 钱包资产同步恢复Worker启动扫描失败: {:?}", e);
         }

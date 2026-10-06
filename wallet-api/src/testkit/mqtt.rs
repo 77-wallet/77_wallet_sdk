@@ -47,3 +47,29 @@ pub fn task_pool(ctx: &'static Context) -> Result<TaskDbPool, crate::error::serv
 pub fn core_pool(ctx: &'static Context) -> Result<DbPool, crate::error::service::ServiceError> {
     ctx.get_global_sqlite_pool()
 }
+
+/// Manual smoke replay of the crate-private account-change step; does not change its behavior.
+pub async fn replay_api_wallet_account_change(
+    ctx: &'static Context,
+    payload: &serde_json::Value,
+    msg_id: &str,
+) -> anyhow::Result<()> {
+    let message = serde_json::from_value::<
+        crate::messaging::mqtt::topics::api_wallet::acct_change::ApiWalletAcctChange,
+    >(payload.clone())?;
+    message.exec(ctx, msg_id).await?;
+    Ok(())
+}
+
+/// Manual smoke replay of the crate-private address-expansion step.
+pub async fn replay_api_wallet_address_expand(
+    ctx: &'static Context,
+    payload: &serde_json::Value,
+    msg_id: &str,
+) -> anyhow::Result<()> {
+    let message = serde_json::from_value::<
+        crate::messaging::mqtt::topics::api_wallet::cmd::address_allock::AwmCmdAddrExpandMsg,
+    >(payload.clone())?;
+    message.exec(ctx, msg_id).await?;
+    Ok(())
+}

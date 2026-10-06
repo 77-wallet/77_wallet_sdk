@@ -256,6 +256,36 @@ pub enum KnownTaskName {
     AddressUse,
     AwmCmdDevChange,
     ApiWalletAcctChange,
+    AwmAddressInsufficient,
     RecoverAddrExpandComplete,
     CreateApiAccountDeferred,
+    CheckApiAddressBalance,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{KnownTaskName, TaskName};
+
+    #[tokio::test]
+    async fn address_insufficient_task_name_survives_sqlite_round_trip() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let row: (TaskName,) = sqlx::query_as("SELECT ? AS task_name")
+            .bind(TaskName::Known(KnownTaskName::AwmAddressInsufficient))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(row.0, TaskName::Known(KnownTaskName::AwmAddressInsufficient));
+    }
+
+    #[tokio::test]
+    async fn address_balance_check_task_name_survives_sqlite_round_trip() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let row: (TaskName,) = sqlx::query_as("SELECT ? AS task_name")
+            .bind(TaskName::Known(KnownTaskName::CheckApiAddressBalance))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+        assert_eq!(row.0, TaskName::Known(KnownTaskName::CheckApiAddressBalance));
+    }
 }

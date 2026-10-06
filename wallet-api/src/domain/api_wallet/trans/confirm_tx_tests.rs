@@ -394,5 +394,22 @@ async fn withdraw_repeat_should_still_write_transaction_time() {
 async fn withdraw_not_found_should_error() {
     let db = TestFundsDb::new().await;
     let res = ApiWithdrawDomain::confirm_tx_in_pool(&db.pool, "T_withdraw_missing", true).await;
-    assert!(res.is_err(), "missing trade_no must error to avoid ACK");
+    assert!(res.is_err(), "missing withdraw order remains an error");
+}
+
+#[tokio::test]
+async fn collect_and_fee_database_errors_are_not_idempotent_success() {
+    // Arrange: real temporary SQLite with unavailable business tables, not missing rows.
+    let db = TestFundsDb::new().await;
+    sqlx::query("DROP TABLE api_collect").execute(db.pool.as_ref()).await.unwrap();
+    sqlx::query("DROP TABLE api_fee").execute(db.pool.as_ref()).await.unwrap();
+    // Act/Assert: storage failures must remain errors rather than being ACKed as duplicates.
+    assert!(matches!(
+        ApiCollectDomain::confirm_tx_in_pool(&db.pool, "missing", true, 0).await,
+        Err(crate::error::service::ServiceError::Database(_))
+    ));
+    assert!(matches!(
+        ApiFeeDomain::confirm_tx_in_pool(&db.pool, "missing", true).await,
+        Err(crate::error::service::ServiceError::Database(_))
+    ));
 }

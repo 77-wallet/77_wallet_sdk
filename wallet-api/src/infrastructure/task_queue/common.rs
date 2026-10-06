@@ -20,6 +20,9 @@ use crate::{
 impl TaskTrait for CommonTask {
     fn get_name(&self) -> TaskName {
         match self {
+            CommonTask::CheckApiAddressBalance(_) => {
+                TaskName::Known(KnownTaskName::CheckApiAddressBalance)
+            }
             CommonTask::QueryCoinPrice(_) => TaskName::Known(KnownTaskName::QueryCoinPrice),
             CommonTask::QueryQueueResult(_) => TaskName::Known(KnownTaskName::QueryQueueResult),
             CommonTask::RecoverMultisigAccountData(_) => {
@@ -36,6 +39,9 @@ impl TaskTrait for CommonTask {
 
     fn get_body(&self) -> Result<Option<String>, ServiceError> {
         let res = match self {
+            CommonTask::CheckApiAddressBalance(data) => {
+                Some(wallet_utils::serde_func::serde_to_string(data)?)
+            }
             CommonTask::QueryCoinPrice(query_coin_price) => {
                 Some(wallet_utils::serde_func::serde_to_string(query_coin_price)?)
             }
@@ -58,6 +64,10 @@ impl TaskTrait for CommonTask {
         ctx: &'static crate::context::Context,
     ) -> Result<(), ServiceError> {
         match self {
+            CommonTask::CheckApiAddressBalance(data) => {
+                crate::infrastructure::system_ready::wait_system_ready().await;
+                data.execute(ctx).await?;
+            }
             CommonTask::QueryCoinPrice(data) => {
                 CoinService::new(ctx).query_token_price(data).await?;
             }
@@ -90,6 +100,7 @@ impl TaskTrait for CommonTask {
 }
 
 pub(crate) enum CommonTask {
+    CheckApiAddressBalance(crate::application::api_wallet_balance_check::ApiAddressBalanceCheck),
     QueryCoinPrice(TokenQueryPriceReq),
     QueryQueueResult(QueueTaskEntity),
     RecoverMultisigAccountData(RecoverDataBody),

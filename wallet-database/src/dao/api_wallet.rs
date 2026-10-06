@@ -124,6 +124,20 @@ impl ApiWalletDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    /// Only active withdrawal-wallet owners, without loading wallet material.
+    pub async fn active_withdrawal_uids<'a, E>(exec: E) -> Result<Vec<(String,)>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, (String,)>(
+            "SELECT DISTINCT uid FROM api_wallet WHERE status = 1 AND api_wallet_type = ? AND TRIM(uid) <> '' ORDER BY uid",
+        )
+        .bind(ApiWalletType::Withdrawal)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn detail_by_uid<'a, E>(
         exec: E,
         uid: &str,

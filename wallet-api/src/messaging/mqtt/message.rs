@@ -31,6 +31,9 @@ pub(crate) struct Message {
     // 客户端标识
     #[allow(dead_code)]
     pub(crate) client_id: String,
+    // 钱包 UID；旧消息可能不携带
+    #[serde(default)]
+    pub(crate) uid: Option<String>,
     // 设备号
     #[allow(dead_code)]
     pub(crate) sn: String,
@@ -111,6 +114,8 @@ pub enum BizType {
     AwmCmdActive,
     // AWM_CMD_DEV_CHANGE API钱包设备变更
     AwmCmdDevChange,
+    // AWM_ADDRESS_INSUFFICIENT API钱包出款地址余额不足提醒
+    AwmAddressInsufficient,
 }
 
 impl fmt::Display for BizType {
@@ -143,6 +148,7 @@ impl fmt::Display for BizType {
             BizType::AwmCmdFeeRes => "AwmCmdFeeRes",
             BizType::AwmCmdActive => "AwmCmdActive",
             BizType::AwmCmdDevChange => "AwmCmdDevChange",
+            BizType::AwmAddressInsufficient => "AwmAddressInsufficient",
         };
         write!(f, "{}", s)
     }
@@ -192,6 +198,51 @@ pub enum Body {
 #[cfg(test)]
 mod tests {
     use super::{BizType, Message};
+
+    #[test]
+    fn message_deserializes_optional_outer_uid() {
+        let with_uid = r#"{
+            "msgId":"msg-1",
+            "bizType":"ACCT_CHANGE",
+            "body":{},
+            "clientId":"client",
+            "deviceType":"ANDROID",
+            "sn":"sn",
+            "walletType":"API_WAW",
+            "uid":"api-wallet-uid"
+        }"#;
+        let with_uid: Message = serde_json::from_str(with_uid).unwrap();
+        assert_eq!(with_uid.uid.as_deref(), Some("api-wallet-uid"));
+
+        let without_uid = r#"{
+            "msgId":"msg-2",
+            "bizType":"ACCT_CHANGE",
+            "body":{},
+            "clientId":"client",
+            "deviceType":"ANDROID",
+            "sn":"sn"
+        }"#;
+        let without_uid: Message = serde_json::from_str(without_uid).unwrap();
+        assert!(without_uid.uid.is_none());
+    }
+
+    #[test]
+    fn address_insufficient_biz_type_deserializes_on_wallet_topic_envelope() {
+        let payload = r#"{
+            "msgId":"balance-alert-1",
+            "bizType":"AWM_ADDRESS_INSUFFICIENT",
+            "body":{},
+            "clientId":"client",
+            "deviceType":"ANDROID",
+            "sn":"sn",
+            "uid":"api-wallet-uid",
+            "walletType":"API_WAW"
+        }"#;
+
+        let message: Message = serde_json::from_str(payload).unwrap();
+        assert!(matches!(message.biz_type, BizType::AwmAddressInsufficient));
+        assert_eq!(message.uid.as_deref(), Some("api-wallet-uid"));
+    }
 
     #[test]
     fn awm_cmd_rsc_res_biz_type_deserializes() {

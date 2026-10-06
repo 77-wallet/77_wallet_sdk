@@ -7,3 +7,5 @@ pub(crate) mod api_wallet_withdraw;
 pub(crate) mod node;
 pub(crate) mod stake;
 pub(crate) mod wallet;
+
+pub(crate) mod api_wallet_balance_check;

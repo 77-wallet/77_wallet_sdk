@@ -1,5 +1,6 @@
 pub(crate) mod account;
 pub(crate) mod asset;
+pub(crate) mod business_notification;
 pub(crate) mod chain;
 pub(crate) mod coin;
 pub(crate) mod collect;

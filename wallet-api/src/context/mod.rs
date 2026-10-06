@@ -130,6 +130,8 @@ pub struct Context {
     current_wallet_type: Arc<RwLock<Option<ApiWalletType>>>,
     handles: RwLock<Weak<Handles>>,
     init_api_swap: Mutex<bool>,
+    pub(crate) address_balance_check:
+        Mutex<crate::service::api_wallet::business_notification::AddressBalanceCheckCache>,
     expand_event_tx: Arc<RwLock<Option<ExpandEventSender>>>,
     background_task_pool: Arc<BackgroundTaskPool>,
     recovery_coordinator: Arc<RecoveryCoordinator>,
@@ -344,6 +346,7 @@ impl Context {
             current_wallet_type: Arc::new(RwLock::new(None)),
             handles: RwLock::new(Weak::new()),
             init_api_swap: Mutex::new(false),
+            address_balance_check: Mutex::new(Default::default()),
             expand_event_tx: Arc::new(RwLock::new(None)),
             background_task_pool,
             recovery_coordinator: Arc::new(RecoveryCoordinator::default()),

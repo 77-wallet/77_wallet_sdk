@@ -50,6 +50,11 @@ impl BackgroundTaskPool {
         });
     }
 
+    #[cfg(test)]
+    pub(crate) async fn hold_all_permits_for_test(&self) -> tokio::sync::OwnedSemaphorePermit {
+        self.semaphore.clone().acquire_many_owned(self.max_concurrent as u32).await.unwrap()
+    }
+
     /// 获取当前任务数（正在执行的任务数）
     pub fn len(&self) -> usize {
         // 正在执行的任务数 = 总容量 - 可用许可证数

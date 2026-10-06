@@ -10,6 +10,11 @@ use wallet_database::{
 };
 
 impl WalletManager {
+    /// Pending review orders across active API withdrawal wallets.
+    pub async fn get_pending_api_withdrawals(&self) -> ReturnType<Vec<ApiWithdrawOrderVo>> {
+        WithdrawService::new(self.ctx).pending_withdrawals().await
+    }
+
     pub async fn list_api_withdraw_order(&self, uid: &str) -> ReturnType<Vec<ApiWithdrawOrderVo>> {
         WithdrawService::new(self.ctx).list_withdraw_order(uid).await
     }

@@ -1,5 +1,6 @@
 pub mod account;
 pub mod asset;
+pub mod business_notification;
 pub mod chain;
 pub mod coin;
 pub mod collect;

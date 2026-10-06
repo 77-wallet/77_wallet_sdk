@@ -21,6 +21,7 @@ pub(crate) enum MqttTask {
     MultiSignTransExecute(topics::MultiSignTransExecute),
     AcctChange(topics::AcctChange),
     ApiWalletAcctChange(topics::api_wallet::acct_change::ApiWalletAcctChange),
+    AwmAddressInsufficient(topics::api_wallet::address_insufficient::AwmAddressInsufficient),
     BulletinMsg(topics::BulletinMsg),
     PermissionAccept(topics::PermissionAccept),
     CleanPermission(topics::CleanPermission),
@@ -68,6 +69,9 @@ impl TaskTrait for MqttTask {
             // api wallet
             MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.get_name(),
             MqttTask::ApiWalletAcctChange(_) => TaskName::Known(KnownTaskName::ApiWalletAcctChange),
+            MqttTask::AwmAddressInsufficient(_) => {
+                TaskName::Known(KnownTaskName::AwmAddressInsufficient)
+            }
         }
     }
     fn get_type(&self) -> TaskType {
@@ -115,6 +119,9 @@ impl TaskTrait for MqttTask {
             MqttTask::ApiWalletAcctChange(req) => {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
             }
+            MqttTask::AwmAddressInsufficient(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
         };
         Ok(res)
     }
@@ -141,6 +148,7 @@ impl TaskTrait for MqttTask {
             MqttTask::OrderAllConfirmed(data) => data.exec_with_ctx(id, ctx).await?,
             MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.execute(id, ctx).await?,
             MqttTask::ApiWalletAcctChange(data) => data.exec(ctx, id).await?,
+            MqttTask::AwmAddressInsufficient(data) => data.exec(ctx).await?,
         }
         Ok(())
     }

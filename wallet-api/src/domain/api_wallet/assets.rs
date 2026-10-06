@@ -560,15 +560,23 @@ impl ApiAssetsDomain {
             sync_result.success.iter().map(|(assets_id, _)| &assets_id.address).collect();
         let addresses: Vec<String> = address_refs.into_iter().cloned().collect();
 
+        let synced_accounts = if addresses.is_empty() {
+            Vec::new()
+        } else {
+            ApiAccountRepo::find_by_addresses(addresses.as_slice(), &pool).await?
+        };
+        let withdrawal_uids: std::collections::HashMap<_, _> = synced_accounts
+            .iter()
+            .filter(|account| account.api_wallet_type == ApiWalletType::Withdrawal)
+            .map(|account| {
+                ((account.address.clone(), account.chain_code.clone()), account.uid.clone())
+            })
+            .collect();
         let accounts_map: std::collections::HashMap<
             String,
             wallet_database::entities::api_account::ApiAccountEntity,
         > = if !addresses.is_empty() {
-            ApiAccountRepo::find_by_addresses(addresses.as_slice(), &pool)
-                .await?
-                .into_iter()
-                .map(|acc| (acc.address.clone(), acc))
-                .collect()
+            synced_accounts.into_iter().map(|acc| (acc.address.clone(), acc)).collect()
         } else {
             std::collections::HashMap::new()
         };
@@ -651,6 +659,37 @@ impl ApiAssetsDomain {
                             }
                         }
                     }
+                }
+            }
+
+            // Reuse only successfully persisted observations, before publishing the
+            // existing asset event that lets the visible page re-query its banners.
+            let mut balances_by_uid: std::collections::HashMap<&str, Vec<(AssetsId, String)>> =
+                std::collections::HashMap::new();
+            let persisted: std::collections::HashSet<_> = persisted_successes
+                .iter()
+                .map(|id| (id.address.as_str(), id.chain_code.as_str(), &id.token_address))
+                .collect();
+            for (id, balance) in &sync_result.success {
+                if !persisted.contains(&(
+                    id.address.as_str(),
+                    id.chain_code.as_str(),
+                    &id.token_address,
+                )) {
+                    continue;
+                }
+                if let Some(uid) = withdrawal_uids.get(&(id.address.clone(), id.chain_code.clone()))
+                {
+                    balances_by_uid.entry(uid).or_default().push((id.clone(), balance.clone()));
+                }
+            }
+            let reminders = crate::service::api_wallet::business_notification::ApiBusinessNotificationService::new(ctx);
+            for (uid, balances) in balances_by_uid {
+                if let Err(error) = reminders.resolve_from_persisted_balances(uid, &balances).await
+                {
+                    // Asset persistence and its frontend event must survive a reminder
+                    // write failure; a persisted directed task retries resolution.
+                    tracing::warn!(%error, "balance reminder reconciliation failed");
                 }
             }
 

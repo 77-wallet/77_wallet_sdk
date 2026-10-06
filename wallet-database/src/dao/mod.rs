@@ -5,6 +5,7 @@ pub mod announcement;
 pub(crate) mod api_account;
 pub mod api_asset_sync_state;
 pub(crate) mod api_assets;
+pub(crate) mod api_business_notification;
 pub mod api_chain;
 pub mod api_coin;
 pub(crate) mod api_collect;

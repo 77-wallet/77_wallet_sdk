@@ -138,11 +138,7 @@ impl AwmCmdAddrExpandMsg {
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
 
-    use crate::{
-        infrastructure::task_queue::mqtt_api::ApiMqttStruct,
-        messaging::mqtt::{Message, topics::api_wallet::cmd::address_allock::AwmCmdAddrExpandMsg},
-        testkit::env::get_manager,
-    };
+    use crate::{infrastructure::task_queue::mqtt_api::ApiMqttStruct, messaging::mqtt::Message};
 
     #[test]
     fn deserialize() {
@@ -154,28 +150,6 @@ mod test {
 
         let msg: ApiMqttStruct = serde_json::from_value(msg.body).unwrap();
         assert_eq!(format!("{:?}", msg.event_type), "AwmCmdAddrExpand");
-    }
-
-    #[tokio::test]
-    async fn address_allock() -> anyhow::Result<()> {
-        wallet_utils::init_test_log();
-        let (manager, _) = get_manager().await.unwrap();
-
-        let change = r#"
-            {
-                "chain": "tron",
-                "index": null,
-                "batchId": "tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640",
-                "number": "50",
-                "serialNo": "tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640",
-                "type": "CHA_BATCH",
-                "uid": "88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640"
-            }
-        "#;
-        let change = serde_json::from_str::<AwmCmdAddrExpandMsg>(&change).unwrap();
-        let _res = change.exec(manager.ctx, "2").await.unwrap();
-
-        Ok(())
     }
 
     fn sort_vec<T: Ord>(items: &mut Vec<T>) {

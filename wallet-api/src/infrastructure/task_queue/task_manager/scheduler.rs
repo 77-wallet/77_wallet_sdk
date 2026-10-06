@@ -63,6 +63,7 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::BulletinMsg => 4,
                 KnownTaskName::PermissionAccept => 2,
                 KnownTaskName::CleanPermission => 2,
+                KnownTaskName::CheckApiAddressBalance => 3,
                 KnownTaskName::QueryCoinPrice => 2,
                 KnownTaskName::QueryQueueResult => 3,
                 KnownTaskName::RecoverMultisigAccountData => 1,
@@ -77,6 +78,7 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::AwmOrderTransRes => 2,
                 KnownTaskName::AwmCmdDevChange => 2,
                 KnownTaskName::ApiWalletAcctChange => 3,
+                KnownTaskName::AwmAddressInsufficient => 3,
                 KnownTaskName::CreateApiAccountDeferred => 1,
             }
         }

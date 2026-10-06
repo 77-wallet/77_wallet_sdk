@@ -62,6 +62,14 @@ pub(crate) trait SyncAssetsGiven {
 
     async fn subaccount_bnb_asset(&self) -> anyhow::Result<SyncAssetsFixture>;
 
+    async fn same_address_on_other_chain(&self, fixture: &SyncAssetsFixture) -> anyhow::Result<()>;
+
+    async fn balance_reminder(
+        &self,
+        fixture: &SyncAssetsFixture,
+        threshold: &str,
+    ) -> anyhow::Result<()>;
+
     fn chain_balance(&self, balance: u64);
 
     fn chain_balance_query_fails(&self);
@@ -69,6 +77,18 @@ pub(crate) trait SyncAssetsGiven {
 
 #[async_trait::async_trait(?Send)]
 impl SyncAssetsGiven for GivenRole<'_, SyncAssetsScenario> {
+    async fn same_address_on_other_chain(&self, fixture: &SyncAssetsFixture) -> anyhow::Result<()> {
+        super::db::seed_same_address_on_other_chain(self.scenario().env, fixture).await
+    }
+
+    async fn balance_reminder(
+        &self,
+        fixture: &SyncAssetsFixture,
+        threshold: &str,
+    ) -> anyhow::Result<()> {
+        super::db::seed_balance_reminder(self.scenario().env, fixture, threshold).await
+    }
+
     async fn withdrawal_bnb_asset(&self) -> anyhow::Result<SyncAssetsFixture> {
         self.scenario().seed().bnb_asset(ApiWalletType::Withdrawal, "api-wallet").await
     }
@@ -187,6 +207,11 @@ impl SyncAssetsWhen for WhenRole<'_, SyncAssetsScenario> {
 
 #[async_trait::async_trait(?Send)]
 pub(crate) trait SyncAssetsThen {
+    async fn balance_reminder_resolved(
+        &self,
+        fixture: &SyncAssetsFixture,
+        resolved: bool,
+    ) -> anyhow::Result<()>;
     fn sync_result_is_ok(&self, result: Result<(), ServiceError>);
 
     fn chain_balance_was_queried_once(&self);
@@ -206,6 +231,14 @@ pub(crate) trait SyncAssetsThen {
 
 #[async_trait::async_trait(?Send)]
 impl SyncAssetsThen for ThenRole<'_, SyncAssetsScenario> {
+    async fn balance_reminder_resolved(
+        &self,
+        fixture: &SyncAssetsFixture,
+        resolved: bool,
+    ) -> anyhow::Result<()> {
+        super::db::assert_balance_reminder_resolved(self.scenario().env, fixture, resolved).await
+    }
+
     fn sync_result_is_ok(&self, result: Result<(), ServiceError>) {
         self.scenario().assert().sync_result_is_ok(result);
     }

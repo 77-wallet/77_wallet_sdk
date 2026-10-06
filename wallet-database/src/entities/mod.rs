@@ -6,6 +6,7 @@ pub mod announcement;
 pub mod api_account;
 pub mod api_asset_sync_state;
 pub mod api_assets;
+pub mod api_business_notification;
 pub mod api_chain;
 pub mod api_coin;
 pub mod api_collect;

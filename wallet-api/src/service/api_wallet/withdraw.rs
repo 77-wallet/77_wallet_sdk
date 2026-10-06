@@ -22,6 +22,40 @@ impl WithdrawService {
         Self { ctx }
     }
 
+    /// Pending review orders across active API withdrawal wallets; no balance IO.
+    pub async fn pending_withdrawals(&self) -> Result<Vec<ApiWithdrawOrderVo>, ServiceError> {
+        use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
+        let pool = self.ctx.api_wallet_pool()?;
+        let mut items = Vec::new();
+        for (uid,) in ApiWalletRepo::active_withdrawal_uids(&pool).await? {
+            items.extend(self.pending_withdrawals_for_uid(&uid).await?);
+        }
+        Ok(items)
+    }
+
+    pub(crate) async fn pending_withdrawals_for_uid(
+        &self,
+        uid: &str,
+    ) -> Result<Vec<ApiWithdrawOrderVo>, ServiceError> {
+        let mut items = Vec::new();
+        let mut page = 0;
+        loop {
+            let batch =
+                self.page_withdraw_order(uid, vec![ApiWithdrawStatus::Init], page, 100).await?;
+            let count = batch.data.len();
+            items.extend(
+                batch.data.into_iter().filter(|item| {
+                    item.audit_passed_at.is_none() && item.audit_rejected_at.is_none()
+                }),
+            );
+            if count < 100 {
+                break;
+            }
+            page += 1;
+        }
+        Ok(items)
+    }
+
     pub async fn list_withdraw_order(
         &self,
         uid: &str,

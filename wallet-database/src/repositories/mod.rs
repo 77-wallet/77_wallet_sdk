@@ -1,6 +1,7 @@
 pub mod account;
 pub mod address_book;
 pub mod announcement;
+pub mod api_business_notification;
 
 pub mod api_wallet;
 
