@@ -489,6 +489,20 @@ impl ApiAssetsDomain {
             return Ok(());
         }
 
+        let reminders =
+            crate::service::api_wallet::business_notification::ApiBusinessNotificationService::new(
+                ctx,
+            );
+        let asset_ids: Vec<_> = assets.iter().map(|asset| asset.get_assets_id()).collect();
+        let reminder_snapshot = match reminders.snapshot_balance_events(&asset_ids).await {
+            Ok(events) => events,
+            Err(error) => {
+                // A reminder read failure must not prevent asset synchronization.
+                // Without a pre-RPC snapshot, skip automatic resolution safely.
+                tracing::warn!(%error, "balance reminder snapshot failed");
+                Vec::new()
+            }
+        };
         let sync_result = ApiChainBalance::sync_address_balance(ctx, assets.as_slice()).await?;
 
         tracing::info!(
@@ -683,9 +697,10 @@ impl ApiAssetsDomain {
                     balances_by_uid.entry(uid).or_default().push((id.clone(), balance.clone()));
                 }
             }
-            let reminders = crate::service::api_wallet::business_notification::ApiBusinessNotificationService::new(ctx);
             for (uid, balances) in balances_by_uid {
-                if let Err(error) = reminders.resolve_from_persisted_balances(uid, &balances).await
+                if let Err(error) = reminders
+                    .resolve_from_persisted_balances(uid, &balances, &reminder_snapshot)
+                    .await
                 {
                     // Asset persistence and its frontend event must survive a reminder
                     // write failure; a persisted directed task retries resolution.

@@ -12,20 +12,20 @@ review remains in the withdrawal order and review list; it does not create a row
 | --- | --- | --- |
 | API wallet migration | The table exists in `api_wallet.db`, never in `data.db`. | `wallet_database::repositories::api_business_notification::tests::core_database_does_not_create_api_business_notification_table`; `notification_survives_reopen_and_is_scoped_by_uid` |
 | UID-scoped reads and updates | A UID cannot list or mark another UID's reminder read. | `wallet_database::repositories::api_business_notification::tests::duplicate_delivery_preserves_read_and_resolution_state`; `wallet_api::service::api_wallet::business_notification::tests::balance_reminder_list_and_read_are_uid_scoped` |
-| Duplicate delivery | A duplicate business key updates the payload but preserves read and resolved facts. | `wallet_database::repositories::api_business_notification::tests::duplicate_delivery_preserves_read_and_resolution_state` |
+| Duplicate delivery | Same event ID replay preserves payload, time, read and resolved facts; a different event ID creates independent history even with the same business key. | `wallet_database::repositories::api_business_notification::tests::duplicate_delivery_preserves_read_and_resolution_state` |
 | Read and resolution | Reading a reminder does not resolve its active condition; resolved reminders remain in history. | `wallet_api::service::api_wallet::business_notification::tests::balance_reminder_list_and_read_are_uid_scoped`; `wallet_database::repositories::api_business_notification::tests::duplicate_delivery_preserves_read_and_resolution_state` |
 
-MQTT ingestion and fresh-balance resolution are separate stages, pending the final
-backend body contract. No external backend or chain calls occur in the tests above.
+MQTT ingestion and fresh-balance resolution are separate stages under the confirmed
+backend contract. No external backend or chain calls occur in the tests above.
 
 ## Balance MQTT envelope parsing
 
-`AwmAddressInsufficient::from_message` parses the backend's known fields and the
-assumed `chainCode`/`address` additions. It copies the outer UID into the serializable
-task body before queuing. It rejects missing UID, empty address or chain, and a
-non-API-withdrawal wallet type. The focused `address_insufficient::tests` exercise
-numeric/string decimal values, replay serialization, and invalid identity. The
-backend's final spelling of the two added fields remains to be confirmed.
+`AwmAddressInsufficient::from_message` parses the confirmed `chainCode`,
+`targetAddress`, `waddressType` and decimal fields. It copies the outer UID into
+its serializable task body; msgId remains the durable queue ID. It rejects
+missing UID, empty chain/address/symbol, empty or whitespace msgId, and a
+non-API-withdrawal wallet type. `address_insufficient::tests` covers field spelling,
+numeric/string decimals, replay serialization, invalid identity and msgId.
 
 ## Durable task name
 
@@ -36,12 +36,13 @@ the known task name and asserts that SQLite decoding preserves the known variant
 ## MQTT reminder ingestion
 
 `AWM_ADDRESS_INSUFFICIENT` is routed from the ordinary wallet MQTT topic to a
-durable task. The queued body includes the outer UID. Executing the task writes
-to `api_wallet.db` using UID, chain, address, and token as the stable alert key.
-The focused `repeated_alert_updates_one_uid_scoped_reminder` test checks that a
-repeat event updates the displayed remaining balance and reopens a resolved alert
-without creating a second reminder or exposing it to another UID. The App banner
-is a subsequent batch.
+durable task keyed by the existing msgId. Task execution passes that ID to the
+notification repository. The notification primary key deterministically encodes
+UID, kind and msgId; the address/chain/token business key is retained for grouping.
+`redelivery_preserves_snapshot_read_and_resolved_state` verifies same-event replay
+is immutable; `different_msg_ids_keep_identical_bodies_and_uid_scope` verifies
+independent events for one object and isolation between UIDs. The notification
+table remains idempotent after completed queue tasks are cleaned up.
 
 ## Balance-based resolution
 
@@ -127,7 +128,7 @@ background directed checks and pure local balance query remain separate.
 | Boundary | Evidence |
 | --- | --- |
 | Summary exact id/kind/isRead/remaining/symbol/notifiedAt, no payload | projection_tests::summary_is_minimal_and_uses_notification_time |
-| notifiedAt differs from first insert/update; legacy fallback only if absent | projection_tests timestamp tests |
+| notifiedAt differs from first insert/update; insertion-time fallback only if absent | projection_tests timestamp tests |
 | Typed detail coin/balance/merchant/address/chain/type; unknown/malformed rejected | projection_tests detail/error tests |
 | DAO active withdrawal scope, duplicate wallets, excluded owners, SQL id binding, wallet disable | repositories::api_business_notification::detail_tests |
 | Resolved history detail/list readable; banner unresolved; read does not mark read/resolve/RPC | service::api_wallet::business_notification::detail_tests |
@@ -135,3 +136,32 @@ background directed checks and pure local balance query remain separate.
 No new withdrawal notification kind is persisted by this flow. Withdrawal order amount/tradeNo/detail/audit interfaces remain separate. Unknown kinds retain summary metadata with null balance fields, not an invented amount projection.
 
 Kind typing: reuse BizType rather than introducing a second enum; mapping only admits currently persisted AWM_ADDRESS_INSUFFICIENT. Enum serialization/deserialization and unsupported event/numeric/case/blank strings are covered by projection_tests::existing_business_enum_preserves_wire_string_and_rejects_non_notification_kinds. Existing unknown-summary metadata and detail422 tests remain authoritative.
+
+## Event history candidate
+
+| Invariant | Component test |
+| --- | --- |
+| Different explicit IDs preserve same-object history, per-event read and resolution | database `different_events_same_object_keep_history_and_single_read_isolation` |
+| Same event ID cannot change payload/time/read/resolution | database `event_id_replay_never_reopens_or_mutates_event_snapshot` |
+| Immutable event time, nanoseconds, and ID tie-breaking precede offset pagination | database `event_time_precedes_insertion_order_and_id_breaks_ties_across_pages`; `submillisecond_event_time_is_not_replaced_by_id_order` |
+| Initial notification schema permits same-object events, nanosecond time format and four target indexes without upgrade migration | database `initial_notification_schema_supports_event_history_without_upgrade` |
+| Banner grouping precedes limit/count; valid wallets only; malformed history remains readable as generic history | service `banner_aggregates_before_pagination_and_keeps_latest_valid_unresolved_event` |
+| Latest valid event controls the whole group: higher threshold blocks older low events; lower threshold resolves all observed older events atomically, without read/history changes | service `latest_higher_threshold_blocks_older_lower_event_without_reading_or_hiding_history`; `latest_lower_threshold_resolves_older_high_events_and_preserves_history_read_state`; `persisted_balance_uses_latest_higher_threshold_for_whole_group` |
+| New arrivals cannot inherit an in-flight or previously cached observation | service `in_flight_balance_observation_does_not_resolve_new_event`; `cached_observation_cannot_resolve_event_arriving_after_original_check`; `asset_sync_observation_cannot_resolve_event_arriving_during_rpc` |
+
+All fixtures are isolated temporary SQLite and injected balance closures. No real
+backend, chain, App, or user database is exercised. Production MQTT reuses Message.msg_id via the durable task ID, encoded with UID and kind; empty IDs return observable parameter errors.
+MQTT regressions cover different messages with identical bodies, retransmission state protection, UID scope, and per-event states. Existing page/pageSize
+API remains; concurrent inserts may shift offset boundaries.
+
+Database scope: development fresh install/recreation only. The initial notification migration is changed by explicit user authorization; existing databases with the previous checksum are not supported by this candidate. No compatibility copy/rebuild migration remains. Other migrations are unchanged.
+
+## Latest-threshold rule (product confirmation 2026-10-07; supersedes per-event thresholds)
+
+Group identity: uid/kind/chain/address/token. Latest valid event by created_at DESC/id DESC controls the threshold; selection includes resolved history, so a resolved latest event never exposes older unresolved rows. History/read/msgId/public signatures/schema unchanged.
+
+Directed tasks for superseded events exit without chain IO. Ready seed selects latest unresolved representatives. A fresh latest check captures the group before RPC; a buffered retry uses that exact original snapshot and timestamp. Asset sync captures all eligible history before RPC and groups by the same rule. A successful observation resolves only the selected latest and observed earlier members, in one transaction with id/uid/payload/time/resolution guards. Later arrivals and changed versions are excluded; SQL failures roll back the whole group. is_read is never written by resolution.
+
+Key evidence: resolved_latest_never_exposes_or_checks_older_unresolved_event; old_directed_task_uses_latest_threshold_and_tie_breaks_with_uid_isolation; group_resolution_write_failure_rolls_back_every_event; observed_group_versions_and_uid_are_guarded; observed_group_resolution_is_atomic_and_preserves_read_state; asset_sync_latest_lower_threshold_resolves_observed_older_high_event. RPC/cache/asset arrival regressions use lower new thresholds than returned balances. Full MQTT task restart/real backend ACK and large-history performance remain unverified.
+
+Writer-lock regression `observed_group_waits_for_other_writer_before_reading_versions` uses a second SQLite connection: default DEFERRED transaction failed RED; BEGIN IMMEDIATE waits under existing busy timeout before version reads. `observed_group_does_not_capture_event_inserted_during_resolution` inserts a low-threshold event during UPDATE via a trigger and verifies it stays unresolved. `group_cached_compensation_does_not_apply_old_observation_to_new_latest` covers multi-event rollback/cache compensation followed by a newer lower threshold requiring fresh RPC.

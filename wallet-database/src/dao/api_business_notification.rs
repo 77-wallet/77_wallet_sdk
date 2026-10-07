@@ -98,7 +98,7 @@ impl ApiBusinessNotificationDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
-    /// Exact durable-event replay preserves resolution; a new payload reopens the alert.
+    /// Insert an immutable event; replay of the same event ID preserves every saved fact.
     pub async fn ingest<'a, E>(
         exec: E,
         n: NewApiBusinessNotification<'_>,
@@ -106,18 +106,23 @@ impl ApiBusinessNotificationDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        let notified_at = serde_json::from_str::<serde_json::Value>(n.payload)
+            .ok()
+            .and_then(|value| value.get("notifiedAt").and_then(|v| v.as_str()).map(str::to_owned))
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(&value).ok())
+            .map(|time| time.with_timezone(&chrono::Utc))
+            .unwrap_or_else(chrono::Utc::now)
+            .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
         sqlx::query(
-            "INSERT INTO api_business_notification (id, uid, kind, business_key, payload)
-            VALUES (?, ?, ?, ?, ?) ON CONFLICT (uid, kind, business_key) DO UPDATE SET
-            resolved_at = CASE WHEN api_business_notification.payload = excluded.payload
-                THEN api_business_notification.resolved_at ELSE NULL END,
-            payload = excluded.payload, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+            "INSERT INTO api_business_notification (id, uid, kind, business_key, payload, created_at)
+            VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING",
         )
         .bind(n.id)
         .bind(n.uid)
         .bind(n.kind)
         .bind(n.business_key)
         .bind(n.payload)
+        .bind(notified_at)
         .execute(exec)
         .await
         .map(|_| ())
@@ -133,7 +138,7 @@ impl ApiBusinessNotificationDao {
         sqlx::query(
             "INSERT INTO api_business_notification (id, uid, kind, business_key, payload)
              VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT (uid, kind, business_key) DO UPDATE SET
+             ON CONFLICT (id) DO UPDATE SET
                payload = excluded.payload,
                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
         )

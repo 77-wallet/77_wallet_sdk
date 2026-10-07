@@ -77,7 +77,7 @@ impl ApiBusinessNotificationRepo {
         .await
     }
 
-    /// Duplicate deliveries refresh the payload without clearing read or resolved state.
+    /// Compatibility update by row ID; transport event ingestion must use `ingest`.
     pub async fn upsert(
         pool: &ApiWalletDbPool,
         notification: NewApiBusinessNotification<'_>,
@@ -126,6 +126,43 @@ impl ApiBusinessNotificationRepo {
         resolved: bool,
     ) -> Result<(), Error> {
         ApiBusinessNotificationDao::mark_resolved(pool.write_ref(), uid, id, resolved).await
+    }
+
+    /// Resolve only observed versions, atomically; later arrivals are never selected.
+    pub async fn resolve_observed_group(
+        pool: &ApiWalletDbPool,
+        events: &[ApiBusinessNotification],
+    ) -> Result<bool, Error> {
+        if events.is_empty() || events.iter().any(|event| event.uid != events[0].uid) {
+            return Ok(false);
+        }
+        let mut tx = pool
+            .write_ref()
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(|e| Error::Database(e.into()))?;
+        for event in events {
+            let current = ApiBusinessNotificationDao::find(&mut *tx, &event.uid, &event.id).await?;
+            if !current.is_some_and(|row| {
+                row.payload == event.payload
+                    && row.created_at == event.created_at
+                    && row.resolved_at == event.resolved_at
+            }) {
+                tx.rollback().await.map_err(|e| Error::Database(e.into()))?;
+                return Ok(false);
+            }
+        }
+        for event in events {
+            ApiBusinessNotificationDao::resolve_if_payload_matches(
+                &mut *tx,
+                &event.uid,
+                &event.id,
+                &event.payload,
+            )
+            .await?;
+        }
+        tx.commit().await.map_err(|e| Error::Database(e.into()))?;
+        Ok(true)
     }
 
     /// A balance observation may resolve only the alert version it checked.
@@ -192,7 +229,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mqtt_ingest_exact_replay_preserves_resolution_and_new_payload_reopens() {
+    async fn mqtt_ingest_event_id_replay_preserves_resolution_and_payload() {
         // Arrange: a real notification row resolved after the first durable event.
         let pool = setup_api_wallet_pool("api_business_notice_ingest_replay").await;
         let n = balance_alert("owner", "alert");
@@ -215,9 +252,9 @@ mod tests {
         ApiBusinessNotificationRepo::ingest(&pool, changed).await.unwrap();
         let changed =
             ApiBusinessNotificationRepo::find(&pool, "owner", "alert").await.unwrap().unwrap();
-        assert!(changed.resolved_at.is_none());
+        assert!(changed.resolved_at.is_some());
         assert!(changed.is_read);
-        assert_eq!(changed.payload, r#"{"remaining":"1","thresholdValue":"30"}"#);
+        assert_eq!(changed.payload, r#"{"remaining":"10","thresholdValue":"20"}"#);
     }
 
     #[tokio::test]
@@ -389,7 +426,7 @@ mod tests {
         ApiBusinessNotificationRepo::upsert(
             &pool,
             NewApiBusinessNotification {
-                id: "another-delivery",
+                id: "tron:address-2:TRX",
                 ..balance_alert("owner", "tron:address-2:TRX")
             },
         )
@@ -429,3 +466,7 @@ mod withdrawal_message_center_tests;
 
 #[cfg(test)]
 mod detail_tests;
+
+#[cfg(test)]
+#[path = "api_business_notification/event_history_tests.rs"]
+mod event_history_tests;
