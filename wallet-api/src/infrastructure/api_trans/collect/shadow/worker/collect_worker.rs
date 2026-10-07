@@ -3750,46 +3750,46 @@ impl ShadowCollectWorker {
         }
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%params_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 构建请求参数完成");
 
-        if matches!(chain_code, ChainCode::Base | ChainCode::Scroll) {
-            let fee = adapter.estimate_native_fee_wei(params).await?;
-            return unit::format_to_string(fee, wallet_chain_interact::eth::consts::ETH_DECIMAL)
-                .map_err(ServiceError::from);
-        }
-
         let estimate_start = std::time::Instant::now();
-        let fee = adapter.estimate_fee(params, main_symbol).await?;
-        tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%estimate_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 调用estimate_fee完成");
+        let amount = if matches!(chain_code, ChainCode::Base | ChainCode::Scroll) {
+            let fee = adapter.estimate_native_fee_wei(params).await?;
+            tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%estimate_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 调用estimate_native_fee_wei完成");
+            unit::format_to_string(fee, wallet_chain_interact::eth::consts::ETH_DECIMAL)
+                .map_err(ServiceError::from)?
+        } else {
+            let fee = adapter.estimate_fee(params, main_symbol).await?;
+            tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%estimate_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 调用estimate_fee完成");
 
-        let parse_start = std::time::Instant::now();
-        let amount = match chain_code {
-            ChainCode::Tron => {
-                let res: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
-                res.estimate_fee.amount.to_string()
-            }
-            ChainCode::Bitcoin => todo!(),
-            ChainCode::Solana => {
-                let res: CommonFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
-                res.estimate_fee.amount.to_string()
-            }
-            ChainCode::Ethereum
-            | ChainCode::BnbSmartChain
-            | ChainCode::Polygon
-            | ChainCode::Avalanche
-            | ChainCode::Fantom
-            | ChainCode::Arbitrum
-            | ChainCode::Base
-            | ChainCode::Scroll => super::evm_propose_max_fee(&fee)?,
-            ChainCode::Litecoin => todo!(),
-            ChainCode::Dogcoin => todo!(),
-            ChainCode::Sui => todo!(),
-            ChainCode::Ton => todo!(),
-            _ => {
-                return Err(ServiceError::Parameter(format!(
-                    "unsupported collect chain: {chain_code}"
-                )));
-            }
+            let parse_start = std::time::Instant::now();
+            let amount = match chain_code {
+                ChainCode::Tron => {
+                    let res: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
+                    res.estimate_fee.amount.to_string()
+                }
+                ChainCode::Bitcoin => todo!(),
+                ChainCode::Solana => {
+                    let res: CommonFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
+                    res.estimate_fee.amount.to_string()
+                }
+                ChainCode::Ethereum
+                | ChainCode::BnbSmartChain
+                | ChainCode::Polygon
+                | ChainCode::Avalanche
+                | ChainCode::Fantom
+                | ChainCode::Arbitrum => super::evm_propose_max_fee(&fee)?,
+                ChainCode::Litecoin => todo!(),
+                ChainCode::Dogcoin => todo!(),
+                ChainCode::Sui => todo!(),
+                ChainCode::Ton => todo!(),
+                _ => {
+                    return Err(ServiceError::Parameter(format!(
+                        "unsupported collect chain: {chain_code}"
+                    )));
+                }
+            };
+            tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%parse_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 解析手续费结果完成");
+            amount
         };
-        tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%parse_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 解析手续费结果完成");
 
         tracing::info!(from=%from, to=%to, chain_code=%chain_code.to_string(), total_duration_ms=%start_time.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 估算手续费完成: {}", amount);
         Ok(amount)
