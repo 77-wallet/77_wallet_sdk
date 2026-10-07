@@ -21,3 +21,5 @@ pub mod wallet;
 pub mod withdraw;
 pub mod withdraw_strategy;
 pub mod withdraw_strategy_chain_config;
+
+pub mod chain_recovery;

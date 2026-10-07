@@ -165,6 +165,21 @@ impl ApiAssetsDao {
         exec: &mut sqlx::SqliteConnection,
         assets: Vec<ApiCreateAssetsVo>,
     ) -> Result<(), crate::Error> {
+        Self::write_assets_multi(exec, assets, false).await
+    }
+
+    pub async fn insert_missing_assets_multi(
+        exec: &mut sqlx::SqliteConnection,
+        assets: Vec<ApiCreateAssetsVo>,
+    ) -> Result<(), crate::Error> {
+        Self::write_assets_multi(exec, assets, true).await
+    }
+
+    async fn write_assets_multi(
+        exec: &mut sqlx::SqliteConnection,
+        assets: Vec<ApiCreateAssetsVo>,
+        preserve_existing: bool,
+    ) -> Result<(), crate::Error> {
         if assets.is_empty() {
             return Ok(());
         }
@@ -200,13 +215,17 @@ impl ApiAssetsDao {
                     .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
             });
 
-            qb.push(
-                " ON CONFLICT(address, chain_code, token_address)
+            if preserve_existing {
+                qb.push(" ON CONFLICT(address, chain_code, token_address) DO NOTHING");
+            } else {
+                qb.push(
+                    " ON CONFLICT(address, chain_code, token_address)
                   DO UPDATE SET
                       status = excluded.status,
                       is_multisig = excluded.is_multisig,
                       updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
-            );
+                );
+            }
 
             let result = qb
                 .build()

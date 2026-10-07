@@ -15,6 +15,65 @@ use crate::{
 pub struct ApiAccountRepo;
 
 impl ApiAccountRepo {
+    pub async fn account_high_watermark(pool: &ApiWalletDbPool) -> Result<i64, crate::Error> {
+        ApiAccountDao::account_high_watermark(pool.read_ref()).await
+    }
+
+    pub async fn missing_chain_account_page(
+        pool: &ApiWalletDbPool,
+        chain: &str,
+        after_id: i64,
+        through_id: i64,
+        limit: u32,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        ApiAccountDao::missing_chain_account_page(
+            pool.read_ref(),
+            chain,
+            after_id,
+            through_id,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn missing_chain_account_page_for_variants(
+        pool: &ApiWalletDbPool,
+        chain: &str,
+        after_id: i64,
+        through_id: i64,
+        limit: u32,
+        expected_variants: u32,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        ApiAccountDao::missing_chain_account_page_for_variants(
+            pool.read_ref(),
+            chain,
+            after_id,
+            through_id,
+            limit,
+            expected_variants,
+        )
+        .await
+    }
+
+    pub async fn target_uninitialized_for_logical(
+        pool: &ApiWalletDbPool,
+        wallet_address: &str,
+        account_id: u32,
+        api_wallet_type: ApiWalletType,
+        chain: &str,
+        limit: u32,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        ApiAccountDao::target_uninitialized_for_logical(
+            pool.read_ref(),
+            wallet_address,
+            account_id,
+            api_wallet_type,
+            chain,
+            limit,
+        )
+        .await
+    }
+
     pub async fn list_active_address_page_by_wallet(
         pool: &ApiWalletDbPool,
         wallet_address: &str,
@@ -758,3 +817,7 @@ mod tests {
         assert_eq!(count, 1);
     }
 }
+
+#[cfg(test)]
+#[path = "account/missing_chain_tests.rs"]
+mod missing_chain_tests;

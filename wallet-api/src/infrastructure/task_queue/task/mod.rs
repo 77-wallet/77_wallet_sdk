@@ -105,6 +105,19 @@ pub(crate) async fn dispatch_task_entities_with_ctx(
     if entities.is_empty() {
         return Ok(());
     }
+    let pool = ctx.task_pool()?;
+    // SQL is also the recovery/cleanup authority; never parse owned task names.
+    let mut default_entities = Vec::new();
+    for row in entities {
+        if TaskQueueRepo::externally_owned(&pool, row.remark.as_deref()).await? {
+            tracing::debug!(task_id=%row.id,"default consumer leaves externally owned record untouched");
+        } else {
+            default_entities.push(row);
+        }
+    }
+    if default_entities.is_empty() {
+        return Ok(());
+    }
 
     let handles = ctx.get_global_handles().await;
     let Some(handles) = handles.upgrade() else {
@@ -116,10 +129,9 @@ pub(crate) async fn dispatch_task_entities_with_ctx(
     };
 
     let task_sender = handles.get_global_task_manager();
-    let pool = ctx.task_pool()?;
 
     let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
-    for task_entity in entities.into_iter() {
+    for task_entity in default_entities {
         match TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) {
             Ok(task) => {
                 let priority = super::task_manager::scheduler::assign_priority(&*task, false)?;

@@ -7,7 +7,9 @@ use super::RunningTasks;
 
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, Semaphore, mpsc};
-use wallet_database::entities::task_queue::TaskQueueEntity;
+use wallet_database::{
+    entities::task_queue::TaskQueueEntity, repositories::task_queue::TaskQueueRepo,
+};
 
 type Priority = u8;
 pub type TaskSender = tokio::sync::mpsc::UnboundedSender<PriorityTask>;
@@ -250,6 +252,25 @@ impl Dispatcher {
         running_tasks: RunningTasks,
         semaphore: Arc<Semaphore>,
     ) {
+        if task_entity.remark.is_some() {
+            let ownership = match ctx.task_pool() {
+                Ok(pool) => {
+                    TaskQueueRepo::externally_owned(&pool, task_entity.remark.as_deref()).await
+                }
+                Err(error) => {
+                    tracing::warn!(%error,"routing unavailable; durable record retained");
+                    return;
+                }
+            };
+            match ownership {
+                Ok(true) => return,
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!(%error,"routing unavailable; durable record retained");
+                    return;
+                }
+            }
+        }
         let task_id = &task_entity.id;
 
         let task: Box<dyn TaskTrait> = match (&task_entity).try_into() {

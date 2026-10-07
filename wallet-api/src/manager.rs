@@ -91,6 +91,8 @@ impl WalletManager {
         let handles = Arc::new(Handles::new(context.get_client_id(), context).await?);
         context.set_global_handles(Arc::downgrade(&handles)).await;
 
+        context.api_chain_recovery.start(context);
+
         tracing::info!("start_task_check start");
         handles.get_global_task_manager().start_task_check().await?;
 

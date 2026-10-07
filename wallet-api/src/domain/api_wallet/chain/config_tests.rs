@@ -200,6 +200,122 @@ async fn backend_disable_version_gate_and_missing_master_are_not_restored_by_dev
     }
 }
 
+#[tokio::test]
+async fn node_arriving_later_and_partial_account_registration_remain_pending() {
+    let (_dir, ctx) = context().await;
+    let api = ctx.api_wallet_pool().unwrap();
+    ApiChainRepo::add(
+        &api,
+        wallet_database::entities::api_chain::ApiChainCreateVo::new(
+            "Base",
+            "base",
+            &["ERC20".into()],
+            NodeBindType::AutoBackend,
+            "ETH",
+        ),
+    )
+    .await
+    .unwrap();
+    for account_id in [0, 1] {
+        ApiAccountRepo::upsert_account_multi(
+            &api,
+            vec![
+                wallet_database::entities::api_account::CreateApiAccountVo::new(
+                    account_id,
+                    &format!("old-{account_id}"),
+                    "test-pub",
+                    "test-wallet",
+                    "test-uid",
+                    "m/44'/60'/0'/0/0",
+                    account_id as i32,
+                    "eth",
+                    "test",
+                    ApiWalletType::SubAccount,
+                )
+                .with_is_init(true),
+            ],
+        )
+        .await
+        .unwrap();
+    }
+    assert!(ApiChainDomain::pending_chain_codes(ctx).await.unwrap().is_empty());
+    NodeRepo::upsert(
+        &ctx.core_pool().unwrap(),
+        NodeCreateVo::new("late-main", "local fake", "base", "http://127.0.0.1:9", None),
+    )
+    .await
+    .unwrap();
+    ChainNodeEnsurer::new(ctx.core_pool().unwrap(), api.clone()).ensure_all().await.unwrap();
+    assert_eq!(ApiChainDomain::pending_chain_codes(ctx).await.unwrap(), ["base"]);
+    ApiAccountRepo::upsert_account_multi(
+        &api,
+        vec![
+            wallet_database::entities::api_account::CreateApiAccountVo::new(
+                0,
+                "new-0",
+                "test-pub",
+                "test-wallet",
+                "test-uid",
+                "m/44'/60'/0'/0/0",
+                0,
+                "base",
+                "test",
+                ApiWalletType::SubAccount,
+            )
+            .with_is_init(true),
+        ],
+    )
+    .await
+    .unwrap();
+    assert_eq!(ApiChainDomain::pending_chain_codes(ctx).await.unwrap(), ["base"]);
+    ApiAccountRepo::upsert_account_multi(
+        &api,
+        vec![
+            wallet_database::entities::api_account::CreateApiAccountVo::new(
+                1,
+                "new-1",
+                "test-pub",
+                "test-wallet",
+                "test-uid",
+                "m/44'/60'/0'/0/1",
+                1,
+                "base",
+                "test",
+                ApiWalletType::SubAccount,
+            )
+            .with_is_init(false),
+        ],
+    )
+    .await
+    .unwrap();
+    assert_eq!(ApiChainDomain::pending_chain_codes(ctx).await.unwrap(), ["base"]);
+    ApiAccountRepo::init_many(&api, &[("new-1".into(), "base".into())]).await.unwrap();
+    assert!(ApiChainDomain::pending_chain_codes(ctx).await.unwrap().is_empty());
+    // Locked reconciliation must preserve unfinished rows and never call backend.
+    ApiAccountRepo::upsert_account_multi(
+        &api,
+        vec![
+            wallet_database::entities::api_account::CreateApiAccountVo::new(
+                2,
+                "old-2",
+                "test-pub",
+                "test-wallet",
+                "test-uid",
+                "m/44'/60'/0'/0/2",
+                2,
+                "eth",
+                "test",
+                ApiWalletType::SubAccount,
+            )
+            .with_is_init(true),
+        ],
+    )
+    .await
+    .unwrap();
+    ApiChainDomain::reconcile_accounts_if_unlocked(ctx).await.unwrap();
+    assert_eq!(ApiChainDomain::pending_chain_codes(ctx).await.unwrap(), ["base"]);
+}
+
 #[cfg(all(feature = "dev", not(feature = "prod")))]
 #[tokio::test]
 async fn dev_defaults_preserve_manual_testnet_binding_and_disabled_backend_coin() {
@@ -303,6 +419,62 @@ async fn non_dev_builds_do_not_inject_api_mainnet_nodes_or_native_coins() {
         let chains = ApiChainRepo::get_chain_list_all_status(&api).await.unwrap();
         assert!(chains.iter().all(|chain| !CODES.contains(&chain.chain_code.as_str())));
     }
+}
+
+#[tokio::test]
+async fn expansion_selection_ignores_stopped_accounts_and_deduplicates_both_wallet_types() {
+    let (_dir, ctx) = context().await;
+    let api = ctx.api_wallet_pool().unwrap();
+    for kind in [ApiWalletType::SubAccount, ApiWalletType::Withdrawal] {
+        for id in [0, 1] {
+            let wallet = format!("wallet-{}", kind as u8);
+            ApiAccountRepo::upsert_account_multi(
+                &api,
+                vec![wallet_database::entities::api_account::CreateApiAccountVo::new(
+                    id,
+                    &format!("address-{}-{id}", kind as u8),
+                    "test-pub",
+                    &wallet,
+                    "test-uid",
+                    "m/44'/60'/0'/0/0",
+                    id as i32,
+                    "eth",
+                    "test",
+                    kind,
+                )],
+            )
+            .await
+            .unwrap();
+        }
+    }
+    sqlx::query("UPDATE api_account SET status = 0 WHERE account_id = 1")
+        .execute(api.write_ref())
+        .await
+        .unwrap();
+    let rows = ApiAccountRepo::list(&api).await.unwrap();
+    let mut mappings = Vec::new();
+    for row in &rows {
+        for address in ["old-chain-address", "other-chain-address"] {
+            mappings.push(wallet_database::entities::api_account::ApiAccountWalletMapping {
+                account_id: row.account_id,
+                account_name: row.name.clone(),
+                address: address.into(),
+                wallet_address: row.wallet_address.clone(),
+                uid: row.uid.clone(),
+                seed: String::new(),
+                api_wallet_type: row.api_wallet_type,
+            });
+        }
+    }
+    ApiChainDomain::retain_active_account_mappings(&rows, &mut mappings);
+    assert_eq!(mappings.len(), 2);
+    assert!(mappings.iter().all(|row| row.account_id == 0));
+    assert!(mappings.iter().any(|row| row.api_wallet_type == ApiWalletType::SubAccount));
+    assert!(mappings.iter().any(|row| row.api_wallet_type == ApiWalletType::Withdrawal));
+    assert_eq!(
+        ApiAccountRepo::list(&api).await.unwrap().iter().filter(|row| row.status == 0).count(),
+        2
+    );
 }
 
 #[cfg(all(feature = "dev", not(feature = "prod")))]

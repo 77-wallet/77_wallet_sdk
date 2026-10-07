@@ -16,7 +16,7 @@ pub async fn do_init_with_ctx(
     init_req: ApiAddressInitReq,
 ) -> Result<(), ServiceError> {
     tracing::info!(
-        batch_id = ?init_req.batch_id,
+        batch_id_hash = %crate::domain::api_wallet::chain::recovery::log_id(init_req.batch_id.as_deref().unwrap_or("")),
         address_count = init_req.address_list.0.len(),
         epoch = init_req.epoch,
         "INIT_EXECUTOR: starting init task"
@@ -25,7 +25,7 @@ pub async fn do_init_with_ctx(
     // 1. 检查epoch是否为0（安全防护）
     if init_req.epoch == 0 {
         tracing::warn!(
-            batch_id = ?init_req.batch_id,
+            batch_id_hash = %crate::domain::api_wallet::chain::recovery::log_id(init_req.batch_id.as_deref().unwrap_or("")),
             "INIT_EXECUTOR: INIT without valid epoch detected, dropping task"
         );
         // 直接返回成功，不执行后续逻辑
@@ -36,7 +36,7 @@ pub async fn do_init_with_ctx(
     let is_valid = ConfigDomain::check_epoch_validity(ctx, init_req.epoch).await?;
     if !is_valid {
         tracing::info!(
-            batch_id = ?init_req.batch_id,
+            batch_id_hash = %crate::domain::api_wallet::chain::recovery::log_id(init_req.batch_id.as_deref().unwrap_or("")),
             task_epoch = init_req.epoch,
             "INIT_EXECUTOR: Task epoch mismatch, discarding old task"
         );
@@ -60,9 +60,11 @@ pub async fn do_init_with_ctx(
     let backend = ctx.get_global_backend_api();
 
     tracing::info!(
-        "INIT_EXECUTOR: calling backend.expand_address, address_count={}, batch_id={:?}",
+        "INIT_EXECUTOR: calling backend.expand_address, address_count={}, batch_id_hash={}",
         init_req.address_list.0.len(),
-        init_req.batch_id
+        crate::domain::api_wallet::chain::recovery::log_id(
+            init_req.batch_id.as_deref().unwrap_or("")
+        )
     );
 
     let result = backend.expand_address(&init_req).await;
@@ -74,6 +76,10 @@ pub async fn do_init_with_ctx(
                 init_req.address_list.0.len()
             );
 
+            // A reset can invalidate an in-flight backend response.
+            if !ConfigDomain::check_epoch_validity(ctx, init_req.epoch).await? {
+                return Ok(());
+            }
             // 3. 更新数据库中account的init状态
             let pool = ctx.api_wallet_pool()?;
 
@@ -86,17 +92,22 @@ pub async fn do_init_with_ctx(
             tracing::info!("INIT_EXECUTOR: init_many pairs: {:?}", pairs.len());
             ApiAccountRepo::init_many(&pool, &pairs).await?;
             tracing::info!(
-                batch_id = ?init_req.batch_id,
+                batch_id_hash = %crate::domain::api_wallet::chain::recovery::log_id(init_req.batch_id.as_deref().unwrap_or("")),
                 address_count = init_req.address_list.0.len(),
                 "INIT_EXECUTOR: init task completed successfully"
             );
             Ok(())
         }
         Err(e) => {
+            let backend_code = match &e {
+                wallet_transport_backend::Error::ApiBackend(code, _) => Some(*code),
+                _ => None,
+            };
             tracing::error!(
-                batch_id = ?init_req.batch_id,
+                batch_id_hash = %crate::domain::api_wallet::chain::recovery::log_id(init_req.batch_id.as_deref().unwrap_or("")),
                 address_count = init_req.address_list.0.len(),
-                error = %e,
+                reason = "backend",
+                backend_code = ?backend_code,
                 "INIT_EXECUTOR: init task failed"
             );
             Err(ServiceError::from(e))

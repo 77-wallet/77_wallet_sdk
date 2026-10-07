@@ -30,13 +30,38 @@ use crate::{
     },
 };
 
+#[path = "chain/account_sync.rs"]
+mod account_sync;
+#[path = "chain/recovery.rs"]
+pub(crate) mod recovery;
+
 pub struct ApiChainDomain {}
 
 #[cfg(test)]
 #[path = "chain/config_tests.rs"]
 mod config_tests;
 
+pub(crate) async fn register_missing_chain_addresses(
+    ctx: &'static Context,
+    req: ApiAddressInitReq,
+) -> Result<(), crate::error::service::ServiceError> {
+    account_sync::register_bounded(ctx, req).await
+}
+
 impl ApiChainDomain {
+    pub(crate) async fn start_missing_chain_recovery(ctx: &'static Context) {
+        if let Err(error) = crate::domain::api_wallet::chain::recovery::schedule_chains(ctx).await {
+            let (reason, backend_code) = recovery::log_reason(&error);
+            tracing::warn!(reason,backend_code=?backend_code,"A reconcile scheduling deferred");
+        }
+    }
+    pub(crate) async fn run_queued_chain_reconcile(
+        ctx: &'static Context,
+        chain: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        account_sync::run_chain(ctx, chain).await
+    }
+
     pub(crate) async fn network_kind_by_chain_code(
         chain_code: &str,
         ctx: &'static Context,
@@ -61,7 +86,7 @@ impl ApiChainDomain {
         api_wallet_type: ApiWalletType,
         is_recover: bool,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
-        tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chains_count=chain_list.len(), "ApiChainDomain: starting init_chains_api_assets");
+        tracing::debug!(account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chains_count=chain_list.len(), "ApiChainDomain: starting init_chains_api_assets");
         let pool = ctx.api_wallet_pool()?;
         let mut created_addresses = Vec::new();
 
@@ -117,7 +142,7 @@ impl ApiChainDomain {
             }
         }
 
-        tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, created_addresses_count=%created_addresses.len(), "ApiChainDomain: completed init_chains_api_assets");
+        tracing::debug!(account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, created_addresses_count=%created_addresses.len(), "ApiChainDomain: completed init_chains_api_assets");
         Ok(created_addresses)
     }
 
@@ -377,74 +402,83 @@ impl ApiChainDomain {
         ApiChainDomain::upsert_multi_api_chain_than_toggle(ctx, chain_list).await
     }
 
+    /// A partial chain rollout remains pending until every logical account is registered.
+    pub(crate) async fn pending_chain_codes(
+        ctx: &'static Context,
+    ) -> Result<Vec<String>, crate::error::service::ServiceError> {
+        let pool = ctx.api_wallet_pool()?;
+        let through = ApiAccountRepo::account_high_watermark(&pool).await?;
+        let mut pending = Vec::new();
+        for chain in ApiChainRepo::get_chain_list(&pool).await? {
+            if chain.node_id.is_none() {
+                continue;
+            }
+            let code: ChainCode = chain.chain_code.as_str().try_into()?;
+            let expected = WalletDomain::address_type_by_chain(code).len() as u32;
+            if !ApiAccountRepo::missing_chain_account_page_for_variants(
+                &pool,
+                &chain.chain_code,
+                0,
+                through,
+                1,
+                expected,
+            )
+            .await?
+            .is_empty()
+            {
+                pending.push(chain.chain_code);
+            }
+        }
+        Ok(pending)
+    }
+
+    pub(crate) async fn reconcile_accounts_if_unlocked(
+        ctx: &'static Context,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        if Self::pending_chain_codes(ctx).await?.is_empty() {
+            return Ok(());
+        }
+        let Some(session) = ctx.wallet_unlock_session_snapshot().await else {
+            tracing::info!("API chain expansion deferred until wallet is unlocked");
+            return Ok(());
+        };
+        if session.is_expired() {
+            return Ok(());
+        }
+        crate::domain::api_wallet::chain::recovery::schedule_chains(ctx).await
+    }
+
+    #[cfg(test)]
+    fn retain_active_account_mappings(
+        accounts: &[wallet_database::entities::api_account::ApiAccountEntity],
+        mappings: &mut Vec<wallet_database::entities::api_account::ApiAccountWalletMapping>,
+    ) {
+        let active: std::collections::HashSet<_> = accounts
+            .iter()
+            .filter(|row| row.status == 1)
+            .map(|row| (row.wallet_address.as_str(), row.account_id, row.api_wallet_type as u8))
+            .collect();
+        let mut seen = std::collections::HashSet::new();
+        mappings.retain(|row| {
+            active.contains(&(
+                row.wallet_address.as_str(),
+                row.account_id,
+                row.api_wallet_type as u8,
+            )) && seen.insert((
+                row.wallet_address.clone(),
+                row.account_id,
+                row.api_wallet_type as u8,
+            ))
+        });
+    }
+
     pub async fn sync_wallet_chain_data(
         ctx: &'static Context,
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = ctx.api_wallet_pool()?;
-
         crate::domain::wallet::WalletDomain::validate_password_with_context(ctx, wallet_password)
             .await?;
-        let chain_list: Vec<String> = ApiChainRepo::get_chain_list(&pool)
-            .await?
-            .into_iter()
-            .filter(|c| c.node_id.is_some())
-            .map(|chain| chain.chain_code)
-            .collect();
-
-        let account_wallet_mapping =
-            ApiAccountRepo::account_wallet_mapping(&pool, Some(ApiWalletType::Withdrawal)).await?;
-        let mut req = TokenQueryPriceReq(Vec::new());
-        let coins = ApiCoinRepo::coin_list(&pool).await?;
-
-        // let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
-        // 获取当前 epoch
-        let current_epoch = ConfigDomain::get_keys_reset_epoch(ctx).await?;
-
-        let mut api_address_init_req = ApiAddressInitReq::new(current_epoch);
-
-        for wallet in account_wallet_mapping {
-            let account_index_map =
-                wallet_utils::address::AccountIndexMap::from_account_id(wallet.account_id)?;
-
-            let seed = ApiWalletDomain::new(ctx).get_seed(&wallet.wallet_address).await?;
-
-            ApiChainDomain::init_chains_api_assets(
-                ctx,
-                &coins,
-                &mut req,
-                &mut api_address_init_req,
-                &chain_list,
-                &seed,
-                &account_index_map,
-                &wallet.uid,
-                &wallet.wallet_address,
-                &wallet.account_name,
-                false,
-                wallet.api_wallet_type,
-                false,
-            )
-            .await?;
-        }
-
-        // let device_bind_address_task_data =
-        //     DeviceDomain::gen_device_bind_address_task_data().await?;
-        let mut tasks = Tasks::new();
-        if !api_address_init_req.address_list.0.is_empty() {
-            let api_address_init_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
-                &api_address_init_req,
-            )?;
-            tasks = tasks.push(BackendApiTask::BackendApi(api_address_init_task_data));
-        }
-
-        tasks
-            .push(CommonTask::QueryCoinPrice(req))
-            // .push(BackendApiTask::BackendApi(expand_address_task_data))
-            .send_with_ctx(ctx)
-            .await?;
-
-        Ok(())
+        crate::domain::api_wallet::chain::recovery::schedule_chains(ctx).await
     }
 }
 

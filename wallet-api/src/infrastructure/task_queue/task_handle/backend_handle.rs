@@ -504,7 +504,6 @@ impl EndpointHandler for SpecialHandler {
                 // 3. 兜底保证每条链都有 node
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
-                crate::domain::api_wallet::coin::ApiCoinDomain::sync_dev_native_coins(ctx).await?;
                 crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx)
                     .await?;
             }
@@ -514,11 +513,8 @@ impl EndpointHandler for SpecialHandler {
                 let app_version_code = body.get("appVersionCode");
                 let input = backend.api_wallet_chain_list(app_version_code.unwrap()).await?;
                 //先插入再过滤
-                if !ApiChainDomain::upsert_multi_api_chain_than_toggle(ctx, input).await?.is_empty()
-                {
-                    let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
-                    ApiChainDomain::sync_wallet_chain_data(ctx, &unlock_token).await?;
-                }
+                ApiChainDomain::upsert_multi_api_chain_than_toggle(ctx, input).await?;
+                ApiChainDomain::reconcile_accounts_if_unlocked(ctx).await?;
             }
             endpoint::CHAIN_RPC_LIST => {
                 let input = backend
@@ -529,6 +525,8 @@ impl EndpointHandler for SpecialHandler {
                 NodeDomain::upsert_chain_rpc(&core_pool, input).await?;
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
+                crate::domain::api_wallet::coin::ApiCoinDomain::sync_dev_native_coins(ctx).await?;
+                ApiChainDomain::reconcile_accounts_if_unlocked(ctx).await?;
                 crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes_with_ctx(ctx)
                     .await?;
             }

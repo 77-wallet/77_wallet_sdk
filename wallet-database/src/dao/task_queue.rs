@@ -8,9 +8,112 @@ use crate::{
     },
 };
 
+// SQLite is the routing authority for both stored rows and dispatch metadata.
+// json_extract/json_type use the first decoded matching key for duplicate owner keys.
+const EXTERNAL_OWNER_PREDICATE: &str = "COALESCE(CASE WHEN json_valid(remark) THEN CASE WHEN json_type(remark,'$.owner')='text' THEN json_extract(remark,'$.owner') END END,'') != ''";
+
 pub struct TaskQueueDao {}
 
 impl TaskQueueDao {
+    /// Atomic admission enforces the caller-owned active capacity.
+    pub async fn insert_owned_with_capacity<'a, E>(
+        exec: E,
+        row: &TaskQueueEntity,
+        owner: &str,
+        capacity: i64,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query("INSERT INTO task_queue (id,task_name,request_body,type,status,err_msg,remark,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM task_queue WHERE status IN (0,1) AND CASE WHEN json_valid(remark) THEN json_extract(remark,'$.owner') END = ?) < ? ON CONFLICT(id) DO NOTHING")
+            .bind(&row.id).bind(&row.task_name).bind(&row.request_body).bind(row.r#type).bind(row.status).bind(&row.err_msg).bind(&row.remark).bind(row.created_at).bind(row.updated_at).bind(owner).bind(capacity)
+            .execute(exec).await.map(|x|x.rows_affected()).map_err(|e|crate::Error::Database(e.into()))
+    }
+
+    /// Classify metadata with exactly the same JSON domain as recovery and cleanup.
+    pub async fn externally_owned<'a, E>(
+        exec: E,
+        remark: Option<&str>,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if remark.is_none() {
+            return Ok(false);
+        }
+        let sql = format!("SELECT {EXTERNAL_OWNER_PREDICATE} FROM (SELECT ? AS remark)");
+        sqlx::query_scalar::<_, bool>(&sql)
+            .bind(remark)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// Default consumer excludes every explicitly owned recovery record.
+    pub async fn recoverable_default<'a, E>(exec: E) -> Result<Vec<TaskQueueEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = format!(
+            "SELECT id,task_name,request_body,type,status,err_msg,remark,created_at,updated_at FROM task_queue WHERE status IN (0,1,3,4) AND NOT ({EXTERNAL_OWNER_PREDICATE}) ORDER BY created_at,id"
+        );
+        sqlx::query_as::<_, TaskQueueEntity>(&sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn defer_owned<'a, E>(
+        exec: E,
+        id: &str,
+        owner: &str,
+        remark: &str,
+        error: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query("UPDATE task_queue SET status=3, remark=?, err_msg=?, retry_times=MIN(retry_times+1,2147483647), updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=? AND status != 2 AND CASE WHEN json_valid(remark) THEN json_extract(remark,'$.owner') END = ?")
+            .bind(remark).bind(error).bind(id).bind(owner).execute(exec).await.map(|x|x.rows_affected()).map_err(|e|crate::Error::Database(e.into()))
+    }
+
+    pub async fn rearm_owned_done<'a, E>(
+        exec: E,
+        id: &str,
+        owner: &str,
+        task_name: TaskName,
+        remark: &str,
+        status: u8,
+        capacity: i64,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query("UPDATE task_queue SET status=?,remark=?,err_msg=NULL,retry_times=0,updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=? AND status=2 AND task_name=? AND CASE WHEN json_valid(remark) THEN json_extract(remark,'$.owner') END = ? AND (?=3 OR (SELECT COUNT(*) FROM task_queue WHERE status IN (0,1) AND CASE WHEN json_valid(remark) THEN json_extract(remark,'$.owner') END = ?) < ?)")
+            .bind(status).bind(remark).bind(id).bind(task_name).bind(owner).bind(status).bind(owner).bind(capacity).execute(exec).await.map(|x|x.rows_affected()).map_err(|e|crate::Error::Database(e.into()))
+    }
+
+    pub async fn claim_owned_running<'a, E>(
+        exec: E,
+        id: &str,
+        owner: &str,
+        capacity: i64,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query("UPDATE task_queue SET status=1,updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=? AND status IN (0,1,3,4) AND CASE WHEN json_valid(remark) THEN json_extract(remark,'$.owner') END = ? AND (status IN (0,1) OR (SELECT COUNT(*) FROM task_queue WHERE status IN (0,1) AND CASE WHEN json_valid(remark) THEN json_extract(remark,'$.owner') END = ?) < ?)")
+            .bind(id).bind(owner).bind(owner).bind(capacity).execute(exec).await.map(|x|x.rows_affected()).map_err(|e|crate::Error::Database(e.into()))
+    }
+
+    pub async fn active_for_owner<'a, E>(exec: E, owner: &str) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_scalar("SELECT COUNT(*) FROM task_queue WHERE status IN (0,1) AND CASE WHEN json_valid(remark) THEN json_extract(remark,'$.owner') END = ?")
+            .bind(owner).fetch_one(exec).await.map_err(|e|crate::Error::Database(e.into()))
+    }
+
     pub async fn list_legacy_core<'a, E>(exec: E) -> Result<Vec<TaskQueueEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -368,8 +471,10 @@ impl TaskQueueDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "DELETE FROM task_queue WHERE julianday('now') - julianday(created_at) > ?";
-        sqlx::query(sql)
+        let sql = format!(
+            "DELETE FROM task_queue WHERE julianday('now')-julianday(created_at)>? AND NOT (status IN (0,1,3,4) AND ({EXTERNAL_OWNER_PREDICATE}))"
+        );
+        sqlx::query(&sql)
             .bind(day)
             .execute(exec)
             .await
@@ -554,5 +659,35 @@ mod tests {
             .await
             .expect("list remaining tasks");
         assert_eq!(remaining, vec!["done-mqtt", "failed-recovery", "pending-recovery"]);
+    }
+    #[tokio::test]
+    async fn age_cleanup_preserves_unfinished_externally_owned_tasks() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE task_queue (id TEXT PRIMARY KEY, task_name TEXT NOT NULL, request_body TEXT NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, err_msg TEXT, remark TEXT, created_at TEXT NOT NULL, updated_at TEXT)")
+            .execute(&pool).await.unwrap();
+        let owned = r#"{"owner":"independent_consumer","attempts":12,"next_retry_at_ms":0}"#;
+        for (id, status, remark) in [
+            ("a-pending", 0, owned),
+            ("a-running", 1, owned),
+            ("a-failed", 3, owned),
+            ("a-hanging", 4, owned),
+            ("a-done", 2, owned),
+            ("normal-failed", 3, "ordinary remark"),
+            ("other-owner", 0, r#"{"owner":"other"}"#),
+            ("numeric-owner", 0, r#"{"owner":123}"#),
+        ] {
+            sqlx::query("INSERT INTO task_queue (id, task_name, request_body, type, status, remark, created_at) VALUES (?, 'BackendApi', '{}', 1, ?, ?, '1970-01-01T00:00:00Z')")
+                .bind(id).bind(status).bind(remark).execute(&pool).await.unwrap();
+        }
+        TaskQueueDao::delete_old(&pool, 15).await.unwrap();
+        let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM task_queue ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert_eq!(ids, vec!["a-failed", "a-hanging", "a-pending", "a-running", "other-owner"]);
     }
 }

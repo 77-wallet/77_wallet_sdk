@@ -22,6 +22,32 @@ impl ApiAssetsRepo {
         ApiAssetsDao::upsert_assets(pool.write_ref(), assets).await
     }
 
+    /// Initialize defaults without changing persisted user choices or balances.
+    pub async fn insert_missing_assets_multi(
+        pool: &ApiWalletDbPool,
+        assets: Vec<ApiCreateAssetsVo>,
+    ) -> Result<(), crate::Error> {
+        if assets.is_empty() {
+            return Ok(());
+        }
+        let _write_guard = pool.lock_write_with_metric("insert_missing_assets_multi").await;
+        let mut remaining = assets.into_iter();
+        loop {
+            let chunk: Vec<_> = remaining.by_ref().take(ASSETS_WRITE_TX_CHUNK_SIZE).collect();
+            if chunk.is_empty() {
+                break;
+            }
+            let mut tx = pool
+                .write_ref()
+                .begin()
+                .await
+                .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+            ApiAssetsDao::insert_missing_assets_multi(tx.as_mut(), chunk).await?;
+            tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        }
+        Ok(())
+    }
+
     /// 批量插入或更新资产
     pub async fn upsert_assets_multi(
         pool: &ApiWalletDbPool,
@@ -587,3 +613,7 @@ mod tests {
         assert_eq!(got.balance, "50");
     }
 }
+
+#[cfg(test)]
+#[path = "assets/insert_missing_tests.rs"]
+mod insert_missing_tests;

@@ -45,6 +45,27 @@ pub(crate) struct CapturedHttpRequest {
 struct MockBackendState {
     requests: VecDeque<CapturedHttpRequest>,
     responses: VecDeque<String>,
+    response_gates: VecDeque<Arc<MockResponseGate>>,
+    rejected_address: Option<String>,
+    first_chain_gate: Option<(Arc<MockResponseGate>, Option<String>)>,
+}
+
+pub(crate) struct MockResponseGate {
+    reached: tokio::sync::Notify,
+    wait_limit: std::time::Duration,
+    released: (Mutex<bool>, std::sync::Condvar),
+}
+impl MockResponseGate {
+    pub(crate) async fn wait_for_request(&self) {
+        tokio::time::timeout(std::time::Duration::from_secs(10), self.reached.notified())
+            .await
+            .expect("mock request did not arrive");
+    }
+    pub(crate) fn release(&self) {
+        let mut released = self.released.0.lock().expect("response gate");
+        *released = true;
+        self.released.1.notify_all();
+    }
 }
 
 #[derive(Clone, Default)]
@@ -67,6 +88,9 @@ impl MockBackendRecorder {
         let mut state = self.state.lock().expect("mock backend lock poisoned");
         state.requests.clear();
         state.responses.clear();
+        state.response_gates.clear();
+        state.first_chain_gate = None;
+        state.rejected_address = None;
     }
 
     pub(crate) fn snapshot(&self) -> Vec<CapturedHttpRequest> {
@@ -115,11 +139,85 @@ impl MockBackendRecorder {
         );
     }
 
-    fn next_response_body(&self) -> String {
-        let mut state = self.state.lock().expect("mock backend lock poisoned");
-        state.responses.pop_front().unwrap_or_else(|| {
-            r#"{"success":true,"code":"200","msg":"ok","data":null}"#.to_string()
-        })
+    pub(crate) fn hold_next_response(&self) -> Arc<MockResponseGate> {
+        self.hold_next_response_for(std::time::Duration::from_secs(10))
+    }
+    pub(crate) fn hold_next_response_for(
+        &self,
+        wait_limit: std::time::Duration,
+    ) -> Arc<MockResponseGate> {
+        let gate = Arc::new(MockResponseGate {
+            reached: tokio::sync::Notify::new(),
+            wait_limit,
+            released: (Mutex::new(false), std::sync::Condvar::new()),
+        });
+        self.state
+            .lock()
+            .expect("mock backend lock poisoned")
+            .response_gates
+            .push_back(gate.clone());
+        gate
+    }
+    pub(crate) fn hold_first_registration_chain_for(
+        &self,
+        wait_limit: std::time::Duration,
+    ) -> Arc<MockResponseGate> {
+        let gate = Arc::new(MockResponseGate {
+            reached: tokio::sync::Notify::new(),
+            wait_limit,
+            released: (Mutex::new(false), std::sync::Condvar::new()),
+        });
+        self.state.lock().expect("mock backend lock poisoned").first_chain_gate =
+            Some((gate.clone(), None));
+        gate
+    }
+    pub(crate) fn reject_registration_address(&self, address: &str) {
+        self.state.lock().expect("mock backend").rejected_address = Some(address.to_owned());
+    }
+    fn next_response_body(&self, request: &CapturedHttpRequest) -> String {
+        let (body, gate) = {
+            let mut state = self.state.lock().expect("mock backend lock poisoned");
+            let rejected = state.rejected_address.as_ref().is_some_and(|address| {
+                request.path == "/awallet/aw/address/init"
+                    && decrypt_captured_api_backend_body(&request.body)["addressList"]
+                        .as_array()
+                        .is_some_and(|items| {
+                            items
+                                .iter()
+                                .any(|item| item["address"].as_str() == Some(address.as_str()))
+                        })
+            });
+            let body = if rejected {
+                r#"{"success":false,"code":"8050001","msg":"synthetic address not found","data":null}"#.to_owned()
+            } else {
+                state.responses.pop_front().unwrap_or_else(|| {
+                    r#"{"success":true,"code":"200","msg":"ok","data":null}"#.to_string()
+                })
+            };
+            let chain_gate = if request.path == "/awallet/aw/address/init" {
+                state.first_chain_gate.as_mut().and_then(|(gate, first)| {
+                    let payload = decrypt_captured_api_backend_body(&request.body);
+                    let chain = payload["addressList"][0]["chainCode"]
+                        .as_str()
+                        .expect("registration chain");
+                    let first = first.get_or_insert_with(|| chain.to_owned());
+                    (first == chain).then(|| gate.clone())
+                })
+            } else {
+                None
+            };
+            (body, chain_gate.or_else(|| state.response_gates.pop_front()))
+        };
+        if let Some(gate) = gate {
+            gate.reached.notify_one();
+            let released = gate.released.0.lock().expect("response gate");
+            let _ = gate
+                .released
+                .1
+                .wait_timeout_while(released, gate.wait_limit, |released| !*released)
+                .expect("response gate wait");
+        }
+        body
     }
 }
 
@@ -308,12 +406,10 @@ pub(crate) fn start_mock_backend_server() -> io::Result<(String, MockBackendReco
                     body.extend_from_slice(&temp[..n]);
                 }
 
-                recorder.push(CapturedHttpRequest {
-                    path,
-                    body: String::from_utf8_lossy(&body).to_string(),
-                });
-
-                let response_body = recorder.next_response_body();
+                let request =
+                    CapturedHttpRequest { path, body: String::from_utf8_lossy(&body).to_string() };
+                recorder.push(request.clone());
+                let response_body = recorder.next_response_body(&request);
                 let response = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
                     response_body.len(),

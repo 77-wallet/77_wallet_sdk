@@ -432,6 +432,8 @@ impl ApiWalletDomain {
         );
         tracing::info!("wallet unlock session initialized");
         self.ctx.set_wallet_unlock_session(unlock_session).await?;
+        crate::domain::api_wallet::chain::ApiChainDomain::start_missing_chain_recovery(self.ctx)
+            .await;
         ExpandBootstrap::start_after_first_wallet_unlock(self.ctx).await?;
         Ok(())
     }
@@ -507,6 +509,8 @@ impl ApiWalletDomain {
         );
         tracing::info!("wallet unlock session rotated");
         self.ctx.set_wallet_unlock_session(unlock_session).await?;
+        crate::domain::api_wallet::chain::ApiChainDomain::start_missing_chain_recovery(self.ctx)
+            .await;
         Ok(())
     }
 

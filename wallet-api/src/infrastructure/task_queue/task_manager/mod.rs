@@ -122,13 +122,7 @@ impl TaskManager {
 
         TaskQueueRepo::delete_old(&pool, 15).await?;
 
-        let mut failed_queue = TaskQueueRepo::failed_task_queue(&pool).await?;
-        let pending_queue = TaskQueueRepo::pending_task_queue(&pool).await?;
-        let hanging_queue = TaskQueueRepo::hanging_task_queue(&pool).await?;
-        let running_queue = TaskQueueRepo::running_task_queue(&pool).await?;
-        failed_queue.extend(running_queue);
-        failed_queue.extend(pending_queue);
-        failed_queue.extend(hanging_queue);
+        let failed_queue = TaskQueueRepo::recoverable_default(&pool).await?;
 
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
         // tracing::info!("failed_queue: {:#?}", failed_queue);
@@ -360,6 +354,9 @@ impl TaskManager {
         task_entity: &TaskQueueEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = ctx.task_pool()?;
+        if TaskQueueRepo::externally_owned(&pool, task_entity.remark.as_deref()).await? {
+            return Ok(());
+        }
 
         let id = task_entity.id.clone();
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;

@@ -17,6 +17,115 @@ use sqlx::{Executor, Sqlite, SqliteConnection};
 pub(crate) struct ApiAccountDao;
 
 impl ApiAccountDao {
+    pub async fn account_high_watermark<'a, E>(exec: E) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_scalar("SELECT COALESCE(MAX(id), 0) FROM api_account")
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// Walk original persisted facts by rowid, returning one active source per
+    /// logical account. A fixed cutoff excludes derived rows inserted mid-walk.
+    /// Indexed EXISTS probes avoid materializing or grouping the complete table.
+    pub async fn missing_chain_account_page<'a, E>(
+        exec: E,
+        chain: &str,
+        after_id: i64,
+        through_id: i64,
+        limit: u32,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        Self::missing_chain_account_page_for_variants(exec, chain, after_id, through_id, limit, 1)
+            .await
+    }
+
+    pub async fn missing_chain_account_page_for_variants<'a, E>(
+        exec: E,
+        chain: &str,
+        after_id: i64,
+        through_id: i64,
+        limit: u32,
+        expected_variants: u32,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        sqlx::query_as::<_, ApiAccountEntity>(
+            "SELECT source.* FROM api_account AS source NOT INDEXED
+             WHERE source.id > ? AND source.id <= ? AND source.status = 1
+             AND NOT EXISTS (
+                 SELECT 1 FROM api_account AS earlier
+                 WHERE earlier.wallet_address = source.wallet_address
+                   AND earlier.account_id = source.account_id
+                   AND earlier.api_wallet_type = source.api_wallet_type
+                   AND earlier.status = 1 AND earlier.id < source.id
+             )
+             AND (
+                 (SELECT COUNT(DISTINCT COALESCE(resolved.address_type, ''))
+                  FROM api_account AS resolved
+                  WHERE resolved.wallet_address = source.wallet_address
+                    AND resolved.account_id = source.account_id
+                    AND resolved.api_wallet_type = source.api_wallet_type
+                    AND resolved.chain_code = ?
+                    AND (resolved.status != 1 OR resolved.is_init = 1)) < ?
+                 OR EXISTS (
+                     SELECT 1 FROM api_account AS pending
+                     WHERE pending.wallet_address = source.wallet_address
+                       AND pending.account_id = source.account_id
+                       AND pending.api_wallet_type = source.api_wallet_type
+                       AND pending.chain_code = ?
+                       AND pending.status = 1 AND pending.is_init = 0
+                 )
+             ) ORDER BY source.id ASC LIMIT ?",
+        )
+        .bind(after_id)
+        .bind(through_id)
+        .bind(chain)
+        .bind(i64::from(expected_variants))
+        .bind(chain)
+        .bind(i64::from(limit))
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn target_uninitialized_for_logical<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: u32,
+        api_wallet_type: ApiWalletType,
+        chain: &str,
+        limit: u32,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        sqlx::query_as::<_, ApiAccountEntity>(
+            "SELECT * FROM api_account WHERE wallet_address = ? AND account_id = ?
+             AND api_wallet_type = ? AND chain_code = ? AND status = 1 AND is_init = 0
+             ORDER BY id ASC LIMIT ?",
+        )
+        .bind(wallet_address)
+        .bind(account_id)
+        .bind(api_wallet_type)
+        .bind(chain)
+        .bind(i64::from(limit))
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn list_active_address_page_by_wallet<'a, E>(
         exec: E,
         wallet_address: &str,
