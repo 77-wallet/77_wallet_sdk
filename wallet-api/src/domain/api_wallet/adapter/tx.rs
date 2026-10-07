@@ -264,6 +264,15 @@ pub trait Tx: Any {
         self.estimate_fee(req, main_symbol).await
     }
 
+    /// Exact native fee reserve for automatic EVM order funding, in wei.
+    /// Presentation responses must never be used to derive this amount.
+    async fn estimate_native_fee_wei(
+        &self,
+        _req: ApiBaseTransferReq,
+    ) -> Result<U256, ServiceError> {
+        Err(ServiceError::Parameter("exact native fee estimate is unsupported".to_string()))
+    }
+
     /// Estimate a fee without applying local balance gates.
     ///
     /// This is reserved for notification/reporting flows that only need the

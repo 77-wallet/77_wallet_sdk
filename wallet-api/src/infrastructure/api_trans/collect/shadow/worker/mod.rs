@@ -25,3 +25,6 @@ fn evm_propose_max_fee(fee: &str) -> Result<String, ServiceError> {
     unit::format_to_string(gas_limit * max_fee_per_gas, eth::consts::ETH_DECIMAL)
         .map_err(ServiceError::from)
 }
+
+#[cfg(test)]
+mod fee_recovery_tests;

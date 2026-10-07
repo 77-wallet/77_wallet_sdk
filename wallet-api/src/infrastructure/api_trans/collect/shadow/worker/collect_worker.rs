@@ -3750,6 +3750,12 @@ impl ShadowCollectWorker {
         }
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%params_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 构建请求参数完成");
 
+        if matches!(chain_code, ChainCode::Base | ChainCode::Scroll) {
+            let fee = adapter.estimate_native_fee_wei(params).await?;
+            return unit::format_to_string(fee, wallet_chain_interact::eth::consts::ETH_DECIMAL)
+                .map_err(ServiceError::from);
+        }
+
         let estimate_start = std::time::Instant::now();
         let fee = adapter.estimate_fee(params, main_symbol).await?;
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%estimate_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 调用estimate_fee完成");
@@ -3987,8 +3993,34 @@ impl ShadowCollectWorker {
         format!("{err}").contains("broadcasted tx failed")
     }
 
+    pub(super) fn should_reopen_evm_fee_cycle(req: &ApiCollectEntity, err: &ServiceError) -> bool {
+        matches!(req.chain_code.as_str(), "base" | "scroll")
+            && req.raw_tx.is_none()
+            && req.tx_hash.is_none()
+            && req.last_broadcast_at.is_none()
+            && Self::is_insufficient_fee_balance_error(err)
+    }
+
+    // Serialize with Build phase 3: a stale failure must never clear committed raw.
+    pub(super) async fn reopen_evm_fee_cycle_if_unbuilt(
+        &self,
+        stale_req: &ApiCollectEntity,
+        err: &ServiceError,
+    ) -> Result<u64, ServiceError> {
+        let _addr_guard = self.address_locks.acquire(&stale_req.from_addr).await?;
+        let fresh_req = self.get_collect_entity(&stale_req.trade_no).await?;
+        if fresh_req.transaction_time.is_some()
+            || fresh_req.status.is_terminal()
+            || fresh_req.need_service_fee == Some(true)
+            || !Self::should_reopen_evm_fee_cycle(&fresh_req, err)
+        {
+            return Ok(0);
+        }
+        self.invalidate_build_attempt_after_fee_check_failure(&fresh_req).await
+    }
+
     /// 处理归集交易失败
-    async fn handle_collect_tx_failed(
+    pub(super) async fn handle_collect_tx_failed(
         &self,
         trade_no: &str,
         err: ServiceError,
@@ -4030,6 +4062,17 @@ impl ShadowCollectWorker {
                 source = "shadow_worker_v2",
                 "Skip mark failed: build already invalidated (fact rollback already applied)"
             );
+            return Ok(());
+        }
+
+        // The adapter may reject the final signed fee budget before returning raw.
+        // Preserve the existing single-fee-cycle policy and never invalidate durable raw.
+        if Self::should_reopen_evm_fee_cycle(&req, &err) {
+            let affected = self.reopen_evm_fee_cycle_if_unbuilt(&req, &err).await?;
+            self.fee_reservations.release(trade_no);
+            if affected > 0 {
+                self.advancer.try_advance(trade_no).await;
+            }
             return Ok(());
         }
 

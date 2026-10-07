@@ -304,6 +304,106 @@ impl EthTx {
         let gas_oracle = self.gas_oracle().await?;
         Self::fee_setting_from_gas_oracle(&gas_oracle, rc.consume as u64)
     }
+    fn uses_separate_l1_fee(&self) -> bool {
+        matches!(self.chain.chain_code, ChainCode::Base | ChainCode::Scroll)
+    }
+
+    fn checked_total_fee(fee: &FeeSetting, additional: U256) -> Result<U256, ServiceError> {
+        fee.gas_limit
+            .checked_mul(fee.max_fee_per_gas)
+            .and_then(|execution| execution.checked_add(additional))
+            .ok_or_else(|| ServiceError::Parameter("EVM total fee overflow".to_string()))
+    }
+
+    async fn total_fee_for_transaction(
+        &self,
+        transaction: TransactionRequest,
+        fee: &FeeSetting,
+    ) -> Result<U256, ServiceError> {
+        let additional = self.chain.estimate_additional_fee(transaction).await?.unwrap_or_default();
+        Self::checked_total_fee(fee, additional)
+    }
+
+    // Used only by Base/Scroll funding quotes, not by transfer/raw gas settings.
+    async fn l1_quote_fee_setting(
+        &self,
+        transfer: TransferOpt,
+    ) -> Result<FeeSetting, ServiceError> {
+        let gas = self.chain.estimate_gas(transfer).await?;
+        let oracle = self.gas_oracle().await?;
+        Self::fee_setting_from_gas_oracle(&oracle, gas.consume as u64)
+    }
+
+    async fn native_fee_quote(&self, req: ApiBaseTransferReq) -> Result<U256, ServiceError> {
+        if !self.uses_separate_l1_fee() {
+            return Err(ServiceError::Parameter(
+                "separate L1 fee quote is unsupported".to_string(),
+            ));
+        }
+        let request = ApiTransferReq { base: req, password: String::new(), nonce: 0 };
+        let amount = self.check_min_transfer(&request.base.value, request.base.decimals)?;
+        let transfer = TransferOpt::new(
+            &request.base.from,
+            &request.base.to,
+            amount,
+            request.base.token_address.to_chain_token_option(),
+        )?;
+        let transaction = transfer.build_transaction()?;
+        let setting = match self.chain.network {
+            NetworkKind::Mainnet => {
+                let metadata = request
+                    .base
+                    .metadata
+                    .as_deref()
+                    .and_then(|metadata| Self::fee_setting_form_meta_data(metadata).ok());
+                match metadata {
+                    Some(setting) => setting,
+                    None => self.l1_quote_fee_setting(transfer).await?,
+                }
+            }
+            _ => self.provider.get_fee(transaction.clone()).await?,
+        };
+        let additional = self.chain.estimate_additional_fee(transaction).await?.unwrap_or_default();
+        Self::checked_total_fee(&setting, additional)
+    }
+
+    async fn ensure_transfer_funded(
+        &self,
+        req: &ApiBaseTransferReq,
+        value: U256,
+        fee: U256,
+    ) -> Result<(), ServiceError> {
+        let native = self.chain.balance(&req.from, None).await?;
+        if req.token_address.is_contract() {
+            let token = req.token_address.to_chain_token_option();
+            let balance = self.chain.balance(&req.from, token.clone()).await?;
+            if balance < value {
+                return Err(BusinessError::Chain(ChainError::insufficient_balance_with_detail(
+                    crate::error::business::chain::InsufficientBalanceDetail::new()
+                        .from_addr(req.from.clone())
+                        .chain_code(req.chain_code.clone())
+                        .token_addr(token.unwrap_or_default())
+                        .value(value.to_string())
+                        .balance(balance.to_string())
+                        .need(value.to_string())
+                        .reason("token balance is insufficient"),
+                ))
+                .into());
+            }
+        }
+        let required = if req.token_address.is_contract() {
+            fee
+        } else {
+            value.checked_add(fee).ok_or_else(|| {
+                ServiceError::Parameter("EVM required balance overflow".to_string())
+            })?
+        };
+        if native < required {
+            return Err(BusinessError::Chain(ChainError::InsufficientFeeBalance).into());
+        }
+        Ok(())
+    }
+
     /// ETH 从请求参数metadata中获取fee_setting
     /// 获取失败则重新计算fee_setting
     pub async fn build_fee_setting(
@@ -538,7 +638,13 @@ impl Tx for EthTx {
         // Automatic API Wallet raw builds must fund the signed EIP-1559
         // maximum, because nodes validate balance against
         // gas_limit * max_fee_per_gas.
-        let fee = fee_setting.gas_limit * fee_setting.max_fee_per_gas;
+        let fee = if self.uses_separate_l1_fee() {
+            let total = self.total_fee_for_transaction(trans_req.clone(), &fee_setting).await?;
+            self.ensure_transfer_funded(&params.base, transfer_amount, total).await?;
+            total
+        } else {
+            fee_setting.gas_limit * fee_setting.max_fee_per_gas
+        };
 
         let transfer_params = self
             .provider
@@ -624,6 +730,10 @@ impl Tx for EthTx {
         }
     }
 
+    async fn estimate_native_fee_wei(&self, req: ApiBaseTransferReq) -> Result<U256, ServiceError> {
+        self.native_fee_quote(req).await
+    }
+
     async fn estimate_fee(
         &self,
         req: ApiBaseTransferReq,
@@ -666,9 +776,18 @@ impl Tx for EthTx {
 
         let gas_oracle = self.gas_oracle().await?;
         let params = TransferOpt::new(&req.from, &req.to, value, token)?;
+        let additional = if self.uses_separate_l1_fee() {
+            self.chain.estimate_additional_fee(params.build_transaction()?).await?
+        } else {
+            None
+        };
         let fee = self.chain.estimate_gas(params).await?;
-        let fee =
-            FeeDetails::try_from((gas_oracle, fee.consume))?.to_resp(token_currency, currency);
+        let details = FeeDetails::try_from((gas_oracle, fee.consume))?;
+        let details = match additional {
+            Some(additional) => details.with_additional_native_fee(additional)?,
+            None => details,
+        };
+        let fee = details.to_resp(token_currency, currency);
 
         let res = wallet_utils::serde_func::serde_to_string(&fee)?;
         Ok(res)
@@ -1109,7 +1228,11 @@ mod tests {
                 let response = json!({
                     "jsonrpc": "2.0",
                     "id": request["id"],
-                    "result": "0x1"
+                    "result": match request["method"].as_str().unwrap() {
+                        "eth_getBalance" => "0x3635c9adc5dea00000".to_string(),
+                        "eth_call" => format!("0x{:064x}", 1),
+                        _ => "0x1".to_string(),
+                    }
                 })
                 .to_string();
                 write!(
@@ -1230,7 +1353,7 @@ mod tests {
             ChainCode::Base,
             ChainCode::Scroll,
         ];
-        let (rpc_url, calls, worker) = start_chain_id_rpc(chains.len());
+        let (rpc_url, calls, worker) = start_chain_id_rpc(chains.len() + 4);
         let ctx = crate::testkit::context::api_trans_test_ctx().await;
         let mut private_key = [0_u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut private_key);
@@ -1270,10 +1393,24 @@ mod tests {
             };
             assert!(!raw.is_empty(), "{chain_code} raw transaction must not be empty");
             assert_eq!(hash, EthTx::evm_raw_tx_hash_hex(&raw), "{chain_code}");
-            assert_eq!(fee, U256::from(63_000_u64), "{chain_code}");
+            assert_eq!(
+                fee,
+                U256::from(
+                    63_000_u64
+                        + u64::from(matches!(chain_code, ChainCode::Base | ChainCode::Scroll))
+                ),
+                "{chain_code}"
+            );
         }
 
         worker.join().unwrap();
-        assert_eq!(*calls.lock().unwrap(), vec!["eth_chainId"; chains.len()]);
+        assert_eq!(
+            calls.lock().unwrap().iter().filter(|m| m.as_str() == "eth_chainId").count(),
+            chains.len()
+        );
     }
 }
+
+#[cfg(test)]
+#[path = "eth_tx/fee_tests.rs"]
+mod fee_tests;

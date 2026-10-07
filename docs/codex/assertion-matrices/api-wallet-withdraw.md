@@ -647,3 +647,18 @@ and real nonce repository through a testkit withdrawal worker allocation entrypo
   collect/withdraw allocation observes chain next and returns unique 9/10.
 These are allocation-step integration tests, not full withdrawal signing,
 broadcast, receipt or real-network acceptance. No live transactions were sent.
+
+
+### API Base/Scroll native fee totals (2026-10-07, narrowed candidate)
+Scope: persisted raw order paths and fee display, Base/Scroll native and standard ERC20 transfers. Core efc3ccdc unchanged.
+- Base/Scroll only: checked U256 execution cap + explicit L1 estimate; exact internal quote for collect funding.
+- Metadata cannot bypass L1 observation or native/token balance gates on these two chains.
+- Base Core estimate is an upper-bound reserve, not an actual final-fee claim.
+- RPC failure/zero additional fee cannot create broadcastable raw facts; rebroadcast uses existing raw/hash/nonce without repricing.
+- Base/Scroll pre-raw fee shortage reuses existing invalidation/advancer; the completed single fee cycle still terminates shortage. Shared address lock covers fresh-read through invalidation, serialized with the sole Build raw commit; no cross-process DAO CAS claim.
+- ETH/BNB/Polygon/Avalanche/Fantom/Arbitrum retain baseline balance/gas/oracle order, metadata raw behavior, display/snapshot and testnet direct transfer paths.
+- Removed broad snapshot override and direct transfer rewrite. Snapshot uses the original display-response estimate path; its existing floating display conversion/DB dependency remains. Direct transfer is baseline even for Base/Scroll; this batch does not claim every API transfer entrypoint has L1 funding protection.
+- Generic old metadata balance bypass and fee precision work are deferred, not fixed for unrelated chains.
+- Entrypoints: adapter/eth_tx/fee_tests.rs (api_evm_fee_*); collect/shadow/worker/fee_recovery_tests.rs.
+- Shared calculate_fee_setting_from_req and build_fee_setting fully match baseline. Base/Scroll direct transfer no/invalid metadata retains old amount gate; valid metadata retains old shortcut. Only the new exact funding quote uses an isolated l1_quote_fee_setting without local balance gates. Raw executes old amount gate followed by the new total fee gate.
+- Isolation regression: compile-only failure is not RED; gas-isolation-red-behavior.log confirms real missing Base native direct-transfer amount gate. Final isolated-version evidence: gas-isolation-final-0.log has 15 passed; final-1..5 freshly pass trans 75, EthTx 5, withdraw shadow 66, collect_fee shadow 21, collect worker 56 (223 total). Independent full-callee review found no blocker. Earlier 12+223 is superseded. Full order orchestration, live nodes and App acceptance remain unrun.
