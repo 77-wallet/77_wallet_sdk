@@ -36,7 +36,10 @@ pub(crate) async fn enqueue(
     row: &ApiBusinessNotification,
     epoch: Option<&str>,
 ) -> Result<(), ServiceError> {
-    if row.resolved_at.is_some() || row.kind != "AWM_ADDRESS_INSUFFICIENT" {
+    if row.resolved_at.is_some()
+        || crate::messaging::mqtt::message::BizType::from_business_notification_kind(&row.kind)
+            .is_none()
+    {
         return Ok(());
     }
     let body = serde_json::to_string(&ApiAddressBalanceCheck::from(row))

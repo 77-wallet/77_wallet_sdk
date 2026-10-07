@@ -12,7 +12,9 @@ use wallet_database::{
 };
 
 use super::asset::ApiAssetsService;
-use crate::messaging::mqtt::topics::api_wallet::address_insufficient::AwmAddressInsufficientBody;
+use crate::messaging::mqtt::{
+    message::BizType, topics::api_wallet::address_insufficient::AwmAddressInsufficientBody,
+};
 
 const BALANCE_CHECK_BUFFER: Duration = Duration::from_secs(5);
 
@@ -36,6 +38,25 @@ impl ApiBusinessNotificationService {
         Self { ctx }
     }
 
+    /// Read active withdrawal-wallet history without marking read or refreshing balances.
+    pub async fn detail_for_withdrawal_wallets(
+        &self,
+        id: &str,
+    ) -> Result<
+        Option<
+            crate::response_vo::api_wallet::business_notification::ApiBusinessNotificationDetail,
+        >,
+        ServiceError,
+    > {
+        if id.trim().is_empty() {
+            return Err(ServiceError::Parameter("notification id is empty".into()));
+        }
+        let pool = self.ctx.api_wallet_pool()?;
+        ApiBusinessNotificationRepo::find_for_withdrawal_wallets(&pool, id).await?
+            .map(crate::response_vo::api_wallet::business_notification::ApiBusinessNotificationDetail::from_record)
+            .transpose()
+    }
+
     /// Pure local read; background tasks own chain checks and resolution.
     pub async fn unresolved_address_balance_notifications(
         &self,
@@ -48,7 +69,7 @@ impl ApiBusinessNotificationService {
                 self.all_unresolved(&uid)
                     .await?
                     .into_iter()
-                    .filter(|item| item.kind == "AWM_ADDRESS_INSUFFICIENT"),
+                    .filter(|item| BizType::from_business_notification_kind(&item.kind).is_some()),
             );
         }
         Ok(items)
@@ -74,7 +95,7 @@ impl ApiBusinessNotificationService {
             .all_unresolved(uid)
             .await?
             .into_iter()
-            .filter(|item| item.kind == "AWM_ADDRESS_INSUFFICIENT")
+            .filter(|item| BizType::from_business_notification_kind(&item.kind).is_some())
             .collect())
     }
 
@@ -156,7 +177,7 @@ impl ApiBusinessNotificationService {
             return Ok(());
         };
         if current.resolved_at.is_some()
-            || current.kind != "AWM_ADDRESS_INSUFFICIENT"
+            || BizType::from_business_notification_kind(&current.kind).is_none()
             || current.payload != expected_payload
         {
             return Ok(());
@@ -247,7 +268,7 @@ impl ApiBusinessNotificationService {
         let episode =
             format!("sync-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default());
         for item in self.all_unresolved(uid).await? {
-            if item.kind != "AWM_ADDRESS_INSUFFICIENT" {
+            if BizType::from_business_notification_kind(&item.kind).is_none() {
                 continue;
             }
             let Ok(body) = serde_json::from_str::<AwmAddressInsufficientBody>(&item.payload) else {
@@ -476,7 +497,7 @@ impl ApiBusinessNotificationService {
             scan_page += 1;
         }
         for notification in &candidates {
-            if notification.kind != "AWM_ADDRESS_INSUFFICIENT" {
+            if BizType::from_business_notification_kind(&notification.kind).is_none() {
                 continue;
             }
             let body: AwmAddressInsufficientBody = match serde_json::from_str(&notification.payload)
@@ -1144,3 +1165,6 @@ pub(crate) mod global_business_query_tests;
 #[cfg(test)]
 #[path = "business_notification/withdrawal_message_center_tests.rs"]
 mod withdrawal_message_center_tests;
+
+#[cfg(test)]
+mod detail_tests;

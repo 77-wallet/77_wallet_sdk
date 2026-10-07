@@ -45,7 +45,7 @@ async fn no_uid_message_api_keeps_owner_and_reads_without_balance_checks() {
     .unwrap();
     // Assert: owners remain on records, unread includes resolved history and read writes stay scoped.
     assert_eq!(page.total_count, 2);
-    assert_eq!(page.data[0].uid, "b");
+    assert_eq!(page.data[0].id, "b");
     assert_eq!(manager.count_unread_api_business_notifications().await.unwrap(), 2);
     manager.mark_api_business_notification_read("sub").await.unwrap();
     assert!(

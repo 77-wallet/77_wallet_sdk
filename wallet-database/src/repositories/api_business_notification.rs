@@ -47,6 +47,13 @@ impl ApiBusinessNotificationRepo {
         ApiBusinessNotificationDao::mark_all_read_for_withdrawal_wallets(pool.write_ref()).await
     }
 
+    pub async fn find_for_withdrawal_wallets(
+        pool: &ApiWalletDbPool,
+        id: &str,
+    ) -> Result<Option<ApiBusinessNotification>, Error> {
+        ApiBusinessNotificationDao::find_for_withdrawal_wallets(pool.read_ref(), id).await
+    }
+
     pub async fn find(
         pool: &ApiWalletDbPool,
         uid: &str,
@@ -419,3 +426,6 @@ mod tests {
 #[cfg(test)]
 #[path = "api_business_notification/withdrawal_message_center_tests.rs"]
 mod withdrawal_message_center_tests;
+
+#[cfg(test)]
+mod detail_tests;

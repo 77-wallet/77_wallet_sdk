@@ -95,7 +95,9 @@ impl AwmAddressInsufficient {
             NewApiBusinessNotification {
                 id: &key,
                 uid: &self.uid,
-                kind: "AWM_ADDRESS_INSUFFICIENT",
+                kind: BizType::AwmAddressInsufficient
+                    .business_notification_kind()
+                    .expect("supported notification kind"),
                 business_key: &key,
                 payload: &payload,
             },

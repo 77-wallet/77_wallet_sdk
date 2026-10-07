@@ -165,3 +165,9 @@ this is not a wallet-list API. Read state remains independent of resolution.
 Ordinary wallets, SubAccount wallets and paused phase-two chain work are excluded.
 Source: user voice confirmation relayed by coordinating thread; applies to this
 message-center change, not permission to commit/push/release or transact.
+
+### API business notification summary/detail (user confirmation, 2026-10-07)
+
+User authorizes lightweight message/banner response items that retain id/isRead and UI-required fields, plus a separate by-id typed detail query. Detail displays balance/coin, merchant, address/chain, address type and notification receipt time; recharge navigation uses address+chain. Message history must not be globally filtered to unresolved records; the balance banner stays unresolved-only. Detail reads do not imply mark-read, and resolved history is accessible within the existing active withdrawal-wallet scope. No tradeNo order contract or device-database changes. Source: coordinating-thread explicit approval; implementation/verification only, no feature commit/push/release authorization. Exact summary UI fields pending clarification.
+
+Confirmed notification presentation (2026-10-07): screenshot shows balance quantity plus coin and relative notification time. Summary is id/kind/isRead/remaining/symbol/notifiedAt, using payload.notifiedAt instead of first-insert createdAt (valid legacy records without that timestamp fall back). Detail retains merchant/address/chain/type/token/threshold and resolvedAt. Only AWM_ADDRESS_INSUFFICIENT is currently persisted; future kinds are not reinterpreted as balance. App writes/submissions are excluded from this feature; dependency/call instructions are handed to frontend.

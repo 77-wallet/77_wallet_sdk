@@ -66,6 +66,23 @@ impl ApiBusinessNotificationDao {
             .execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn find_for_withdrawal_wallets<'a, E>(
+        exec: E,
+        id: &str,
+    ) -> Result<Option<ApiBusinessNotification>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as(&format!(
+            "SELECT * FROM api_business_notification WHERE {} AND id = ?",
+            Self::WITHDRAWAL_SCOPE
+        ))
+        .bind(id)
+        .fetch_optional(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn find<'a, E>(
         exec: E,
         uid: &str,

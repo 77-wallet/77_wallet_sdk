@@ -2,18 +2,28 @@ use crate::{
     api::ReturnType, manager::WalletManager,
     service::api_wallet::business_notification::ApiBusinessNotificationService,
 };
-use wallet_database::{
-    entities::api_business_notification::ApiBusinessNotification, pagination::Pagination,
+use wallet_database::pagination::Pagination;
+
+use crate::response_vo::api_wallet::business_notification::{
+    ApiBusinessNotificationDetail, ApiBusinessNotificationSummary, summarize_page,
 };
 
 impl WalletManager {
+    pub async fn get_api_business_notification_detail(
+        &self,
+        id: &str,
+    ) -> ReturnType<Option<ApiBusinessNotificationDetail>> {
+        ApiBusinessNotificationService::new(self.ctx).detail_for_withdrawal_wallets(id).await
+    }
+
     /// Unresolved address-balance notifications across active API withdrawal wallets.
     pub async fn get_unresolved_api_address_balance_notifications(
         &self,
-    ) -> ReturnType<Vec<ApiBusinessNotification>> {
+    ) -> ReturnType<Vec<ApiBusinessNotificationSummary>> {
         ApiBusinessNotificationService::new(self.ctx)
             .unresolved_address_balance_notifications()
             .await
+            .map(|items| items.into_iter().map(Into::into).collect())
     }
 
     /// API wallet message center's business reminders across active API withdrawal wallets.
@@ -21,10 +31,11 @@ impl WalletManager {
         &self,
         page: i64,
         page_size: i64,
-    ) -> ReturnType<Pagination<ApiBusinessNotification>> {
+    ) -> ReturnType<Pagination<ApiBusinessNotificationSummary>> {
         ApiBusinessNotificationService::new(self.ctx)
             .list_for_withdrawal_wallets(false, page, page_size)
             .await
+            .map(summarize_page)
     }
 
     /// Unresolved business notifications across active API withdrawal wallets with balance refresh.
@@ -32,10 +43,11 @@ impl WalletManager {
         &self,
         page: i64,
         page_size: i64,
-    ) -> ReturnType<Pagination<ApiBusinessNotification>> {
+    ) -> ReturnType<Pagination<ApiBusinessNotificationSummary>> {
         ApiBusinessNotificationService::new(self.ctx)
             .list_unresolved_for_withdrawal_wallets_with_refresh(page, page_size)
             .await
+            .map(summarize_page)
     }
 
     pub async fn mark_api_business_notification_read(&self, id: &str) -> ReturnType<()> {

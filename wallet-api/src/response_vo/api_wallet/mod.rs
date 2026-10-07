@@ -6,3 +6,4 @@ pub mod transaction;
 pub mod wallet;
 pub mod withdraw;
 pub mod withdraw_display;
+pub mod business_notification;

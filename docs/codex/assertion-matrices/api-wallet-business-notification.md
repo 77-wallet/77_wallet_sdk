@@ -121,3 +121,17 @@ No scale benchmark, App integration or live chain verification. Count/page are
 separate existing SQL reads; concurrent mutations may change offset pagination.
 Direct unresolved refresh retains serial balance IO and has no added total deadline;
 background directed checks and pure local balance query remain separate.
+
+## Lightweight presentation and local detail (2026-10-07)
+
+| Boundary | Evidence |
+| --- | --- |
+| Summary exact id/kind/isRead/remaining/symbol/notifiedAt, no payload | projection_tests::summary_is_minimal_and_uses_notification_time |
+| notifiedAt differs from first insert/update; legacy fallback only if absent | projection_tests timestamp tests |
+| Typed detail coin/balance/merchant/address/chain/type; unknown/malformed rejected | projection_tests detail/error tests |
+| DAO active withdrawal scope, duplicate wallets, excluded owners, SQL id binding, wallet disable | repositories::api_business_notification::detail_tests |
+| Resolved history detail/list readable; banner unresolved; read does not mark read/resolve/RPC | service::api_wallet::business_notification::detail_tests |
+
+No new withdrawal notification kind is persisted by this flow. Withdrawal order amount/tradeNo/detail/audit interfaces remain separate. Unknown kinds retain summary metadata with null balance fields, not an invented amount projection.
+
+Kind typing: reuse BizType rather than introducing a second enum; mapping only admits currently persisted AWM_ADDRESS_INSUFFICIENT. Enum serialization/deserialization and unsupported event/numeric/case/blank strings are covered by projection_tests::existing_business_enum_preserves_wire_string_and_rejects_non_notification_kinds. Existing unknown-summary metadata and detail422 tests remain authoritative.

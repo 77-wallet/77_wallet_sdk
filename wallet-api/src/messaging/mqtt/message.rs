@@ -118,6 +118,25 @@ pub enum BizType {
     AwmAddressInsufficient,
 }
 
+impl BizType {
+    const ADDRESS_INSUFFICIENT_NOTIFICATION_KIND: &'static str = "AWM_ADDRESS_INSUFFICIENT";
+
+    /// Only persisted API business reminders, not every MQTT event type.
+    pub(crate) fn from_business_notification_kind(kind: &str) -> Option<Self> {
+        match kind {
+            Self::ADDRESS_INSUFFICIENT_NOTIFICATION_KIND => Some(Self::AwmAddressInsufficient),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn business_notification_kind(&self) -> Option<&'static str> {
+        match self {
+            Self::AwmAddressInsufficient => Some(Self::ADDRESS_INSUFFICIENT_NOTIFICATION_KIND),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for BizType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
