@@ -27,6 +27,7 @@ struct BalanceCheckSnapshot {
     completed_at: Instant,
     payload: String,
     balance: Result<Decimal, String>,
+    observed_events: Vec<ApiBusinessNotification>,
 }
 
 pub struct ApiBusinessNotificationService {
@@ -57,8 +58,15 @@ impl ApiBusinessNotificationService {
             .transpose()
     }
 
-    /// Pure local read; background tasks own chain checks and resolution.
+    /// Pure local banner read, one latest unresolved event per business object.
     pub async fn unresolved_address_balance_notifications(
+        &self,
+    ) -> Result<Vec<ApiBusinessNotification>, ServiceError> {
+        Ok(Self::latest_unresolved_events(self.address_balance_notification_events().await?))
+    }
+
+    /// Read all history so a resolved latest event can suppress older unresolved rows.
+    pub(crate) async fn address_balance_notification_events(
         &self,
     ) -> Result<Vec<ApiBusinessNotification>, ServiceError> {
         use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
@@ -66,13 +74,56 @@ impl ApiBusinessNotificationService {
         let mut items = Vec::new();
         for (uid,) in ApiWalletRepo::active_withdrawal_uids(&pool).await? {
             items.extend(
-                self.all_unresolved(&uid)
+                self.all_events(&uid)
                     .await?
                     .into_iter()
                     .filter(|item| BizType::from_business_notification_kind(&item.kind).is_some()),
             );
         }
         Ok(items)
+    }
+
+    fn balance_object_key(
+        row: &ApiBusinessNotification,
+    ) -> Option<(String, String, String, String, String)> {
+        let detail = crate::response_vo::api_wallet::business_notification::ApiBusinessNotificationDetail::from_record(row.clone()).ok()?;
+        Some((
+            row.uid.clone(),
+            row.kind.clone(),
+            detail.chain_code,
+            detail.target_address,
+            detail.token,
+        ))
+    }
+
+    fn latest_unresolved_events(
+        events: Vec<ApiBusinessNotification>,
+    ) -> Vec<ApiBusinessNotification> {
+        Self::event_groups(events)
+            .into_iter()
+            .filter_map(|group| {
+                let latest = group.into_iter().next()?;
+                latest.resolved_at.is_none().then_some(latest)
+            })
+            .collect()
+    }
+
+    // Newest first, including resolved events: never fall back to an older threshold.
+    fn event_groups(events: Vec<ApiBusinessNotification>) -> Vec<Vec<ApiBusinessNotification>> {
+        let mut groups: HashMap<_, Vec<ApiBusinessNotification>> = HashMap::new();
+        for row in events {
+            if let Some(key) = Self::balance_object_key(&row) {
+                groups.entry(key).or_default().push(row);
+            }
+        }
+        let mut groups: Vec<_> = groups.into_values().collect();
+        for group in &mut groups {
+            group.sort_by(|a, b| b.created_at.cmp(&a.created_at).then_with(|| b.id.cmp(&a.id)));
+        }
+        groups.sort_by(|a, b| {
+            b[0].created_at.cmp(&a[0].created_at).then_with(|| b[0].id.cmp(&a[0].id))
+        });
+        groups
     }
 
     #[cfg(test)]
@@ -99,14 +150,27 @@ impl ApiBusinessNotificationService {
             .collect())
     }
 
+    async fn all_events(&self, uid: &str) -> Result<Vec<ApiBusinessNotification>, ServiceError> {
+        self.all_events_filtered(uid, false).await
+    }
+
+    #[cfg(test)]
     async fn all_unresolved(
         &self,
         uid: &str,
     ) -> Result<Vec<ApiBusinessNotification>, ServiceError> {
+        self.all_events_filtered(uid, true).await
+    }
+
+    async fn all_events_filtered(
+        &self,
+        uid: &str,
+        unresolved_only: bool,
+    ) -> Result<Vec<ApiBusinessNotification>, ServiceError> {
         let mut items = Vec::new();
         let mut page = 0;
         loop {
-            let batch = self.list(uid, true, page, 100).await?;
+            let batch = self.list(uid, unresolved_only, page, 100).await?;
             let count = batch.data.len();
             items.extend(batch.data);
             if count < 100 {
@@ -184,6 +248,18 @@ impl ApiBusinessNotificationService {
         }
         let body: AwmAddressInsufficientBody = serde_json::from_str(&current.payload)
             .map_err(|e| ServiceError::Parameter(format!("invalid balance alert: {e}")))?;
+        let Some(object_key) = Self::balance_object_key(&current) else {
+            return Ok(());
+        };
+        let Some(candidates) = Self::event_groups(self.all_events(&current.uid).await?)
+            .into_iter()
+            .find(|group| Self::balance_object_key(&group[0]).as_ref() == Some(&object_key))
+        else {
+            return Ok(());
+        };
+        if candidates[0].id != current.id || candidates[0].resolved_at.is_some() {
+            return Ok(());
+        }
         let key = (current.uid.clone(), current.id.clone());
         let cached = cache
             .checked
@@ -192,8 +268,11 @@ impl ApiBusinessNotificationService {
                 s.payload == current.payload
                     && clock().saturating_duration_since(s.completed_at) < BALANCE_CHECK_BUFFER
             })
-            .map(|s| s.balance.clone());
-        let balance = if let Some(balance) = cached {
+            .map(|s| (s.balance.clone(), s.completed_at, s.observed_events.clone()));
+        let cached_completed_at = cached.as_ref().map(|(_, completed_at, _)| *completed_at);
+        let observed_events =
+            cached.as_ref().map(|(_, _, events)| events.clone()).unwrap_or(candidates);
+        let balance = if let Some((balance, _, _)) = cached {
             balance.map_err(|error| {
                 ServiceError::Parameter(format!("recent balance check failed: {error}"))
             })?
@@ -205,17 +284,28 @@ impl ApiBusinessNotificationService {
             .await
             .unwrap_or(Err(ServiceError::Timeout));
             cache.checked.insert(
-                key,
+                key.clone(),
                 BalanceCheckSnapshot {
                     completed_at: clock(),
                     payload: current.payload.clone(),
                     balance: result.as_ref().map(|value| *value).map_err(ToString::to_string),
+                    observed_events: observed_events.clone(),
                 },
             );
             result?
         };
-        // Reapply a cached successful observation: a failed DB write is not a completed check.
-        Self::apply_balance_result(&pool, &current, &body, Ok(balance)).await
+        // Cached compensation reuses the original group snapshot, never new siblings.
+        let observed_at = cached_completed_at.unwrap_or_else(&clock);
+        cache.checked.insert(
+            key,
+            BalanceCheckSnapshot {
+                completed_at: observed_at,
+                payload: current.payload.clone(),
+                balance: Ok(balance),
+                observed_events: observed_events.clone(),
+            },
+        );
+        Self::apply_balance_result(&pool, &observed_events, &body, Ok(balance)).await
     }
 
     #[cfg(test)]
@@ -243,6 +333,29 @@ impl ApiBusinessNotificationService {
         Ok(())
     }
 
+    /// Capture event identities before asset RPC. Reconciliation must not discover
+    /// new events after the observation has already started.
+    pub(crate) async fn snapshot_balance_events(
+        &self,
+        assets: &[wallet_database::entities::assets::AssetsId],
+    ) -> Result<Vec<ApiBusinessNotification>, ServiceError> {
+        use wallet_database::entities::asset_token_key::AssetTokenKey;
+        let assets: std::collections::HashSet<_> = assets
+            .iter()
+            .map(|id| (id.address.clone(), id.chain_code.clone(), id.token_address.clone()))
+            .collect();
+        Ok(self
+            .address_balance_notification_events()
+            .await?
+            .into_iter()
+            .filter(|event| {
+                Self::balance_object_key(event).is_some_and(|(_, _, chain, address, token)| {
+                    assets.contains(&(address, chain, AssetTokenKey::from_raw(Some(&token))))
+                })
+            })
+            .collect())
+    }
+
     /// Reconcile only observations whose asset writes succeeded. This shares the
     /// balance-check lock so a buffered/in-flight query cannot hide the resolution.
     /// The buffer stores checked payloads, not items: resolved rows disappear from
@@ -251,6 +364,7 @@ impl ApiBusinessNotificationService {
         &self,
         uid: &str,
         balances: &[(wallet_database::entities::assets::AssetsId, String)],
+        observed_events: &[ApiBusinessNotification],
     ) -> Result<(), ServiceError> {
         use wallet_database::entities::asset_token_key::AssetTokenKey;
         if uid.trim().is_empty() || balances.is_empty() {
@@ -267,7 +381,13 @@ impl ApiBusinessNotificationService {
         let mut first_error = None;
         let episode =
             format!("sync-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default());
-        for item in self.all_unresolved(uid).await? {
+        for group in Self::event_groups(
+            observed_events.iter().filter(|item| item.uid == uid).cloned().collect(),
+        ) {
+            let item = &group[0];
+            if item.resolved_at.is_some() {
+                continue;
+            }
             if BizType::from_business_notification_kind(&item.kind).is_none() {
                 continue;
             }
@@ -290,9 +410,11 @@ impl ApiBusinessNotificationService {
                     completed_at: Instant::now(),
                     payload: item.payload.clone(),
                     balance: Ok(balance),
+                    observed_events: group.clone(),
                 },
             );
-            if let Err(error) = Self::apply_balance_result(&pool, &item, &body, Ok(balance)).await {
+            if let Err(error) = Self::apply_balance_result(&pool, &group, &body, Ok(balance)).await
+            {
                 // Task DB is separate. Persist the compensation before this sync can be marked done.
                 if let Err(enqueue_error) = crate::application::api_wallet_balance_check::enqueue(
                     self.ctx,
@@ -481,14 +603,20 @@ impl ApiBusinessNotificationService {
         F: FnMut(String, String, String) -> Fut,
         Fut: std::future::Future<Output = Result<Decimal, ServiceError>>,
     {
-        // Validate the requested page before doing any balance IO.
-        self.list_in_scope(uid, true, page, page_size).await?;
+        // Validate before IO; aggregate the whole eligible scope before slicing pages.
+        if page < 0
+            || page_size <= 0
+            || page.checked_mul(page_size).is_none()
+            || uid.is_some_and(str::is_empty)
+        {
+            return Err(ServiceError::Parameter("page or page_size is invalid".into()));
+        }
         let pool = self.ctx.api_wallet_pool()?;
         // Snapshot candidates before resolution changes their pagination offsets.
         let mut candidates = Vec::new();
         let mut scan_page = 0;
         loop {
-            let batch = self.list_in_scope(uid, true, scan_page, 100).await?;
+            let batch = self.list_in_scope(uid, false, scan_page, 100).await?;
             let count = batch.data.len();
             candidates.extend(batch.data);
             if count < 100 {
@@ -496,41 +624,60 @@ impl ApiBusinessNotificationService {
             }
             scan_page += 1;
         }
-        for notification in &candidates {
-            if BizType::from_business_notification_kind(&notification.kind).is_none() {
+        for group in Self::event_groups(candidates) {
+            let notification = &group[0];
+            if notification.resolved_at.is_some() {
                 continue;
             }
-            let body: AwmAddressInsufficientBody = match serde_json::from_str(&notification.payload)
+            let body: AwmAddressInsufficientBody = serde_json::from_str(&notification.payload)
+                .map_err(|e| ServiceError::Parameter(e.to_string()))?;
+            match balance_for(body.address.clone(), body.chain_code.clone(), body.token.clone())
+                .await
             {
-                Ok(body) => body,
-                Err(error) => {
-                    tracing::warn!(id = %notification.id, %error, "invalid balance reminder payload");
-                    continue;
+                Ok(balance) => {
+                    Self::apply_balance_result(&pool, &group, &body, Ok(balance)).await?
                 }
-            };
-            let balance =
-                balance_for(body.address.clone(), body.chain_code.clone(), body.token.clone())
-                    .await;
-            Self::apply_balance_result(&pool, notification, &body, balance).await?;
+                Err(error) => {
+                    tracing::warn!(id = %notification.id, %error, "balance query failed; reminder remains active")
+                }
+            }
         }
-        self.list_in_scope(uid, true, page, page_size).await
+        // Re-read after resolution; do not let pagination discard objects before grouping.
+        let mut remaining = Vec::new();
+        let mut scan_page = 0;
+        loop {
+            let batch = self.list_in_scope(uid, false, scan_page, 100).await?;
+            let count = batch.data.len();
+            remaining.extend(batch.data);
+            if count < 100 {
+                break;
+            }
+            scan_page += 1;
+        }
+        let rows = Self::latest_unresolved_events(remaining);
+        let total_count = rows.len() as i64;
+        let offset = usize::try_from(page * page_size).unwrap_or(usize::MAX);
+        let limit = usize::try_from(page_size).unwrap_or(usize::MAX);
+        Ok(Pagination {
+            page,
+            page_size,
+            total_count,
+            data: rows.into_iter().skip(offset).take(limit).collect(),
+        })
     }
 
     async fn apply_balance_result(
         pool: &ApiWalletDbPool,
-        notification: &ApiBusinessNotification,
+        observed_events: &[ApiBusinessNotification],
         body: &AwmAddressInsufficientBody,
         balance: Result<Decimal, ServiceError>,
     ) -> Result<(), ServiceError> {
+        let Some(notification) = observed_events.first() else {
+            return Ok(());
+        };
         match balance {
             Ok(balance) if balance >= body.threshold_value => {
-                ApiBusinessNotificationRepo::resolve_if_payload_matches(
-                    pool,
-                    &notification.uid,
-                    &notification.id,
-                    &notification.payload,
-                )
-                .await?;
+                ApiBusinessNotificationRepo::resolve_observed_group(pool, observed_events).await?;
             }
             Ok(_) => {}
             Err(error) => {
@@ -1113,7 +1260,7 @@ mod tests {
 
         ApiBusinessNotificationService::apply_balance_result(
             &pool,
-            &row,
+            std::slice::from_ref(&row),
             &body,
             Err(crate::error::service::ServiceError::Parameter("RPC unavailable".into())),
         )
@@ -1126,7 +1273,7 @@ mod tests {
 
         ApiBusinessNotificationService::apply_balance_result(
             &pool,
-            &row,
+            std::slice::from_ref(&row),
             &body,
             Ok(Decimal::new(19, 0)),
         )
@@ -1139,7 +1286,7 @@ mod tests {
 
         ApiBusinessNotificationService::apply_balance_result(
             &pool,
-            &row,
+            std::slice::from_ref(&row),
             &body,
             Ok(Decimal::new(20, 0)),
         )
@@ -1168,3 +1315,6 @@ mod withdrawal_message_center_tests;
 
 #[cfg(test)]
 mod detail_tests;
+
+#[cfg(test)]
+mod event_history_tests;

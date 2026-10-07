@@ -148,7 +148,7 @@ impl TaskTrait for MqttTask {
             MqttTask::OrderAllConfirmed(data) => data.exec_with_ctx(id, ctx).await?,
             MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.execute(id, ctx).await?,
             MqttTask::ApiWalletAcctChange(data) => data.exec(ctx, id).await?,
-            MqttTask::AwmAddressInsufficient(data) => data.exec(ctx).await?,
+            MqttTask::AwmAddressInsufficient(data) => data.exec(ctx, id).await?,
         }
         Ok(())
     }

@@ -85,6 +85,7 @@ async fn synced_balance_removes_only_matching_reminder_inside_balance_query_buff
                 AssetsId::new("address", "avalanche", AssetTokenKey::from_raw(Some("contract"))),
                 "20".into(),
             )],
+            &service.all_unresolved(&uid).await.unwrap(),
         )
         .await
         .unwrap();
@@ -122,10 +123,17 @@ async fn synced_balance_keeps_reminder_for_insufficient_invalid_or_unpersisted_b
     let service = ApiBusinessNotificationService::new(ctx);
     let id = AssetsId::new("address", "avalanche", AssetTokenKey::from_raw(Some("contract")));
     // Act: failed writes are excluded by the caller; invalid/below-threshold observations stay active.
-    service.resolve_from_persisted_balances(&uid, &[]).await.unwrap();
+    service
+        .resolve_from_persisted_balances(&uid, &[], &service.all_unresolved(&uid).await.unwrap())
+        .await
+        .unwrap();
     for balance in ["19.999", "invalid"] {
         service
-            .resolve_from_persisted_balances(&uid, &[(id.clone(), balance.into())])
+            .resolve_from_persisted_balances(
+                &uid,
+                &[(id.clone(), balance.into())],
+                &service.all_unresolved(&uid).await.unwrap(),
+            )
             .await
             .unwrap();
     }

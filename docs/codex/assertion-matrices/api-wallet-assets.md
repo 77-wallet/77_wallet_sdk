@@ -359,3 +359,13 @@ The three wallet session tests run their complete fixture in separate child proc
 The legacy account-change and address-expansion replays now reside in `tests/smoke/api_wallet/mqtt_replay.rs` and are explicitly ignored by default. They initialize the real configured client and may update backend wallet/account state. Run only with separately authorized development/test access, a matching local `examples/config.yaml`, test device/account/wallet fixtures matching the payload UIDs, and no production configuration. They are not offline regressions. Manual command after those prerequisites: `cargo test -p wallet-api --test mod smoke::api_wallet::mqtt_replay:: -- --ignored --test-threads=1`.
 
 Collect/fee missing rows are idempotent success; SQL/table failures remain database errors. The MQTT resource-result regression asserts the gate remains blocked before result ACK; the existing fake-backend resource-gate integration tests cover ACK release and invalid origins.
+
+
+## Balance observation event snapshot
+
+- Before chain RPC, snapshot eligible notification event IDs and payloads for the selected assets.
+- After successful asset writes, only this snapshot may be reconciled: the latest valid event controls each group threshold, and success atomically resolves its observed earlier members with version guards; read/history remain unchanged.
+- A snapshot read failure does not stop asset sync; it safely skips automatic reminder resolution.
+- Component regression: `business_notification::event_history_tests::asset_sync_observation_cannot_resolve_event_arriving_during_rpc` verifies that a during-RPC arrival is neither resolved nor cached by the older observation.
+
+2026-10-07 product revision: snapshot includes resolved history to prevent fallback to old thresholds; latest resolved suppresses the group. `asset_sync_latest_lower_threshold_resolves_observed_older_high_event` covers downward threshold changes, and existing during-RPC low-threshold arrival remains unresolved and uncached.

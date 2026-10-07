@@ -26,7 +26,7 @@ async fn no_uid_message_api_keeps_owner_and_reads_without_balance_checks() {
                 uid,
                 kind: "AWM_ADDRESS_INSUFFICIENT",
                 business_key: uid,
-                payload: "{}",
+                payload: r#"{"remaining":"1","thresholdValue":"20","token":"","symbol":"TRX","merchantName":"fixture","waddressType":"1","chainCode":"tron","targetAddress":"address"}"#,
             },
         )
         .await

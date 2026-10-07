@@ -36,13 +36,14 @@ async fn alert(
 ) -> ApiBusinessNotification {
     let pool = ctx.api_wallet_pool().unwrap();
     let payload=serde_json::json!({"remaining":2,"thresholdValue":threshold,"token":"","symbol":"trx","merchantName":"fixture","waddressType":"2","chainCode":"tron","targetAddress":"TAddress"}).to_string();
+    let business_key = format!("{uid}:tron:TAddress:");
     ApiBusinessNotificationRepo::ingest(
         &pool,
         NewApiBusinessNotification {
             id,
             uid,
             kind: "AWM_ADDRESS_INSUFFICIENT",
-            business_key: id,
+            business_key: &business_key,
             payload: &payload,
         },
     )
@@ -64,23 +65,15 @@ async fn directed_checks_need_no_asset_row_and_coalesce_exact_payloads() {
     let now = Instant::now();
     let calls = AtomicUsize::new(0);
     // Act: simultaneous tasks share one completed observation, preserving read state.
-    let a = service.check_address_balance_using(
-        &check,
-        || now,
-        |address, chain, token| {
-            assert_eq!(
-                (address.as_str(), chain.as_str(), token.as_str()),
-                ("TAddress", "tron", "")
-            );
-            calls.fetch_add(1, Ordering::Relaxed);
-            async { Ok(Decimal::new(10, 0)) }
-        },
-    );
-    let b = service.check_address_balance_using(
-        &check,
-        || now,
-        |_, _, _| async { panic!("duplicate RPC") },
-    );
+    let balance_for = |address: String, chain: String, token: String| {
+        assert_eq!((address.as_str(), chain.as_str(), token.as_str()), ("TAddress", "tron", ""));
+        calls.fetch_add(1, Ordering::Relaxed);
+        async { Ok(Decimal::new(10, 0)) }
+    };
+    // Either caller may acquire the asynchronous lock first. Count real calls
+    // rather than assigning the first query to a particular future.
+    let a = service.check_address_balance_using(&check, || now, &balance_for);
+    let b = service.check_address_balance_using(&check, || now, &balance_for);
     let (a, b) = tokio::join!(a, b);
     a.unwrap();
     b.unwrap();
@@ -110,8 +103,9 @@ async fn directed_checks_need_no_asset_row_and_coalesce_exact_payloads() {
             .resolved_at
             .is_some()
     );
-    // Threshold changes bypass the observation buffer and obsolete tasks do no IO.
-    let changed = alert(ctx, "owner", "alert", 25).await;
+    // A genuinely new event with a changed threshold needs a fresh observation.
+    // The older event keeps its own cached snapshot and history.
+    let changed = alert(ctx, "owner", "alert-new", 25).await;
     service
         .check_address_balance_using(&check, || now, |_, _, _| async { panic!("stale task") })
         .await
@@ -125,7 +119,7 @@ async fn directed_checks_need_no_asset_row_and_coalesce_exact_payloads() {
         .await
         .unwrap();
     let final_row =
-        ApiBusinessNotificationRepo::find(&pool, "owner", "alert").await.unwrap().unwrap();
+        ApiBusinessNotificationRepo::find(&pool, "owner", "alert-new").await.unwrap().unwrap();
     assert!(final_row.resolved_at.is_some());
     assert!(!final_row.is_read);
 }
@@ -237,7 +231,8 @@ async fn resolution_write_failure_persists_compensation_and_reuses_observation()
                 &[(
                     AssetsId::new("TAddress", "tron", AssetTokenKey::from_raw(Some(""))),
                     "20".into()
-                )]
+                )],
+                &[row.clone()]
             )
             .await
             .is_err()
@@ -275,7 +270,7 @@ async fn resolution_write_failure_persists_compensation_and_reuses_observation()
 }
 
 #[tokio::test]
-async fn newer_payload_arriving_during_check_cannot_be_resolved_by_old_result() {
+async fn newer_event_arriving_during_check_cannot_be_resolved_by_old_result() {
     let (_dir, ctx) = isolated_context().await;
     owner(ctx, "owner", ApiWalletType::Withdrawal).await;
     let row = alert(ctx, "owner", "in-flight", 20).await;
@@ -294,16 +289,26 @@ async fn newer_payload_arriving_during_check_cannot_be_resolved_by_old_result() 
     });
     let replacement = async {
         started_rx.await.unwrap();
-        alert(ctx, "owner", "in-flight", 30).await;
+        alert(ctx, "owner", "in-flight-new", 10).await;
         release_tx.send(()).unwrap();
     };
     let (result, _) = tokio::join!(query, replacement);
     result.unwrap();
-    let current =
+    let current = ApiBusinessNotificationRepo::find(
+        &ctx.api_wallet_pool().unwrap(),
+        "owner",
+        "in-flight-new",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(current.resolved_at.is_none());
+    assert_ne!(current.payload, row.payload);
+    let original =
         ApiBusinessNotificationRepo::find(&ctx.api_wallet_pool().unwrap(), "owner", "in-flight")
             .await
             .unwrap()
             .unwrap();
-    assert!(current.resolved_at.is_none());
-    assert_ne!(current.payload, row.payload);
+    assert!(original.resolved_at.is_some());
+    assert_eq!(original.payload, row.payload);
 }
