@@ -14,3 +14,29 @@ pub(crate) fn make_transfer_req(from: &str, to: &str) -> ApiTransferExReq {
         signer: None,
     }
 }
+
+pub(crate) fn native_symbol(chain: &str) -> &'static str {
+    match chain {
+        "bnb" => "BNB",
+        "polygon" => "POL",
+        "avalanche" => "AVAX",
+        "fantom" => "FTM",
+        _ => "ETH",
+    }
+}
+
+pub(crate) fn make_evm_transfer_req(from: &str, chain: &str) -> ApiTransferExReq {
+    let mut req = make_transfer_req(from, BNB_TO_ADDR);
+    req.base.chain_code = chain.to_string();
+    req.base.symbol = native_symbol(chain).to_string();
+    req
+}
+
+pub(crate) fn evm_chain_codes() -> Vec<String> {
+    wallet_types::chain::chain::ChainCodes::try_from(wallet_types::constant::chain_type::ETH_TYPE)
+        .unwrap()
+        .0
+        .into_iter()
+        .map(|chain| chain.to_string())
+        .collect()
+}

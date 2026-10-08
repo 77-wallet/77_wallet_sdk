@@ -8,6 +8,7 @@ use crate::{
         api_withdraw::{
             ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
             SelfTransferReceipt, SignedSelfTransfer, WithdrawCreatedFact, WithdrawFailureStage,
+            signed_evm_chain_codes_json,
         },
     },
     pagination::Pagination,
@@ -78,13 +79,14 @@ impl ApiWithdrawDao {
             broadcast_uncertain_since_at = NULL,
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
             WHERE trade_no = ? AND tx_hash = ? AND trade_type = 4
-              AND chain_code IN ('eth','bnb') AND raw_tx IS NOT NULL
+              AND chain_code IN (SELECT value FROM json_each(?)) AND raw_tx IS NOT NULL
               AND (last_broadcast_at IS NULL OR broadcast_uncertain_since_at IS NOT NULL)
               AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
               AND chain_success_at IS NULL AND chain_failed_at IS NULL"#,
         )
         .bind(trade_no)
         .bind(tx_hash)
+        .bind(signed_evm_chain_codes_json())
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
@@ -108,13 +110,14 @@ impl ApiWithdrawDao {
             broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
             WHERE trade_no = ? AND tx_hash = ? AND raw_tx = ?
-              AND raw_tx != '' AND tx_hash != '' AND trade_type = 4 AND chain_code IN ('eth','bnb')
+              AND raw_tx != '' AND tx_hash != '' AND trade_type = 4 AND chain_code IN (SELECT value FROM json_each(?))
               AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
               AND chain_success_at IS NULL AND chain_failed_at IS NULL
               AND broadcast_uncertain_rebroadcast_count < 3
               AND julianday(COALESCE(broadcast_uncertain_last_checked_at,
                   broadcast_uncertain_since_at, last_broadcast_at, created_at)) <= julianday('now', '-60 seconds')"#)
-            .bind(trade_no).bind(tx_hash).bind(raw_tx).execute(exec).await
+            .bind(trade_no).bind(tx_hash).bind(raw_tx)
+        .bind(signed_evm_chain_codes_json()).execute(exec).await
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(rows.rows_affected() == 1)
     }
@@ -129,13 +132,14 @@ impl ApiWithdrawDao {
     {
         sqlx::query_as(
             r#"SELECT * FROM api_withdraws WHERE from_addr = ? AND chain_code = ?
-            AND trade_type = 4 AND chain_code IN ('eth','bnb') AND raw_tx IS NOT NULL
+            AND trade_type = 4 AND chain_code IN (SELECT value FROM json_each(?)) AND raw_tx IS NOT NULL
             AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
             AND chain_success_at IS NULL AND chain_failed_at IS NULL
             ORDER BY nonce, id"#,
         )
         .bind(from_addr)
         .bind(chain_code)
+        .bind(signed_evm_chain_codes_json())
         .fetch_all(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))
@@ -153,7 +157,7 @@ impl ApiWithdrawDao {
     {
         sqlx::query_as(
             r#"SELECT * FROM api_withdraws WHERE id > ?
-            AND trade_type = 4 AND chain_code IN ('eth','bnb')
+            AND trade_type = 4 AND chain_code IN (SELECT value FROM json_each(?))
             AND raw_tx IS NOT NULL AND raw_tx != ''
             AND tx_hash IS NOT NULL AND tx_hash != ''
             AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
@@ -161,6 +165,7 @@ impl ApiWithdrawDao {
             ORDER BY id LIMIT ?"#,
         )
         .bind(after_id)
+        .bind(signed_evm_chain_codes_json())
         .bind(limit)
         .fetch_all(exec)
         .await
@@ -191,7 +196,7 @@ impl ApiWithdrawDao {
             broadcast_uncertain_rebroadcast_count = 0,
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
             WHERE trade_no = ? AND tx_hash = ? AND chain_code = ?
-              AND trade_type = 4 AND chain_code IN ('eth','bnb')
+              AND trade_type = 4 AND chain_code IN (SELECT value FROM json_each(?))
               AND raw_tx IS NOT NULL AND raw_tx != ''
               AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL
               AND chain_success_at IS NULL AND chain_failed_at IS NULL"#,
@@ -206,6 +211,7 @@ impl ApiWithdrawDao {
         .bind(receipt.trade_no)
         .bind(receipt.tx_hash)
         .bind(receipt.chain_code)
+        .bind(signed_evm_chain_codes_json())
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
@@ -1614,7 +1620,7 @@ impl ApiWithdrawDao {
             WHERE trade_no = $1
               -- Signed EVM SelfWithdraw is completed by receipt observation;
               -- legacy account-change status must not overwrite its signed facts.
-              AND NOT (trade_type = 4 AND chain_code IN ('eth','bnb')
+              AND NOT (trade_type = 4 AND chain_code IN (SELECT value FROM json_each($9))
                        AND COALESCE(raw_tx, '') != '')
         "#;
 
@@ -1627,6 +1633,7 @@ impl ApiWithdrawDao {
             .bind(transaction_fee)
             .bind(transaction_time)
             .bind(block_height)
+            .bind(signed_evm_chain_codes_json())
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

@@ -13,11 +13,18 @@ use wallet_database::{
 use crate::harness::{self, next_tag, reset_fake, upsert_wallet};
 
 pub(crate) async fn ensure_bnb_transfer_fixture(env: &harness::TestEnv) -> anyhow::Result<String> {
+    ensure_evm_transfer_fixture(env, "bnb").await
+}
+
+pub(crate) async fn ensure_evm_transfer_fixture(
+    env: &harness::TestEnv,
+    chain: &str,
+) -> anyhow::Result<String> {
     reset_fake(env);
 
     let api_pool = harness::open_api_wallet_pool(&env.db_dir).await;
 
-    if ApiCoinRepo::coin_by_chain_token_key_opt("bnb", AssetTokenKey::Native, &api_pool)
+    if ApiCoinRepo::coin_by_chain_token_key_opt(chain, AssetTokenKey::Native, &api_pool)
         .await?
         .is_none()
     {
@@ -25,9 +32,9 @@ pub(crate) async fn ensure_bnb_transfer_fixture(env: &harness::TestEnv) -> anyho
         ApiCoinRepo::upsert_multi_coin(
             &api_pool,
             vec![ApiCoinData::new(
-                Some("BNB Smart Chain".to_string()),
-                "BNB",
-                "bnb",
+                Some(chain.to_string()),
+                super::request::native_symbol(chain),
+                chain,
                 AssetTokenKey::Native,
                 Some("0".to_string()),
                 None,
@@ -54,7 +61,7 @@ pub(crate) async fn ensure_bnb_transfer_fixture(env: &harness::TestEnv) -> anyho
         &wallet_uid,
         "m/44'/60'/0'/0/0",
         0,
-        "bnb",
+        chain,
         "account",
         ApiWalletType::SubAccount,
     )
@@ -62,7 +69,7 @@ pub(crate) async fn ensure_bnb_transfer_fixture(env: &harness::TestEnv) -> anyho
     ApiAccountRepo::upsert_account_multi(&api_pool, vec![account]).await?;
 
     let tx_pool = open_api_transaction_pool(&env.db_dir).await;
-    ApiNonceRepo::set_nonce_floor(&tx_pool, &wallet_address, "bnb", 0).await?;
+    ApiNonceRepo::set_nonce_floor(&tx_pool, &wallet_address, chain, 0).await?;
 
     Ok(wallet_address)
 }
@@ -75,7 +82,7 @@ pub(crate) async fn load_bnb_nonce_floor(
     Ok(ApiNonceRepo::get_api_nonce(&tx_pool, address, "bnb").await?)
 }
 
-async fn open_api_transaction_pool(db_dir: &Path) -> ApiTransactionDbPool {
+pub(crate) async fn open_api_transaction_pool(db_dir: &Path) -> ApiTransactionDbPool {
     let sqlite = SqliteContext::new(&db_dir.to_string_lossy(), Some("api_transaction.db"))
         .await
         .expect("open api transaction sqlite");
