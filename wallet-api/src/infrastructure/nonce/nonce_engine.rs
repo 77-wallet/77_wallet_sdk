@@ -324,15 +324,43 @@ impl NonceEngine {
         self.allocate_nonce_after_observation(address, chain, false).await
     }
 
-    /// Ordinary transfers have no queued-transaction recovery owner yet. Do not
-    /// extend a local reservation that the observed node has not accounted for.
-    /// The caller holds the address transfer gate across build and broadcast.
-    pub(crate) async fn allocate_ordinary_transfer_nonce(
+    /// Observe a candidate without reserving it. The signed intent repository
+    /// rechecks and reserves atomically before the caller may broadcast.
+    pub(crate) async fn observe_ordinary_transfer_nonce(
         &self,
         address: &str,
         chain: &str,
     ) -> Result<i32, ServiceError> {
-        self.allocate_nonce_after_observation(address, chain, true).await
+        if self.is_frozen(address, chain) {
+            return Err(ServiceError::Parameter(format!(
+                "Address {address} on chain {chain} is frozen"
+            )));
+        }
+        let next = ApiTransDomain::nonce(self.ctx, address, chain).await?;
+        let next = i32::try_from(next).map_err(|_| {
+            ServiceError::Parameter("chain nonce exceeds supported allocation range".into())
+        })?;
+        let pool = self.ctx.api_transaction_pool()?;
+        let last =
+            wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::get_api_nonce_optional(
+                &pool, address, chain,
+            )
+            .await
+            .map_err(ServiceError::Database)?
+            .unwrap_or(-1);
+        info!(
+            address,
+            chain,
+            chain_next = next,
+            local_last = last,
+            "Ordinary transfer nonce candidate observed"
+        );
+        if last >= i64::from(next) {
+            return Err(ServiceError::Parameter(format!(
+                "nonce_gap_requires_recovery: address={address} chain={chain} chain_next={next} local_last={last}"
+            )));
+        }
+        Ok(next)
     }
 
     async fn allocate_nonce_after_observation(
