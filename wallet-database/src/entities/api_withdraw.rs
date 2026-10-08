@@ -357,3 +357,30 @@ pub enum WithdrawFailureStage {
     Chain = 3,
     TxResultAck = 4,
 }
+
+/// Canonical supported EVM routes come from wallet-types, not a DB whitelist.
+pub(crate) fn signed_evm_chain_codes() -> &'static [String] {
+    static CODES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    CODES.get_or_init(|| {
+        wallet_types::chain::chain::ChainCodes::try_from(
+            wallet_types::constant::chain_type::ETH_TYPE,
+        )
+        .expect("wallet-types must define the EVM chain type")
+        .0
+        .into_iter()
+        .map(|chain| chain.to_string())
+        .collect()
+    })
+}
+
+pub(crate) fn is_signed_evm_chain(code: &str) -> bool {
+    signed_evm_chain_codes().iter().any(|supported| supported == code)
+}
+
+pub(crate) fn signed_evm_chain_codes_json() -> &'static str {
+    static JSON: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    JSON.get_or_init(|| {
+        serde_json::to_string(signed_evm_chain_codes())
+            .expect("chain strings are JSON serializable")
+    })
+}

@@ -35,6 +35,7 @@ use crate::{
         api_withdraw::{
             ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, PendingWithdrawResourceBudget,
             SelfTransferReceipt, SignedSelfTransfer, WithdrawCreatedFact, WithdrawFailureStage,
+            is_signed_evm_chain,
         },
         asset_token_key::AssetTokenKey,
     },
@@ -51,7 +52,7 @@ impl ApiWithdrawRepo {
         pool: &ApiTransactionDbPool,
         input: &SignedSelfTransfer<'_>,
     ) -> Result<(), crate::Error> {
-        if !matches!(input.chain_code, "eth" | "bnb")
+        if !is_signed_evm_chain(input.chain_code)
             || input.nonce < 0
             || input.trade_no.is_empty()
             || input.tx_hash.is_empty()
@@ -143,7 +144,7 @@ impl ApiWithdrawRepo {
         pool: &ApiTransactionDbPool,
         receipt: &SelfTransferReceipt<'_>,
     ) -> Result<bool, crate::Error> {
-        if !matches!(receipt.chain_code, "eth" | "bnb")
+        if !is_signed_evm_chain(receipt.chain_code)
             || receipt.tx_hash.is_empty()
             || receipt.block_height.is_empty()
             || receipt.transaction_fee.is_empty()

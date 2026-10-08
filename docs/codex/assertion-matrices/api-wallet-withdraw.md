@@ -662,3 +662,20 @@ Scope: persisted raw order paths and fee display, Base/Scroll native and standar
 - Entrypoints: adapter/eth_tx/fee_tests.rs (api_evm_fee_*); collect/shadow/worker/fee_recovery_tests.rs.
 - Shared calculate_fee_setting_from_req and build_fee_setting fully match baseline. Base/Scroll direct transfer no/invalid metadata retains old amount gate; valid metadata retains old shortcut. Only the new exact funding quote uses an isolated l1_quote_fee_setting without local balance gates. Raw executes old amount gate followed by the new total fee gate.
 - Isolation regression: compile-only failure is not RED; gas-isolation-red-behavior.log confirms real missing Base native direct-transfer amount gate. Final isolated-version evidence: gas-isolation-final-0.log has 15 passed; final-1..5 freshly pass trans 75, EthTx 5, withdraw shadow 66, collect_fee shadow 21, collect worker 56 (223 total). Independent full-callee review found no blocker. Earlier 12+223 is superseded. Full order orchestration, live nodes and App acceptance remain unrun.
+
+
+## Manual signed EVM SelfWithdraw scope (2026-10-08)
+
+Confirmed supported routes: eth,bnb,polygon,avalanche,fantom,arbitrum,base,scroll.
+Polygon field was rejected after build and before persist/broadcast by the old eth/bnb Repo gate. Use the existing wallet-types ChainCodes(ETH_TYPE) as the shared capability source; Rust checks, bound SQL JSON and all-chain regression loops derive from it. No repeated SQL chain enumeration. Extend the same scope through persist, accepted, pending sender/observer scan, receipt, rebroadcast claim, legacy signed SelfWithdraw projection exclusion; managed Withdraw scanner rules unchanged. No schema, nonce allocation strategy, retry budget, or real business actions change.
+
+| Evidence | Durable facts / external effects / invariant |
+| --- | --- |
+| self_transfer_polygon_zero_nonce_persists_before_broadcast | Polygon nonce0 persists immutable bytes/hash, nonce floor, uncertainty before node acceptance; targeted RED invalid signed ordinary EVM transfer then GREEN. |
+| self_transfer_all_evm_chains_preserve_signed_lifecycle_and_nonce_zero | All8 chains: retry idempotence, conflict no overwrite, pending scan, legacy projection exclusion, bounded/cooldown identical-byte retry, accepted not confirmed, failed receipt terminal with nonce retained. |
+| self_transfer_all_non_evm_chains_rejected_without_signed_facts | NonEVM/unknown/alias chains remain rejected with0 rows; unsupported receipts rejected. |
+| api_wallet_transfer_nonce_all_evm_chains_persist_send_and_confirm | Real API application with existing recording adapter:8 chains persist exact raw bytes, send once, acceptance nonterminal, observer confirms receipt without second send. |
+| api_wallet_transfer_nonce_polygon_persistence_failure_never_broadcasts | SQLite injected write failure leaves no signed facts or adapter sends. |
+| api_wallet_transfer_nonce_new_evm_timeout_recovers_from_failed_receipt_without_resend | All6 extended EVM chains: timed out send leaves durable uncertainty, failed on-chain receipt finalizes failure and pending scan clears; sender nonce remainsreserved, no resend. |
+
+Existing self_transfer tests retain reopen, concurrent claims, transaction rollback/receipt retry and unsigned legacy behavior. Existing transfer_nonce flow suite retains sender lock, cancellation, wrong RPC hash, observer/restart, frozen/uncertain nonce and bounded retries. Test fixtures use no real keys or RPC; fake raw bytes cannot be broadcast to a real chain. Real Polygon device transfer is not reattempted as validation.

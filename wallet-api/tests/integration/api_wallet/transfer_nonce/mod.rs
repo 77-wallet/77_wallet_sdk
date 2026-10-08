@@ -753,3 +753,43 @@ async fn ordinary_transfer_observer_failure_survives_legacy_success_projection()
     scenario.then_bill_status_is(20006, 3).await?;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn api_wallet_transfer_nonce_all_evm_chains_persist_send_and_confirm() -> anyhow::Result<()> {
+    for chain in support::evm_chain_codes() {
+        let scenario = support::EvmTransferScenario::given_chain(&chain).await?;
+        scenario.when_transfer_runs().await?;
+        scenario.then_signed_fact_and_send_are(true).await?;
+        scenario.when_receipt_is_observed(true).await?;
+        scenario.then_confirmed_without_resend(true).await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn api_wallet_transfer_nonce_polygon_persistence_failure_never_broadcasts()
+-> anyhow::Result<()> {
+    let scenario = support::EvmTransferScenario::given_chain("polygon").await?;
+    scenario.given_persistence_fails().await?;
+    let err = scenario.when_transfer_runs().await.unwrap_err();
+    assert!(err.to_string().contains("simulated signed persistence failure"));
+    scenario.then_nothing_was_sent_or_saved().await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn api_wallet_transfer_nonce_new_evm_timeout_recovers_from_failed_receipt_without_resend()
+-> anyhow::Result<()> {
+    for chain in ["polygon", "avalanche", "fantom", "arbitrum", "base", "scroll"] {
+        let scenario = support::EvmTransferScenario::given_chain(chain).await?;
+        scenario.given_timeout();
+        assert!(scenario.when_transfer_runs().await.is_err());
+        scenario.then_signed_fact_and_send_are(false).await?;
+        scenario.when_receipt_is_observed(false).await?;
+        scenario.then_confirmed_without_resend(false).await?;
+    }
+    Ok(())
+}

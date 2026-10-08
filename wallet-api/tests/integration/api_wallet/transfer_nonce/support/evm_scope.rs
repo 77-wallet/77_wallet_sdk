@@ -1,0 +1,106 @@
+use super::{
+    adapter::{AdapterGuard, RecordingEthAdapter, install_adapter_for_chain},
+    db, request,
+};
+use crate::harness::{TestEnv, ensure_env};
+use wallet_database::{
+    entities::api_withdraw::ApiWithdrawStatus,
+    repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
+};
+
+pub(crate) struct EvmTransferScenario {
+    env: &'static TestEnv,
+    from: String,
+    chain: String,
+    adapter: RecordingEthAdapter,
+    _guards: Vec<AdapterGuard>,
+}
+
+impl EvmTransferScenario {
+    pub(crate) async fn given_chain(chain: &str) -> anyhow::Result<Self> {
+        let env = ensure_env().await;
+        let from = db::ensure_evm_transfer_fixture(env, chain).await?;
+        let adapter = RecordingEthAdapter::new();
+        // The observer scans shared fixture rows, not just this scenario's chain.
+        // Override every supported EVM route to prevent production RPC fallback.
+        let guards = request::evm_chain_codes()
+            .into_iter()
+            .map(|code| {
+                let route_adapter =
+                    if code == chain { adapter.clone() } else { RecordingEthAdapter::new() };
+                install_adapter_for_chain(&route_adapter, &code)
+            })
+            .collect();
+        Ok(Self { env, from, chain: chain.to_string(), adapter, _guards: guards })
+    }
+    pub(crate) async fn given_persistence_fails(&self) -> anyhow::Result<()> {
+        db::reject_signed_persistence(self.env, &self.from).await
+    }
+    pub(crate) fn given_timeout(&self) {
+        self.adapter.timeout_transfer();
+    }
+    pub(crate) async fn when_transfer_runs(
+        &self,
+    ) -> Result<String, wallet_api::error::service::ServiceError> {
+        let req = request::make_evm_transfer_req(&self.from, &self.chain);
+        self.env
+            .manager
+            .api_transfer_with_preloaded_private_key(req, "00".into())
+            .await
+            .map(|r| r.tx_hash)
+    }
+    pub(crate) async fn then_signed_fact_and_send_are(&self, accepted: bool) -> anyhow::Result<()> {
+        let row =
+            db::ordinary_transfer_by_hash(self.env, &self.from, &self.adapter.tx_hash(1)).await?;
+        assert_eq!(row.chain_code, self.chain);
+        assert_eq!(row.nonce, 1);
+        assert_eq!(row.last_broadcast_at.is_some(), accepted);
+        assert_eq!(row.broadcast_uncertain_since_at.is_some(), !accepted);
+        assert!(row.finished_at.is_none());
+        assert!(row.chain_success_at.is_none());
+        let raw: wallet_api::domain::api_wallet::RawTx =
+            serde_json::from_str(row.raw_tx.as_deref().unwrap())?;
+        let wallet_api::domain::api_wallet::RawTx::Evm(bytes, _) = raw else {
+            panic!("EVM raw expected")
+        };
+        assert_eq!(self.adapter.recorded_raw(), vec![bytes]);
+        assert_eq!(self.adapter.recorded_nonces(), vec![1]);
+        Ok(())
+    }
+    pub(crate) async fn when_receipt_is_observed(&self, success: bool) -> anyhow::Result<()> {
+        self.adapter.receipt_behavior(1, if success { 2 } else { 3 });
+        wallet_api::testkit::withdraw::observe_pending_self_transfers(self.env.manager.ctx())
+            .await?;
+        Ok(())
+    }
+    pub(crate) async fn then_confirmed_without_resend(&self, success: bool) -> anyhow::Result<()> {
+        let row =
+            db::ordinary_transfer_by_hash(self.env, &self.from, &self.adapter.tx_hash(1)).await?;
+        assert_eq!(
+            row.status,
+            if success { ApiWithdrawStatus::Success } else { ApiWithdrawStatus::Failure }
+        );
+        assert!(row.finished_at.is_some());
+        assert_eq!(row.chain_success_at.is_some(), success);
+        assert_eq!(row.chain_failed_at.is_some(), !success);
+        assert_eq!(self.adapter.recorded_nonces(), vec![1]);
+        let pool = db::open_api_transaction_pool(&self.env.db_dir).await;
+        assert_eq!(ApiNonceRepo::get_api_nonce(&pool, &self.from, &self.chain).await?, 1);
+        assert!(
+            ApiWithdrawRepo::pending_self_transfers_for_sender(&pool, &self.from, &self.chain)
+                .await?
+                .is_empty()
+        );
+        Ok(())
+    }
+    pub(crate) async fn then_nothing_was_sent_or_saved(&self) -> anyhow::Result<()> {
+        assert!(self.adapter.recorded_nonces().is_empty());
+        let pool = db::open_api_transaction_pool(&self.env.db_dir).await;
+        assert!(
+            ApiWithdrawRepo::pending_self_transfers_for_sender(&pool, &self.from, &self.chain)
+                .await?
+                .is_empty()
+        );
+        Ok(())
+    }
+}

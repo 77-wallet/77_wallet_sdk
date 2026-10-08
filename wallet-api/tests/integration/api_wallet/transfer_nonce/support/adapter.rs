@@ -326,7 +326,14 @@ impl Drop for AdapterGuard {
 }
 
 pub(crate) fn install_adapter(adapter: &RecordingEthAdapter) -> AdapterGuard {
-    let chain_code = "bnb".to_string();
+    install_adapter_for_chain(adapter, "bnb")
+}
+
+pub(crate) fn install_adapter_for_chain(
+    adapter: &RecordingEthAdapter,
+    chain: &str,
+) -> AdapterGuard {
+    let chain_code = chain.to_string();
     let adapter: Arc<dyn wallet_api::domain::api_wallet::Tx + Send + Sync> =
         Arc::new(adapter.clone());
     set_test_transaction_adapter_override(&chain_code, adapter);

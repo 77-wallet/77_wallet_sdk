@@ -90,23 +90,9 @@ pub fn rpc_need_header(_url: &str) -> Result<bool, crate::error::service::Servic
 }
 
 pub(crate) fn is_evm_chain(chain: ChainCode) -> bool {
-    match chain {
-        ChainCode::Ethereum
-        | ChainCode::BnbSmartChain
-        | ChainCode::Polygon
-        | ChainCode::Avalanche
-        | ChainCode::Fantom
-        | ChainCode::Arbitrum
-        | ChainCode::Base
-        | ChainCode::Scroll => true,
-        ChainCode::Tron
-        | ChainCode::Bitcoin
-        | ChainCode::Solana
-        | ChainCode::Litecoin
-        | ChainCode::Dogcoin
-        | ChainCode::Sui
-        | ChainCode::Ton => false,
-    }
+    wallet_types::chain::chain::ChainCodes::try_from(wallet_types::constant::chain_type::ETH_TYPE)
+        .map(|supported| supported.0.contains(&chain))
+        .unwrap_or(false)
 }
 
 pub fn check_address(

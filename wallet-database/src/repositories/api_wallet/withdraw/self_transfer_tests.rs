@@ -509,3 +509,108 @@ async fn self_transfer_unsigned_legacy_account_change_remains_supported() {
     assert_eq!(legacy_account_change(&pool).await, 1);
     assert_eq!(row(&pool).await.status, ApiWithdrawStatus::ConfirmSuccessReport);
 }
+
+#[tokio::test]
+async fn self_transfer_polygon_zero_nonce_persists_before_broadcast() {
+    let pool = setup_api_transaction_pool("self_transfer_polygon").await;
+    let mut input = signed();
+    input.chain_code = "polygon";
+    input.nonce = 0;
+    ApiWithdrawRepo::persist_signed_self_transfer(&pool, &input).await.unwrap();
+    let saved = row(&pool).await;
+    assert_eq!(saved.chain_code, "polygon");
+    assert_eq!(saved.nonce, 0);
+    assert!(saved.broadcast_uncertain_since_at.is_some());
+    assert!(saved.last_broadcast_at.is_none());
+    assert_eq!(saved.raw_tx.as_deref(), Some(input.raw_tx));
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "polygon").await.unwrap(), 0);
+}
+
+fn supported_evm_chains() -> Vec<String> {
+    wallet_types::chain::chain::ChainCodes::try_from(wallet_types::constant::chain_type::ETH_TYPE)
+        .unwrap()
+        .0
+        .into_iter()
+        .map(|chain| chain.to_string())
+        .collect()
+}
+
+#[tokio::test]
+async fn self_transfer_all_evm_chains_preserve_signed_lifecycle_and_nonce_zero() {
+    for chain in supported_evm_chains() {
+        let chain = chain.as_str();
+        let pool = setup_api_transaction_pool("self_transfer_evm_lifecycle").await;
+        let mut input = signed();
+        input.chain_code = chain;
+        input.nonce = 0;
+        ApiWithdrawRepo::persist_signed_self_transfer(&pool, &input).await.unwrap();
+        ApiWithdrawRepo::persist_signed_self_transfer(&pool, &input).await.unwrap();
+        assert_eq!(
+            ApiWithdrawRepo::scan_pending_self_transfers(&pool, 0, 10).await.unwrap().len(),
+            1,
+            "{chain}"
+        );
+        assert_eq!(
+            ApiWithdrawRepo::pending_self_transfers_for_sender(&pool, "sender", chain)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(ApiWithdrawRepo::scan_can_broadcast(&pool, 10).await.unwrap().is_empty());
+        assert!(ApiWithdrawRepo::scan_need_recover(&pool, 10).await.unwrap().is_empty());
+        let mut conflicting = signed();
+        conflicting.chain_code = chain;
+        conflicting.nonce = 0;
+        conflicting.raw_tx = "different signed bytes";
+        assert!(ApiWithdrawRepo::persist_signed_self_transfer(&pool, &conflicting).await.is_err());
+        assert_eq!(legacy_account_change(&pool).await, 0);
+        assert!(!claim_rebroadcast(&pool).await);
+        for count in 1..=3 {
+            age_rebroadcast(&pool).await;
+            assert!(claim_rebroadcast(&pool).await, "{chain}");
+            assert_eq!(row(&pool).await.broadcast_uncertain_rebroadcast_count, count);
+        }
+        age_rebroadcast(&pool).await;
+        assert!(!claim_rebroadcast(&pool).await);
+        assert!(
+            ApiWithdrawRepo::mark_self_transfer_accepted(&pool, input.trade_no, input.tx_hash)
+                .await
+                .unwrap()
+        );
+        assert!(row(&pool).await.transaction_time.is_none());
+        let mut receipt = receipt(false);
+        receipt.chain_code = chain;
+        assert!(ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt).await.unwrap());
+        assert!(!ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt).await.unwrap());
+        assert_eq!(legacy_account_change(&pool).await, 0);
+        let final_row = row(&pool).await;
+        assert_eq!(final_row.status, ApiWithdrawStatus::Failure);
+        assert!(final_row.finished_at.is_some());
+        assert!(final_row.chain_failed_at.is_some());
+        assert_eq!(final_row.raw_tx.as_deref(), Some(input.raw_tx));
+        assert_eq!(final_row.nonce, 0);
+        assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", chain).await.unwrap(), 0);
+        assert!(
+            ApiWithdrawRepo::scan_pending_self_transfers(&pool, 0, 10).await.unwrap().is_empty()
+        );
+    }
+}
+
+#[tokio::test]
+async fn self_transfer_all_non_evm_chains_rejected_without_signed_facts() {
+    for chain in ["tron", "btc", "sol", "ltc", "dog", "sui", "ton", "ftm", "unknown"] {
+        let pool = setup_api_transaction_pool("self_transfer_not_evm").await;
+        let mut input = signed();
+        input.chain_code = chain;
+        assert!(ApiWithdrawRepo::persist_signed_self_transfer(&pool, &input).await.is_err());
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM api_withdraws")
+            .fetch_one(pool.read_ref())
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+        let mut receipt = receipt(true);
+        receipt.chain_code = chain;
+        assert!(ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt).await.is_err());
+    }
+}
