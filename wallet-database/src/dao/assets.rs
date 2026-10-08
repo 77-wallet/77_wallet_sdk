@@ -9,6 +9,23 @@ use crate::{
 pub struct AssetsDao;
 use sqlx::{Executor, QueryBuilder, Sqlite};
 
+// Ordinary account rows live in the core DB; API and multisig accounts use
+// separate tables. Any existing token row, regardless of status/symbol, wins.
+const DEFAULT_ASSET_JOINS: &str = "
+    JOIN wallet w ON w.address=a.wallet_address
+    JOIN chain ch ON ch.chain_code=a.chain_code
+    JOIN coin c ON c.chain_code=a.chain_code";
+const DEFAULT_ASSET_ELIGIBLE: &str = "
+    a.status=1 AND w.status=1 AND ch.status=1
+    AND c.is_default=1 AND c.is_del=0 AND c.status=1
+    AND NOT EXISTS (SELECT 1 FROM assets old WHERE old.address=a.address
+        AND old.chain_code=a.chain_code
+        AND COALESCE(old.token_address,'')=COALESCE(c.token_address,''))
+    AND NOT EXISTS (SELECT 1 FROM coin earlier WHERE earlier.chain_code=c.chain_code
+        AND COALESCE(earlier.token_address,'')=COALESCE(c.token_address,'')
+        AND earlier.is_default=1 AND earlier.is_del=0 AND earlier.status=1
+        AND earlier.rowid<c.rowid)";
+
 impl AssetsDao {
     pub async fn list<'a, E>(exec: E) -> Result<Vec<AssetsEntity>, crate::Error>
     where
@@ -436,6 +453,64 @@ impl AssetsDao {
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
+    }
+
+    pub(crate) async fn ordinary_default_asset_upper_bounds(
+        conn: &mut sqlx::SqliteConnection,
+    ) -> Result<(i64, i64), crate::Error> {
+        sqlx::query_as("SELECT COALESCE((SELECT MAX(rowid) FROM account), 0), COALESCE((SELECT MAX(rowid) FROM coin), 0)")
+            .fetch_one(conn).await.map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub(crate) async fn ordinary_default_asset_candidates(
+        conn: &mut sqlx::SqliteConnection,
+        cursor: (i64, i64),
+        upper: (i64, i64),
+    ) -> Result<Vec<(i64, i64)>, crate::Error> {
+        let sql = format!(
+            "SELECT a.rowid, c.rowid FROM account a {DEFAULT_ASSET_JOINS}
+             WHERE {DEFAULT_ASSET_ELIGIBLE}
+             AND (a.rowid > ? OR (a.rowid = ? AND c.rowid > ?))
+             AND a.rowid <= ? AND c.rowid <= ?
+             ORDER BY a.rowid, c.rowid LIMIT 200"
+        );
+        sqlx::query_as(&sql)
+            .bind(cursor.0)
+            .bind(cursor.0)
+            .bind(cursor.1)
+            .bind(upper.0)
+            .bind(upper.1)
+            .fetch_all(conn)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub(crate) async fn insert_ordinary_default_asset_candidates(
+        conn: &mut sqlx::SqliteConnection,
+        candidates: &[(i64, i64)],
+    ) -> Result<u64, crate::Error> {
+        if candidates.is_empty() {
+            return Ok(0);
+        }
+        // At most 200 rows / 400 binds. Recheck current state in the write,
+        // including hidden rows and old symbol/native-NULL representations.
+        let mut query = QueryBuilder::<Sqlite>::new("WITH chosen(account_id, coin_id) AS (");
+        query.push_values(candidates, |mut row, (account, coin)| {
+            row.push_bind(account).push_bind(coin);
+        });
+        query.push(") INSERT INTO assets (name,symbol,decimals,address,chain_code,token_address,protocol,status,is_multisig,balance,created_at,updated_at)
+            SELECT COALESCE(c.name,c.symbol),c.symbol,c.decimals,a.address,a.chain_code,
+            COALESCE(c.token_address,''),COALESCE(c.protocol,''),1,0,'0',
+            strftime('%Y-%m-%dT%H:%M:%SZ','now'),strftime('%Y-%m-%dT%H:%M:%SZ','now')
+            FROM chosen p JOIN account a ON a.rowid=p.account_id ")
+            .push(DEFAULT_ASSET_JOINS).push(" WHERE c.rowid=p.coin_id AND ")
+            .push(DEFAULT_ASSET_ELIGIBLE).push(" ON CONFLICT DO NOTHING");
+        query
+            .build()
+            .execute(conn)
+            .await
+            .map(|result| result.rows_affected())
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     // 插入或更新资产信息

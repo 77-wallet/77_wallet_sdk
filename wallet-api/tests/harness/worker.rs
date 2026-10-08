@@ -111,6 +111,13 @@ impl MockBackendRecorder {
         );
     }
 
+    pub(crate) fn succeed_next_backend_call_with_data(&self, data: serde_json::Value) {
+        let mut state = self.state.lock().expect("mock backend lock poisoned");
+        state.responses.push_back(
+            serde_json::json!({"success":true,"code":"200","msg":"ok","data":data}).to_string(),
+        );
+    }
+
     pub(crate) fn succeed_next_api_backend_call_with_data(&self, data: serde_json::Value) {
         let encrypted = GLOBAL_KEY.encrypt(data.to_string().as_bytes()).expect("encrypt response");
         let key = wallet_utils::bytes_to_base64(&encrypted.key);

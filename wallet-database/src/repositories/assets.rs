@@ -5,9 +5,38 @@ use crate::{
 };
 use sqlx::{Sqlite, Transaction};
 
+#[cfg(test)]
+#[path = "assets/default_assets_tests.rs"]
+mod ordinary_default_assets_tests;
+
 pub struct AssetsRepo;
 
 impl AssetsRepo {
+    /// Add missing default assets without updating existing or hidden rows.
+    pub async fn reconcile_ordinary_default_assets(pool: &CoreDbPool) -> Result<u64, crate::Error> {
+        let upper = {
+            let mut conn = pool.write_ref().acquire().await.map_err(crate::DatabaseError::from)?;
+            AssetsDao::ordinary_default_asset_upper_bounds(&mut conn).await?
+        };
+        let mut cursor = (0, 0);
+        let mut inserted = 0;
+        loop {
+            // Release the gate/connection after each bounded write. Cancellation
+            // leaves completed pages durable and the next run starts idempotently.
+            let _guard = pool.lock_write_with_metric("ordinary_default_assets").await;
+            let mut conn = pool.write_ref().acquire().await.map_err(crate::DatabaseError::from)?;
+            let candidates =
+                AssetsDao::ordinary_default_asset_candidates(&mut conn, cursor, upper).await?;
+            let Some(last) = candidates.last().copied() else {
+                break;
+            };
+            inserted +=
+                AssetsDao::insert_ordinary_default_asset_candidates(&mut conn, &candidates).await?;
+            cursor = last;
+        }
+        Ok(inserted)
+    }
+
     pub async fn get_coin_assets_in_address(
         pool: &CoreDbPool,
         address: Vec<String>,

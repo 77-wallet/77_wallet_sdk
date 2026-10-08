@@ -170,3 +170,24 @@ The earlier Rust `Value` classifier is removed. Generic recovery selection, rete
 `remark_routing_and_retention_are_compatible_for_all_json_owner_types` now covers21 forms × states0–4, including both duplicate directions, escaped keys,140 layers and1e999. The actual default-dispatch fixture deliberately does not pre-classify metadata;20 external unknown-name rows must survive direct dispatch, startup recovery selection and aged cleanup unchanged. Same-coordinator12-failure regression additionally routes owned registration records into the live default dispatcher and asserts exactly one backend attempt per iteration. Historical red exit101 is retained in `api-A-boundary-p2-red.log`; fresh final results/manifests and independent follow-up review are separate root-target artifacts.
 
 - 补链观测：chain::recovery 单元断言日志 ID 为摘要，错误仅固定分类/数字码，不回显动态敏感文本；chain_sync 验证新增日志不改变持久恢复语义。分页/退避/拆批/完成日志在对应持久操作成功后记录，扫描完成不代表后台注册完成。
+
+
+## Ordinary default assets after catalog sync (2026-10-08)
+
+Approved scope: successful ordinary `CoinService::pull_hot_coins` reconciles missing default assets for existing active ordinary accounts. No key derivation, address registration, API/multisig account query, backend default changes or real-wallet operations. Eligibility requires active wallet/account/chain and `coin.is_default=1, is_del=0, status=1`. Existing ordinary initialization query is unchanged.
+
+Any existing address/chain/token asset (including status0 manual removals, multisig rows, old symbol and NULL native representations) blocks insertion. Insert-only writes preserve all old asset values. Duplicate catalog symbols for one token produce one asset. The existing coin precision-repair owner remains unchanged; this reconciliation does not perform precision or balance updates.
+
+| Invariant | Regression |
+| --- | --- |
+| New default token is added with zero balance to an existing account; repeat leaves saved row unchanged | `ordinary_default_assets_insert_existing_account_token_and_repeat_is_noop` |
+| Non-default/deleted/disabled coins, disabled wallet/account/chain and nonmatching chains excluded | `ordinary_default_assets_filter_coin_and_account_scope`, `ordinary_default_assets_disabled_chain_and_multisig_only_address_are_excluded` |
+| Soft removals, saved balances/status/timestamps and existing multisig rows never overwritten/reactivated | `ordinary_default_assets_preserve_hidden_balances_and_multisig_even_with_old_symbol`, `ordinary_default_assets_multiple_pages_and_concurrent_runs_are_idempotent` |
+| 200-candidate/400-bind pages complete451 accounts; concurrent runs do not duplicate; failed write page retry completes without losing prior pages | `ordinary_default_assets_multiple_pages_and_concurrent_runs_are_idempotent`, `ordinary_default_assets_failed_page_preserves_prior_pages_and_retry_completes` |
+| A hidden row or disabled account introduced after selection is honored at insert; catalog token aliases deduplicated | `ordinary_default_assets_recheck_hidden_and_disabled_between_selection_and_insert`, `ordinary_default_assets_same_token_aliases_create_one_row` |
+| No assets before last backend page; successful completion fills, emits one refresh, repeat emits no additional refresh; API table unchanged | `ordinary_default_assets_wait_for_last_page_then_fill_and_repeat_safely` |
+| Failed last page, failed catalog completion or cancellation do not fill/notify early; next successful sync completes | `ordinary_default_assets_failed_later_page_writes_no_partial_assets_or_coins`, `ordinary_default_assets_failed_catalog_completion_defers_fill_until_retry`, `ordinary_default_assets_cancelled_last_page_does_not_write_or_notify` |
+
+Account/coin rowid upper bounds and keyset cursor keep candidate memory bounded; each write statement inserts at most200 rows. Completed pages survive interruption and a retry re-evaluates current DB facts. Rows added beyond the captured upper bounds or made eligible behind the cursor are deferred to a later successful sync. Existing metadata out-of-order semantics are unchanged; no stale result overwrites asset state. Frontend refresh delivery is best effort after durable rows, not a durable notification protocol.
+
+Validation is offline SQLite and local HTTP fakes.451 synthetic ordinary accounts is bounded regression evidence, not500k scale acceptance. No App/device/end-to-end or real backend/chain acceptance claimed.

@@ -13,6 +13,7 @@ use crate::{
             task::Tasks,
         },
     },
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     response_vo::standard_wallet::coin::{TokenCurrencies, TokenPriceChangeRes},
 };
 use wallet_database::{
@@ -152,6 +153,17 @@ impl CoinService {
         CoinRepo::multi_update_swappable(swap_coins, &core_pool).await?;
 
         let _e = CoinService::delete_wsol_error(&core_pool).await;
+
+        // All catalog pages and metadata writes succeeded. Read current DB
+        // defaults and only add missing ordinary assets; never reactivate hidden rows.
+        let inserted = AssetsRepo::reconcile_ordinary_default_assets(&core_pool).await?;
+        if inserted > 0 {
+            if let Err(error) =
+                FrontendNotifyEvent::new(NotifyEvent::SyncAssets).send_with_ctx(self.ctx).await
+            {
+                tracing::warn!(%error, "default assets persisted but frontend refresh notification failed");
+            }
+        }
 
         Ok(())
     }

@@ -4,3 +4,5 @@ mod backend;
 mod chain;
 mod multisig_account;
 mod node;
+
+mod ordinary_default_assets;
