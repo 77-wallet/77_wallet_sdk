@@ -6,6 +6,10 @@ pub async fn initialize(ctx: &'static Context) -> Result<(), ServiceError> {
     crate::domain::api_wallet::chain::ApiChainDomain::init_api_chain_info(ctx).await
 }
 
+pub async fn pull_ordinary_coins(ctx: &'static Context) -> Result<(), ServiceError> {
+    crate::service::coin::CoinService::new(ctx).pull_hot_coins().await
+}
+
 pub async fn pull_coins(ctx: &'static Context) -> Result<(), ServiceError> {
     crate::domain::api_wallet::coin::ApiCoinDomain::pull_api_coins(ctx).await.map(|_| ())
 }
