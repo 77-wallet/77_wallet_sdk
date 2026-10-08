@@ -587,6 +587,9 @@ impl Tx for EthTx {
         Ok(res)
     }
 
+    /// Legacy direct-sign-and-send entry point, retained for compatibility.
+    /// Production EVM flows should use `build_transfer_raw`, persist the signed raw
+    /// transaction and hash, then broadcast through their durable flow owner.
     async fn transfer(
         &self,
         params: &ApiTransferReq,
