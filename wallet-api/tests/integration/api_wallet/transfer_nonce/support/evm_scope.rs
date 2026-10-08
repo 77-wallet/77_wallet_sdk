@@ -36,6 +36,49 @@ impl EvmTransferScenario {
     pub(crate) async fn given_persistence_fails(&self) -> anyhow::Result<()> {
         db::reject_signed_persistence(self.env, &self.from).await
     }
+    pub(crate) fn given_build_blocks(&self) {
+        self.adapter.block_build(true);
+    }
+    pub(crate) async fn then_build_has_entered(&self) {
+        self.adapter.wait_for_first_entry().await;
+    }
+    pub(crate) fn when_build_is_released(&self) {
+        self.adapter.block_build(false);
+        self.adapter.release_first();
+    }
+    pub(crate) fn when_transfer_starts(&self) -> super::scenario::TransferTask {
+        let req = request::make_evm_transfer_req(&self.from, &self.chain);
+        let manager = &self.env.manager;
+        tokio::spawn(async move {
+            manager
+                .api_transfer_with_preloaded_private_key(req, "00".into())
+                .await
+                .map(|r| r.tx_hash)
+        })
+    }
+    pub(crate) async fn when_foreign_nonce_is_allocated(&self) -> anyhow::Result<i32> {
+        let engine = wallet_api::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(
+            self.env.manager.ctx(),
+        )?;
+        Ok(engine.allocate_nonce_synced(&self.from, &self.chain).await?)
+    }
+    pub(crate) async fn then_nonce_floor_is(&self, floor: i64) -> anyhow::Result<()> {
+        let pool = db::open_api_transaction_pool(&self.env.db_dir).await;
+        assert_eq!(ApiNonceRepo::get_api_nonce(&pool, &self.from, &self.chain).await?, floor);
+        Ok(())
+    }
+    pub(crate) fn given_build_fails(&self, fail: bool) {
+        self.adapter.fail_build(fail);
+    }
+    pub(crate) async fn given_persistence_recovers(&self) -> anyhow::Result<()> {
+        db::allow_signed_persistence(self.env, &self.from).await
+    }
+    pub(crate) async fn then_pre_send_failure_has_no_reservation(&self) -> anyhow::Result<()> {
+        self.then_nothing_was_sent_or_saved().await?;
+        let pool = db::open_api_transaction_pool(&self.env.db_dir).await;
+        assert_eq!(ApiNonceRepo::get_api_nonce(&pool, &self.from, &self.chain).await?, 0);
+        Ok(())
+    }
     pub(crate) fn given_timeout(&self) {
         self.adapter.timeout_transfer();
     }

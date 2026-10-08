@@ -230,9 +230,11 @@ an actual receipt fee. Non-EVM transfer paths keep their existing implementation
 - Existing failure/recovery and timeout cases now also assert exact durable raw
   and hash. Chain nonce progress allows a new send without marking the earlier
   uncertain transaction confirmed.
-- `ordinary_transfer_signed_persistence_failure_never_sends`: failed pre-send DB
-  insert leaves no signed row and no broadcast. Reservation remains; retry at
-  the unchanged node nonce fails closed.
+- `ordinary_transfer_signed_persistence_failure_never_sends`: signed insert
+  failure rolls back the candidate reservation and leaves the preexisting floor
+  unchanged. Repeating the call reaches persistence again; no signed row or
+  broadcast exists. The observed next nonce is never written before construction.
+
 - `ordinary_transfer_invisible_submission_stays_uncertain`: a returned hash
   without node visibility preserves uncertainty rather than reporting success.
 - `ordinary_transfer_wrong_response_hash_cannot_mark_accepted`: mismatched hash
@@ -410,3 +412,45 @@ Validation: database self_transfer; API integration ordinary_transfer_observer_.
 No live account balances or simulator database are changed by the repair.
 Checkpoint results: 16 database cases, 3 observer/detail integration cases, and
 3 existing acct_change asset synchronization cases passed; formatting/diff clean.
+
+## Reused manual signed nonce candidates (2026-10-08)
+
+Reuses historical `75333dcb4` repository transaction and `5b6f1a623` manual
+observation/application wiring on baseline `462dfa44`; preserves current eight-EVM
+classification from `23c6d5b3`. No owner schema, indexes, cleanup/reset API, Core
+changes or queued-flow strategy changes.
+
+Manual flow: existing sender gate -> read chain next/local floor without mutation
+-> build -> writer transaction recheck floor + immutable raw/hash insert + nonce
+floor -> successful commit -> broadcast. Stale/foreign candidates fail without
+saving or sending. The original persist method retains its idempotent contract.
+
+- `candidate_nonce_all_evm_build_failure_can_retry_without_gap` and
+  `candidate_nonce_all_evm_persistence_failure_can_retry_without_gap`: all eight
+  EVM chains leave original floor0/no row/no send on injected pre-send error;
+  a later success uses the same observed nonce1 and persists signed facts first.
+- `candidate_nonce_cancelled_build_remains_available`: controlled blocked builder
+  cancellation leaves floor0, no signed row/send; subsequent call succeeds.
+- `candidate_nonce_foreign_allocation_during_build_never_sends`: foreign allocator
+  consumes nonce1 while manual builder is blocked; write-side candidate recheck
+  rejects manual signed insert, preserves foreign floor1, and sends nothing.
+- Database `self_transfer_candidate_*` tests reuse historical commit, insert
+  rollback, stale candidate and competing writer cases. Added eight-chain nonce0
+  validates signed raw/uncertainty and nonce are committed together. Existing
+  `self_transfer_*` tests protect identity, immutable bytes, restart, receipts and
+  original persist idempotency.
+
+Validation:
+`cargo test --offline -p wallet-database --lib self_transfer` and
+`cargo test --offline -p wallet-api --test mod --features integration-tests transfer_nonce`.
+Real temporary SQLite and fake chain only; no live wallets/backend/publicRPC.
+
+Cancellation/crash before persistence creates no reservation. During transaction,
+rollback leaves neither new signed facts nor a new floor; actual commit leaves
+both. Commit driver ambiguity is assessed from this transaction boundary, not
+injected at the driver. Application cannot send on a failed persistence return;
+existing signed observer can recover committed facts. Signed/uncertain sends and
+historical bare reservations are never automatically released. Individual process
+kill/serialization/pool errors are not injected. Existing nonce exact-set API and
+queued observation helper are unchanged; their old false-only reject_gap branches
+are left outside this minimal reuse rather than mixing optional cleanup.

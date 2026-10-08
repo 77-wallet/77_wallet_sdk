@@ -52,6 +52,24 @@ impl ApiWithdrawRepo {
         pool: &ApiTransactionDbPool,
         input: &SignedSelfTransfer<'_>,
     ) -> Result<(), crate::Error> {
+        Self::save_signed_self_transfer(pool, input, false).await
+    }
+
+    /// Reserve a previously unallocated candidate and save its signed bytes in
+    /// one transaction. A stale candidate fails without leaving a transaction row.
+    /// Caller must only broadcast after this method succeeds.
+    pub async fn reserve_signed_self_transfer(
+        pool: &ApiTransactionDbPool,
+        input: &SignedSelfTransfer<'_>,
+    ) -> Result<(), crate::Error> {
+        Self::save_signed_self_transfer(pool, input, true).await
+    }
+
+    async fn save_signed_self_transfer(
+        pool: &ApiTransactionDbPool,
+        input: &SignedSelfTransfer<'_>,
+        reserve_candidate: bool,
+    ) -> Result<(), crate::Error> {
         if !is_signed_evm_chain(input.chain_code)
             || input.nonce < 0
             || input.trade_no.is_empty()
@@ -64,6 +82,22 @@ impl ApiWithdrawRepo {
         }
         let mut tx =
             pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        if reserve_candidate {
+            // First acquire SQLite's writer lock. Other allocators use the same
+            // counter row, so no allocation can slip between this check and commit.
+            let last = ApiNonceDao::upsert_nonce_floor(
+                &mut *tx,
+                input.from_addr,
+                input.chain_code,
+                input.nonce - 1,
+            )
+            .await?;
+            if last >= input.nonce {
+                return Err(crate::Error::Other(
+                    "ordinary transfer nonce candidate conflict".into(),
+                ));
+            }
+        }
         ApiWithdrawDao::insert_signed_self_transfer(&mut *tx, input).await?;
         let row = ApiWithdrawDao::get_api_withdraw_by_trade_no(
             &mut *tx,

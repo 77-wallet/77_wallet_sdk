@@ -295,7 +295,7 @@ impl ApiTransferApplication {
             let pool = self.ctx.api_transaction_pool()?;
             // Persist all signed facts before the first send; a timeout or crash
             // must leave the same bytes available for later reconciliation.
-            ApiWithdrawRepo::persist_signed_self_transfer(
+            ApiWithdrawRepo::reserve_signed_self_transfer(
                 &pool,
                 &SignedSelfTransfer {
                     trade_no: &trade_no,
@@ -370,7 +370,7 @@ impl ApiTransferApplication {
 
     async fn get_evm_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
         let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-        let nonce = nonce_engine.allocate_ordinary_transfer_nonce(from_addr, chain_code).await?;
+        let nonce = nonce_engine.observe_ordinary_transfer_nonce(from_addr, chain_code).await?;
         Ok(nonce as i64)
     }
 

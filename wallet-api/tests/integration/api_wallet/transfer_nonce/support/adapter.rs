@@ -20,6 +20,8 @@ struct RecordingAdapterState {
     recorded_nonces: Mutex<Vec<u64>>,
     recorded_raw: Mutex<Vec<Vec<u8>>>,
     build_calls: AtomicUsize,
+    fail_build: AtomicBool,
+    block_build: AtomicBool,
     canonical_hash: AtomicBool,
     nonce_sender: Mutex<Option<String>>,
     visibility_error: AtomicBool,
@@ -80,6 +82,13 @@ impl RecordingEthAdapter {
         self.state.invisible_transfer.store(!visible, Ordering::SeqCst);
         self.state.visibility_error.store(error, Ordering::SeqCst);
     }
+    pub(crate) fn block_build(&self, block: bool) {
+        self.state.block_build.store(block, Ordering::SeqCst);
+    }
+    pub(crate) fn fail_build(&self, fail: bool) {
+        self.state.fail_build.store(fail, Ordering::SeqCst);
+    }
+
     pub(crate) fn build_calls(&self) -> usize {
         self.state.build_calls.load(Ordering::SeqCst)
     }
@@ -286,6 +295,14 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         _private_key: wallet_chain_interact::types::ChainPrivateKey,
     ) -> Result<(String, wallet_api::domain::api_wallet::RawTx, String), ServiceError> {
         self.state.build_calls.fetch_add(1, Ordering::SeqCst);
+        if self.state.block_build.load(Ordering::SeqCst) {
+            self.state.first_entered.store(true, Ordering::SeqCst);
+            self.state.entered_notify.notify_waiters();
+            self.state.release_first.notified().await;
+        }
+        if self.state.fail_build.load(Ordering::SeqCst) {
+            return Err(ServiceError::Parameter("simulated pre-send build failure".into()));
+        }
         Ok((
             self.tx_hash(params.nonce),
             wallet_api::domain::api_wallet::RawTx::Evm(

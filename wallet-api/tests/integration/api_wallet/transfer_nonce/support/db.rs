@@ -167,3 +167,16 @@ pub(crate) async fn overwrite_legacy_status(
         .await?;
     Ok(())
 }
+
+pub(crate) async fn allow_signed_persistence(
+    env: &harness::TestEnv,
+    address: &str,
+) -> anyhow::Result<()> {
+    let pool = open_api_transaction_pool(&env.db_dir).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'reject_signed_%' AND instr(sql, ?) > 0")
+        .bind(address).fetch_all(pool.read_ref()).await?;
+    for name in names {
+        sqlx::query(&format!("DROP TRIGGER {}", name)).execute(pool.write_ref()).await?;
+    }
+    Ok(())
+}

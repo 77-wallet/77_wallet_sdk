@@ -457,8 +457,8 @@ async fn ordinary_transfer_signed_persistence_failure_never_sends() -> anyhow::R
     let retry = scenario.when().transfer_fails().await;
 
     assert!(error.to_string().contains("simulated signed persistence failure"));
-    assert!(retry.to_string().contains("nonce_gap_requires_recovery"));
-    scenario.then_transfer_nonces_and_floor_are(&[], 4).await;
+    assert!(retry.to_string().contains("simulated signed persistence failure"));
+    scenario.then_transfer_nonces_and_floor_are(&[], 0).await;
     scenario.then_no_signed_transfer_exists().await?;
     Ok(())
 }
@@ -791,5 +791,81 @@ async fn api_wallet_transfer_nonce_new_evm_timeout_recovers_from_failed_receipt_
         scenario.when_receipt_is_observed(false).await?;
         scenario.then_confirmed_without_resend(false).await?;
     }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn candidate_nonce_all_evm_build_failure_can_retry_without_gap() -> anyhow::Result<()> {
+    for chain in support::evm_chain_codes() {
+        let scenario = support::EvmTransferScenario::given_chain(&chain).await?;
+        scenario.given_build_fails(true);
+        assert!(
+            scenario
+                .when_transfer_runs()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("pre-send build failure")
+        );
+        scenario.then_pre_send_failure_has_no_reservation().await?;
+        scenario.given_build_fails(false);
+        scenario.when_transfer_runs().await?;
+        scenario.then_signed_fact_and_send_are(true).await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn candidate_nonce_all_evm_persistence_failure_can_retry_without_gap() -> anyhow::Result<()> {
+    for chain in support::evm_chain_codes() {
+        let scenario = support::EvmTransferScenario::given_chain(&chain).await?;
+        scenario.given_persistence_fails().await?;
+        assert!(
+            scenario
+                .when_transfer_runs()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("signed persistence failure")
+        );
+        scenario.then_pre_send_failure_has_no_reservation().await?;
+        scenario.given_persistence_recovers().await?;
+        scenario.when_transfer_runs().await?;
+        scenario.then_signed_fact_and_send_are(true).await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn candidate_nonce_cancelled_build_remains_available() -> anyhow::Result<()> {
+    let scenario = support::EvmTransferScenario::given_chain("polygon").await?;
+    scenario.given_build_blocks();
+    let attempt = scenario.when_transfer_starts();
+    scenario.then_build_has_entered().await;
+    attempt.abort();
+    assert!(attempt.await.unwrap_err().is_cancelled());
+    scenario.when_build_is_released();
+    scenario.then_nonce_floor_is(0).await?;
+    scenario.then_nothing_was_sent_or_saved().await?;
+    scenario.when_transfer_runs().await?;
+    scenario.then_signed_fact_and_send_are(true).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn candidate_nonce_foreign_allocation_during_build_never_sends() -> anyhow::Result<()> {
+    let scenario = support::EvmTransferScenario::given_chain("polygon").await?;
+    scenario.given_build_blocks();
+    let attempt = scenario.when_transfer_starts();
+    scenario.then_build_has_entered().await;
+    assert_eq!(scenario.when_foreign_nonce_is_allocated().await?, 1);
+    scenario.when_build_is_released();
+    assert!(attempt.await?.unwrap_err().to_string().contains("nonce candidate conflict"));
+    scenario.then_nonce_floor_is(1).await?;
+    scenario.then_nothing_was_sent_or_saved().await?;
     Ok(())
 }

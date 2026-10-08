@@ -614,3 +614,72 @@ async fn self_transfer_all_non_evm_chains_rejected_without_signed_facts() {
         assert!(ApiWithdrawRepo::confirm_self_transfer_receipt(&pool, &receipt).await.is_err());
     }
 }
+
+#[tokio::test]
+async fn self_transfer_candidate_commits_nonce_with_raw() {
+    let pool = setup_api_transaction_pool("self_transfer_candidate").await;
+    ApiWithdrawRepo::reserve_signed_self_transfer(&pool, &signed()).await.unwrap();
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "eth").await.unwrap(), 4);
+    assert_eq!(row(&pool).await.raw_tx.as_deref(), Some("signed-bytes-4"));
+}
+
+#[tokio::test]
+async fn self_transfer_stale_candidate_leaves_no_signed_row() {
+    let pool = setup_api_transaction_pool("self_transfer_candidate").await;
+    ApiNonceRepo::allocate_next_nonce(&pool, "sender", "eth", 4).await.unwrap();
+    assert!(ApiWithdrawRepo::reserve_signed_self_transfer(&pool, &signed()).await.is_err());
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "eth").await.unwrap(), 4);
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM api_withdraws")
+        .fetch_one(pool.read_ref())
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn self_transfer_failed_insert_rolls_back_candidate_counter() {
+    let pool = setup_api_transaction_pool("self_transfer_candidate").await;
+    sqlx::query("CREATE TRIGGER reject_signed BEFORE INSERT ON api_withdraws BEGIN SELECT RAISE(ABORT, 'injected failure'); END")
+        .execute(pool.write_ref()).await.unwrap();
+    assert!(ApiWithdrawRepo::reserve_signed_self_transfer(&pool, &signed()).await.is_err());
+    assert_eq!(ApiNonceRepo::get_api_nonce_optional(&pool, "sender", "eth").await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn self_transfer_competing_candidates_only_one_commits() {
+    let pool = setup_api_transaction_pool("self_transfer_competing").await;
+    let first = signed();
+    let mut second = signed();
+    second.trade_no = "competing";
+    second.tx_hash = "other-hash";
+    second.raw_tx = "other-bytes";
+    let (a, b) = tokio::join!(
+        ApiWithdrawRepo::reserve_signed_self_transfer(&pool, &first),
+        ApiWithdrawRepo::reserve_signed_self_transfer(&pool, &second),
+    );
+    assert_ne!(a.is_ok(), b.is_ok());
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM api_withdraws")
+        .fetch_one(pool.read_ref())
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "eth").await.unwrap(), 4);
+}
+
+#[tokio::test]
+async fn self_transfer_candidate_all_evm_zero_nonce_commits_signed_facts() {
+    for chain in supported_evm_chains() {
+        let pool = setup_api_transaction_pool("self_transfer_candidate_evm_zero").await;
+        let mut input = signed();
+        input.chain_code = &chain;
+        input.nonce = 0;
+        ApiWithdrawRepo::reserve_signed_self_transfer(&pool, &input).await.unwrap();
+        let saved = row(&pool).await;
+        assert_eq!(saved.chain_code, chain);
+        assert_eq!(saved.nonce, 0);
+        assert_eq!(saved.raw_tx.as_deref(), Some(input.raw_tx));
+        assert!(saved.broadcast_uncertain_since_at.is_some());
+        assert!(saved.last_broadcast_at.is_none());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", &chain).await.unwrap(), 0);
+    }
+}
