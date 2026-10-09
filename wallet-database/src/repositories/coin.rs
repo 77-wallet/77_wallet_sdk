@@ -12,6 +12,8 @@ use crate::{
 };
 
 pub struct CoinRepo;
+#[cfg(test)]
+mod catalog_metadata_tests;
 #[path = "coin/precision.rs"]
 mod precision;
 #[cfg(test)]

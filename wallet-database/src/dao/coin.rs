@@ -423,7 +423,7 @@ impl CoinDao {
                 .push_bind(coin.status)
                 .push_bind(swappable)
                 .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
-                .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true));
+                .push_bind(coin.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true));
         });
         // query_builder.push(" on conflict (id) do update set updated_at = excluded.updated_at");
         query_builder.push(
