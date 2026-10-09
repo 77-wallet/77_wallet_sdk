@@ -37,6 +37,30 @@ impl ApiTransDomain {
         raw: RawTx,
         expected_tx_hash: Option<&str>,
     ) -> Result<Option<TransferResp>, ServiceError> {
+        Self::broadcast_transfer_with_policy(ctx, chain_code, raw, expected_tx_hash, false).await
+    }
+
+    /// A matching node acknowledgment is submission, not a successful receipt.
+    /// Only the ordinary signed EVM initial-send owner selects this policy;
+    /// duplicate errors and unknown send results retain the visibility guard.
+    pub(crate) async fn broadcast_signed_self_transfer_with_ctx(
+        ctx: &'static Context,
+        chain_code: &str,
+        raw: RawTx,
+        expected_tx_hash: &str,
+    ) -> Result<Option<TransferResp>, ServiceError> {
+        Self::broadcast_transfer_with_policy(ctx, chain_code, raw, Some(expected_tx_hash), true)
+            .await
+    }
+
+    async fn broadcast_transfer_with_policy(
+        ctx: &'static Context,
+        chain_code: &str,
+        raw: RawTx,
+        expected_tx_hash: Option<&str>,
+        accept_matching_evm_ack: bool,
+    ) -> Result<Option<TransferResp>, ServiceError> {
+        let is_evm_raw = matches!(&raw, RawTx::Evm(..));
         let start_time = Instant::now();
         tracing::info!("broadcast_transfer (开始): 链: {}, 时间: {:?}", chain_code, start_time);
 
@@ -116,7 +140,22 @@ impl ApiTransDomain {
             };
 
             let resp = match adapter.broadcast_transfer(raw_for_broadcast).await {
-                Ok(resp) => resp,
+                Ok(resp) => {
+                    if accept_matching_evm_ack && is_evm_raw {
+                        let expected = expected_tx_hash.expect("signed submission requires hash");
+                        if !resp.tx_hash.eq_ignore_ascii_case(expected) {
+                            return Err(ServiceError::Parameter(format!(
+                                "transfer_broadcast_hash_mismatch: expected={expected}"
+                            )));
+                        }
+                        chain_rpc_guard::record_success_for_chain_code_with_ctx(ctx, chain_code)
+                            .await;
+                        tracing::info!(chain_code=%chain_code, tx_hash=%resp.tx_hash,
+                            "ordinary signed EVM transaction submitted; receipt pending");
+                        return Ok(Some(resp));
+                    }
+                    resp
+                }
                 Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
                     auth_retry_attempted = true;
                     rpc_auth_retry_mechanism::refresh_rpc_auth_and_prepare_retry(

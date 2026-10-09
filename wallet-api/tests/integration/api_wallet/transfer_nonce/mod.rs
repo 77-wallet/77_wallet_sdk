@@ -465,7 +465,7 @@ async fn ordinary_transfer_signed_persistence_failure_never_sends() -> anyhow::R
 
 #[tokio::test]
 #[serial]
-async fn ordinary_transfer_invisible_submission_stays_uncertain() -> anyhow::Result<()> {
+async fn ordinary_transfer_invisible_submission_returns_accepted_hash() -> anyhow::Result<()> {
     let scenario = TransferNonceScenario::new().await;
     scenario.given().bnb_transfer_fixture().await?;
     scenario.given().fake_chain_adapter();
@@ -473,11 +473,11 @@ async fn ordinary_transfer_invisible_submission_stays_uncertain() -> anyhow::Res
     scenario.given_chain_next_nonce(Some(4));
     scenario.given_transfer_is_invisible();
 
-    let error = scenario.when().transfer_fails().await;
+    let hash = scenario.when().transfer_starts().await??;
 
-    assert!(error.to_string().contains("transfer_broadcast_uncertain"));
+    assert_eq!(hash, format!("0x{:064x}", 4));
     scenario.then_transfer_nonces_and_floor_are(&[4], 4).await;
-    scenario.then_durable_transfer_is(4, false).await?;
+    scenario.then_durable_transfer_is(4, true).await?;
     Ok(())
 }
 
@@ -867,5 +867,90 @@ async fn candidate_nonce_foreign_allocation_during_build_never_sends() -> anyhow
     assert!(attempt.await?.unwrap_err().to_string().contains("nonce candidate conflict"));
     scenario.then_nonce_floor_is(1).await?;
     scenario.then_nothing_was_sent_or_saved().await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_avalanche_ack_survives_visibility_error() -> anyhow::Result<()> {
+    let scenario = support::EvmTransferScenario::given_chain("avalanche").await?;
+    scenario.given_visibility(false, true);
+
+    let hash = scenario.when_transfer_runs().await?;
+
+    assert_eq!(hash, scenario.expected_hash());
+    scenario.then_signed_fact_and_send_are(true).await?;
+    scenario.when_receipt_is_observed(true).await?;
+    scenario.then_confirmed_without_resend(true).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_avalanche_ack_survives_not_yet_visible() -> anyhow::Result<()> {
+    let scenario = support::EvmTransferScenario::given_chain("avalanche").await?;
+    scenario.given_visibility(false, false);
+
+    let hash = scenario.when_transfer_runs().await?;
+
+    assert_eq!(hash, scenario.expected_hash());
+    scenario.then_signed_fact_and_send_are(true).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_avalanche_wrong_hash_with_visibility_error_stays_unaccepted()
+-> anyhow::Result<()> {
+    let scenario = support::EvmTransferScenario::given_chain("avalanche").await?;
+    scenario.given_hash_mismatch();
+    scenario.given_visibility(false, true);
+
+    let error = scenario.when_transfer_runs().await.unwrap_err();
+
+    assert!(error.to_string().contains("transfer_broadcast_hash_mismatch"));
+    scenario.then_signed_fact_and_send_are(false).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_avalanche_ack_survives_visibility_tls_error() -> anyhow::Result<()> {
+    let scenario = support::EvmTransferScenario::given_chain("avalanche").await?;
+    scenario.given_visibility_tls_error();
+
+    let hash = scenario.when_transfer_runs().await?;
+
+    assert_eq!(hash, scenario.expected_hash());
+    scenario.then_signed_fact_and_send_are(true).await?;
+    scenario.then_no_visibility_query_was_needed();
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn ordinary_transfer_avalanche_duplicate_without_visibility_stays_uncertain()
+-> anyhow::Result<()> {
+    let scenario = support::EvmTransferScenario::given_chain("avalanche").await?;
+    scenario.given_duplicate_broadcast();
+    scenario.given_visibility(false, false);
+
+    let error = scenario.when_transfer_runs().await.unwrap_err();
+
+    assert!(error.to_string().contains("transfer_broadcast_uncertain"));
+    scenario.then_signed_fact_and_send_are(false).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn shared_broadcast_matching_hash_without_visibility_preserves_guard() -> anyhow::Result<()> {
+    let scenario = support::EvmTransferScenario::given_chain("avalanche").await?;
+    scenario.given_visibility(false, false);
+
+    let accepted = scenario.when_shared_broadcast_runs().await?;
+
+    assert!(!accepted);
+    scenario.then_visibility_queries_are(3);
     Ok(())
 }

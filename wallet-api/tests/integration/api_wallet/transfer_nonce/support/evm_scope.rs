@@ -79,6 +79,40 @@ impl EvmTransferScenario {
         assert_eq!(ApiNonceRepo::get_api_nonce(&pool, &self.from, &self.chain).await?, 0);
         Ok(())
     }
+    pub(crate) fn given_visibility_tls_error(&self) {
+        self.adapter.fail_visibility_with_tls();
+    }
+    pub(crate) fn then_no_visibility_query_was_needed(&self) {
+        assert_eq!(self.adapter.visibility_queries(), 0);
+    }
+    pub(crate) fn given_visibility(&self, visible: bool, error: bool) {
+        self.adapter.set_visibility(visible, error);
+    }
+    pub(crate) fn given_duplicate_broadcast(&self) {
+        self.adapter.duplicate_transfer();
+    }
+    pub(crate) fn given_hash_mismatch(&self) {
+        self.adapter.mismatch_hash();
+    }
+    pub(crate) async fn when_shared_broadcast_runs(&self) -> anyhow::Result<bool> {
+        let response = wallet_api::testkit::withdraw::broadcast_transfer_for_test(
+            self.env.manager.ctx(),
+            &self.chain,
+            wallet_api::domain::api_wallet::RawTx::Evm(
+                1_u64.to_be_bytes().to_vec(),
+                alloy::primitives::U256::ZERO,
+            ),
+            &self.expected_hash(),
+        )
+        .await?;
+        Ok(response.is_some())
+    }
+    pub(crate) fn then_visibility_queries_are(&self, count: usize) {
+        assert_eq!(self.adapter.visibility_queries(), count);
+    }
+    pub(crate) fn expected_hash(&self) -> String {
+        self.adapter.tx_hash(1)
+    }
     pub(crate) fn given_timeout(&self) {
         self.adapter.timeout_transfer();
     }

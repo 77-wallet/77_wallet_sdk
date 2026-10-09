@@ -315,11 +315,11 @@ impl ApiTransferApplication {
                 },
             )
             .await?;
-            let response = ApiTransDomain::broadcast_transfer(
+            let response = ApiTransDomain::broadcast_signed_self_transfer_with_ctx(
                 self.ctx,
                 &params.base.chain_code,
                 raw,
-                Some(&tx_hash),
+                &tx_hash,
             )
             .await?;
             let Some(response) = response else {

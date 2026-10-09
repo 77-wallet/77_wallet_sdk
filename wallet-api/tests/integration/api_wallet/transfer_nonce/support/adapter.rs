@@ -25,6 +25,8 @@ struct RecordingAdapterState {
     canonical_hash: AtomicBool,
     nonce_sender: Mutex<Option<String>>,
     visibility_error: AtomicBool,
+    visibility_tls_error: AtomicBool,
+    visibility_queries: AtomicUsize,
 
     receipt_behavior: Mutex<Option<(String, i8)>>,
     receipt_queries: AtomicUsize,
@@ -37,6 +39,7 @@ struct RecordingAdapterState {
     timeout_transfer: AtomicBool,
     invisible_transfer: AtomicBool,
     mismatch_hash: AtomicBool,
+    duplicate_transfer: AtomicBool,
     block_first: AtomicBool,
     hang_send: AtomicBool,
     release_first: Notify,
@@ -77,6 +80,12 @@ impl RecordingEthAdapter {
         } else {
             format!("0x{nonce:064x}")
         }
+    }
+    pub(crate) fn fail_visibility_with_tls(&self) {
+        self.state.visibility_tls_error.store(true, Ordering::SeqCst);
+    }
+    pub(crate) fn visibility_queries(&self) -> usize {
+        self.state.visibility_queries.load(Ordering::SeqCst)
     }
     pub(crate) fn set_visibility(&self, visible: bool, error: bool) {
         self.state.invisible_transfer.store(!visible, Ordering::SeqCst);
@@ -122,6 +131,9 @@ impl RecordingEthAdapter {
         self.state.invisible_transfer.store(true, Ordering::SeqCst);
     }
 
+    pub(crate) fn duplicate_transfer(&self) {
+        self.state.duplicate_transfer.store(true, Ordering::SeqCst);
+    }
     pub(crate) fn mismatch_hash(&self) {
         self.state.mismatch_hash.store(true, Ordering::SeqCst);
     }
@@ -181,6 +193,9 @@ impl RecordingEthAdapter {
             return Err(ServiceError::Parameter("simulated transfer failure".to_string()));
         }
 
+        if self.state.duplicate_transfer.load(Ordering::SeqCst) {
+            return Err(ServiceError::Parameter("already known".into()));
+        }
         self.set_nonce_response(Some(nonce + 1));
         if self.state.canonical_hash.load(Ordering::SeqCst) {
             self.state.invisible_transfer.store(false, Ordering::SeqCst);
@@ -325,6 +340,12 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
     }
 
     async fn query_tx_seen_on_node(&self, _hash: &str) -> Result<bool, ServiceError> {
+        self.state.visibility_queries.fetch_add(1, Ordering::SeqCst);
+        if self.state.visibility_tls_error.load(Ordering::SeqCst) {
+            return Err(ServiceError::Transport(wallet_transport::TransportError::Utils(
+                wallet_utils::error::Error::Other("tls handshake eof".into()),
+            )));
+        }
         if self.state.visibility_error.load(Ordering::SeqCst) {
             return Err(ServiceError::Timeout);
         }

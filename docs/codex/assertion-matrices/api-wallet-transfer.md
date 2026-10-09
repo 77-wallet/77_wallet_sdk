@@ -454,3 +454,36 @@ historical bare reservations are never automatically released. Individual proces
 kill/serialization/pool errors are not injected. Existing nonce exact-set API and
 queued observation helper are unchanged; their old false-only reject_gap branches
 are left outside this minimal reuse rather than mixing optional cleanup.
+
+## Ordinary EVM matching submission acknowledgment (2026-10-09)
+
+Supersedes the historical batch-3 visibility requirement for the ordinary signed
+EVM initial-send entrypoint only. After pre-send atomic reservation commits,
+a real adapter broadcast response matching the saved hash is node submission
+acceptance, even if an immediate read would fail or return null. The existing
+TransactionResult hash shape is unchanged; it is not a successful chain receipt.
+Acceptance is persisted before returning; the observer owns final success/failure.
+
+- `ordinary_transfer_avalanche_ack_survives_visibility_tls_error` and
+  `ordinary_transfer_avalanche_ack_survives_visibility_error`: configured
+  transport/TLS-shaped error and timeout cannot lose acknowledgment; preserve
+  saved raw/nonce/hash, persist acceptance without terminal facts. No immediate
+  visibility query is necessary after matching acknowledgment.
+- `ordinary_transfer_avalanche_ack_survives_not_yet_visible` and
+  `ordinary_transfer_invisible_submission_returns_accepted_hash`: return saved
+  hash and persist acceptance without claiming confirmed state.
+- `ordinary_transfer_avalanche_wrong_hash_with_visibility_error_stays_unaccepted`
+  and existing wrong-response-hash case: never replace local hash/acceptance.
+- `ordinary_transfer_avalanche_duplicate_without_visibility_stays_uncertain`:
+  a synthetic hash from already-known error remains under old visibility guard.
+- Existing all-EVM successful receipt test and new observation-error success
+  test: observer can finish persisted accepted rows with no resend.
+- Existing timeout/network/cancellation, signed/acceptance persistence failure,
+  candidate reservation and bounded saved-byte recovery tests remain required.
+
+Only signed ordinary initial sends choose the acknowledgment policy. Public
+broadcast_transfer and ordinary recovery retain existing semantics, including
+queued EVM/Solana and non-EVM checks. Offline fake adapter + temporary SQLite;
+TLS injection is a transport-shaped synthetic error, not a live TLS handshake.
+Validation: transfer_nonce integration group plus affected shared broadcast
+regressions; no live wallets, RPC, backend, App or plugin release.

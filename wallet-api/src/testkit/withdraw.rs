@@ -230,3 +230,19 @@ pub async fn run_self_transfer_observer(
         .run_self_transfer_observer(shutdown, period)
         .await;
 }
+
+/// Exercise the unchanged shared broadcast contract without an application owner.
+pub async fn broadcast_transfer_for_test(
+    ctx: &'static Context,
+    chain_code: &str,
+    raw: crate::domain::api_wallet::RawTx,
+    expected_hash: &str,
+) -> Result<Option<crate::domain::chain::TransferResp>, ServiceError> {
+    crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
+        ctx,
+        chain_code,
+        raw,
+        Some(expected_hash),
+    )
+    .await
+}
