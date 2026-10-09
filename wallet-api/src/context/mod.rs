@@ -128,6 +128,7 @@ pub struct Context {
     cache: Arc<SharedCache>,
     wallet_unlock_session: Arc<RwLock<Option<WalletUnlockSession>>>,
     pub(crate) api_chain_sync_lock: Mutex<()>,
+    pub(crate) ordinary_catalog_sync_lock: Mutex<()>,
     pub(crate) api_chain_recovery:
         Arc<crate::domain::api_wallet::chain::recovery::RecoveryCoordinator>,
     current_wallet_type: Arc<RwLock<Option<ApiWalletType>>>,
@@ -347,6 +348,7 @@ impl Context {
             cache: Arc::new(SharedCache::new()),
             wallet_unlock_session: Arc::new(RwLock::new(None)),
             api_chain_sync_lock: Mutex::new(()),
+            ordinary_catalog_sync_lock: Mutex::new(()),
             api_chain_recovery: Arc::new(Default::default()),
             current_wallet_type: Arc::new(RwLock::new(None)),
             handles: RwLock::new(Weak::new()),

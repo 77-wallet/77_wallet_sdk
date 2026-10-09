@@ -121,12 +121,14 @@ impl CoinService {
     }
 
     pub async fn pull_hot_coins(&self) -> Result<(), crate::error::service::ServiceError> {
+        let _sync_guard = self.ctx.ordinary_catalog_sync_lock.lock().await;
         let core_pool = self.ctx.core_pool()?;
 
         CoinRepo::drop_coin_just_null_token_address(&core_pool).await?;
 
         // 拉所有的币
-        let coins = CoinDomain::fetch_all_coin_with_ctx(self.ctx, &core_pool).await?;
+        let batch = crate::domain::coin::catalog_sync::fetch(self.ctx, &core_pool).await?;
+        let coins = batch.coins;
 
         let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<CoinData>>();
 
@@ -165,6 +167,7 @@ impl CoinService {
             }
         }
 
+        crate::domain::coin::catalog_sync::complete(&core_pool, batch.progress).await?;
         Ok(())
     }
 

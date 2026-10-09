@@ -1,4 +1,5 @@
 pub mod token_price;
+pub(crate) mod catalog_sync;
 use std::collections::{HashMap, HashSet};
 
 use super::app::config::ConfigDomain;
@@ -336,27 +337,7 @@ impl CoinDomain {
         ctx: &'static Context,
         pool: &CoreDbPool,
     ) -> Result<Vec<CoinInfo>, crate::error::service::ServiceError> {
-        // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
-        let backend_api = ctx.get_global_backend_api();
-        let mut coins = Vec::new();
-
-        // TODO 1.5 版本验证币数量如果大于500说明已经同步过最新的币了,拉最新的。
-        // let create_at = None;
-        let count = CoinRepo::coin_count(pool).await?;
-        let create_at = if count > 500 {
-            if let Some(last_coin) = CoinRepo::last_coin(pool, true).await? {
-                let formatted = last_coin.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
-                Some(formatted)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        coins.append(&mut backend_api.fetch_all_tokens(create_at.clone(), None).await?);
-
-        Ok(coins)
+        Ok(catalog_sync::fetch(ctx, pool).await?.coins)
     }
 
     pub(crate) async fn query_token_price_with_ctx(
