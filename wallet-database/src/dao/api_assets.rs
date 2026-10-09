@@ -23,7 +23,7 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut query = QueryBuilder::<Sqlite>::new(
+        let sql = format!(
             "SELECT * FROM api_assets WHERE status = 1 AND EXISTS (
                     SELECT 1
                     FROM api_chain
@@ -33,11 +33,15 @@ impl ApiAssetsDao {
                     SELECT 1
                     FROM api_coin
                     WHERE api_coin.chain_code = api_assets.chain_code
-                    AND api_coin.token_address = api_assets.token_address
+                    AND (api_coin.token_address = api_assets.token_address OR (
+                        api_assets.chain_code IN (SELECT value FROM json_each('{}'))
+                        AND api_coin.token_address = api_assets.token_address COLLATE NOCASE))
                     AND api_coin.symbol = api_assets.symbol
                     AND api_coin.status = 1
                 )",
+            crate::entities::api_withdraw::signed_evm_chain_codes_json(),
         );
+        let mut query = QueryBuilder::<Sqlite>::new(sql);
 
         if let Some(chain_code) = chain_code {
             query.push(" AND chain_code = ").push_bind(chain_code);
@@ -74,7 +78,14 @@ impl ApiAssetsDao {
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .and_where_eq("address", &address)
             .and_where_eq("chain_code", chain_code)
-            .and_where_eq("token_address", token_address);
+            .and_where_eq(
+                if crate::entities::api_withdraw::is_signed_evm_chain(chain_code) {
+                    "token_address COLLATE NOCASE"
+                } else {
+                    "token_address"
+                },
+                token_address,
+            );
         SqlExecutableNoReturn::execute(builder, exec).await
     }
 
@@ -93,13 +104,15 @@ impl ApiAssetsDao {
             let sql = r#"
                 UPDATE api_assets 
                 SET balance = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                WHERE address = ? AND chain_code = ? AND token_address = ?
+                WHERE address = ? AND chain_code = ? AND (token_address = ? OR (? AND token_address = ? COLLATE NOCASE))
             "#;
 
             sqlx::query(sql)
                 .bind(balance)
                 .bind(address)
                 .bind(chain_code)
+                .bind(token_key)
+                .bind(crate::entities::api_withdraw::is_signed_evm_chain(chain_code))
                 .bind(token_key)
                 .execute(exec.as_mut())
                 .await
@@ -382,7 +395,7 @@ impl ApiAssetsDao {
         let sql = r#"
             SELECT * FROM 
                 api_assets
-            WHERE status = 1 AND address =$1 AND chain_code = $2 AND token_address = $3
+            WHERE status = 1 AND address =$1 AND chain_code = $2 AND (token_address = $3 OR ($4 AND token_address = $3 COLLATE NOCASE))
                 AND EXISTS (
                     SELECT 1
                     FROM api_chain
@@ -393,15 +406,16 @@ impl ApiAssetsDao {
                     SELECT 1
                     FROM api_coin
                     WHERE api_coin.chain_code = api_assets.chain_code
-                    AND api_coin.token_address = api_assets.token_address
+                    AND (api_coin.token_address = api_assets.token_address OR ($4 AND api_coin.token_address = api_assets.token_address COLLATE NOCASE))
                     AND api_coin.symbol = api_assets.symbol
                     AND api_coin.status = 1
-                );"#;
+                ) ORDER BY (token_address = $3) DESC LIMIT 1;"#;
 
         let rs = sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(sql)
             .bind(&assets_id.address)
             .bind(&assets_id.chain_code)
             .bind(&assets_id.token_address)
+            .bind(crate::entities::api_withdraw::is_signed_evm_chain(&assets_id.chain_code))
             .fetch_optional(exec)
             .await;
 

@@ -369,3 +369,14 @@ Collect/fee missing rows are idempotent success; SQL/table failures remain datab
 - Component regression: `business_notification::event_history_tests::asset_sync_observation_cannot_resolve_event_arriving_during_rpc` verifies that a during-RPC arrival is neither resolved nor cached by the older observation.
 
 2026-10-07 product revision: snapshot includes resolved history to prevent fallback to old thresholds; latest resolved suppresses the group. `asset_sync_latest_lower_threshold_resolves_observed_older_high_event` covers downward threshold changes, and existing during-RPC low-threshold arrival remains unresolved and uncached.
+
+### EVM Contract Case Compatibility (2026-10-09)
+
+- Scope: Polygon USDT account-change asset refresh and the shared token identity rule; no live DB migration or nonce changes.
+- Unit: `token_case_canonicalizes_only_supported_evm_contracts`, `token_case_mixed_mqtt_selects_existing_polygon_asset`, `token_case_non_evm_remains_case_sensitive`, `token_case_normal_wallet_selects_evm_only`, `token_case_evm_detail_cache_keys_share_identity`.
+- Component: `token_case_legacy_asset_lookup_and_balance_update`, `token_case_mixed_request_updates_lowercase_row`, `token_case_coin_join_reads_legacy_spelling`, `token_case_duplicate_rows_prefer_exact_detail_without_merging`, `token_case_recovery_keeps_mixed_case_evm_task`. Migrated temporary SQLite only, no backend or RPC.
+- Expected: mixed MQTT token matches existing lower-case Polygon USDT; canonical event/cache keys are lower-case for the supported EVM routes only. Legacy stored spellings remain readable and updateable without inserting or migrating records. Existing coin metadata is reused despite EVM casing differences. Recovery existence does not discard a task solely because its token differs in case.
+- Invariants: non-EVM case sensitivity, native identity, wallet/chain isolation, original transaction boundaries and status/coin/chain filters. Repeat balance writes keep one existing row. If historical duplicate rows already exist, detail prefers its exact key; this change does not merge/delete them or claim aggregate de-duplication.
+- Red evidence: initial three DB regressions failed against baseline; after the first fix those passed while the exact-key duplicate guard failed. API red and final green evidence are recorded in PLANS.md.
+- Validation commands: `cargo test --offline --locked --target-dir target -p wallet-database --lib token_case`; `cargo test --offline --locked --target-dir target -p wallet-api --no-default-features --lib token_case`; affected repository, sync-filter and cache/recovery groups.
+- Limitation: selected boundaries are tested independently; no funded/live transfer, installed-App SDK replacement, or full MQTT-to-fake-RPC end-to-end acceptance in this batch. Out-of-order balance-response policy is unchanged.

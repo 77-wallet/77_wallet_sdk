@@ -60,7 +60,7 @@ fn filter_assets_for_sync(
     let mut filtered_out_count = 0;
 
     for asset in assets {
-        if asset.token_key() == *token_address {
+        if asset.token_key().matches_for_chain(token_address, &asset.chain_code) {
             filtered_assets.push(asset);
         } else {
             filtered_out_count += 1;
@@ -1418,6 +1418,28 @@ mod tests {
     use wallet_database::entities::{
         api_assets::ApiAssetsEntity, api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey,
     };
+
+    #[test]
+    fn token_case_mixed_mqtt_selects_existing_polygon_asset() {
+        let lower = "0xc2132d05d31c914a87c6611c10748aeb04b58e8f";
+        let mixed = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
+        let assets = vec![
+            make_asset("USDT", "sender", "polygon", lower),
+            make_asset("POL", "sender", "polygon", ""),
+        ];
+        let (selected, excluded) = filter_assets_for_sync(assets, &mixed.into());
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].token_address.as_db_str(), lower);
+        assert_eq!(excluded, 1);
+    }
+
+    #[test]
+    fn token_case_non_evm_remains_case_sensitive() {
+        let assets = vec![make_asset("USDT", "sender", "tron", "TAbC")];
+        let (selected, excluded) = filter_assets_for_sync(assets, &"tabc".into());
+        assert!(selected.is_empty());
+        assert_eq!(excluded, 1);
+    }
 
     fn make_coin(chain_code: &str, symbol: &str, status: u8) -> ApiCoinEntity {
         ApiCoinEntity {

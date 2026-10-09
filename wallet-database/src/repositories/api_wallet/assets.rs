@@ -337,7 +337,7 @@ mod tests {
     use std::{sync::Arc, time::Duration};
     use tokio::sync::Barrier;
 
-    async fn seed_active_chain_and_coin(
+    pub(super) async fn seed_active_chain_and_coin(
         pool: &crate::ApiWalletDbPool,
         chain_code: &str,
         symbol: &str,
@@ -617,3 +617,7 @@ mod tests {
 #[cfg(test)]
 #[path = "assets/insert_missing_tests.rs"]
 mod insert_missing_tests;
+
+#[cfg(test)]
+#[path = "assets/token_case_tests.rs"]
+mod token_case_tests;

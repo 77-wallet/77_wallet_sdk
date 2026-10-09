@@ -28,10 +28,13 @@ pub(crate) fn asset_detail_key(
     chain_code: &str,
     token_address: Option<&str>,
 ) -> String {
+    let token_key =
+        wallet_database::entities::asset_token_key::AssetTokenKey::from_raw(token_address)
+            .normalized_for_chain(chain_code);
     let account_part = account_id.map(|v| v.to_string()).unwrap_or_else(|| "none".to_string());
     format!(
         "api_wallet_asset_detail:address={address};account_id={account_part};chain_code={chain_code};token={}",
-        token_address.unwrap_or("")
+        token_key.as_db_str()
     )
 }
 
@@ -129,6 +132,28 @@ mod tests {
             created_at: sqlx::types::chrono::Utc::now(),
             updated_at: None,
         }
+    }
+
+    #[test]
+    fn token_case_evm_detail_cache_keys_share_identity() {
+        assert_eq!(
+            asset_detail_key(
+                "sender",
+                Some(1),
+                "polygon",
+                Some("0xc2132D05D31c914a87C6611C10748AEb04B58e8F")
+            ),
+            asset_detail_key(
+                "sender",
+                Some(1),
+                "polygon",
+                Some("0xc2132d05d31c914a87c6611c10748aeb04b58e8f")
+            )
+        );
+        assert_ne!(
+            asset_detail_key("sender", Some(1), "tron", Some("TAbC")),
+            asset_detail_key("sender", Some(1), "tron", Some("tabc"))
+        );
     }
 
     #[test]

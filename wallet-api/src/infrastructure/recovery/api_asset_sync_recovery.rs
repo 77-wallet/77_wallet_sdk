@@ -190,5 +190,69 @@ async fn sync_asset_still_exists(
     let assets =
         ApiAssetsRepo::list(api_pool, vec![address.to_string()], Some(chain_code.to_string()))
             .await?;
-    Ok(assets.iter().any(|asset| asset.token_key() == *token_key))
+    Ok(assets.iter().any(|asset| asset.token_key().matches_for_chain(token_key, chain_code)))
+}
+
+#[cfg(test)]
+mod token_case_tests {
+    use super::sync_asset_still_exists;
+    use wallet_database::{
+        SqliteContext,
+        entities::{
+            api_assets::ApiCreateAssetsVo,
+            api_chain::{ApiChainCreateVo, NodeBindType},
+            api_coin::ApiCoinData,
+            assets::AssetsId,
+        },
+        repositories::api_wallet::{assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo},
+    };
+
+    #[tokio::test]
+    async fn token_case_recovery_keeps_mixed_case_evm_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = SqliteContext::new(dir.path().to_str().unwrap(), Some("api_wallet.db"))
+            .await
+            .unwrap()
+            .into_api_wallet_db_pool()
+            .unwrap();
+        let lower = "0xc2132d05d31c914a87c6611c10748aeb04b58e8f";
+        let mixed = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
+        let chain = ApiChainCreateVo::new(
+            "Polygon",
+            "polygon",
+            &vec!["evm".into()],
+            NodeBindType::AutoLocal,
+            "POL",
+        );
+        ApiChainRepo::add(&pool, chain).await.unwrap();
+        let coin = ApiCoinData::new(
+            Some("USDT".into()),
+            "USDT",
+            "polygon",
+            lower.into(),
+            Some("1".into()),
+            None,
+            6,
+            1,
+            1,
+            1,
+            chrono::Utc::now(),
+            None,
+        );
+        ApiCoinRepo::upsert_multi_coin(&pool, vec![coin]).await.unwrap();
+        let id = AssetsId::new("sender", "polygon", lower.into());
+        ApiAssetsRepo::upsert_assets(
+            &pool,
+            ApiCreateAssetsVo::new(id, "USDT", 6, None, 0)
+                .with_name("USDT")
+                .with_balance("3.956788"),
+        )
+        .await
+        .unwrap();
+        assert!(sync_asset_still_exists(&pool, "sender", "polygon", &mixed.into()).await.unwrap());
+        assert!(!sync_asset_still_exists(&pool, "other", "polygon", &mixed.into()).await.unwrap());
+        assert!(
+            !sync_asset_still_exists(&pool, "sender", "polygon", &"0xother".into()).await.unwrap()
+        );
+    }
 }

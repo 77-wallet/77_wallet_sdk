@@ -15,6 +15,30 @@ impl AssetTokenKey {
         }
     }
 
+    /// Canonical comparison/event key for EVM contracts. Other chains retain case.
+    /// Keep DB decoding unchanged so writes can reuse legacy stored spellings.
+    pub fn normalized_for_chain(&self, chain_code: &str) -> Self {
+        match self {
+            Self::Contract(token)
+                if crate::entities::api_withdraw::is_signed_evm_chain(chain_code) =>
+            {
+                Self::Contract(token.to_ascii_lowercase())
+            }
+            _ => self.clone(),
+        }
+    }
+
+    pub fn matches_for_chain(&self, other: &Self, chain_code: &str) -> bool {
+        match (self, other) {
+            (Self::Contract(left), Self::Contract(right))
+                if crate::entities::api_withdraw::is_signed_evm_chain(chain_code) =>
+            {
+                left.eq_ignore_ascii_case(right)
+            }
+            _ => self == other,
+        }
+    }
+
     pub fn from_db_value(token: &str) -> Self {
         Self::from_raw(Some(token))
     }
@@ -151,6 +175,23 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for AssetTokenKey {
 #[cfg(test)]
 mod tests {
     use super::AssetTokenKey;
+
+    #[test]
+    fn token_case_canonicalizes_only_supported_evm_contracts() {
+        let mixed = AssetTokenKey::from(" 0xaBc ");
+        let lower = AssetTokenKey::from("0xabc");
+        for chain in ["eth", "bnb", "polygon", "avalanche", "fantom", "arbitrum", "base", "scroll"]
+        {
+            assert_eq!(mixed.normalized_for_chain(chain), lower);
+            assert!(mixed.matches_for_chain(&lower, chain));
+            assert_eq!(AssetTokenKey::Native.normalized_for_chain(chain), AssetTokenKey::Native);
+            assert!(!mixed.matches_for_chain(&AssetTokenKey::Native, chain));
+        }
+        for chain in ["tron", "sol", "sui", "ton", "btc", "unknown"] {
+            assert_eq!(mixed.normalized_for_chain(chain), mixed);
+            assert!(!mixed.matches_for_chain(&lower, chain));
+        }
+    }
 
     #[test]
     fn asset_token_key_normalizes_native_inputs() {

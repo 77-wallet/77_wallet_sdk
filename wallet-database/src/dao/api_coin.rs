@@ -228,11 +228,14 @@ impl ApiCoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM api_coin WHERE is_del = 0 AND chain_code = $1 and token_address = $2 and status = 1";
+        let sql = "SELECT * FROM api_coin WHERE is_del = 0 AND chain_code = $1
+            AND (token_address = $2 OR ($3 AND token_address = $2 COLLATE NOCASE))
+            AND status = 1 ORDER BY (token_address = $2) DESC LIMIT 1";
 
         let res = sqlx::query_as::<_, ApiCoinEntity>(sql)
             .bind(chain_code)
             .bind(token_address)
+            .bind(crate::entities::api_withdraw::is_signed_evm_chain(chain_code))
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

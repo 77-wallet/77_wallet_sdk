@@ -1086,7 +1086,8 @@ impl ApiWalletAcctChange {
         }
 
         // 尝试获取 coin 信息（用于创建资产记录），但不强制要求
-        let token_key = AssetTokenKey::from_raw(acct_change.0.token.as_deref());
+        let token_key = AssetTokenKey::from_raw(acct_change.0.token.as_deref())
+            .normalized_for_chain(&acct_change.0.chain_code);
         let coin = ApiCoinRepo::coin_by_chain_token_key_opt(
             &acct_change.0.chain_code,
             token_key.clone(),
@@ -1213,7 +1214,8 @@ impl ApiWalletAcctChange {
             return Ok(());
         }
 
-        let sync_token_key = AssetTokenKey::from_raw(acct_change.0.token.as_deref());
+        let sync_token_key = AssetTokenKey::from_raw(acct_change.0.token.as_deref())
+            .normalized_for_chain(&acct_change.0.chain_code);
         for addr in &sync_addrs {
             ApiAssetSyncStateRepo::upsert_pending(
                 &pool,
@@ -1289,7 +1291,8 @@ impl ApiWalletAcctChange {
         );
 
         let coin_find = coins_finds.iter().find(|o| {
-            o.token_address == Some(token_address.to_string())
+            AssetTokenKey::from_raw(o.token_address.as_deref())
+                .matches_for_chain(&AssetTokenKey::from_raw(Some(token_address)), chain_code)
                 && o.chain_code == Some(chain_code.to_string())
         });
 

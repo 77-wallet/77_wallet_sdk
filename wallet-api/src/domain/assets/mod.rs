@@ -38,7 +38,7 @@ fn filter_assets_for_sync(
     let mut filtered_out = Vec::new();
 
     for asset in assets {
-        if asset.token_key() == *token_address {
+        if asset.token_key().matches_for_chain(token_address, &asset.chain_code) {
             matched.push(asset);
         } else {
             filtered_out
@@ -668,6 +668,21 @@ mod tests {
             balance: "0".to_string(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn token_case_normal_wallet_selects_evm_only() {
+        let (selected, _) = filter_assets_for_sync(
+            vec![make_asset("USDT", "sender", "polygon", "0xaBc")],
+            &"0xabc".into(),
+        );
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].token_address.as_db_str(), "0xaBc");
+        let (selected, _) = filter_assets_for_sync(
+            vec![make_asset("USDT", "sender", "tron", "TAbC")],
+            &"tabc".into(),
+        );
+        assert!(selected.is_empty());
     }
 
     #[test]
