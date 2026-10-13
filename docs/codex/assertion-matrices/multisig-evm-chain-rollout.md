@@ -109,3 +109,13 @@ Offline SDK command: `cargo test --offline --target-dir target -p wallet-api
 `fvm flutter test --no-pub test/evm_max_transfer_test.dart`. Results are recorded
 in PLANS.md after execution. Real funded send, concurrent external balance
 changes, and installed App/plugin linkage are outside these offline checks.
+
+### EVM serialized fee precision (2026-10-13)
+
+| Behavior | Required assertion | Evidence |
+| --- | --- | --- |
+| Ordinary/API/shared EVM quotes retain all fee wei | Serialized estimateFee.amount/maxFee.amount parse back to execution fee plus exact additional fee for safe/propose/fast; includes 1 wei and >2^53 additional fee | `response_vo::standard_wallet::transaction::tests::evm_fee_json_preserves_wei_for_maximum_deduction` |
+| Existing execution settings and fiat display remain valid | Gas/price caps unchanged by additional fee; fractional BNB quote and existing fiat fixture pass | existing `ethereum_fee_details_preserve_fractional_bnb_gas_tracker_price`, `evm_additional_fee_is_added_to_each_quote_without_changing_execution_fee_setting` |
+| Caller coverage | Ordinary EVM estimate_transfer_fee and API EthTx::estimate_fee both use FeeDetails::to_resp; other EVM callers propagate its conversion errors. Non-EVM quote responses/general BalanceInfo serialization unchanged | source call-chain check + existing ordinary/API EVM offline suites |
+
+Amounts are integer wei until formatted as an exact decimal string for EVM fee amounts. Existing BalanceInfo fiat calculation and numeric serialization are retained. Fiat fields remain approximate display values; exact integer chain fees must not be inferred from fiat. Scope: response precision only, no transfer amount/spendAll semantics changed. No funded transaction or App/plugin build verification.

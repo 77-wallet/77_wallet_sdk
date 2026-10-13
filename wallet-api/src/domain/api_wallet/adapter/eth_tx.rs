@@ -790,7 +790,7 @@ impl Tx for EthTx {
             Some(additional) => details.with_additional_native_fee(additional)?,
             None => details,
         };
-        let fee = details.to_resp(token_currency, currency);
+        let fee = details.to_resp(token_currency, currency)?;
 
         let res = wallet_utils::serde_func::serde_to_string(&fee)?;
         Ok(res)

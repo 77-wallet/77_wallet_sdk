@@ -453,7 +453,7 @@ impl MultisigAdapter {
                 .await?;
 
                 let fee = FeeDetails::try_from((gas_oracle, gas_limit.consume))?
-                    .to_resp(token_currency, currency);
+                    .to_resp(token_currency, currency)?;
                 Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
             }
             Self::BitCoin(_chain) => Ok("0".to_string()),
@@ -982,7 +982,7 @@ impl MultisigAdapter {
 
                 let fee = chain.estimate_gas(params).await?;
                 let fee = FeeDetails::try_from((gas_oracle, fee.consume))?
-                    .to_resp(token_currency, currency);
+                    .to_resp(token_currency, currency)?;
 
                 Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
             }

@@ -1008,7 +1008,7 @@ impl TransactionAdapter {
 
                 let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
                 let fee = FeeDetails::try_from((gas_oracle, fee.consume))?
-                    .to_resp(token_currency, &currency);
+                    .to_resp(token_currency, &currency)?;
 
                 wallet_utils::serde_func::serde_to_string(&fee)?
                 // CommonFeeDetails::new(fee, token_currency, &currency)
@@ -1157,7 +1157,7 @@ impl TransactionAdapter {
                     ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
                         .await?;
                 let fee = FeeDetails::try_from((gas_oracle, resp.consumer.to::<i64>()))?
-                    .to_resp(token_currency, &currency);
+                    .to_resp(token_currency, &currency)?;
 
                 // 消耗的资源
                 let consumer = wallet_utils::serde_func::serde_to_string(&fee.data[0].fee_setting)?;
@@ -1273,7 +1273,7 @@ impl TransactionAdapter {
 
                 let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
                 let fee = FeeDetails::try_from((gas_oracle, resource.consume))?
-                    .to_resp(token_currency, &currency);
+                    .to_resp(token_currency, &currency)?;
 
                 let consumer = wallet_utils::serde_func::serde_to_string(&fee.data[0].fee_setting)?;
                 let fee = wallet_utils::serde_func::serde_to_string(&fee)?;
@@ -1360,7 +1360,7 @@ impl TransactionAdapter {
 
                 let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
                 let fee = FeeDetails::try_from((gas_oracle, resource.consume))?
-                    .to_resp(token_currency, &currency);
+                    .to_resp(token_currency, &currency)?;
 
                 let consumer = wallet_utils::serde_func::serde_to_string(&fee.data[0].fee_setting)?;
                 let fee = wallet_utils::serde_func::serde_to_string(&fee)?;

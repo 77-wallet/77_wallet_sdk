@@ -577,8 +577,8 @@ async fn send_preflight_aborts_when_scroll_additional_fee_rpc_fails() {
     assert_eq!(requests[0].1["method"], "scroll_estimateL1DataFee");
 }
 
-fn quoted_amount(value: &Value) -> f64 {
-    value.as_str().unwrap().parse().unwrap()
+fn quoted_amount(value: &Value) -> U256 {
+    wallet_utils::unit::convert_to_u256(value.as_str().unwrap(), 18).unwrap()
 }
 
 fn read_request(socket: &mut std::net::TcpStream) -> (String, Value) {
@@ -745,17 +745,23 @@ async fn assert_quote(code: ChainCode, token: Option<&str>) {
     assert_eq!(quote["default"], "propose");
     assert_eq!(quote["data"].as_array().unwrap().len(), 3);
     for (index, (expected_type, estimate, maximum, priority, max_per_gas)) in [
-        ("safe", 0.0000331, 0.00003772, "10000", "1200000000"),
-        ("propose", 0.0000562, 0.00006544, "1000000000", "2400000000"),
-        ("fast", 0.0000793, 0.00009316, "2000000000", "3600000000"),
+        ("safe", "0.000033100231", "0.00003772", "10000", "1200000000"),
+        ("propose", "0.0000562", "0.00006544", "1000000000", "2400000000"),
+        ("fast", "0.0000793", "0.00009316", "2000000000", "3600000000"),
     ]
     .iter()
     .enumerate()
     {
         let tier = &quote["data"][index];
         assert_eq!(tier["type"], *expected_type);
-        assert!((quoted_amount(&tier["estimateFee"]["amount"]) - estimate).abs() < 1e-12);
-        assert!((quoted_amount(&tier["maxFee"]["amount"]) - maximum).abs() < 1e-12);
+        assert_eq!(
+            quoted_amount(&tier["estimateFee"]["amount"]),
+            wallet_utils::unit::convert_to_u256(estimate, 18).unwrap()
+        );
+        assert_eq!(
+            quoted_amount(&tier["maxFee"]["amount"]),
+            wallet_utils::unit::convert_to_u256(maximum, 18).unwrap()
+        );
         assert_eq!(tier["feeSetting"]["gasLimit"], 23_100);
         assert_eq!(tier["feeSetting"]["priorityFee"], *priority);
         assert_eq!(tier["feeSetting"]["maxFeePerGas"], *max_per_gas);
@@ -825,17 +831,20 @@ async fn non_l1_data_fee_chains_quote_three_tiers_without_extra_rpc() {
         let tiers = quote["data"].as_array().unwrap();
         assert_eq!(tiers.len(), 3, "{code}");
         for (tier, (kind, estimate, maximum)) in tiers.iter().zip([
-            ("safe", 0.0000231, 0.00002772),
-            ("propose", 0.0000462, 0.00005544),
-            ("fast", 0.0000693, 0.00008316),
+            ("safe", "0.000023100231", "0.00002772"),
+            ("propose", "0.0000462", "0.00005544"),
+            ("fast", "0.0000693", "0.00008316"),
         ]) {
             assert_eq!(tier["type"], kind, "{code}");
-            assert!(
-                (quoted_amount(&tier["estimateFee"]["amount"]) - estimate).abs() < 1e-12,
-                "{code} {kind}: expected {estimate}, got {}",
+            assert_eq!(
                 quoted_amount(&tier["estimateFee"]["amount"]),
+                wallet_utils::unit::convert_to_u256(estimate, 18).unwrap(),
+                "{code} {kind}"
             );
-            assert!((quoted_amount(&tier["maxFee"]["amount"]) - maximum).abs() < 1e-12);
+            assert_eq!(
+                quoted_amount(&tier["maxFee"]["amount"]),
+                wallet_utils::unit::convert_to_u256(maximum, 18).unwrap()
+            );
             assert_eq!(tier["feeSetting"]["gasLimit"], 23_100, "{code}");
         }
     }

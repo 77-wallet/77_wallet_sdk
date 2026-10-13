@@ -1,4 +1,6 @@
-use super::account::{BalanceInfo, BalanceNotTruncate, default_unit_price_as_zero};
+use super::account::{
+    BalanceInfo, BalanceNotTruncate, default_unit_price_as_zero, zero_or_truncate,
+};
 use crate::request::transaction::Signer;
 use alloy::primitives::U256;
 use wallet_chain_interact::{
@@ -152,10 +154,10 @@ impl FeeDetails<EthereumFeeDetails> {
         mut self,
         additional_fee_wei: U256,
     ) -> Result<Self, crate::error::service::ServiceError> {
-        let additional_fee = unit::format_to_f64(additional_fee_wei, eth::consts::ETH_DECIMAL)?;
+        // Keep quote arithmetic in wei; display precision must not change spendable amounts.
         for fee in &mut self.0 {
-            fee.estimate_fee += additional_fee;
-            fee.max_fee += additional_fee;
+            fee.estimate_fee += additional_fee_wei;
+            fee.max_fee += additional_fee_wei;
         }
         Ok(self)
     }
@@ -164,20 +166,20 @@ impl FeeDetails<EthereumFeeDetails> {
         self,
         token_price: TokenCurrency,
         currency: &str,
-    ) -> FeeDetailsVo<EthereumFeeDetails> {
+    ) -> Result<FeeDetailsVo<EthereumFeeDetails>, crate::error::service::ServiceError> {
         let mut res = vec![];
 
         let unit_price = Some(token_price.get_price(currency));
         for fee in self.0 {
             let fee_structure = FeeStructureVo {
                 types: fee.types,
-                estimate_fee: BalanceInfo::new(fee.estimate_fee, unit_price, currency),
-                max_fee: BalanceInfo::new(fee.max_fee, unit_price, currency),
+                estimate_fee: EvmFeeBalance::new(fee.estimate_fee, unit_price, currency)?,
+                max_fee: EvmFeeBalance::new(fee.max_fee, unit_price, currency)?,
                 fee_setting: fee.fee_setting,
             };
             res.push(fee_structure);
         }
-        FeeDetailsVo { default: "propose".to_string(), data: res }
+        Ok(FeeDetailsVo { default: "propose".to_string(), data: res })
     }
 }
 
@@ -220,9 +222,41 @@ impl TryFrom<(GasOracle, i64)> for FeeDetails<EthereumFeeDetails> {
 pub struct FeeStructure<T> {
     #[serde(rename = "type")]
     pub types: String,
-    pub estimate_fee: f64,
-    pub max_fee: f64,
+    pub estimate_fee: U256,
+    pub max_fee: U256,
     pub fee_setting: T,
+}
+
+// Fee amounts drive maximum-transfer arithmetic; fiat fields are display-only.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvmFeeBalance {
+    pub amount: String,
+    pub currency: String,
+    #[serde(serialize_with = "zero_or_truncate")]
+    pub unit_price: Option<f64>,
+    #[serde(serialize_with = "zero_or_truncate")]
+    pub fiat_value: Option<f64>,
+}
+
+impl EvmFeeBalance {
+    fn new(
+        amount_wei: U256,
+        unit_price: Option<f64>,
+        currency: &str,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let display = BalanceInfo::new(
+            unit::format_to_f64(amount_wei, eth::consts::ETH_DECIMAL)?,
+            unit_price,
+            currency,
+        );
+        Ok(Self {
+            amount: unit::format_to_string(amount_wei, eth::consts::ETH_DECIMAL)?,
+            currency: display.currency,
+            unit_price: display.unit_price,
+            fiat_value: display.fiat_value,
+        })
+    }
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -230,8 +264,8 @@ pub struct FeeStructure<T> {
 pub struct FeeStructureVo<T> {
     #[serde(rename = "type")]
     pub types: String,
-    pub estimate_fee: BalanceInfo,
-    pub max_fee: BalanceInfo,
+    pub estimate_fee: EvmFeeBalance,
+    pub max_fee: EvmFeeBalance,
     pub fee_setting: T,
 }
 
@@ -269,12 +303,7 @@ impl FeeStructure<EthereumFeeDetails> {
 
         let estimate_fee = gas_limit * (base_fee + priority_fee);
 
-        Ok(Self {
-            estimate_fee: unit::format_to_f64(estimate_fee, eth::consts::ETH_DECIMAL)?,
-            max_fee: unit::format_to_f64(max_fee, eth::consts::ETH_DECIMAL)?,
-            types: types.to_string(),
-            fee_setting,
-        })
+        Ok(Self { estimate_fee, max_fee, types: types.to_string(), fee_setting })
     }
 }
 
@@ -407,6 +436,64 @@ mod tests {
     use super::*;
 
     #[test]
+    fn evm_fee_json_preserves_wei_for_maximum_deduction() {
+        let oracle = || GasOracle {
+            safe_gas_price: Some("0.00501".into()),
+            propose_gas_price: Some("0.00501".into()),
+            fast_gas_price: Some("0.00501".into()),
+            suggest_base_fee: Some("0.005".into()),
+            gas_used_ratio: None,
+        };
+        let price =
+            || TokenCurrency::new("base", "ETH", "ETH", Some(2000.0), Some(2000.0), 1.0, 18);
+        for additional in [0_u64, 1, 1_591_910_335, 9_007_199_254_740_993] {
+            let quote = FeeDetails::try_from((oracle(), 23101))
+                .unwrap()
+                .with_additional_native_fee(U256::from(additional))
+                .unwrap()
+                .to_resp(price(), "USD")
+                .unwrap();
+            let json = serde_json::to_value(quote).unwrap();
+            for tier in json["data"].as_array().unwrap() {
+                let fee = &tier["feeSetting"];
+                let gas = U256::from(fee["gasLimit"].as_i64().unwrap());
+                let max = gas * unit::u256_from_str(fee["maxFeePerGas"].as_str().unwrap()).unwrap()
+                    + U256::from(additional);
+                let estimate = gas
+                    * (unit::u256_from_str(fee["baseFee"].as_str().unwrap()).unwrap()
+                        + unit::u256_from_str(fee["priorityFee"].as_str().unwrap()).unwrap())
+                    + U256::from(additional);
+                let quoted =
+                    unit::convert_to_u256(tier["maxFee"]["amount"].as_str().unwrap(), 18).unwrap();
+                assert_eq!(quoted, max, "serialized maximum must retain every wei");
+                let expected_display = serde_json::to_value(BalanceInfo::new(
+                    unit::format_to_f64(max, 18).unwrap(),
+                    Some(2000.0),
+                    "USD",
+                ))
+                .unwrap();
+                for field in ["currency", "unitPrice", "fiatValue"] {
+                    assert_eq!(
+                        tier["maxFee"][field], expected_display[field],
+                        "display field {field}"
+                    );
+                }
+                let roundtrip: FeeStructureVo<EthereumFeeDetails> =
+                    serde_json::from_value(tier.clone()).unwrap();
+                assert_eq!(roundtrip.max_fee.amount, tier["maxFee"]["amount"].as_str().unwrap());
+                assert_eq!(
+                    unit::convert_to_u256(tier["estimateFee"]["amount"].as_str().unwrap(), 18)
+                        .unwrap(),
+                    estimate
+                );
+                let balance = U256::from(1_000_000_000_000_000_000_u64);
+                let sent = balance - quoted;
+                assert_eq!(balance - sent, max, "App deduction must leave full fee reserve");
+            }
+        }
+    }
+
+    #[test]
     fn ethereum_fee_details_preserve_fractional_bnb_gas_tracker_price() {
         let gas_oracle = GasOracle {
             safe_gas_price: None,
@@ -418,12 +505,17 @@ mod tests {
         let token_currency =
             TokenCurrency::new("bnb", "BNB", "BNB", Some(643.98037376), None, 1.0, 18);
 
-        let fee =
-            FeeDetails::try_from((gas_oracle, 331_311)).unwrap().to_resp(token_currency, "USD");
+        let fee = FeeDetails::try_from((gas_oracle, 331_311))
+            .unwrap()
+            .to_resp(token_currency, "USD")
+            .unwrap();
 
         assert_eq!(fee.data[0].fee_setting.gas_limit, 331_311);
         assert_eq!(fee.data[0].fee_setting.priority_fee, "100000000");
-        assert!((fee.data[0].estimate_fee.amount - 0.00003313).abs() < 0.00000001);
+        assert!(
+            (fee.data[0].estimate_fee.amount.parse::<f64>().unwrap() - 0.00003313).abs()
+                < 0.00000001
+        );
     }
 
     #[test]
@@ -438,28 +530,41 @@ mod tests {
         let token_currency =
             || TokenCurrency::new("eth", "ETH", "ETH", Some(2_000.0), Some(2_000.0), 1.0, 18);
 
-        let baseline =
-            FeeDetails::try_from((gas_oracle(), 21_000)).unwrap().to_resp(token_currency(), "USD");
+        let baseline = FeeDetails::try_from((gas_oracle(), 21_000))
+            .unwrap()
+            .to_resp(token_currency(), "USD")
+            .unwrap();
 
         let fee = FeeDetails::try_from((gas_oracle(), 21_000))
             .unwrap()
             .with_additional_native_fee(U256::from(10_000_000_000_000_u64))
             .unwrap()
-            .to_resp(token_currency(), "USD");
+            .to_resp(token_currency(), "USD")
+            .unwrap();
 
         assert_eq!(fee.data.len(), 3);
         for (actual, original) in fee.data.iter().zip(&baseline.data) {
             assert!(
-                (actual.estimate_fee.amount - original.estimate_fee.amount - 0.00001).abs() < 1e-12
+                (actual.estimate_fee.amount.parse::<f64>().unwrap()
+                    - original.estimate_fee.amount.parse::<f64>().unwrap()
+                    - 0.00001)
+                    .abs()
+                    < 1e-12
             );
-            assert!((actual.max_fee.amount - original.max_fee.amount - 0.00001).abs() < 1e-12);
+            assert!(
+                (actual.max_fee.amount.parse::<f64>().unwrap()
+                    - original.max_fee.amount.parse::<f64>().unwrap()
+                    - 0.00001)
+                    .abs()
+                    < 1e-12
+            );
             assert_eq!(
                 serde_json::to_value(&actual.fee_setting).unwrap(),
                 serde_json::to_value(&original.fee_setting).unwrap()
             );
         }
-        assert!((fee.data[1].estimate_fee.amount - 0.000052).abs() < 1e-12);
-        assert!((fee.data[1].max_fee.amount - 0.0000604).abs() < 1e-12);
+        assert!((fee.data[1].estimate_fee.amount.parse::<f64>().unwrap() - 0.000052).abs() < 1e-12);
+        assert!((fee.data[1].max_fee.amount.parse::<f64>().unwrap() - 0.0000604).abs() < 1e-12);
         assert_eq!(fee.data[1].estimate_fee.fiat_value, Some(0.104));
         assert_eq!(fee.data[1].fee_setting.gas_limit, 21_000);
         assert_eq!(fee.data[1].fee_setting.max_fee_per_gas, "2400000000");

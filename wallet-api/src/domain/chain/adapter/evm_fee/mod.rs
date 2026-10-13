@@ -119,5 +119,5 @@ pub(super) async fn estimate_transfer_fee(
         Some(additional_fee) => fee.with_additional_native_fee(additional_fee)?,
         None => fee,
     };
-    Ok(wallet_utils::serde_func::serde_to_string(&fee.to_resp(token_currency, currency))?)
+    Ok(wallet_utils::serde_func::serde_to_string(&fee.to_resp(token_currency, currency)?)?)
 }
