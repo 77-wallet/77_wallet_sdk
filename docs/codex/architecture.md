@@ -59,7 +59,8 @@
 
 ### Repo / DB
 
-- 只负责 SQL、Entity 映射、持久化读写和幂等更新。
+- DAO 负责 SQL / QueryBuilder、绑定参数、Entity 映射和数据库读写实现；生产 SQL 只写在 DAO。
+- Repo 调用 DAO，管理连接池选择、事务、写入锁及已有重试职责，不直接编写 SQL。
 - 不承载业务决策；例如 Repo 可以 `find_by_uid`，但不判断“该钱包是否能
   执行资源质押”。
 
@@ -156,6 +157,21 @@
 - 非必要不改公共接口与跨模块契约
 - 任何流程改动必须补测试与断言矩阵
 
+## Confirmed Project Context
+
+实现前读取与当前任务相关的条目。以下为用户业务澄清，不代表功能已经联调或上线验收；记录日期为 2026-10-05。未来确认变化时更新事实与来源，未知值保持待确认。
+
+| 已确认事实 | 来源与日期 | 适用范围 / 时效 |
+| --- | --- | --- |
+| 本版本普通钱包与 API 钱包都支持 Polygon、Avalanche、Arbitrum、Base、Scroll 五条新增链；允许共用链节点配置，各自链、币、账户表保持边界。 | 用户业务澄清，2026-10-05 | 本版本加链需求；配置共用不意味着业务表合并，实际实现与验收状态另查。 |
+| API 子账户数量很大；具体上限未提供，待确认，不编造数量。查询范围、分页、内存和请求量需评估规模。 | 用户规模澄清，2026-10-05 | API 账户查询、同步和扩链；复用 [规模与能力清单](checklists/account-sync-scale.md)，仅在方案需要时询问具体规模。 |
+| API 测试目标为 **50 万地址**，不是 50 万逻辑账户，也不是已证明的承载指标；实际多链数据行数与逻辑账户映射需在测试中核实，旧 8 万行试验不能替代此目标验证。 | 用户语音原话“测试的话是测五十万的地址”，2026-10-05 13:31 UTC | API 规模测试目标；记录不等于测试已完成或承载验收通过。 |
+| dev/test/prod 由编译确定，没有 App 内环境切换。跨环境覆盖安装并保留数据库不是支持的产品场景，而是开发者个人误操作。 | 用户场景澄清，2026-10-05 | 环境与旧库兼容讨论；不据误操作假设扩大支持场景或自动实施修复。 |
+| 后台 API 五条新增链尚未配置。 | 用户当前状态说明，2026-10-04—05；记录于 2026-10-05 | 临时环境状态；下次依赖后台配置时重新核实，不能作为永久限制。 |
+| 生产 SQL 在 DAO，Repo 委托 DAO，保留连接池、事务、写入锁及已有重试职责。 | 用户分层澄清，2026-10-05 | 新增或修改持久化路径，遵循本文件 Repo / DB 边界。 |
+
+上述事实只提供方案前提，不授权新的生产修复、提交或发布；待确认假设与修复建议仍需按工作流报告和取得相应批准。
+
 ### API message-center scope (user confirmation, 2026-10-06)
 
 The user confirms public API message-center parameters do not require a UID;
@@ -193,6 +209,17 @@ App dev in this chat (2026-10-13); plugin dependency publication, release and re
 transactions remain outside that approval. App source inspected this date: maximum deducts selected maxFee,
 but spendAll excludes EVM; the captured request also reports spend_all=false.
 Actual running binary dependency revision remains unverified.
+
+### App collaboration boundary (user clarification, 2026-10-13)
+
+App changes are owned by the frontend developer. SDK/plugin work must provide
+frontend integration instructions rather than directly edit, commit or push
+sf-wallet-app. This later clarification supersedes the earlier App authorization
+in this chat. Source: user explicitly states that they will coordinate App
+changes with the frontend developer, 2026-10-13. The user separately authorizes
+only this incident's rollback of App dev to df33195d398189b978040f79be5861fcf7d678c3,
+including a protected remote history rollback; that exception does not authorize
+future App modifications or pushes. SDK changes remain intact.
 
 ### API USDT case-duplicate repair scope (user confirmation, 2026-10-13)
 User requests fixing coin sync/startup supplementation treating EVM contract case variants as separate identities, including existing duplicate data. Scope is SDK/API-wallet coin and asset identity plus the current com.sevenwallet.app simulator's duplicate records; no App source/dependency publication or transaction authorization. Source: direct user instruction in USDT12-versus6 investigation; applies to this repair.

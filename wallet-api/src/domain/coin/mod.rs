@@ -1,5 +1,5 @@
-pub mod token_price;
 pub(crate) mod catalog_sync;
+pub mod token_price;
 use std::collections::{HashMap, HashSet};
 
 use super::app::config::ConfigDomain;
