@@ -234,3 +234,28 @@ User requests reducing Scroll native maximum residual by optimizing fee-rate rou
 ### Collect fee payment limit (user confirmation, 2026-10-14)
 
 The backend supports only one service-fee payment per collect tradeNo. Source: direct user answer during the first-USDT-collect failure investigation, 2026-10-14. Applies to the current SDK/backend collect protocol; do not reopen a completed fee cycle to request another payment without a separately confirmed backend protocol change. Runtime evidence for this incident shows Base/Arbitrum/Scroll fee transfers were visible in balance queries, but funding was below the renewed quote.
+
+
+### Self-hosted RPC authentication (user confirmation, 2026-10-14)
+
+The user confirms `apprpc.77wapp.vip` is their self-hosted RPC gateway and requires
+an HTTP `token` header. A diagnostic request without that header returning401
+is not evidence of an application/node authentication failure. Scope: this
+Arbitrum collect-fee incident and the current app/gateway protocol. Source: direct
+user clarification during this investigation, 2026-10-14; verify changes if the
+protocol/hosts are replaced. The user requests code-side investigation without
+App interaction, and explicitly prohibits real order changes and nonce rollback.
+
+Code and live read-only evidence: `Context::get_rpc_header` obtains tokens through
+`BackendApi::rpc_token` (`app/rpc/token`) with existing client headers, decrypts
+using configured transport AES, then supplies `token` to RPC. Cache TTL is30min.
+The code-side authenticated query succeeded without a connected device; secrets
+were kept out of reports. Current chain evidence and recovery limits are recorded
+in [the Arbitrum recovery note](arbitrum-collect-fee-nonce-recovery.md).
+
+### Local Arbitrum test incident cleanup
+- Source: user confirmation2026-10-14, this local emulator incident only. User
+  approves backup/targeted failed-record and payer nonce cleanup, original address
+  reuse and repaired local runtime; no code commit. Do not introduce a general
+  recovery mechanism for this disposable test incident. This scope supersedes
+  prior read-only data boundary for these local records only, not production.

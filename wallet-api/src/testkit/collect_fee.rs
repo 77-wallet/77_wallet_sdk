@@ -215,7 +215,7 @@ mod tests {
     }
 }
 
-/// Exercise collect-fee BuildTx's real allocation method without signing.
+/// Exercise collect-fee BuildTx's read-only candidate observation without signing.
 pub async fn allocate_collect_fee_nonce(
     ctx: &'static Context,
     address: &str,
@@ -231,4 +231,30 @@ pub async fn allocate_collect_fee_nonce(
     ShadowFeeWorker::new(ctx, Arc::new(AddressLockManager::new()), scanner)
         .get_nonce(address, chain)
         .await
+}
+
+/// Testkit owns the private worker/scanner; integration tests use this boundary.
+pub struct FeeBuildTestWorker(ShadowFeeWorker);
+
+impl FeeBuildTestWorker {
+    pub fn new(ctx: &'static Context) -> Self {
+        use crate::infrastructure::api_trans::{
+            AddressLockManager,
+            collect_fee::shadow::{ScannerConfig, ShadowScanner},
+        };
+        use std::sync::Arc;
+        let (tx, _) = tokio::sync::mpsc::channel(8);
+        let scanner = Arc::new(ShadowScanner::new(ctx, ScannerConfig::default(), tx, None));
+        Self(ShadowFeeWorker::new(ctx, Arc::new(AddressLockManager::new()), scanner))
+    }
+
+    /// Installed fake adapter consumes the key without signing real transactions.
+    pub async fn build(&self, trade_no: &str) -> Result<(), ServiceError> {
+        let result =
+            self.0.build_fee_candidate(trade_no, Some("mock-private-key".to_string().into())).await;
+        if let Err(err) = result {
+            self.0.handle_fee_tx_failed(trade_no, err).await?;
+        }
+        Ok(())
+    }
 }

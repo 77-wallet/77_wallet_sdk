@@ -8,7 +8,7 @@ use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool,
     entities::api_fee::{ApiFeeEntity, ErrCode},
-    repositories::api_wallet::fee::ApiFeeRepo,
+    repositories::api_wallet::fee::{ApiFeeRepo, SignedFeeCandidate},
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
@@ -57,7 +57,7 @@ pub enum ShadowFeeCommand {
 ///
 /// Phase 1: Address lock + fact arbitration (no network)
 /// - 地址锁内进行并发裁决
-/// - 分配 nonce（确保同一地址串行）
+/// - 占用构建槽；候选 nonce 只读观察
 /// - 锁内禁止任何网络调用、sleep、await RPC
 /// - 裁决依据必须基于锁内 fresh read
 ///
@@ -629,6 +629,14 @@ impl ShadowFeeWorker {
 
     /// BuildTx 内部实现，可能返回错误
     async fn process_build_tx_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
+        self.build_fee_candidate(trade_no, None).await
+    }
+
+    pub(crate) async fn build_fee_candidate(
+        &self,
+        trade_no: &str,
+        preloaded_key: Option<wallet_chain_interact::types::ChainPrivateKey>,
+    ) -> Result<(), ServiceError> {
         // 1. 从数据库中获取手续费交易信息
         let fee = self.get_fee_entity(trade_no).await?;
 
@@ -664,11 +672,6 @@ impl ShadowFeeWorker {
         };
         // 🔓 锁在这里已经释放
 
-        // Chain observation belongs outside the address lock. The database
-        // allocator atomically reserves unique nonces across sending flows.
-        let nonce = self.get_nonce(&nonce_address, &nonce_chain).await?;
-        info!(trade_no = %trade_no, nonce, source = "shadow_fee_worker", "Retrieved nonce");
-
         // 先占位 build slot，防止同一 trade_no 在构建期间被重复推进。
         let build_slot_rows =
             ApiFeeRepo::update_building_at(&self.ctx.api_transaction_pool()?, trade_no).await?;
@@ -701,16 +704,26 @@ impl ShadowFeeWorker {
             }
         }
 
+        // Observing before signing is read-only. A build failure or cancellation
+        // cannot create a nonce reservation, and occupied slots do not query RPC.
+        let nonce = self.get_nonce(&nonce_address, &nonce_chain).await?;
+        info!(trade_no = %trade_no, nonce, source = "shadow_fee_worker", "Observed nonce candidate");
+
         // ====== phase 2: 锁外 · 网络执行 ======
         // 通过Context获取Handles实例，然后获取私钥管理器
-        let handles = self.ctx.get_handles_arc().await?;
-        let private_key_manager = handles.get_global_private_key_manager();
-        let private_key =
-            private_key_manager.get_private_key(&fee.from_addr, &fee.chain_code).await?;
+        let private_key = if let Some(key) = preloaded_key {
+            key
+        } else {
+            let handles = self.ctx.get_handles_arc().await?;
+            handles
+                .get_global_private_key_manager()
+                .get_private_key(&fee.from_addr, &fee.chain_code)
+                .await?
+        };
         info!(trade_no = %trade_no, source = "shadow_fee_worker", "Retrieved private key from manager");
 
         // 9. 生成转账请求
-        // ⚠️ nonce 只在 phase 1 分配，这里直接传入
+        // Candidate is only reserved together with signed facts in phase 3.
         let transfer_req = self.gen_transfer_req(&fee, nonce).await?;
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_fee_worker", "Generated transfer request with nonce");
 
@@ -748,15 +761,32 @@ impl ShadowFeeWorker {
 
             // 11. 立即将tx_hash、raw_tx和nonce存储到数据库
             let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
-            let rows_affected = ApiFeeRepo::update_after_build(
-                &self.ctx.api_transaction_pool()?,
-                &fee.trade_no,
-                &tx_hash,
-                &raw_tx_str,
-                &fee_str,
-                nonce as i64,
-            )
-            .await?;
+            let pool = self.ctx.api_transaction_pool()?;
+            let rows_affected = if shared_mechanism::is_evm_chain(&fee.chain_code) {
+                ApiFeeRepo::reserve_signed_fee(
+                    &pool,
+                    &SignedFeeCandidate {
+                        trade_no: &fee.trade_no,
+                        from_addr: &fee.from_addr,
+                        chain_code: &fee.chain_code,
+                        tx_hash: &tx_hash,
+                        raw_tx: &raw_tx_str,
+                        transaction_fee: &fee_str,
+                        nonce: nonce as i64,
+                    },
+                )
+                .await?
+            } else {
+                ApiFeeRepo::update_after_build(
+                    &pool,
+                    &fee.trade_no,
+                    &tx_hash,
+                    &raw_tx_str,
+                    &fee_str,
+                    nonce as i64,
+                )
+                .await?
+            };
 
             // 显式处理幂等情况：如果影响行数为0，表示raw_tx已存在或被并发写入
             if rows_affected == 0 {
@@ -987,7 +1017,7 @@ impl ShadowFeeWorker {
         Ok(entity)
     }
 
-    /// Allocate nonce for transaction.
+    /// Observe an unreserved nonce candidate for transaction.
     ///
     /// Observe chain next nonce before atomic reservation. Allocation is not
     /// proof of chain inclusion; failed observations reserve nothing. Existing
@@ -1000,19 +1030,19 @@ impl ShadowFeeWorker {
         info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_fee_worker", "Getting nonce");
         let chain: ChainCode = chain_code.try_into()?;
 
-        // ⚠️ EVM nonce MUST be allocated via DB atomic upsert.
+        // EVM candidates are read-only here; reserve_signed_fee commits them.
         // Any read-modify-write logic here is forbidden.
         match chain {
             c if crate::domain::chain::is_evm_chain(c) => {
-                // 对于以太坊类链，使用NonceEngine来分配nonce
+                // EVM candidates are observed without reserving the shared counter.
                 // ⚠️ INVARIANT:
-                // This method MUST guarantee DB-level atomic CAS for nonce allocation.
-                // Any refactor breaking this invariant will cause nonce duplication.
+                // The shared SQLite counter is checked again when signed bytes commit.
                 use crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx;
 
                 let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                let nonce = nonce_engine.allocate_nonce_synced(from_addr, chain_code).await?;
-                info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce using NonceEngine");
+                let nonce =
+                    nonce_engine.observe_ordinary_transfer_nonce(from_addr, chain_code).await?;
+                info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_fee_worker", "Observed nonce candidate using NonceEngine");
                 Ok(nonce as u64)
             }
             _ => {
@@ -1038,7 +1068,7 @@ impl ShadowFeeWorker {
     ///
     /// 🔒 关键语义：
     /// - nonce 由调用方传入，不再内部获取
-    /// - nonce 已经在 phase 1 中分配，这里只使用
+    /// - nonce 是只读候选，构建成功后原子预留
     /// - 确保 nonce 从"动态信息"升级为"已裁决事实"
     async fn gen_transfer_req(
         &self,
@@ -1156,7 +1186,7 @@ impl ShadowFeeWorker {
     }
 
     /// 处理手续费交易失败
-    async fn handle_fee_tx_failed(
+    pub(crate) async fn handle_fee_tx_failed(
         &self,
         trade_no: &str,
         err: ServiceError,

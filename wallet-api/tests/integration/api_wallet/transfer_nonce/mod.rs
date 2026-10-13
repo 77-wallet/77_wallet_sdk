@@ -318,7 +318,7 @@ async fn collect_fee_nonce_syncs_chain_progress() -> anyhow::Result<()> {
     let second = scenario.when_collect_fee_nonce_is_allocated().await?;
 
     assert_eq!([first, second], [9, 15]);
-    scenario.then_nonce_floor_and_queries_are(15, 2).await;
+    scenario.then_nonce_floor_and_queries_are(0, 2).await;
     Ok(())
 }
 
@@ -336,7 +336,7 @@ async fn collect_fee_nonce_rpc_failure_recovers_without_reservation() -> anyhow:
     scenario.then_nonce_floor_and_queries_are(0, 1).await;
     scenario.given_chain_next_nonce(Some(9));
     assert_eq!(scenario.when_collect_fee_nonce_is_allocated().await?, 9);
-    scenario.then_nonce_floor_and_queries_are(9, 2).await;
+    scenario.then_nonce_floor_and_queries_are(0, 2).await;
     Ok(())
 }
 
@@ -348,16 +348,14 @@ async fn collect_fee_nonce_shared_senders_remain_unique() -> anyhow::Result<()> 
     scenario.given().fake_chain_adapter();
     scenario.given_chain_next_nonce(Some(9));
 
-    let (fee, withdraw, collect) = tokio::join!(
-        scenario.when_collect_fee_nonce_is_allocated(),
-        scenario.when_withdrawal_nonce_is_allocated(),
-        scenario.when_collect_nonce_is_allocated(),
-    );
-
-    let mut allocated = [fee?, withdraw?, collect? as u64];
-    allocated.sort();
-    assert_eq!(allocated, [9, 10, 11]);
-    scenario.then_nonce_floor_and_queries_are(11, 3).await;
+    // Observing an unsigned fee attempt twice must not consume either candidate.
+    assert_eq!(scenario.when_collect_fee_nonce_is_allocated().await?, 9);
+    assert_eq!(scenario.when_collect_fee_nonce_is_allocated().await?, 9);
+    scenario.then_nonce_floor_and_queries_are(0, 2).await;
+    assert_eq!(scenario.when_collect_nonce_is_allocated().await?, 9);
+    let error = scenario.when_collect_fee_nonce_is_allocated().await.unwrap_err();
+    assert!(error.to_string().contains("nonce_gap_requires_recovery"));
+    scenario.then_nonce_floor_and_queries_are(9, 4).await;
     Ok(())
 }
 
@@ -952,5 +950,83 @@ async fn shared_broadcast_matching_hash_without_visibility_preserves_guard() -> 
 
     assert!(!accepted);
     scenario.then_visibility_queries_are(3);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_fee_build_failure_retries_same_nonce_then_commits() -> anyhow::Result<()> {
+    let scenario = support::FeeBuildScenario::given().await?;
+    scenario.adapter.fail_build(true);
+
+    scenario.when_build().await?;
+    scenario.when_build().await?;
+
+    scenario.then_facts(0, false).await;
+    scenario.then_slot_released().await;
+    assert_eq!(scenario.adapter.build_calls(), 2);
+    scenario.adapter.fail_build(false);
+    scenario.when_build().await?;
+    scenario.then_facts(6, true).await;
+    assert_eq!(scenario.adapter.nonce_queries(), 3);
+    scenario.when_build().await?;
+    scenario.then_facts(6, true).await;
+    assert_eq!(scenario.adapter.build_calls(), 3);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_fee_build_occupied_slot_skips_nonce_and_build() -> anyhow::Result<()> {
+    let scenario = support::FeeBuildScenario::given().await?;
+    scenario.given_occupied_slot().await;
+
+    scenario.when_build().await?;
+
+    scenario.then_facts(0, false).await;
+    assert_eq!(scenario.adapter.nonce_queries(), 0);
+    assert_eq!(scenario.adapter.build_calls(), 0);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_fee_build_cancelled_before_commit_reserves_nothing() -> anyhow::Result<()> {
+    let scenario = support::FeeBuildScenario::given().await?;
+    scenario.adapter.block_build(true);
+
+    {
+        let build = scenario.when_build();
+        tokio::pin!(build);
+        tokio::select! {
+            result = &mut build => panic!("build unexpectedly completed: {result:?}"),
+            _ = scenario.adapter.wait_for_first_entry() => {}
+        }
+    } // Dropping the blocked build future leaves only a reclaimable build slot.
+
+    scenario.then_facts(0, false).await;
+    assert_eq!(scenario.adapter.build_calls(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_fee_build_competing_allocator_discards_candidate() -> anyhow::Result<()> {
+    let scenario = support::FeeBuildScenario::given().await?;
+    scenario.adapter.block_build(true);
+
+    let build = scenario.when_build();
+    tokio::pin!(build);
+    tokio::select! {
+        result = &mut build => panic!("build unexpectedly completed: {result:?}"),
+        _ = scenario.adapter.wait_for_first_entry() => {}
+    }
+    scenario.given_competing_reservation().await;
+    scenario.adapter.release_first();
+    build.await?;
+
+    scenario.then_facts(6, false).await;
+    scenario.then_slot_released().await;
+    assert_eq!(scenario.adapter.build_calls(), 1);
     Ok(())
 }

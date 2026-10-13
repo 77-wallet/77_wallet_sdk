@@ -12,3 +12,6 @@ mod evm_scope;
 pub(super) use evm_scope::EvmTransferScenario;
 
 pub(super) use request::evm_chain_codes;
+
+mod fee_build;
+pub(super) use fee_build::FeeBuildScenario;

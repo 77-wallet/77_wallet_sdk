@@ -1754,3 +1754,36 @@ Scope: persisted raw order paths and fee display, Base/Scroll native and standar
 - Limitation: one payment cannot guarantee arbitrary fee increases; beyond the funded budget, wait for lower fresh quotes, then report persistent insufficiency at the deadline. No real transactions or historical failed-order replay in this repair.
 
 - `api_evm_fee_stale_build_preserves_pending_single_payment`: stale direct fee-check and adapter-error recovery protect the uploaded fee while awaiting FeeRes or its ACK, including `need_service_fee=true/false`; neither clears upload facts nor requests another payment.
+
+### Collect-fee signed nonce candidate (2026-10-14)
+
+Build slot precedes nonce RPC; EVM observation reserves nothing. Signed fee facts,
+derived status and nonce are committed together under the shared SQLite counter
+writer lock. Existing signed facts cannot be replaced. Non-EVM build persistence
+and broadcast/receipt/ACK policies remain unchanged.
+
+- `fee_signed_candidate_success_commits_raw_status_and_nonce_once`: real SQLite
+  stores raw/hash/nonce/status atomically; identical retry no-op, changed bytes rejected.
+- `fee_signed_candidate_competing_allocator_leaves_no_raw`: occupied nonce cannot
+  publish signed bytes or change the existing counter.
+- `fee_signed_candidate_stale_lifecycle_and_identity_roll_back_nonce`: sender
+  mismatch/finished row rejects publication and rolls back provisional floor.
+- `fee_signed_candidate_result_ack_terminal_rolls_back_nonce`: a historical
+  result-ACK-only terminal row rejects publication and leaves no reservation.
+- `fee_signed_candidate_concurrent_same_sender_commits_only_one`: competing fee
+  rows for one candidate commit exactly one signed intent.
+- `collect_fee_build_failure_retries_same_nonce_then_commits`: adapter build
+  failure leaves no raw/reservation; retries succeed with the same chain candidate;
+  no broadcast and no duplicate build once bytes exist.
+- `collect_fee_build_occupied_slot_skips_nonce_and_build`: duplicate occupied slot
+  performs zero nonce/build RPC and reserves nothing.
+- `collect_fee_build_cancelled_before_commit_reserves_nothing`: controlled blocked
+  build cancellation leaves only a reclaimable slot, no raw or nonce allocation.
+- `collect_fee_build_competing_allocator_discards_candidate`: reservation changes
+  while the adapter is blocked; stale signed candidate is not published/broadcast.
+- Existing `collect_fee_nonce_*` cases now assert candidate observation is read-only,
+  RPC failure leaves no reservation, and occupied counters require gap recovery.
+
+Runtime incident and conditional recovery boundaries:
+[Arbitrum nonce recovery](../arbitrum-collect-fee-nonce-recovery.md). Existing signed
+high-nonce intents are not reset or rewritten. No real-device recovery was run.
