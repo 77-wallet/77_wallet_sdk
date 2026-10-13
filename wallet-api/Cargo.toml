@@ -141,4 +141,5 @@ rayon = { workspace = true }
 smallvec = "1.13.2"
 
 [dev-dependencies]
+alloy = { workspace = true, features = ["rlp"] }
 serial_test = "3.2.0"

@@ -181,3 +181,15 @@ notation values must remain readable without clearing the database. Source:
 user instruction in this chat, 2026-10-13. Scope: ordinary-wallet bill amount
 presentation/storage; no schema migration, historical rewrite, commit or release
 authorization. Existing display truncation to eight decimals remains unchanged.
+
+### Ordinary-wallet EVM maximum transfer (2026-10-13)
+
+User confirms the failing Base transfer was entered via the App maximum button,
+and authorizes SOL-style SDK calculation for EVM native maximum plus inspecting
+and fixing the App maximum intent. Source: this chat, 2026-10-13. Scope: ordinary
+wallet EVM native transfer; manual amounts and ERC20 behavior remain unchanged.
+User subsequently approves committing and pushing this fix to SDK develop and
+App dev in this chat (2026-10-13); plugin dependency publication, release and real
+transactions remain outside that approval. App source inspected this date: maximum deducts selected maxFee,
+but spendAll excludes EVM; the captured request also reports spend_all=false.
+Actual running binary dependency revision remains unverified.

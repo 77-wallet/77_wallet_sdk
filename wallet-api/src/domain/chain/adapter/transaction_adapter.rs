@@ -31,7 +31,7 @@ use wallet_chain_interact::{
         self,
         operations::{TronConstantOperation as _, TronTxOperation},
     },
-    types::ChainPrivateKey,
+    types::{ChainPrivateKey, Transaction as _},
 };
 use wallet_database::entities::{asset_token_key::AssetTokenKey, coin::CoinEntity};
 use wallet_transport::client::{HttpClient, RpcClient};
@@ -204,7 +204,7 @@ impl TransactionAdapter {
     pub async fn transfer(
         &self,
         ctx: &'static crate::context::Context,
-        params: &transaction::TransferReq,
+        params: &mut transaction::TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, crate::error::service::ServiceError> {
         let transfer_amount = if matches!(self, Self::Solana(_))
@@ -219,31 +219,74 @@ impl TransactionAdapter {
 
         match self {
             Self::Ethereum(chain) => {
-                let fee_setting = pare_fee_setting(params.fee_setting.as_str())?;
-
+                let mut fee_setting = pare_fee_setting(params.fee_setting.as_str())?;
                 let balance = chain.balance(&params.base.from, None).await?;
+                let spend_all_native = params.base.spend_all && token_address.is_none();
+                let mut transfer = chain::eth::operations::TransferOpt::try_from(&params.base)?;
 
-                // check balance
-                let remain_balance = ChainTransDomain::check_eth_balance(
-                    &params.base.from,
-                    balance,
-                    token_address.as_deref(),
-                    chain,
-                    transfer_amount,
-                )
-                .await?;
-
-                let params = chain::eth::operations::TransferOpt::try_from(&params.base)?;
+                let final_amount = if spend_all_native {
+                    let is_contract =
+                        chain.provider.is_contract_address(&params.base.to).await? != "0x";
+                    // Core refreshes testnet fees; freeze that same fee before calculating max.
+                    if chain.network != NetworkKind::Mainnet {
+                        let reserve =
+                            evm_fee::execution_fee_reserve(chain.chain_code, &fee_setting);
+                        if balance <= reserve {
+                            return Err(crate::error::business::BusinessError::Chain(
+                                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                            ))?;
+                        }
+                        // Only EOAs can safely use a minimal-value gas probe.
+                        transfer.base.value =
+                            if is_contract { balance - reserve } else { U256::from(1_u64) };
+                        fee_setting = chain.provider.get_fee(transfer.build_transaction()?).await?;
+                    }
+                    Some(
+                        evm_fee::prepare_native_maximum(
+                            chain,
+                            &mut transfer,
+                            balance,
+                            &mut fee_setting,
+                            is_contract,
+                        )
+                        .await?,
+                    )
+                } else {
+                    let remain_balance = ChainTransDomain::check_eth_balance(
+                        &params.base.from,
+                        balance,
+                        token_address.as_deref(),
+                        chain,
+                        transfer_amount,
+                    )
+                    .await?;
+                    let reserve = evm_fee::execution_fee_reserve(chain.chain_code, &fee_setting);
+                    let required = evm_fee::required_send_fee(chain, &transfer, reserve).await?;
+                    evm_fee::ensure_send_fee_balance(remain_balance, required)?;
+                    None
+                };
                 let execution_fee = fee_setting.transaction_fee();
-                let execution_reserve =
-                    evm_fee::execution_fee_reserve(chain.chain_code, &fee_setting);
-                let required_fee =
-                    evm_fee::required_send_fee(chain, &params, execution_reserve).await?;
-                evm_fee::ensure_send_fee_balance(remain_balance, required_fee)?;
-
-                let tx_hash =
-                    chain.exec_transaction(params, fee_setting, private_key, None).await?;
-
+                let actual_value = final_amount
+                    .map(|value| unit::format_to_string(value, eth::consts::ETH_DECIMAL))
+                    .transpose()?;
+                let tx_hash = if spend_all_native {
+                    // Use the fee already reserved above, including on testnets.
+                    let tx = chain
+                        .provider
+                        .set_transaction_fee(
+                            transfer.build_transaction()?,
+                            fee_setting,
+                            chain.chain_code,
+                        )
+                        .await?;
+                    chain.provider.send_raw_transaction(tx, &private_key, None).await?
+                } else {
+                    chain.exec_transaction(transfer, fee_setting, private_key, None).await?
+                };
+                // The domain builds its pending bill from this request after successful send.
+                if let Some(value) = actual_value {
+                    params.base.value = value;
+                }
                 Ok(TransferResp::new(
                     tx_hash,
                     unit::format_to_string(execution_fee, eth::consts::ETH_DECIMAL)?,

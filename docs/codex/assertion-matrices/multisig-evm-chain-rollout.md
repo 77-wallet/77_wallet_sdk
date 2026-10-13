@@ -82,3 +82,30 @@ can change; repeat against the configured project RPCs before release.
 This first batch does not enable ordinary transfer, API wallet transfer,
 collect, or withdrawal for a new chain. Their new enum cases fail closed or
 remain uninitialized until their own flow is implemented and tested.
+
+## Ordinary-wallet EVM native maximum (2026-10-13)
+
+This section covers ordinary transfer only; no multisig or API-wallet lifecycle
+changes. Entry: App maximum intent -> BaseTransferReq.spend_all ->
+TransactionAdapter::transfer -> evm_fee::prepare_native_maximum -> existing Core
+provider signing/broadcast -> updated request -> ChainTransDomain pending bill.
+
+| Case | Required assertion | Evidence |
+| --- | --- | --- |
+| Explicit native maximum on seven EVM chains | Latest balance minus execution maximum and final-value additional fee; decoded signed amount and request/bill amount agree | `native_maximum_recalculates_value_before_broadcast` |
+| Increasing then decreasing L1 estimate | Keep highest seen reserve; final estimate fits available fee | `maximum_reserves_increasing_final_amount_fee_without_releasing_previous_reserve` |
+| Repeatedly increasing estimate | Stop after four estimates, no signing/broadcast | `maximum_unstable_fee_stops_after_four_estimates_without_broadcast` |
+| Balance exhausted by fees / failed additional fee RPC | Fail closed; no broadcast | `maximum_cannot_spend_the_fee_reserve_or_ignore_rpc_failure`, `native_maximum_rpc_failure_does_not_change_request_or_broadcast` |
+| Testnet refresh | Refresh once before maximum computation; same fee used in signed transaction | `testnet_maximum_freezes_refreshed_fee_before_calculation_and_signing` |
+| Native contract maximum | Query recipient code; never use a minimum-value gas probe for a payable contract; re-estimate gas for final candidates and keep the highest gas limit, with matching signed value | `native_contract_maximum_reestimates_gas_for_final_amount` (mainnet and testnet) |
+| Contract gas RPC failure | Request amount unchanged; no nonce or broadcast calls | `native_contract_gas_rpc_failure_preserves_request_and_never_broadcasts` |
+| Manual amount | Existing insufficient fee checks and no broadcast remain | `send_entry_rejects_base_and_scroll_when_only_l1_fee_is_missing` |
+| ERC20 spend_all | Requested token amount unchanged; no native drain behavior | `erc20_spend_all_keeps_requested_token_amount` |
+| App maximum/manual/token/API | EVM native max sets flag; edits clear flag; token/API keep existing behavior | App `test/evm_max_transfer_test.dart` |
+| Maximum fee quote with stale UI balance | Native maximum quotes use latest RPC balance; manual and ERC20 quotes still reject amounts above their balance | `maximum_quote_uses_latest_native_balance_but_preserves_manual_and_token_checks` (observed fail before fix, pass after) |
+
+Offline SDK command: `cargo test --offline --target-dir target -p wallet-api
+--no-default-features --lib domain::chain::adapter::evm_fee`. App command:
+`fvm flutter test --no-pub test/evm_max_transfer_test.dart`. Results are recorded
+in PLANS.md after execution. Real funded send, concurrent external balance
+changes, and installed App/plugin linkage are outside these offline checks.

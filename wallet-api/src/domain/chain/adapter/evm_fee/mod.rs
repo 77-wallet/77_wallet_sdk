@@ -34,6 +34,42 @@ pub(super) async fn required_send_fee(
     Ok(execution_fee + additional_fee.unwrap_or_default())
 }
 
+/// Reserve the maximum execution fee plus additional fees for the final value.
+/// Keep the largest reservation seen so fluctuating estimates cannot release it.
+pub(super) async fn prepare_native_maximum(
+    chain: &EthChain,
+    transfer: &mut TransferOpt,
+    balance: U256,
+    fee_setting: &mut FeeSetting,
+    is_contract: bool,
+) -> Result<U256, ServiceError> {
+    let mut reserve = execution_fee_reserve(chain.chain_code, fee_setting);
+    for _ in 0..4 {
+        if balance <= reserve {
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+            ))?;
+        }
+        let amount = balance - reserve;
+        transfer.base.value = amount;
+        if is_contract {
+            // Payable contracts can consume different gas for different values.
+            let gas = chain.provider.estimate_gas(transfer.build_transaction()?).await?;
+            fee_setting.gas_limit = fee_setting.gas_limit.max(gas);
+        }
+        let execution_reserve = execution_fee_reserve(chain.chain_code, fee_setting);
+        let required = required_send_fee(chain, transfer, execution_reserve).await?;
+        if required <= reserve {
+            return Ok(amount);
+        }
+        reserve = required;
+    }
+    // No signing or broadcast until a final-amount estimate fits the reservation.
+    Err(crate::error::business::BusinessError::Chain(
+        crate::error::business::chain::ChainError::InsufficientFeeBalance,
+    ))?
+}
+
 pub(super) fn ensure_send_fee_balance(
     available_native: U256,
     required_fee: U256,
@@ -56,6 +92,7 @@ pub(super) async fn estimate_transfer_fee(
     let token_address = req.token_address.to_chain_token_option();
     let value = unit::convert_to_u256(&req.value, req.decimals)?;
     let balance = chain.balance(&req.from, token_address.clone()).await?;
+    let value = if req.spend_all && token_address.is_none() { balance } else { value };
     if balance < value {
         return Err(crate::error::business::BusinessError::Chain(
             crate::error::business::chain::ChainError::insufficient_balance_with_detail(
