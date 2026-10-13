@@ -509,7 +509,14 @@ async fn send_preflight_reserves_additional_fee_for_base_and_scroll() {
         let (url, worker) = fake_services(1, false);
         let (chain, _) = clients(&url, code);
         let transfer = TransferOpt::new(FROM, TO, U256::from(100_u64), None).unwrap();
-        let required = required_send_fee(&chain, &transfer, U256::from(21_000_u64)).await.unwrap();
+        let required = required_send_fee(
+            &chain,
+            &transfer,
+            U256::from(21_000_u64),
+            &reserve_setting(U256::from(21_000_u64)),
+        )
+        .await
+        .unwrap();
         assert_eq!(required, U256::from(21_000 + ADDITIONAL_WEI), "{code}");
         let requests = worker.join().unwrap();
         assert_eq!(requests.len(), 1, "{code}");
@@ -524,7 +531,14 @@ async fn send_preflight_uses_erc20_transfer_shape_for_base_and_scroll() {
         let transfer =
             TransferOpt::new(FROM, TO, U256::from(100_u64), Some(TOKEN.to_string())).unwrap();
 
-        let required = required_send_fee(&chain, &transfer, U256::from(42_000_u64)).await.unwrap();
+        let required = required_send_fee(
+            &chain,
+            &transfer,
+            U256::from(42_000_u64),
+            &reserve_setting(U256::from(42_000_u64)),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(required, U256::from(42_000 + ADDITIONAL_WEI), "{code}");
         let requests = worker.join().unwrap();
@@ -553,7 +567,14 @@ async fn send_preflight_keeps_execution_fee_on_non_l2_chain() {
     let (url, worker) = fake_services(0, false);
     let (chain, _) = clients(&url, ChainCode::Polygon);
     let transfer = TransferOpt::new(FROM, TO, U256::from(100_u64), None).unwrap();
-    let required = required_send_fee(&chain, &transfer, U256::from(21_000_u64)).await.unwrap();
+    let required = required_send_fee(
+        &chain,
+        &transfer,
+        U256::from(21_000_u64),
+        &reserve_setting(U256::from(21_000_u64)),
+    )
+    .await
+    .unwrap();
     assert_eq!(required, U256::from(21_000_u64));
     assert!(worker.join().unwrap().is_empty());
 }
@@ -564,7 +585,13 @@ async fn send_preflight_aborts_when_scroll_additional_fee_rpc_fails() {
     let (chain, _) = clients(&url, ChainCode::Scroll);
     let transfer = TransferOpt::new(FROM, TO, U256::from(100_u64), None).unwrap();
 
-    let result = required_send_fee(&chain, &transfer, U256::from(21_000_u64)).await;
+    let result = required_send_fee(
+        &chain,
+        &transfer,
+        U256::from(21_000_u64),
+        &reserve_setting(U256::from(21_000_u64)),
+    )
+    .await;
 
     assert!(format!("{:?}", result.unwrap_err()).contains("method not found"));
     let requests = worker.join().unwrap();
@@ -629,6 +656,23 @@ fn fake_services_with_gas(
     gas_limits: Vec<u64>,
     is_contract: bool,
 ) -> (String, thread::JoinHandle<Vec<(String, Value)>>) {
+    fake_services_with_prices(
+        expected_calls,
+        fail_additional_fee,
+        fees,
+        gas_limits,
+        is_contract,
+        false,
+    )
+}
+fn fake_services_with_prices(
+    expected_calls: usize,
+    fail_additional_fee: bool,
+    fees: Vec<u64>,
+    gas_limits: Vec<u64>,
+    is_contract: bool,
+    low_prices: bool,
+) -> (String, thread::JoinHandle<Vec<(String, Value)>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
@@ -682,10 +726,10 @@ fn fake_services_with_gas(
                 None if path.contains("/token/findGasTracker") => json!({
                     "success": true,
                     "data": {
-                        "safeGasPrice": "1",
-                        "proposeGasPrice": "2",
-                        "fastGasPrice": "3",
-                        "suggestBaseFee": "1",
+                        "safeGasPrice": if low_prices {"0.000120108"} else {"1"},
+                        "proposeGasPrice": if low_prices {"0.000120108"} else {"2"},
+                        "fastGasPrice": if low_prices {"0.000120108"} else {"3"},
+                        "suggestBaseFee": if low_prices {"0.000120008"} else {"1"},
                         "gasUsedRatio": null
                     }
                 }),
@@ -739,7 +783,8 @@ async fn assert_quote(code: ChainCode, token: Option<&str>) {
 
     assert_eq!(requests.len(), 4);
     assert!(requests[1].0.contains("/token/findGasTracker"));
-    assert_eq!(requests[3].1["method"], "eth_estimateGas");
+    let gas_index = if code == ChainCode::Scroll { 2 } else { 3 };
+    assert_eq!(requests[gas_index].1["method"], "eth_estimateGas");
     assert_eq!(quote["default"], "propose");
     assert_eq!(quote["data"].as_array().unwrap().len(), 3);
     for (index, (expected_type, estimate, maximum, priority, max_per_gas)) in [
@@ -758,19 +803,28 @@ async fn assert_quote(code: ChainCode, token: Option<&str>) {
         );
         assert_eq!(
             quoted_amount(&tier["maxFee"]["amount"]),
-            wallet_utils::unit::convert_to_u256(maximum, 18).unwrap()
+            wallet_utils::unit::convert_to_u256(
+                if code == ChainCode::Scroll && index == 0 { "0.0000377202772" } else { maximum },
+                18
+            )
+            .unwrap()
         );
         assert_eq!(tier["feeSetting"]["gasLimit"], 23_100);
         assert_eq!(tier["feeSetting"]["priorityFee"], *priority);
-        assert_eq!(tier["feeSetting"]["maxFeePerGas"], *max_per_gas);
+        assert_eq!(
+            tier["feeSetting"]["maxFeePerGas"],
+            if code == ChainCode::Scroll && index == 0 { "1200012000" } else { max_per_gas }
+        );
     }
     if token.is_some() {
         assert_eq!(requests[0].1["method"], "eth_call");
-        assert_eq!(requests[3].1["params"][0]["to"], TOKEN);
-        assert!(requests[3].1["params"][0]["input"].as_str().unwrap().starts_with("0xa9059cbb"));
+        assert_eq!(requests[gas_index].1["params"][0]["to"], TOKEN);
+        assert!(
+            requests[gas_index].1["params"][0]["input"].as_str().unwrap().starts_with("0xa9059cbb")
+        );
     } else {
         assert_eq!(requests[0].1["method"], "eth_getBalance");
-        assert_eq!(requests[3].1["params"][0]["to"], TO);
+        assert_eq!(requests[gas_index].1["params"][0]["to"], TO);
     }
     match code {
         ChainCode::Base => {
@@ -784,13 +838,13 @@ async fn assert_quote(code: ChainCode, token: Option<&str>) {
             assert_eq!(unsigned_size, if token.is_some() { 324 } else { 256 });
         }
         ChainCode::Scroll => {
-            assert_eq!(requests[2].1["method"], "eth_call");
+            assert_eq!(requests[3].1["method"], "eth_call");
             assert_eq!(
-                requests[2].1["params"][0]["to"],
+                requests[3].1["params"][0]["to"],
                 "0x5300000000000000000000000000000000000002"
             );
-            assert_eq!(requests[2].1["params"][1], "latest");
-            let data = requests[2].1["params"][0]["data"].as_str().unwrap();
+            assert_eq!(requests[3].1["params"][1], "latest");
+            let data = requests[3].1["params"][0]["data"].as_str().unwrap();
             let bytes = usize::from_str_radix(&data[74..138], 16).unwrap();
             assert!(bytes >= if token.is_some() { 183 } else { 115 });
         }
@@ -861,7 +915,7 @@ async fn scroll_native_quote_uses_core_fee_without_changing_execution_settings()
 
 #[tokio::test]
 async fn scroll_additional_fee_rpc_error_fails_sdk_quote() {
-    let (url, worker) = fake_services(3, true);
+    let (url, worker) = fake_services(4, true);
     let (chain, backend) = clients(&url, ChainCode::Scroll);
     let mut req = BaseTransferReq::new(FROM, TO, "0.1", "scroll", "ETH");
     req.with_decimals(18);
@@ -872,7 +926,105 @@ async fn scroll_additional_fee_rpc_error_fails_sdk_quote() {
 
     let error = result.expect_err("Core additional-fee RPC failure must abort the quote");
     assert!(format!("{error:?}").contains("method not found"), "unexpected error: {error:?}");
-    assert_eq!(requests.len(), 3);
-    assert_eq!(requests[2].1["method"], "eth_call");
-    assert!(requests.iter().all(|(_, body)| body["method"] != "eth_estimateGas"));
+    assert_eq!(requests.len(), 4);
+    assert_eq!(requests[3].1["method"], "eth_call");
+    assert_eq!(requests[2].1["method"], "eth_estimateGas");
+    assert!(requests.iter().all(|(_, r)| r["method"] != "eth_sendRawTransaction"));
+}
+
+#[tokio::test]
+async fn scroll_fee_quote_uses_wei_precision_and_known_fee_fields() {
+    let (url, worker) =
+        fake_services_with_prices(4, false, vec![598_776_354_669], vec![21000], false, true);
+    let (chain, backend) = clients(&url, ChainCode::Scroll);
+    let mut req = BaseTransferReq::new(FROM, TO, "0.002193417592465788", "scroll", "ETH");
+    req.with_decimals(18);
+    let price = TokenCurrency::new("scroll", "ETH", "ETH", Some(2000.0), None, 1.0, 18);
+    let quote = estimate_transfer_fee(&chain, &req, &backend, "USD", price).await.unwrap();
+    let quote: Value = serde_json::from_str(&quote).unwrap();
+    for tier in quote["data"].as_array().unwrap() {
+        assert_eq!(
+            tier["feeSetting"]["maxFeePerGas"], "144130",
+            "20% headroom rounded up to wei, not0.1gwei"
+        );
+        assert_eq!(quoted_amount(&tier["maxFee"]["amount"]), U256::from(602_105_757_669u64));
+    }
+    let requests = worker.join().unwrap();
+    let data = requests
+        .iter()
+        .find_map(|(_, r)| {
+            let data = r["params"][0]["data"].as_str()?;
+            (r["params"][0]["to"] == "0x5300000000000000000000000000000000000002").then_some(data)
+        })
+        .unwrap();
+    let bytes = usize::from_str_radix(&data[74..138], 16).unwrap();
+    assert!(
+        bytes >= 115 && bytes <= 130,
+        "Scroll must supply gas and max fees before L1 quote: {bytes}"
+    );
+}
+
+fn reserve_setting(reserve: U256) -> FeeSetting {
+    FeeSetting {
+        gas_limit: reserve,
+        max_fee_per_gas: U256::from(1),
+        max_priority_fee_per_gas: U256::from(1),
+        base_fee: U256::ZERO,
+    }
+}
+
+#[tokio::test]
+async fn scroll_fee_testnet_refresh_is_funded_before_signing() {
+    let (_directory, ctx) = maximum_test_context().await;
+    let (url, worker) = fake_services(4, false);
+    let (mut chain, _) = clients(&url, ChainCode::Scroll);
+    chain.network = NetworkKind::Testnet;
+    let adapter = TransactionAdapter::Ethereum(chain);
+    let mut base = BaseTransferReq::new(FROM, TO, "0.99995", "scroll", "ETH");
+    base.with_decimals(18);
+    let mut req = TransferReq {
+        base,
+        password: String::new(),
+        signer: None,
+        fee_setting: json!({"gasLimit":21000,"baseFee":"0","priorityFee":"1","maxFeePerGas":"1"})
+            .to_string(),
+    };
+    let err = adapter
+        .transfer(ctx, &mut req, ChainPrivateKey::from("unused-private-key"))
+        .await
+        .err()
+        .unwrap();
+    assert!(
+        format!("{err:?}").contains("InsufficientFeeBalance"),
+        "refreshed testnet fee must be checked before signing: {err:?}"
+    );
+    assert_eq!(req.base.value, "0.99995");
+    let calls = worker.join().unwrap();
+    assert!(calls.iter().all(|(_, r)| !matches!(
+        r["method"].as_str(),
+        Some("eth_sendRawTransaction" | "eth_getTransactionCount")
+    )));
+}
+
+#[test]
+fn scroll_fee_cap_and_metadata_boundaries_are_checked() {
+    use crate::response_vo::{scroll_fee_cap, scroll_fee_transaction};
+    assert_eq!(scroll_fee_cap(U256::from(120008), U256::from(100)).unwrap(), U256::from(144130));
+    assert!(scroll_fee_cap(U256::MAX, U256::from(1)).is_err());
+    for (gas, cap, tip) in [
+        (U256::MAX, U256::from(1), U256::from(1)),
+        (U256::from(21000), U256::MAX, U256::from(1)),
+        (U256::from(21000), U256::from(1), U256::MAX),
+    ] {
+        let setting = FeeSetting {
+            gas_limit: gas,
+            max_fee_per_gas: cap,
+            max_priority_fee_per_gas: tip,
+            base_fee: U256::ZERO,
+        };
+        assert!(
+            scroll_fee_transaction(Default::default(), &setting).is_err(),
+            "oversized settings must not wrap into cheap quotes"
+        );
+    }
 }

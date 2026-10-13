@@ -269,8 +269,16 @@ impl TransactionAdapter {
                         transfer_amount,
                     )
                     .await?;
+                    // Scroll L1 sizing uses these fields, so freeze the testnet fee
+                    // that Core would otherwise refresh after this balance check.
+                    if chain.chain_code == ChainType::Scroll
+                        && chain.network != NetworkKind::Mainnet
+                    {
+                        fee_setting = chain.provider.get_fee(transfer.build_transaction()?).await?;
+                    }
                     let reserve = evm_fee::execution_fee_reserve(chain.chain_code, &fee_setting);
-                    let required = evm_fee::required_send_fee(chain, &transfer, reserve).await?;
+                    let required =
+                        evm_fee::required_send_fee(chain, &transfer, reserve, &fee_setting).await?;
                     evm_fee::ensure_send_fee_balance(remain_balance, required)?;
                     None
                 };
@@ -278,8 +286,11 @@ impl TransactionAdapter {
                 let actual_value = final_amount
                     .map(|value| unit::format_to_string(value, eth::consts::ETH_DECIMAL))
                     .transpose()?;
-                let tx_hash = if spend_all_native {
-                    // Use the fee already reserved above, including on testnets.
+                let tx_hash = if spend_all_native
+                    || (chain.chain_code == ChainType::Scroll
+                        && chain.network != NetworkKind::Mainnet)
+                {
+                    // Use the fee already reserved above, including Scroll fixed testnet amounts.
                     let tx = chain
                         .provider
                         .set_transaction_fee(

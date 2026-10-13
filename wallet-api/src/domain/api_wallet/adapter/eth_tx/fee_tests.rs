@@ -165,6 +165,12 @@ async fn api_evm_fee_raw_includes_l1_native_and_token() {
                     assert_eq!(total, U256::from(EXTRA) + U256::from(63_000u64));
                 }
                 assert!(total > U256::from(EXTRA));
+                if code == ChainCode::Scroll && !metadata {
+                    assert!(
+                        total < U256::from(EXTRA + 1_000_000),
+                        "API Scroll must also avoid the0.1gwei cap floor"
+                    );
+                }
                 let requests = rpc.calls.lock().unwrap();
                 let additional: Vec<_> = requests
                     .iter()

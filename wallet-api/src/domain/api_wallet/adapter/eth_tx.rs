@@ -22,7 +22,7 @@ use crate::{
         service::ServiceError,
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-    response_vo::FeeDetails,
+    response_vo::{FeeDetails, scroll_fee_cap, scroll_fee_transaction},
 };
 use alloy::{
     network::TransactionBuilder as _,
@@ -277,6 +277,18 @@ impl EthTx {
             gas_limit: metadata.gas_limit,
         })
     }
+    fn fee_setting_for_chain(
+        &self,
+        oracle: &GasOracle,
+        gas: u64,
+    ) -> Result<FeeSetting, ServiceError> {
+        let mut setting = Self::fee_setting_from_gas_oracle(oracle, gas)?;
+        if self.chain.chain_code == ChainCode::Scroll {
+            setting.max_fee_per_gas =
+                scroll_fee_cap(setting.base_fee, setting.max_priority_fee_per_gas)?;
+        }
+        Ok(setting)
+    }
     async fn calculate_fee_setting_from_req(
         &self,
         params: &ApiTransferReq,
@@ -302,7 +314,7 @@ impl EthTx {
 
         tracing::info!("transfer -------------------{} 16", rc.consume);
         let gas_oracle = self.gas_oracle().await?;
-        Self::fee_setting_from_gas_oracle(&gas_oracle, rc.consume as u64)
+        self.fee_setting_for_chain(&gas_oracle, rc.consume as u64)
     }
     fn uses_separate_l1_fee(&self) -> bool {
         matches!(self.chain.chain_code, ChainCode::Base | ChainCode::Scroll)
@@ -320,6 +332,11 @@ impl EthTx {
         transaction: TransactionRequest,
         fee: &FeeSetting,
     ) -> Result<U256, ServiceError> {
+        let transaction = if self.chain.chain_code == ChainCode::Scroll {
+            scroll_fee_transaction(transaction, fee)?
+        } else {
+            transaction
+        };
         let additional = self.chain.estimate_additional_fee(transaction).await?.unwrap_or_default();
         Self::checked_total_fee(fee, additional)
     }
@@ -331,7 +348,7 @@ impl EthTx {
     ) -> Result<FeeSetting, ServiceError> {
         let gas = self.chain.estimate_gas(transfer).await?;
         let oracle = self.gas_oracle().await?;
-        Self::fee_setting_from_gas_oracle(&oracle, gas.consume as u64)
+        self.fee_setting_for_chain(&oracle, gas.consume as u64)
     }
 
     async fn native_fee_quote(&self, req: ApiBaseTransferReq) -> Result<U256, ServiceError> {
@@ -363,8 +380,7 @@ impl EthTx {
             }
             _ => self.provider.get_fee(transaction.clone()).await?,
         };
-        let additional = self.chain.estimate_additional_fee(transaction).await?.unwrap_or_default();
-        Self::checked_total_fee(&setting, additional)
+        self.total_fee_for_transaction(transaction, &setting).await
     }
 
     async fn ensure_transfer_funded(
@@ -779,13 +795,25 @@ impl Tx for EthTx {
 
         let gas_oracle = self.gas_oracle().await?;
         let params = TransferOpt::new(&req.from, &req.to, value, token)?;
-        let additional = if self.uses_separate_l1_fee() {
-            self.chain.estimate_additional_fee(params.build_transaction()?).await?
-        } else {
-            None
-        };
+        let tx = params.build_transaction()?;
+        let additional =
+            if self.uses_separate_l1_fee() && self.chain.chain_code != ChainCode::Scroll {
+                self.chain.estimate_additional_fee(tx.clone()).await?
+            } else {
+                None
+            };
         let fee = self.chain.estimate_gas(params).await?;
-        let details = FeeDetails::try_from((gas_oracle, fee.consume))?;
+        let details = FeeDetails::for_chain(gas_oracle, fee.consume, self.chain.chain_code)?;
+        let additional = if self.chain.chain_code == ChainCode::Scroll {
+            self.chain
+                .estimate_additional_fee(scroll_fee_transaction(
+                    tx,
+                    &details.reserve_fee_setting()?,
+                )?)
+                .await?
+        } else {
+            additional
+        };
         let details = match additional {
             Some(additional) => details.with_additional_native_fee(additional)?,
             None => details,

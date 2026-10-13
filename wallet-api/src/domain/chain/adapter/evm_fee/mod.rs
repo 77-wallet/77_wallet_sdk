@@ -1,6 +1,8 @@
 use crate::{
-    domain::chain::transaction::ChainTransDomain, error::service::ServiceError,
-    request::transaction::BaseTransferReq, response_vo::FeeDetails,
+    domain::chain::transaction::ChainTransDomain,
+    error::service::ServiceError,
+    request::transaction::BaseTransferReq,
+    response_vo::{FeeDetails, scroll_fee_transaction},
 };
 use alloy::primitives::U256;
 use wallet_chain_interact::{
@@ -29,8 +31,13 @@ pub(super) async fn required_send_fee(
     chain: &EthChain,
     transfer: &TransferOpt,
     execution_fee: U256,
+    fee_setting: &FeeSetting,
 ) -> Result<U256, ServiceError> {
-    let additional_fee = chain.estimate_additional_fee(transfer.build_transaction()?).await?;
+    let mut tx = transfer.build_transaction()?;
+    if chain.chain_code == ChainCode::Scroll {
+        tx = scroll_fee_transaction(tx, fee_setting)?;
+    }
+    let additional_fee = chain.estimate_additional_fee(tx).await?;
     if chain.chain_code == ChainCode::Scroll {
         tracing::info!(target: "scroll_diagnostic", stage = "send_preflight",
             from = %transfer.base.from, to = %transfer.base.to, token = ?transfer.contract,
@@ -66,7 +73,7 @@ pub(super) async fn prepare_native_maximum(
             fee_setting.gas_limit = fee_setting.gas_limit.max(gas);
         }
         let execution_reserve = execution_fee_reserve(chain.chain_code, fee_setting);
-        let required = required_send_fee(chain, transfer, execution_reserve).await?;
+        let required = required_send_fee(chain, transfer, execution_reserve, fee_setting).await?;
         if required <= reserve {
             return Ok(amount);
         }
@@ -120,9 +127,22 @@ pub(super) async fn estimate_transfer_fee(
     let gas_oracle =
         ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api).await?;
     let params = TransferOpt::new(&req.from, &req.to, value, token_address)?;
-    let additional_fee = chain.estimate_additional_fee(params.build_transaction()?).await?;
+    let tx = params.build_transaction()?;
+    // Scroll needs gas/fee widths before the L1 reserve; retain other chains' order.
+    let additional_fee = if chain.chain_code == ChainCode::Scroll {
+        None
+    } else {
+        chain.estimate_additional_fee(tx.clone()).await?
+    };
     let gas = chain.estimate_gas(params).await?;
-    let fee = FeeDetails::try_from((gas_oracle, gas.consume))?;
+    let fee = FeeDetails::for_chain(gas_oracle, gas.consume, chain.chain_code)?;
+    let additional_fee = if chain.chain_code == ChainCode::Scroll {
+        chain
+            .estimate_additional_fee(scroll_fee_transaction(tx, &fee.reserve_fee_setting()?)?)
+            .await?
+    } else {
+        additional_fee
+    };
     if chain.chain_code == ChainCode::Scroll {
         tracing::info!(target: "scroll_diagnostic", stage = "fee_quote",
             from = %req.from, to = %req.to, token = ?req.token_address.to_chain_token_option(),

@@ -149,7 +149,81 @@ pub struct FeeDetailsVo<T> {
     pub data: Vec<FeeStructureVo<T>>,
 }
 
+// Scroll base fees can be far below0.1gwei. Keep the existing20% headroom,
+// rounding upward in wei after the effective priority fee has been normalized.
+pub(crate) fn scroll_fee_cap(
+    base: U256,
+    tip: U256,
+) -> Result<U256, crate::error::service::ServiceError> {
+    base.checked_add(tip)
+        .and_then(|total| total.checked_mul(U256::from(12)))
+        .and_then(|total| total.checked_add(U256::from(9)))
+        .map(|total| total / U256::from(10))
+        .ok_or_else(|| {
+            crate::error::service::ServiceError::Parameter("Scroll fee cap overflow".into())
+        })
+}
+
+// Quotes must carry the same gas/fee widths as signing, without adding RPCs or
+// consuming the caller's settings. Never truncate oversized metadata fields.
+pub(crate) fn scroll_fee_transaction(
+    mut tx: alloy::rpc::types::TransactionRequest,
+    fee: &FeeSetting,
+) -> Result<alloy::rpc::types::TransactionRequest, crate::error::service::ServiceError> {
+    let invalid = || {
+        crate::error::service::ServiceError::Parameter(
+            "Scroll fee setting exceeds transaction field width".into(),
+        )
+    };
+    tx.gas = Some(fee.gas_limit.try_into().map_err(|_| invalid())?);
+    tx.max_fee_per_gas = Some(fee.max_fee_per_gas.try_into().map_err(|_| invalid())?);
+    tx.max_priority_fee_per_gas =
+        Some(fee.max_priority_fee_per_gas.try_into().map_err(|_| invalid())?);
+    Ok(tx)
+}
+
 impl FeeDetails<EthereumFeeDetails> {
+    pub(crate) fn for_chain(
+        gas_oracle: GasOracle,
+        gas_limit: i64,
+        code: wallet_types::chain::chain::ChainCode,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let mut details = Self::try_from((gas_oracle, gas_limit))?;
+        if code == wallet_types::chain::chain::ChainCode::Scroll {
+            for tier in &mut details.0 {
+                let cap = scroll_fee_cap(
+                    unit::u256_from_str(&tier.fee_setting.base_fee)?,
+                    unit::u256_from_str(&tier.fee_setting.priority_fee)?,
+                )?;
+                tier.fee_setting.max_fee_per_gas = cap.to_string();
+                tier.max_fee = U256::from(tier.fee_setting.gas_limit) * cap;
+            }
+        }
+        Ok(details)
+    }
+    // A single L1 reserve shared by all displayed tiers must cover each tier's
+    // field widths, including a faster tier the user can select afterwards.
+    pub(crate) fn reserve_fee_setting(
+        &self,
+    ) -> Result<FeeSetting, crate::error::service::ServiceError> {
+        if self.0.is_empty() {
+            return Err(crate::error::service::ServiceError::Parameter(
+                "empty EVM fee tiers".into(),
+            ));
+        }
+        let mut reserve = FeeSetting::default();
+        for tier in &self.0 {
+            reserve.gas_limit = reserve.gas_limit.max(U256::from(tier.fee_setting.gas_limit));
+            reserve.max_fee_per_gas = reserve
+                .max_fee_per_gas
+                .max(unit::u256_from_str(&tier.fee_setting.max_fee_per_gas)?);
+            reserve.max_priority_fee_per_gas = reserve
+                .max_priority_fee_per_gas
+                .max(unit::u256_from_str(&tier.fee_setting.priority_fee)?);
+        }
+        Ok(reserve)
+    }
+
     pub fn with_additional_native_fee(
         mut self,
         additional_fee_wei: U256,
