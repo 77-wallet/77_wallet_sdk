@@ -77,10 +77,17 @@ impl Rpc {
                     bytes.extend_from_slice(&buf[..n]);
                 }
                 let req: Value = serde_json::from_slice(&bytes[start..start + length]).unwrap();
-                recorded.lock().unwrap().push(req.clone());
+                let regime = req["params"][0]["data"]
+                    == format!(
+                        "0x{}",
+                        hex::encode(&alloy::primitives::keccak256(b"isGalileo()")[..4])
+                    );
+                if !regime {
+                    recorded.lock().unwrap().push(req.clone());
+                }
                 let extra = *extra_state.lock().unwrap();
-                let additional = req["method"] == "scroll_estimateL1DataFee"
-                    || (req["method"] == "eth_call" && req["params"][0]["to"] != TOKEN);
+                let additional =
+                    !regime && req["method"] == "eth_call" && req["params"][0]["to"] != TOKEN;
                 let result = match req["method"].as_str().unwrap() {
                     "eth_sendRawTransaction" => {
                         let raw = hex::decode(
@@ -91,14 +98,12 @@ impl Rpc {
                     }
                     "eth_chainId" => json!("0x1"),
                     "eth_getBalance" => json!(format!("{native:#x}")),
+                    "eth_call" if regime => json!(format!("0x{:064x}", 1)),
                     "eth_call" if !additional => json!(format!("{token:#066x}")),
                     "eth_call" => json!(format!("{:064x}", extra.unwrap_or_default()))
                         .as_str()
                         .map(|s| json!(format!("0x{s}")))
                         .unwrap(),
-                    "scroll_estimateL1DataFee" => {
-                        json!(format!("{:#x}", extra.unwrap_or_default()))
-                    }
                     "eth_estimateGas" => json!("0x5208"),
                     "eth_gasPrice" => json!("0x3"),
                     "eth_getBlockByNumber" => {
@@ -163,19 +168,12 @@ async fn api_evm_fee_raw_includes_l1_native_and_token() {
                 let requests = rpc.calls.lock().unwrap();
                 let additional: Vec<_> = requests
                     .iter()
-                    .filter(|r| {
-                        r["method"] == "scroll_estimateL1DataFee"
-                            || (r["method"] == "eth_call" && r["params"][0]["to"] != TOKEN)
-                    })
+                    .filter(|r| r["method"] == "eth_call" && r["params"][0]["to"] != TOKEN)
                     .collect();
                 assert_eq!(additional.len(), 2);
                 if token && code == ChainCode::Scroll {
-                    assert!(
-                        additional[0]["params"][0]["input"]
-                            .as_str()
-                            .unwrap()
-                            .starts_with("0xa9059cbb")
-                    );
+                    let data = additional[0]["params"][0]["data"].as_str().unwrap();
+                    assert!(usize::from_str_radix(&data[74..138], 16).unwrap() >= 183);
                 }
             }
         }

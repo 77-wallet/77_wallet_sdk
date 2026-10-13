@@ -164,7 +164,7 @@ async fn maximum_unstable_fee_stops_after_four_estimates_without_broadcast() {
     assert!(format!("{error:?}").contains("InsufficientFeeBalance"));
     let calls = worker.join().unwrap();
     assert_eq!(calls.len(), 4);
-    assert!(calls.iter().all(|(_, body)| body["method"] == "scroll_estimateL1DataFee"));
+    assert!(calls.iter().all(|(_, body)| body["method"] == "eth_call"));
 }
 
 #[tokio::test]
@@ -462,11 +462,7 @@ aggregate_api:
         let requests = worker.join().unwrap();
         assert_eq!(requests.len(), 2, "{code}");
         assert_eq!(requests[0].1["method"], "eth_getBalance", "{code}");
-        assert_eq!(
-            requests[1].1["method"],
-            if code == ChainCode::Base { "eth_call" } else { "scroll_estimateL1DataFee" },
-            "{code}"
-        );
+        assert_eq!(requests[1].1["method"], "eth_call", "{code}");
     }
 }
 
@@ -542,11 +538,10 @@ async fn send_preflight_uses_erc20_transfer_shape_for_base_and_scroll() {
                 assert_eq!(unsigned_size, 324);
             }
             ChainCode::Scroll => {
-                assert_eq!(requests[0].1["method"], "scroll_estimateL1DataFee");
-                let tx = &requests[0].1["params"][0];
-                assert_eq!(tx["to"], TOKEN);
-                assert_eq!(tx["value"], "0x0");
-                assert!(tx["input"].as_str().unwrap().starts_with("0xa9059cbb"));
+                assert_eq!(requests[0].1["method"], "eth_call");
+                let data = requests[0].1["params"][0]["data"].as_str().unwrap();
+                let bytes = usize::from_str_radix(&data[74..138], 16).unwrap();
+                assert!(bytes >= 183, "Scroll token quote must cover the full signed transfer");
             }
             _ => unreachable!(),
         }
@@ -574,7 +569,7 @@ async fn send_preflight_aborts_when_scroll_additional_fee_rpc_fails() {
     assert!(format!("{:?}", result.unwrap_err()).contains("method not found"));
     let requests = worker.join().unwrap();
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].1["method"], "scroll_estimateL1DataFee");
+    assert_eq!(requests[0].1["method"], "eth_call");
 }
 
 fn quoted_amount(value: &Value) -> U256 {
@@ -653,18 +648,19 @@ fn fake_services_with_gas(
             };
             socket.set_nonblocking(false).unwrap();
             let (path, request) = read_request(&mut socket);
+            let regime = request["params"][0]["data"]
+                == format!("0x{}", hex::encode(&alloy::primitives::keccak256(b"isGalileo()")[..4]));
             let additional = fees[fee_index.min(fees.len() - 1)];
-            if matches!(request["method"].as_str(), Some("eth_call" | "scroll_estimateL1DataFee")) {
+            if request["method"] == "eth_call" && !regime {
                 fee_index += 1;
             }
-            let fee = format!("0x{additional:x}");
             let result = match request["method"].as_str() {
                 Some("eth_getBalance") => json!("0xde0b6b3a7640000"),
+                Some("eth_call") if regime => json!(format!("0x{:064x}", 1)),
                 Some("eth_call") if request["params"][0]["to"] == TOKEN => {
                     json!(format!("0x{:064x}", 1_000_000_000_000_000_000_u64))
                 }
                 Some("eth_call") => json!(format!("0x{additional:064x}")),
-                Some("scroll_estimateL1DataFee") => json!(fee),
                 Some("eth_gasPrice") => json!("0x3b9aca00"),
                 Some("eth_getTransactionCount") => json!("0x0"),
                 Some("eth_chainId") => json!("0x1"),
@@ -698,10 +694,9 @@ fn fake_services_with_gas(
             let response = if request["method"].is_null() {
                 result
             } else if fail_additional_fee
-                && (matches!(
-                    request["method"].as_str(),
-                    Some("eth_call" | "scroll_estimateL1DataFee")
-                ) || (is_contract && request["method"] == "eth_estimateGas"))
+                && !regime
+                && (matches!(request["method"].as_str(), Some("eth_call"))
+                    || (is_contract && request["method"] == "eth_estimateGas"))
             {
                 json!({"jsonrpc":"2.0","id":request["id"],"error":{"code":-32601,"message":"method not found"}})
             } else {
@@ -709,7 +704,10 @@ fn fake_services_with_gas(
             };
             let body = response.to_string();
             write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
-            requests.push((path, request));
+            // Regime checks do not consume the scripted fee sequence.
+            if !regime {
+                requests.push((path, request));
+            }
         }
         requests
     });
@@ -786,14 +784,15 @@ async fn assert_quote(code: ChainCode, token: Option<&str>) {
             assert_eq!(unsigned_size, if token.is_some() { 324 } else { 256 });
         }
         ChainCode::Scroll => {
-            assert_eq!(requests[2].1["method"], "scroll_estimateL1DataFee");
-            assert_eq!(requests[2].1["params"][0]["to"], token.unwrap_or(TO));
+            assert_eq!(requests[2].1["method"], "eth_call");
+            assert_eq!(
+                requests[2].1["params"][0]["to"],
+                "0x5300000000000000000000000000000000000002"
+            );
             assert_eq!(requests[2].1["params"][1], "latest");
-            if token.is_some() {
-                assert!(
-                    requests[2].1["params"][0]["input"].as_str().unwrap().starts_with("0xa9059cbb")
-                );
-            }
+            let data = requests[2].1["params"][0]["data"].as_str().unwrap();
+            let bytes = usize::from_str_radix(&data[74..138], 16).unwrap();
+            assert!(bytes >= if token.is_some() { 183 } else { 115 });
         }
         _ => unreachable!("this helper only covers Base and Scroll"),
     }
@@ -874,6 +873,6 @@ async fn scroll_additional_fee_rpc_error_fails_sdk_quote() {
     let error = result.expect_err("Core additional-fee RPC failure must abort the quote");
     assert!(format!("{error:?}").contains("method not found"), "unexpected error: {error:?}");
     assert_eq!(requests.len(), 3);
-    assert_eq!(requests[2].1["method"], "scroll_estimateL1DataFee");
+    assert_eq!(requests[2].1["method"], "eth_call");
     assert!(requests.iter().all(|(_, body)| body["method"] != "eth_estimateGas"));
 }
