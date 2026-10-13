@@ -468,19 +468,25 @@ fn build_supported_coin_assets_with_existing(
     coins_for_chain: &[ApiCoinEntity],
     existing_keys: &std::collections::HashSet<(String, String, String)>,
 ) -> Result<(Vec<ApiCreateAssetsVo>, usize), crate::error::service::ServiceError> {
+    let mut known_keys: std::collections::HashSet<_> = existing_keys
+        .iter()
+        .map(|(address, chain, token)| {
+            (
+                address.clone(),
+                chain.clone(),
+                AssetTokenKey::from_raw(Some(token)).normalized_for_chain(chain),
+            )
+        })
+        .collect();
     let mut create_assets = Vec::new();
     for account in accounts {
         for coin in coins_for_chain {
-            let key = (
-                account.address.clone(),
-                account.chain_code.clone(),
-                coin.token_address.as_db_str().to_string(),
-            );
-            if existing_keys.contains(&key) {
+            let token = coin.token_address.normalized_for_chain(&account.chain_code);
+            let key = (account.address.clone(), account.chain_code.clone(), token.clone());
+            if !known_keys.insert(key) {
                 continue;
             }
-            let assets_id =
-                AssetsId::new(&account.address, &account.chain_code, coin.token_address.clone());
+            let assets_id = AssetsId::new(&account.address, &account.chain_code, token);
             let assets = ApiCreateAssetsVo::new(
                 assets_id,
                 &coin.symbol,
@@ -546,6 +552,38 @@ mod tests {
             created_at: Utc::now(),
             updated_at: None,
         }
+    }
+
+    #[test]
+    fn evm_token_identity_backfill_reuses_legacy_key_and_deduplicates_batch() {
+        let accounts = vec![account("address", "base")];
+        let mut mixed = coin("base", 1);
+        mixed.token_address = AssetTokenKey::from_raw(Some("0xAbC"));
+        let mut lower = mixed.clone();
+        lower.token_address = AssetTokenKey::from_raw(Some("0xabc"));
+        let existing =
+            std::collections::HashSet::from([("address".into(), "base".into(), "0xABC".into())]);
+        let (assets, _) = super::build_supported_coin_assets_with_existing(
+            &accounts,
+            &[mixed.clone(), lower.clone()],
+            &existing,
+        )
+        .unwrap();
+        assert!(assets.is_empty());
+        let (assets, _) = super::build_supported_coin_assets(&accounts, &[mixed, lower]).unwrap();
+        assert_eq!(assets.len(), 1);
+        assert_eq!(assets[0].assets_id.token_address.as_db_str(), "0xabc");
+    }
+
+    #[test]
+    fn evm_token_identity_backfill_keeps_non_evm_case_distinct() {
+        let accounts = vec![account("address", "tron")];
+        let mut first = coin("tron", 1);
+        first.token_address = AssetTokenKey::from_raw(Some("TAbC"));
+        let mut second = first.clone();
+        second.token_address = AssetTokenKey::from_raw(Some("Tabc"));
+        let (assets, _) = super::build_supported_coin_assets(&accounts, &[first, second]).unwrap();
+        assert_eq!(assets.len(), 2);
     }
 
     #[test]

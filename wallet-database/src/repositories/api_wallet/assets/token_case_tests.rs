@@ -5,10 +5,10 @@ use crate::{
 };
 
 #[tokio::test]
-async fn token_case_duplicate_rows_prefer_exact_detail_without_merging() {
+async fn token_case_repeated_writes_keep_one_balance_snapshot() {
     let mixed = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
     let lower = mixed.to_ascii_lowercase();
-    let pool = setup_api_wallet_pool("token_case_duplicate_exact").await;
+    let pool = setup_api_wallet_pool("token_case_repeated_writes").await;
     seed_active_chain_and_coin(&pool, "polygon", "USDT", Some(mixed.into())).await;
     for (token, balance) in [(mixed, "1"), (lower.as_str(), "2")] {
         let id = AssetsId::new("sender", "polygon", token.into());
@@ -22,10 +22,10 @@ async fn token_case_duplicate_rows_prefer_exact_detail_without_merging() {
     let id = AssetsId::new("sender", "polygon", lower.as_str().into());
     let found = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
     assert_eq!(found.token_address.as_db_str(), lower);
-    assert_eq!(found.balance, "2");
+    assert_eq!(found.balance, "1"); // metadata upserts must not overwrite synced balances
     let rows =
         ApiAssetsRepo::list(&pool, vec!["sender".into()], Some("polygon".into())).await.unwrap();
-    assert_eq!(rows.len(), 2);
+    assert_eq!(rows.len(), 1);
 }
 
 #[tokio::test]
@@ -34,6 +34,11 @@ async fn token_case_coin_join_reads_legacy_spelling() {
     let lower = mixed.to_ascii_lowercase();
     let pool = setup_api_wallet_pool("token_case_coin_join").await;
     seed_active_chain_and_coin(&pool, "polygon", "USDT", Some(mixed.into())).await;
+    sqlx::query("UPDATE api_coin SET token_address=? WHERE chain_code='polygon'")
+        .bind(mixed)
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
     let id = AssetsId::new("sender", "polygon", lower.into());
     ApiAssetsRepo::upsert_assets(
         &pool,
@@ -94,6 +99,17 @@ async fn token_case_legacy_asset_lookup_and_balance_update() {
             .with_balance("3.956788");
         ApiAssetsRepo::upsert_assets(&pool, asset).await.unwrap();
     }
+    // Simulate an unmigrated single legacy spelling; normal writes now canonicalize.
+    sqlx::query("UPDATE api_coin SET token_address=? WHERE chain_code='polygon'")
+        .bind(mixed)
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+    sqlx::query("UPDATE api_assets SET token_address=? WHERE chain_code='polygon'")
+        .bind(mixed)
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
     let id = AssetsId::new("sender", "polygon", lower.clone().into());
     let found = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
     assert_eq!(found.token_address.as_db_str(), mixed);

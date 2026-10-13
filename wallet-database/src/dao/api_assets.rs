@@ -140,7 +140,7 @@ impl ApiAssetsDao {
             balance,
         } = assets;
 
-        let token_address = assets_id.token_address.as_db_str().to_string();
+        let token_address = assets_id.token_address.normalized_for_chain(&assets_id.chain_code);
         let protocol = protocol.unwrap_or_default();
 
         let sql = r#"
@@ -211,7 +211,8 @@ impl ApiAssetsDao {
             );
 
             qb.push_values(chunk, |mut b, item| {
-                let token_address = item.assets_id.token_address.as_db_str().to_string();
+                let token_address =
+                    item.assets_id.token_address.normalized_for_chain(&item.assets_id.chain_code);
                 let protocol = item.protocol.clone().unwrap_or_default();
 
                 b.push_bind(item.name.clone())
@@ -280,7 +281,8 @@ impl ApiAssetsDao {
             );
 
             qb.push_values(chunk, |mut b, item| {
-                let token_address = item.assets_id.token_address.as_db_str().to_string();
+                let token_address =
+                    item.assets_id.token_address.normalized_for_chain(&item.assets_id.chain_code);
                 let protocol = item.protocol.clone().unwrap_or_default();
 
                 b.push_bind(item.name.clone())
@@ -334,7 +336,7 @@ impl ApiAssetsDao {
         sqlx::query(sql)
             .bind(address)
             .bind(chain_code)
-            .bind(token_address)
+            .bind(AssetTokenKey::from_raw(Some(token_address)).normalized_for_chain(chain_code))
             .bind(0) // Assuming 0 is the status for deletion
             .execute(exec)
             .await
@@ -375,7 +377,7 @@ impl ApiAssetsDao {
         sqlx::query(sql)
             .bind(chain_code)
             .bind(symbol)
-            .bind(token_address)
+            .bind(token_address.normalized_for_chain(chain_code))
             .bind(status)
             .execute(exec)
             .await
@@ -533,14 +535,27 @@ impl ApiAssetsDao {
             }
             values.push_unseparated(")");
         }
-        if let Some(code) = chain_code {
+        if let Some(code) = chain_code.as_deref() {
             query.push(" AND a.chain_code = ").push_bind(code);
         }
         if let Some(symbol) = symbol {
             query.push(" AND a.symbol = ").push_bind(symbol);
         }
         if let Some(token_address) = token_address {
-            query.push(" AND a.token_address = ").push_bind(token_address);
+            if let Some(chain) = chain_code.as_deref() {
+                query.push(" AND a.token_address = ").push_bind(
+                    AssetTokenKey::from_raw(Some(token_address)).normalized_for_chain(chain),
+                );
+            } else {
+                query
+                    .push(" AND (a.token_address = ")
+                    .push_bind(token_address)
+                    .push(" OR (a.chain_code IN (SELECT value FROM json_each(")
+                    .push_bind(crate::entities::api_withdraw::signed_evm_chain_codes_json())
+                    .push(")) AND a.token_address = ")
+                    .push_bind(token_address)
+                    .push(" COLLATE NOCASE))");
+            }
         }
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
@@ -585,7 +600,10 @@ impl ApiAssetsDao {
                     composite_keys.push((
                         address.to_string(),
                         chain_code.to_string(),
-                        token_address.to_string(),
+                        AssetTokenKey::from_raw(Some(token_address))
+                            .normalized_for_chain(chain_code)
+                            .as_db_str()
+                            .to_string(),
                     ));
                 } else {
                     tracing::warn!("invalid address-chain-token key: {}", key);
@@ -703,7 +721,10 @@ impl ApiAssetsDao {
             token_keys.push((
                 symbol.to_ascii_uppercase(),
                 chain_code.to_string(),
-                token_address.to_string(),
+                AssetTokenKey::from_raw(Some(token_address))
+                    .normalized_for_chain(chain_code)
+                    .as_db_str()
+                    .to_string(),
             ));
         }
 
@@ -1361,3 +1382,7 @@ pub struct AssetBalanceEntity {
     pub chain_code: String,
     pub token_address: String,
 }
+
+#[cfg(test)]
+#[path = "api_assets/evm_token_identity_tests.rs"]
+mod evm_token_identity_tests;

@@ -45,10 +45,8 @@ fn push_api_excluded_coin_filters<'a>(
     if !exclude.is_empty() {
         query.push(" AND (symbol, chain_code, token_address) NOT IN ");
         query.push_tuples(exclude, |mut tuple, coin_id| {
-            tuple
-                .push_bind(&coin_id.symbol)
-                .push_bind(&coin_id.chain_code)
-                .push_bind(coin_id.token_address.as_db_str());
+            let token = coin_id.token_address.normalized_for_chain(&coin_id.chain_code);
+            tuple.push_bind(&coin_id.symbol).push_bind(&coin_id.chain_code).push_bind(token);
         });
     }
 }
@@ -86,7 +84,7 @@ fn push_api_coin_with_assets_from_and_filters<'a>(
         query.push(" AND api_coin.token_address NOT IN (");
         let mut tokens = query.separated(", ");
         for token in exclude_token {
-            tokens.push_bind(token);
+            tokens.push_bind(AssetTokenKey::from_raw(Some(token)).normalized_for_chain(chain_code));
         }
         tokens.push_unseparated(")");
     }
@@ -117,6 +115,11 @@ impl ApiCoinDao {
             "insert into api_coin (
                 name, symbol, chain_code, token_address, price, protocol, decimals, is_default, is_popular, is_custom, status, created_at, updated_at) ",
         );
+        let mut seen = std::collections::HashSet::new();
+        let coins = coins.into_iter().filter_map(|mut coin| {
+            coin.token_address = coin.token_address.normalized_for_chain(&coin.chain_code);
+            seen.insert((coin.chain_code.clone(), coin.token_address.clone())).then_some(coin)
+        });
         query_builder.push_values(coins, |mut b, coin| {
             b.push_bind(coin.name)
                 .push_bind(coin.symbol)
@@ -332,7 +335,7 @@ impl ApiCoinDao {
         }
 
         // 处理 token_address，如果为空，设置为空字符串
-        let token_address = coin_id.token_address.as_db_str().to_string();
+        let token_address = coin_id.token_address.normalized_for_chain(&coin_id.chain_code);
         // 绑定 WHERE 子句的参数
         query = query
             .bind(token_address)
@@ -358,7 +361,7 @@ impl ApiCoinDao {
 
         let _r = sqlx::query::<_>(&sql)
             .bind(price)
-            .bind(token_address)
+            .bind(AssetTokenKey::from_raw(Some(token_address)).normalized_for_chain(chain_code))
             .bind(chain_code)
             .execute(exec)
             .await
@@ -383,7 +386,10 @@ impl ApiCoinDao {
             qb.push("WHEN chain_code=")
                 .push_bind(p.chain_code.clone())
                 .push(" AND token_address=")
-                .push_bind(p.token_address.clone())
+                .push_bind(
+                    AssetTokenKey::from_raw(Some(&p.token_address))
+                        .normalized_for_chain(&p.chain_code),
+                )
                 .push(" THEN ")
                 .push_bind(1)
                 .push(" ");
@@ -517,7 +523,12 @@ impl ApiCoinDao {
         for (chain_code, token_address) in chain_list {
             where_parts.push("(chain_code = ? AND token_address = ?)".to_string());
             params.push(chain_code.clone());
-            params.push(token_address.clone());
+            params.push(
+                AssetTokenKey::from_raw(Some(token_address))
+                    .normalized_for_chain(chain_code)
+                    .as_db_str()
+                    .to_string(),
+            );
         }
 
         let where_clause = where_parts.join(" OR ");
@@ -550,7 +561,9 @@ impl ApiCoinDao {
             qb.push("(chain_code = ")
                 .push_bind(chain_code)
                 .push(" AND token_address = ")
-                .push_bind(token_address)
+                .push_bind(
+                    AssetTokenKey::from_raw(Some(token_address)).normalized_for_chain(chain_code),
+                )
                 .push(")");
         }
         qb.push(")");

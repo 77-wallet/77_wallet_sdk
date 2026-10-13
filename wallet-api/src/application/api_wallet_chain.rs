@@ -7,7 +7,7 @@ use crate::{
     response_vo::standard_wallet::{account::BalanceInfo, chain::ChainAssets},
 };
 use wallet_database::{
-    entities::api_chain::ApiChainEntity,
+    entities::{api_chain::ApiChainEntity, asset_token_key::AssetTokenKey},
     repositories::api_wallet::{
         account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo,
     },
@@ -28,6 +28,7 @@ impl ApiChainApplication {
         account_id: Option<u32>,
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, ServiceError> {
+        let chain_list = normalize_chain_list(chain_list);
         let pool = self.ctx.api_wallet_pool()?;
         let token_currencies = ApiCoinDomain::get_api_token_currencies(self.ctx).await?;
 
@@ -64,6 +65,7 @@ impl ApiChainApplication {
         account_id: Option<u32>,
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, ServiceError> {
+        let chain_list = normalize_chain_list(chain_list);
         let pool = self.ctx.api_wallet_pool()?;
         let token_currencies = ApiCoinDomain::get_api_token_currencies(self.ctx).await?;
 
@@ -187,4 +189,31 @@ fn recompute_asset_ratios(assets: &mut [ChainAssets]) {
             asset.asset_quantity_ratio = fiat_value / total_fiat;
         }
     }
+}
+
+#[cfg(test)]
+mod evm_token_identity_tests {
+    use super::*;
+    #[test]
+    fn evm_token_identity_chain_requests_match_canonical_metadata() {
+        let requests = HashMap::from([
+            ("base".into(), "0xAbC".into()),
+            ("tron".into(), "TAbC".into()),
+            ("eth".into(), "".into()),
+        ]);
+        let normalized = normalize_chain_list(requests);
+        assert_eq!(normalized["base"], "0xabc");
+        assert_eq!(normalized["tron"], "TAbC");
+        assert_eq!(normalized["eth"], "");
+    }
+}
+
+fn normalize_chain_list(chain_list: HashMap<String, String>) -> HashMap<String, String> {
+    chain_list
+        .into_iter()
+        .map(|(chain, token)| {
+            let token = AssetTokenKey::from_raw(Some(&token)).normalized_for_chain(&chain);
+            (chain, token.as_db_str().to_string())
+        })
+        .collect()
 }

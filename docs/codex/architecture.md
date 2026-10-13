@@ -193,3 +193,10 @@ App dev in this chat (2026-10-13); plugin dependency publication, release and re
 transactions remain outside that approval. App source inspected this date: maximum deducts selected maxFee,
 but spendAll excludes EVM; the captured request also reports spend_all=false.
 Actual running binary dependency revision remains unverified.
+
+### API USDT case-duplicate repair scope (user confirmation, 2026-10-13)
+User requests fixing coin sync/startup supplementation treating EVM contract case variants as separate identities, including existing duplicate data. Scope is SDK/API-wallet coin and asset identity plus the current com.sevenwallet.app simulator's duplicate records; no App source/dependency publication or transaction authorization. Source: direct user instruction in USDT12-versus6 investigation; applies to this repair.
+
+User further confirms that only they currently test the new chains (2026-10-13, direct follow-up in this investigation). For this unreleased test rollout, existing duplicate data is handled once on their simulator; retain future duplicate prevention, without general historical cleanup at startup. This supersedes the prior repair migration design for this incident only, and does not broaden compatibility exceptions to other features/releases.
+
+Follow-up scope (2026-10-13, user screenshot of remaining token-key UPDATEs): remove automatic old-key conversion from this unreleased fix. Current already-cleaned test DB and newly created DBs are the supported deployment inputs for this change; other unnormalized legacy DBs need separately authorized preparation before adoption. Retain canonical DAO writes and future uniqueness only; do not relocate conversion into another startup hook. This incident-specific testing scope does not authorize discarding compatibility for unrelated features.
