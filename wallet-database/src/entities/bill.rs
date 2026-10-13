@@ -55,7 +55,50 @@ impl BillEntity {
 
     // 截断金额
     pub fn truncate_to_8_decimals(&mut self) {
-        self.value = wallet_utils::unit::truncate_to_8_decimals(&self.value)
+        let plain = expand_scientific_bill_value(&self.value);
+        self.value =
+            wallet_utils::unit::truncate_to_8_decimals(plain.as_deref().unwrap_or(&self.value));
+    }
+}
+
+// Legacy SQLite REAL-to-TEXT writes can contain exponents. Move the decimal
+// point in the original digits so expanding them never rounds through f64.
+fn expand_scientific_bill_value(input: &str) -> Option<String> {
+    let input = input.trim();
+    let (mantissa, exponent) = input.split_once(['e', 'E'])?;
+    let exponent = exponent.parse::<i64>().ok()?;
+    // Historical values originate from finite f64 amounts. This also prevents
+    // an invalid positive exponent from requesting an unbounded allocation.
+    if !input.parse::<f64>().ok()?.is_finite() {
+        return None;
+    }
+    let (sign, unsigned) = if let Some(rest) = mantissa.strip_prefix('-') {
+        ("-", rest)
+    } else if let Some(rest) = mantissa.strip_prefix('+') {
+        ("+", rest)
+    } else {
+        ("", mantissa)
+    };
+    if unsigned.matches('.').count() > 1 {
+        return None;
+    }
+    let digits = unsigned.replace('.', "");
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let integer_len = unsigned.find('.').unwrap_or(unsigned.len());
+    let point = i64::try_from(integer_len).ok()?.checked_add(exponent)?;
+    if digits.bytes().all(|b| b == b'0') || point <= -8 {
+        return Some(format!("{sign}0"));
+    }
+    if point <= 0 {
+        return Some(format!("{sign}0.{}{digits}", "0".repeat((-point) as usize)));
+    }
+    let point = usize::try_from(point).ok()?;
+    if point >= digits.len() {
+        Some(format!("{sign}{digits}{}", "0".repeat(point - digits.len())))
+    } else {
+        Some(format!("{sign}{}.{}", &digits[..point], &digits[point..]))
     }
 }
 
@@ -589,6 +632,34 @@ impl From<&BillEntity> for RecentBillListVo {
             transaction_time: item.transaction_time,
             transfer_type: item.transfer_type,
             created_at: item.created_at,
+        }
+    }
+}
+
+#[cfg(test)]
+mod decimal_display_tests {
+    use super::BillEntity;
+
+    #[test]
+    fn bill_amount_displays_legacy_exponents_as_plain_decimals() {
+        for (input, expected) in [
+            ("1.118e-05", "0.00001118"),
+            ("1.118e-08", "0.00000001"),
+            ("1e-8", "0.00000001"),
+            ("9e-9", "0"),
+            ("5e-324", "0"),
+            ("-1.118E-05", "-0.00001118"),
+            ("1.234567891E+3", "1234.567891"),
+            ("1.2345678901234567e+20", "123456789012345670000"),
+            ("0e+308", "0"),
+            ("0.842433", "0.842433"),
+            ("0.123456789", "0.12345678"),
+            ("12.34000000", "12.34"),
+            ("", "0"),
+        ] {
+            let mut bill = BillEntity { value: input.into(), ..Default::default() };
+            bill.truncate_to_8_decimals();
+            assert_eq!(bill.value, expected, "input={input}");
         }
     }
 }

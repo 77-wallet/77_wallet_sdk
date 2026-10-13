@@ -15,3 +15,25 @@ Scope: `BillRepo::create` / `BillDao::create`, including the existing upsert.
 This coverage includes bill insertion, two non-pagination lookups, and the main
 bill-list pagination and recent-recipient queries. Other DAOs remain outside its
 scope.
+
+
+## Decimal bill amounts (2026-10-13)
+
+Scope: ordinary-wallet bill amount insertion and list/detail display; no schema
+migration, clearing, or rewriting existing records.
+
+| Input / invariant | Expected behavior | Regression |
+| --- | --- | --- |
+| Small/large/negative/zero new amount; >8 fractional digits | Exact f64 decimal text stored as TEXT, no exponent and no display truncation at write | `bill_new_amounts_are_stored_as_plain_text_without_truncation` |
+| Historical exponent, uppercase E, negative exponent, integer exponent, tiny amount | Exact string expansion then existing 8dp truncation; ordinary decimal behavior retained | `bill_amount_displays_legacy_exponents_as_plain_decimals` |
+| Existing nonzero exponent record read and duplicate upsert | Plain display; stored historical amount unchanged; no duplicate row | `bill_legacy_amounts_display_without_rewriting_history_or_upsert_value` |
+| Existing zero record receives actual amount | Conflict update fills plain decimal amount, retains one row | `bill_legacy_amounts_display_without_rewriting_history_or_upsert_value` |
+| NaN or positive/negative infinity | Error before write; no new rows | `bill_nonfinite_amounts_fail_without_writing` |
+
+Evidence: `cargo test --offline --target-dir target -p wallet-database --lib bill`
+passed 15 tests (4 new regressions + 11 existing), exit 0. New regressions first
+failed against old behavior. Existing rollback, text filters, pagination and
+SQL binding regressions passed unchanged. List/detail call the same entity display
+method; an Android rebuild and UI verification are not covered. Incoming amount
+precision remains f64; this change cannot recover precision already lost before
+persistence.

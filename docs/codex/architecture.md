@@ -171,3 +171,13 @@ message-center change, not permission to commit/push/release or transact.
 User authorizes lightweight message/banner response items that retain id/isRead and UI-required fields, plus a separate by-id typed detail query. Detail displays balance/coin, merchant, address/chain, address type and notification receipt time; recharge navigation uses address+chain. Message history must not be globally filtered to unresolved records; the balance banner stays unresolved-only. Detail reads do not imply mark-read, and resolved history is accessible within the existing active withdrawal-wallet scope. No tradeNo order contract or device-database changes. Source: coordinating-thread explicit approval; implementation/verification only, no feature commit/push/release authorization. Exact summary UI fields pending clarification.
 
 Confirmed notification presentation (2026-10-07): screenshot shows balance quantity plus coin and relative notification time. Summary is id/kind/isRead/remaining/symbol/notifiedAt, using payload.notifiedAt instead of first-insert createdAt (valid legacy records without that timestamp fall back). Detail retains merchant/address/chain/type/token/threshold and resolvedAt. Only AWM_ADDRESS_INSUFFICIENT is currently persisted; future kinds are not reinterpreted as balance. App writes/submissions are excluded from this feature; dependency/call instructions are handed to frontend.
+
+
+### Ordinary-wallet bill decimal presentation/storage (2026-10-13)
+
+User confirms transaction amounts must display as ordinary decimals, new bill
+amounts must be stored without scientific notation, and existing scientific
+notation values must remain readable without clearing the database. Source:
+user instruction in this chat, 2026-10-13. Scope: ordinary-wallet bill amount
+presentation/storage; no schema migration, historical rewrite, commit or release
+authorization. Existing display truncation to eight decimals remains unchanged.

@@ -464,6 +464,12 @@ impl BillDao {
         E: Executor<'a, Database = Sqlite>,
         T: serde::Serialize,
     {
+        if !tx.value.is_finite() {
+            return Err(crate::Error::Other("bill amount must be finite".into()));
+        }
+        // Bind decimal text explicitly: SQLite otherwise formats REAL values
+        // as scientific notation and may shorten their significant digits.
+        let value = tx.value.to_string();
         let owner = tx.get_owner();
         let time = Utc::now().timestamp();
         let signer = tx.get_singer_str();
@@ -507,7 +513,7 @@ impl BillDao {
             .bind(tx.from)
             .bind(to)
             .bind(token)
-            .bind(tx.value)
+            .bind(value)
             .bind(tx.transaction_fee)
             .bind(tx.resource_consume)
             .bind(transaction_time)
@@ -686,3 +692,95 @@ impl BillDao {
 //     )",
 //     )
 // };
+
+#[cfg(test)]
+mod decimal_storage_tests {
+    use super::*;
+
+    fn bill(hash: &str, value: f64) -> NewBillEntity {
+        NewBillEntity::new(
+            hash.into(),
+            "from".into(),
+            "to".into(),
+            value,
+            "eth".into(),
+            "ETH".into(),
+            false,
+            BillKind::Transfer,
+            "".into(),
+        )
+    }
+
+    async fn pool() -> sqlx::SqlitePool {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!("./schema/core/migrations").run(&pool).await.unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn bill_new_amounts_are_stored_as_plain_text_without_truncation() {
+        let pool = pool().await;
+        for (hash, value, expected) in [
+            ("small", 0.00001118, "0.00001118"),
+            ("precision", 0.12345678912345678, "0.12345678912345678"),
+            ("large", 1e20, "100000000000000000000"),
+            ("negative", -0.00001118, "-0.00001118"),
+            ("zero", 0.0, "0"),
+        ] {
+            BillDao::create(bill(hash, value), &pool).await.unwrap();
+            let (stored, kind): (String, String) =
+                sqlx::query_as("SELECT value, typeof(value) FROM bill WHERE hash = ?")
+                    .bind(hash)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(stored, expected);
+            assert_eq!(kind, "text");
+        }
+    }
+
+    #[tokio::test]
+    async fn bill_legacy_amounts_display_without_rewriting_history_or_upsert_value() {
+        let pool = pool().await;
+        BillDao::create(bill("legacy", 0.0), &pool).await.unwrap();
+        sqlx::query("UPDATE bill SET value = '1.118e-05' WHERE hash = 'legacy'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let mut legacy = BillDao::get_one_by_hash("legacy", &pool).await.unwrap().unwrap();
+        legacy.truncate_to_8_decimals();
+        assert_eq!(legacy.value, "0.00001118");
+        BillDao::create(bill("legacy", 2.0), &pool).await.unwrap();
+        let stored: String = sqlx::query_scalar("SELECT value FROM bill WHERE hash = 'legacy'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(stored, "1.118e-05");
+
+        BillDao::create(bill("pending", 0.0), &pool).await.unwrap();
+        BillDao::create(bill("pending", 0.00001118), &pool).await.unwrap();
+        let stored: String = sqlx::query_scalar("SELECT value FROM bill WHERE hash = 'pending'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(stored, "0.00001118");
+        let count: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM bill").fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn bill_nonfinite_amounts_fail_without_writing() {
+        let pool = pool().await;
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(BillDao::create(bill("invalid", value), &pool).await.is_err());
+        }
+        let count: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM bill").fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 0);
+    }
+}
