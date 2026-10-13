@@ -62,5 +62,5 @@ async fn collect_eth_service_fee_upload_uses_exact_propose_maximum() {
 
     then.payload_routes_reverse_transfer(&upload);
     // Fixture: 23,100 gas × 2 gwei = 0.0000462 ETH; estimate/display amounts differ.
-    then.payload_amount_is(&upload, 0.0000462, "exact propose maximum ETH fee");
+    then.payload_amount_is(&upload, 0.00005544, "exact propose maximum plus 20% funding headroom");
 }

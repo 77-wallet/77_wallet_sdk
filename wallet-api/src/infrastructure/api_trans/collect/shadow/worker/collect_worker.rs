@@ -429,7 +429,16 @@ impl ShadowCollectWorker {
     }
 
     fn should_terminal_fail_fee_shortage_after_completed_fee_cycle(req: &ApiCollectEntity) -> bool {
+        Self::should_terminal_fail_fee_shortage_at(req, Utc::now())
+    }
+
+    fn should_terminal_fail_fee_shortage_at(req: &ApiCollectEntity, now: DateTime<Utc>) -> bool {
+        const EVM_REESTIMATE_WINDOW_SECS: i64 = 180;
         Self::service_fee_cycle_completed(req)
+            && (!shared_mechanism::is_evm_chain(&req.chain_code)
+                || req.tx_fee_res_ack_sent_at.is_some_and(|ack_at| {
+                    now.signed_duration_since(ack_at).num_seconds() >= EVM_REESTIMATE_WINDOW_SECS
+                }))
     }
 
     fn is_solana_rent_exempt_reserve_balance_error(
@@ -3541,11 +3550,54 @@ impl ShadowCollectWorker {
     /// Fee 不足时的构建回退策略。
     ///
     /// - 首次手续费不足：继续打回 `need_service_fee = true`
-    /// - fee cycle 已完成后仍然手续费不足：终止订单，不再补费或重建
+    /// - EVM fee cycle 完成后不足：保留补费事实，180 秒内交给 scanner 重估
+    /// - 等待到期仍不足或非 EVM：终止订单，不再补费
     pub async fn invalidate_build_attempt_after_fee_check_failure(
         &self,
         req: &ApiCollectEntity,
     ) -> Result<u64, ServiceError> {
+        if shared_mechanism::is_evm_chain(&req.chain_code) {
+            let _guard = self.address_locks.acquire(&req.from_addr).await?;
+            let fresh = self.get_collect_entity(&req.trade_no).await?;
+            if fresh.raw_tx.is_some()
+                || fresh.tx_hash.is_some()
+                || fresh.last_broadcast_at.is_some()
+                || fresh.transaction_time.is_some()
+                || fresh.finished_at.is_some()
+                || fresh.err_code.is_some()
+                || fresh.need_service_fee == Some(true)
+                || (fresh.service_fee_uploaded_at.is_some()
+                    && fresh.tx_fee_res_ack_sent_at.is_none())
+            {
+                return Ok(0);
+            }
+            return self.invalidate_unbuilt_fee_attempt(&fresh).await;
+        }
+        self.invalidate_unbuilt_fee_attempt(req).await
+    }
+
+    // EVM callers hold the address lock through fresh-read and fact update.
+    async fn invalidate_unbuilt_fee_attempt(
+        &self,
+        req: &ApiCollectEntity,
+    ) -> Result<u64, ServiceError> {
+        if Self::service_fee_cycle_completed(req)
+            && !Self::should_terminal_fail_fee_shortage_after_completed_fee_cycle(req)
+        {
+            ApiCollectRepo::invalidate_raw_tx_for_rebuild(
+                &self.ctx.api_transaction_pool()?,
+                &req.trade_no,
+                Some(ApiCollectStatus::InsufficientBalance),
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+            info!(trade_no = %req.trade_no, tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
+                source = "shadow_worker_v2",
+                "Post-payment EVM fee shortage; awaiting scanner re-estimation without another payment");
+            // Returning zero suppresses immediate fast-path builds; the existing
+            // 30-second scan predicate retries and survives restarts/cancellation.
+            return Ok(0);
+        }
         if Self::should_terminal_fail_fee_shortage_after_completed_fee_cycle(req) {
             info!(
                 trade_no = %req.trade_no,
@@ -3751,11 +3803,9 @@ impl ShadowCollectWorker {
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%params_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 构建请求参数完成");
 
         let estimate_start = std::time::Instant::now();
-        let amount = if matches!(chain_code, ChainCode::Base | ChainCode::Scroll) {
-            let fee = adapter.estimate_native_fee_wei(params).await?;
-            tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%estimate_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 调用estimate_native_fee_wei完成");
-            unit::format_to_string(fee, wallet_chain_interact::eth::consts::ETH_DECIMAL)
-                .map_err(ServiceError::from)?
+        let amount = if crate::domain::chain::is_evm_chain(chain_code) {
+            super::estimate_evm_collect_fee(adapter.as_ref(), chain_code, params, main_symbol)
+                .await?
         } else {
             let fee = adapter.estimate_fee(params, main_symbol).await?;
             tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%estimate_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 调用estimate_fee完成");
@@ -3994,7 +4044,9 @@ impl ShadowCollectWorker {
     }
 
     pub(super) fn should_reopen_evm_fee_cycle(req: &ApiCollectEntity, err: &ServiceError) -> bool {
-        matches!(req.chain_code.as_str(), "base" | "scroll")
+        (matches!(req.chain_code.as_str(), "base" | "scroll")
+            || (shared_mechanism::is_evm_chain(&req.chain_code)
+                && Self::service_fee_cycle_completed(req)))
             && req.raw_tx.is_none()
             && req.tx_hash.is_none()
             && req.last_broadcast_at.is_none()
@@ -4011,12 +4063,16 @@ impl ShadowCollectWorker {
         let fresh_req = self.get_collect_entity(&stale_req.trade_no).await?;
         if fresh_req.transaction_time.is_some()
             || fresh_req.status.is_terminal()
+            || fresh_req.finished_at.is_some()
+            || fresh_req.err_code.is_some()
             || fresh_req.need_service_fee == Some(true)
+            || (fresh_req.service_fee_uploaded_at.is_some()
+                && fresh_req.tx_fee_res_ack_sent_at.is_none())
             || !Self::should_reopen_evm_fee_cycle(&fresh_req, err)
         {
             return Ok(0);
         }
-        self.invalidate_build_attempt_after_fee_check_failure(&fresh_req).await
+        self.invalidate_unbuilt_fee_attempt(&fresh_req).await
     }
 
     /// 处理归集交易失败
@@ -6271,7 +6327,7 @@ oss:
         let mut req = base_collect();
         req.chain_code = "eth".to_string();
         req.service_fee_uploaded_at = Some(Utc::now());
-        req.tx_fee_res_ack_sent_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now() - chrono::Duration::seconds(180));
 
         assert!(ShadowCollectWorker::should_terminal_fail_fee_shortage_after_completed_fee_cycle(
             &req
@@ -6284,10 +6340,33 @@ oss:
         req.chain_code = "eth".to_string();
         req.token_addr = AssetTokenKey::Native;
         req.service_fee_uploaded_at = Some(Utc::now());
-        req.tx_fee_res_ack_sent_at = Some(Utc::now());
+        req.tx_fee_res_ack_sent_at = Some(Utc::now() - chrono::Duration::seconds(180));
 
         assert!(ShadowCollectWorker::should_terminal_fail_fee_shortage_after_completed_fee_cycle(
             &req
+        ));
+    }
+
+    #[test]
+    fn evm_fee_reestimate_deadline_uses_original_ack_time() {
+        let mut req = base_collect();
+        req.chain_code = "arbitrum".into();
+        let ack = Utc::now();
+        req.service_fee_uploaded_at = Some(ack);
+        req.tx_fee_res_ack_sent_at = Some(ack);
+        assert!(!ShadowCollectWorker::should_terminal_fail_fee_shortage_at(&req, ack));
+        assert!(!ShadowCollectWorker::should_terminal_fail_fee_shortage_at(
+            &req,
+            ack + chrono::Duration::seconds(179)
+        ));
+        assert!(ShadowCollectWorker::should_terminal_fail_fee_shortage_at(
+            &req,
+            ack + chrono::Duration::seconds(180)
+        ));
+        req.tx_fee_res_ack_sent_at = None;
+        assert!(!ShadowCollectWorker::should_terminal_fail_fee_shortage_at(
+            &req,
+            ack + chrono::Duration::seconds(181)
         ));
     }
 

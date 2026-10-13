@@ -1513,12 +1513,14 @@ scanner entrypoints.
   `evm_token_collect_fee_shortage_after_fee_cycle_terminates`,
   `evm_native_collect_fee_shortage_after_fee_cycle_terminates`, and
   `tron_native_collect_fee_shortage_after_fee_cycle_terminates`.
-- Invariant: once the single fee-order handshake is complete, any subsequent
-  explicit collect fee shortage is terminal regardless of chain or native/token
-  asset type; it must not clear the build and loop or request another fee payment.
+- Invariant (updated 2026-10-14): non-EVM completed-cycle shortages remain terminal.
+  EVM completed-cycle shortages retain the single-payment facts and re-estimate
+  for 180 seconds from the original fee ACK; a fresh shortage after that deadline
+  is terminal. No second fee request is permitted.
 - Test: `completed_fee_balance_shortage_cools_down_before_build_retry`
-- Invariant: after a completed fee-order handshake, any still-insufficient
-  collect balance is terminal and cannot re-enter BuildTx.
+- Invariant (updated 2026-10-14): within the EVM re-estimation window, an
+  insufficient row remains eligible after the existing 30-second scan cooldown;
+  non-EVM shortages and persistent EVM shortages after expiry remain terminal.
 
 ### Collect Broadcast Guard Admission
 
@@ -1731,10 +1733,24 @@ Scope: persisted raw order paths and fee display, Base/Scroll native and standar
 - Metadata cannot bypass L1 observation or native/token balance gates on these two chains.
 - Base Core estimate is an upper-bound reserve, not an actual final-fee claim.
 - RPC failure/zero additional fee cannot create broadcastable raw facts; rebroadcast uses existing raw/hash/nonce without repricing.
-- Base/Scroll pre-raw fee shortage reuses existing invalidation/advancer; the completed single fee cycle still terminates shortage. Shared address lock covers fresh-read through invalidation, serialized with the sole Build raw commit; no cross-process DAO CAS claim.
+- Base/Scroll pre-raw fee shortage reuses existing invalidation/advancer; the completed single fee cycle waits for bounded re-estimation before terminating a persistent shortage (updated 2026-10-14). Shared address lock covers fresh-read through invalidation, serialized with the sole Build raw commit; no cross-process DAO CAS claim.
 - ETH/BNB/Polygon/Avalanche/Fantom/Arbitrum retain baseline balance/gas/oracle order, metadata raw behavior, display/snapshot and testnet direct transfer paths.
 - Removed broad snapshot override and direct transfer rewrite. Snapshot uses the original display-response estimate path; its existing floating display conversion/DB dependency remains. Direct transfer is baseline even for Base/Scroll; this batch does not claim every API transfer entrypoint has L1 funding protection.
 - Generic old metadata balance bypass and fee precision work are deferred, not fixed for unrelated chains.
 - Entrypoints: adapter/eth_tx/fee_tests.rs (api_evm_fee_*); collect/shadow/worker/fee_recovery_tests.rs.
 - Shared calculate_fee_setting_from_req and build_fee_setting fully match baseline. Base/Scroll direct transfer no/invalid metadata retains old amount gate; valid metadata retains old shortcut. Only the new exact funding quote uses an isolated l1_quote_fee_setting without local balance gates. Raw executes old amount gate followed by the new total fee gate.
 - Isolation regression: compile-only failure is not RED; gas-isolation-red-behavior.log confirms real missing Base native direct-transfer amount gate. Final isolated-version evidence: gas-isolation-final-0.log has 15 passed; final-1..5 freshly pass trans 75, EthTx 5, withdraw shadow 66, collect_fee shadow 21, collect worker 56 (223 total). Independent full-callee review found no blocker. Earlier 12+223 is superseded. Full order orchestration, live nodes and App acceptance remain unrun.
+
+## Single-payment EVM collect funding repair (2026-10-14)
+
+- `fee_quote_funding_and_build_use_same_l1_inclusive_amount`: both real worker estimate entrypoints use the same exact native wei quote for Base/Scroll, including separate L1; display parsing is not called.
+- `fee_quote_l1_error_does_not_fall_back_to_underfunded_execution_quote`: failed L1 RPC must propagate, never request a gas-only payment.
+- `fee_quote_arbitrum_preserves_exact_execution_maximum`: other EVM quote calculation retains propose gas maximum.
+- `fee_quote_headroom_covers_logged_arbitrum_increase_and_rounds_up_wei`: first funding budget includes 20% headroom rounded up in wei; build admission still uses fresh unbuffered quote.
+- `collect_eth_service_fee_upload_uses_exact_propose_maximum`: captured backend payload uses exact quote plus funding headroom; SOL upload tests retain unchanged rent behavior.
+- `api_evm_fee_completed_cycle_waits_for_reestimate_without_second_payment` and `api_evm_fee_duplicate_shortage_preserves_ack_deadline_and_scan_recovery`: shortage remains nonterminal, original fee upload/ACK retained, build slot released, no immediate retry/payment intent, existing scanner discovers the order again after its 30-second interval.
+- `api_evm_fee_reestimate_deadline_expires_without_second_payment` and `evm_fee_reestimate_deadline_uses_original_ack_time`: 180-second deadline uses original ACK, not retry/update time, and survives restart through existing DB facts.
+- `api_evm_fee_stale_shortage_preserves_committed_raw_under_shared_lock`: stale fee failures cannot discard committed raw/hash/nonce.
+- Limitation: one payment cannot guarantee arbitrary fee increases; beyond the funded budget, wait for lower fresh quotes, then report persistent insufficiency at the deadline. No real transactions or historical failed-order replay in this repair.
+
+- `api_evm_fee_stale_build_preserves_pending_single_payment`: stale direct fee-check and adapter-error recovery protect the uploaded fee while awaiting FeeRes or its ACK, including `need_service_fee=true/false`; neither clears upload facts nor requests another payment.

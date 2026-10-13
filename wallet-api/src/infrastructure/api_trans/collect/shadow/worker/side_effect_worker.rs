@@ -1163,7 +1163,9 @@ impl SideEffectWorker {
         let mut reestimated_due_to_non_positive_stored_fee = false;
 
         // 使用 transaction_fee 事实；若现有事实非正数，则视为不可靠并强制重估
-        let fee = if req.transaction_fee.is_empty() {
+        let fee = if req.transaction_fee.is_empty()
+            || crate::domain::chain::is_evm_chain(chain_code)
+        {
             let fee_str = self
                 .estimate_fee(
                     &req.from_addr,
@@ -1178,7 +1180,7 @@ impl SideEffectWorker {
                 .await?;
             estimated_fee_str = Some(fee_str.clone());
             let fee = conversion::decimal_from_str(&fee_str)?;
-            info!(trade_no = %trade_no, fee = %fee_str, source = "side_effect_worker", "Estimated fee successfully (transaction_fee was empty)");
+            info!(trade_no = %trade_no, fee = %fee_str, source = "side_effect_worker", "Estimated fresh fee for service fee upload");
             fee
         } else {
             let stored_fee = conversion::decimal_from_str(&req.transaction_fee)?;
@@ -1222,7 +1224,11 @@ impl SideEffectWorker {
         // Solana token collect 需要同时覆盖 sender rent reserve。
         let sender_rent_reserve =
             Self::sol_token_collect_sender_rent_reserve(&req.chain_code, &req.token_addr)?;
-        let mut fee_to_upload = fee;
+        let mut fee_to_upload = if crate::domain::chain::is_evm_chain(chain_code) {
+            conversion::decimal_from_str(&super::evm_funding_budget(&fee.to_string())?)?
+        } else {
+            fee
+        };
         if sender_rent_reserve > Decimal::ZERO {
             let current_balance = self
                 .query_balance(
@@ -1556,7 +1562,7 @@ impl SideEffectWorker {
     }
 
     /// 估算手续费
-    async fn estimate_fee(
+    pub(super) async fn estimate_fee(
         &self,
         from: &str,
         to: &str,
@@ -1581,6 +1587,16 @@ impl SideEffectWorker {
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
         params.with_token(token_key.to_chain_token_option(), decimals, symbol);
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Built transfer parameters");
+
+        if crate::domain::chain::is_evm_chain(chain_code) {
+            return super::estimate_evm_collect_fee(
+                adapter.as_ref(),
+                chain_code,
+                params,
+                main_symbol,
+            )
+            .await;
+        }
 
         let fee = adapter.estimate_fee_without_balance_check(params.clone(), main_symbol).await?;
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Received fee estimate from adapter without local balance gate");

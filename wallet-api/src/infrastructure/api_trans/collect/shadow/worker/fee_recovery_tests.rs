@@ -75,7 +75,7 @@ async fn api_evm_fee_pre_raw_shortage_reopens_existing_fee_cycle() {
 }
 
 #[tokio::test]
-async fn api_evm_fee_completed_single_cycle_still_terminates_shortage() {
+async fn api_evm_fee_completed_cycle_waits_for_reestimate_without_second_payment() {
     let (ctx, worker, trade, mut intents, _locks) = fixture().await;
     let pool = ctx.api_transaction_pool().unwrap();
     sqlx::query("UPDATE api_collect SET service_fee_uploaded_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'), tx_fee_res_ack_sent_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no=?").bind(&trade).execute(pool.as_ref()).await.unwrap();
@@ -88,9 +88,12 @@ async fn api_evm_fee_completed_single_cycle_still_terminates_shortage() {
         .unwrap();
     let row = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &trade).await.unwrap();
     assert_eq!(row.status, ApiCollectStatus::InsufficientBalance);
-    assert!(row.err_code.is_some());
+    assert!(row.err_code.is_none(), "first post-payment shortage must remain recoverable");
     assert_ne!(row.need_service_fee, Some(true));
-    assert!(intents.try_recv().is_err());
+    assert!(row.service_fee_uploaded_at.is_some());
+    assert!(row.tx_fee_res_ack_sent_at.is_some());
+    assert!(row.building_at.is_none());
+    assert!(intents.try_recv().is_err(), "must not request a second payment or spin build");
 }
 
 #[tokio::test]
@@ -145,4 +148,79 @@ async fn api_evm_fee_stale_shortage_preserves_committed_raw_under_shared_lock() 
     assert_eq!(row.nonce, 7);
     assert_ne!(row.need_service_fee, Some(true));
     assert!(intents.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn api_evm_fee_reestimate_deadline_expires_without_second_payment() {
+    let (ctx, worker, trade, mut intents, _locks) = fixture().await;
+    let pool = ctx.api_transaction_pool().unwrap();
+    sqlx::query("UPDATE api_collect SET service_fee_uploaded_at=datetime('now','-4 minutes'), tx_fee_res_ack_sent_at=datetime('now','-4 minutes') WHERE trade_no=?").bind(&trade).execute(pool.as_ref()).await.unwrap();
+    worker
+        .handle_collect_tx_failed(
+            &trade,
+            ServiceError::Business(BusinessError::Chain(ChainError::InsufficientFeeBalance)),
+        )
+        .await
+        .unwrap();
+    let row = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &trade).await.unwrap();
+    assert!(row.err_code.is_some());
+    assert_ne!(row.need_service_fee, Some(true));
+    assert!(row.service_fee_uploaded_at.is_some());
+    assert!(row.tx_fee_res_ack_sent_at.is_some());
+    assert!(intents.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn api_evm_fee_duplicate_shortage_preserves_ack_deadline_and_scan_recovery() {
+    let (ctx, worker, trade, mut intents, _locks) = fixture().await;
+    let pool = ctx.api_transaction_pool().unwrap();
+    sqlx::query("UPDATE api_collect SET service_fee_uploaded_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'), tx_fee_res_ack_sent_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no=?").bind(&trade).execute(pool.as_ref()).await.unwrap();
+    let before = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &trade).await.unwrap();
+    for _ in 0..2 {
+        worker
+            .handle_collect_tx_failed(
+                &trade,
+                ServiceError::Business(BusinessError::Chain(ChainError::InsufficientFeeBalance)),
+            )
+            .await
+            .unwrap();
+    }
+    let row = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &trade).await.unwrap();
+    assert!(row.err_code.is_none());
+    assert_eq!(row.tx_fee_res_ack_sent_at, before.tx_fee_res_ack_sent_at);
+    assert_eq!(row.service_fee_uploaded_at, before.service_fee_uploaded_at);
+    assert!(row.raw_tx.is_none());
+    assert!(row.tx_hash.is_none());
+    assert!(row.building_at.is_none());
+    assert!(intents.try_recv().is_err());
+    sqlx::query("UPDATE api_collect SET updated_at=datetime('now','-31 seconds') WHERE trade_no=?")
+        .bind(&trade)
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+    let candidates = ApiCollectRepo::scan_can_build(&pool, 1000).await.unwrap();
+    assert!(candidates.iter().any(|r| r.trade_no == trade));
+}
+
+#[tokio::test]
+async fn api_evm_fee_stale_build_preserves_pending_single_payment() {
+    let (ctx, worker, trade, mut intents, _locks) = fixture().await;
+    let pool = ctx.api_transaction_pool().unwrap();
+    let stale = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &trade).await.unwrap();
+    let shortage = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientFeeBalance));
+    for needs_fee in [true, false] {
+        sqlx::query("UPDATE api_collect SET need_service_fee=?, ever_needed_service_fee=true, service_fee_uploaded_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'), tx_fee_res_ack_sent_at=NULL WHERE trade_no=?").bind(needs_fee).bind(&trade).execute(pool.as_ref()).await.unwrap();
+        let before = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &trade).await.unwrap();
+        assert_eq!(
+            worker.invalidate_build_attempt_after_fee_check_failure(&stale).await.unwrap(),
+            0
+        );
+        assert_eq!(worker.reopen_evm_fee_cycle_if_unbuilt(&stale, &shortage).await.unwrap(), 0);
+        let after = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &trade).await.unwrap();
+        assert_eq!(after.need_service_fee, Some(needs_fee));
+        assert_eq!(after.service_fee_uploaded_at, before.service_fee_uploaded_at);
+        assert!(after.tx_fee_res_ack_sent_at.is_none());
+        assert!(after.err_code.is_none());
+        assert!(intents.try_recv().is_err());
+    }
 }

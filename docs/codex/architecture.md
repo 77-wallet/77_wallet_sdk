@@ -230,3 +230,7 @@ Follow-up scope (2026-10-13, user screenshot of remaining token-key UPDATEs): re
 
 ### Scroll maximum residual optimization (user confirmation, 2026-10-14)
 User requests reducing Scroll native maximum residual by optimizing fee-rate rounding and L1 reservation, with App modifications explicitly excluded. The user authorizes Core→SDK→plugin commits/pushes after validation so they can rebuild and perform the real-device retry themselves. Scope is this Scroll optimization; no authorization to sign or broadcast real transactions from Codex. Source: direct instruction in this chat, 2026-10-14.
+
+### Collect fee payment limit (user confirmation, 2026-10-14)
+
+The backend supports only one service-fee payment per collect tradeNo. Source: direct user answer during the first-USDT-collect failure investigation, 2026-10-14. Applies to the current SDK/backend collect protocol; do not reopen a completed fee cycle to request another payment without a separately confirmed backend protocol change. Runtime evidence for this incident shows Base/Arbitrum/Scroll fee transfers were visible in balance queries, but funding was below the renewed quote.
