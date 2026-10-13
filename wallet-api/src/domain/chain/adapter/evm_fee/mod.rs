@@ -31,6 +31,14 @@ pub(super) async fn required_send_fee(
     execution_fee: U256,
 ) -> Result<U256, ServiceError> {
     let additional_fee = chain.estimate_additional_fee(transfer.build_transaction()?).await?;
+    if chain.chain_code == ChainCode::Scroll {
+        tracing::info!(target: "scroll_diagnostic", stage = "send_preflight",
+            from = %transfer.base.from, to = %transfer.base.to, token = ?transfer.contract,
+            value_wei = %transfer.base.value, execution_reserve_wei = %execution_fee,
+            estimated_l1_fee_wei = %additional_fee.unwrap_or_default(),
+            required_fee_wei = %(execution_fee + additional_fee.unwrap_or_default()),
+            "Scroll diagnostic");
+    }
     Ok(execution_fee + additional_fee.unwrap_or_default())
 }
 
@@ -115,6 +123,13 @@ pub(super) async fn estimate_transfer_fee(
     let additional_fee = chain.estimate_additional_fee(params.build_transaction()?).await?;
     let gas = chain.estimate_gas(params).await?;
     let fee = FeeDetails::try_from((gas_oracle, gas.consume))?;
+    if chain.chain_code == ChainCode::Scroll {
+        tracing::info!(target: "scroll_diagnostic", stage = "fee_quote",
+            from = %req.from, to = %req.to, token = ?req.token_address.to_chain_token_option(),
+            value_wei = %value, spend_all = req.spend_all,
+            estimated_l1_fee_wei = %additional_fee.unwrap_or_default(),
+            "Scroll diagnostic");
+    }
     let fee = match additional_fee {
         Some(additional_fee) => fee.with_additional_native_fee(additional_fee)?,
         None => fee,

@@ -222,6 +222,15 @@ impl TransactionAdapter {
                 let mut fee_setting = pare_fee_setting(params.fee_setting.as_str())?;
                 let balance = chain.balance(&params.base.from, None).await?;
                 let spend_all_native = params.base.spend_all && token_address.is_none();
+                if chain.chain_code == ChainType::Scroll {
+                    tracing::info!(target: "scroll_diagnostic", stage = "send_balance",
+                        from = %params.base.from, to = %params.base.to, token = ?token_address,
+                        balance_wei = %balance, value_wei = %transfer_amount,
+                        spend_all_native, gas_limit = %fee_setting.gas_limit,
+                        max_fee_per_gas = %fee_setting.max_fee_per_gas,
+                        max_priority_fee_per_gas = %fee_setting.max_priority_fee_per_gas,
+                        "Scroll diagnostic");
+                }
                 let mut transfer = chain::eth::operations::TransferOpt::try_from(&params.base)?;
 
                 let final_amount = if spend_all_native {
