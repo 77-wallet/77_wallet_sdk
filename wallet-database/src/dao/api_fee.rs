@@ -1053,6 +1053,9 @@ impl ApiFeeDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND raw_tx IS NULL
+              AND err_code IS NULL AND finished_at IS NULL
+              AND transaction_time IS NULL AND last_broadcast_at IS NULL
+              AND broadcast_uncertain_since_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)

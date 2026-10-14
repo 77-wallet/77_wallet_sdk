@@ -15,3 +15,6 @@ pub(super) use request::evm_chain_codes;
 
 mod fee_build;
 pub(super) use fee_build::FeeBuildScenario;
+
+mod fee_failure;
+pub(super) use fee_failure::FeeFailureScenario;

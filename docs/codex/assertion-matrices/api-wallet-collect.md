@@ -1787,3 +1787,43 @@ and broadcast/receipt/ACK policies remain unchanged.
 Runtime incident and conditional recovery boundaries:
 [Arbitrum nonce recovery](../arbitrum-collect-fee-nonce-recovery.md). Existing signed
 high-nonce intents are not reset or rewritten. No real-device recovery was run.
+
+## Collect-fee payer shortage becomes terminal (2026-10-14)
+
+Scope: common fee BuildTx failure only. A typed payer InsufficientBalance or
+InsufficientFeeBalance before any raw/hash/broadcast/result evidence writes
+BalanceInsufficient/FeeInsufficient, clears building_at, and stays reportable.
+No new parent mapping, payment request, backend endpoint or migration.
+Temporary build errors retain existing retries. Recipient rent errors retain
+their existing handling. Post-broadcast/recover paths are unchanged.
+
+- `collect_fee_payer_shortage_stops_build_after_later_funding`: fake adapter
+  returns payer shortage; DB freezes the child, scanners no longer select
+  BuildTx but select failure upload; removing shortage and replaying build does
+  not query nonce, build, reserve, or broadcast another transaction.
+- `collect_fee_build_timeout_retries_without_terminal_failure`: timeout leaves
+  no terminal error/raw/nonce reservation, releases build slot, and next build
+  succeeds when the fake network recovers.
+- `collect_fee_shortage_reports_failure_and_never_executes_again`: actual
+  receipt worker sends one mock backend COL_FEE/FAIL receipt without hash and
+  finishes only after upload succeeds; repeated upload and stale Build/Broadcast
+  commands are silent.
+- `collect_fee_shortage_retries_only_failed_receipt_upload`: failed mock upload
+  leaves durable error, no execution eligibility and no finished_at; new worker
+  against persisted DB cannot execute, but retry upload succeeds and closes.
+- `collect_fee_shortage_freezes_inflight_build_before_nonce_commit`: controlled
+  adapter timing lets failure win before candidate commit; neither raw nor
+  nonce reservation can appear afterwards.
+- `collect_fee_recipient_rent_shortage_keeps_existing_retry`: recipient rent is
+  not misclassified as payer shortage and remains build-eligible.
+- Database `fee_build_failure_*`: real SQLite proves idempotency, duplicate
+  order preservation, failure upload eligibility, legacy/EVM late-commit
+  rejection, and protection of concurrently committed/broadcast/uncertain/
+  confirmed/result/finished facts.
+
+Commands: `CARGO_TARGET_DIR=target cargo test -p wallet-api --test mod
+transfer_nonce::collect_fee_ --offline -- --test-threads=1`; `CARGO_TARGET_DIR=target cargo test
+-p wallet-database --lib fee_build_failure --offline`. Existing
+`fee_signed_candidate` and fee receipt scanner cases cover preserved successful
+nonce commits and pending/success/failure receipt conditions. Real-device
+funding/retry is not executed by this task; rebuild is required for adoption.

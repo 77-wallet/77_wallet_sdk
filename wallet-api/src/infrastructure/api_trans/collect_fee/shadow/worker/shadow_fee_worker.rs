@@ -641,6 +641,9 @@ impl ShadowFeeWorker {
         let fee = self.get_fee_entity(trade_no).await?;
 
         // check
+        if fee.err_code.is_some() || fee.finished_at.is_some() || fee.transaction_time.is_some() {
+            return Ok(());
+        }
         if !self.check_digest(&fee).await? {
             tracing::error!(trade_no=%trade_no, "[手续费归集] 交易数据验证失败");
             return Err(ServiceError::Business(
@@ -662,7 +665,11 @@ impl ShadowFeeWorker {
 
             // 2. 事实校验：BuildTx 只能处理 raw_tx 为空的交易
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
-            if fresh_fee.raw_tx.is_some() {
+            if fresh_fee.raw_tx.is_some()
+                || fresh_fee.err_code.is_some()
+                || fresh_fee.finished_at.is_some()
+                || fresh_fee.transaction_time.is_some()
+            {
                 info!(trade_no = %trade_no, source = "shadow_fee_worker", "raw_tx already exists, skipping BuildTx");
                 self.clear_build_slot_after_claim(trade_no).await?;
                 return Ok(());
@@ -836,7 +843,12 @@ impl ShadowFeeWorker {
             // 2. 事实校验：Broadcast 只能处理 raw_tx 存在且 last_broadcast_at 为空的交易
             // 🔒 与 predicate::can_broadcast 同构，确保模型自洽
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
-            if fresh_fee.raw_tx.is_none() || fresh_fee.last_broadcast_at.is_some() {
+            if fresh_fee.raw_tx.is_none()
+                || fresh_fee.last_broadcast_at.is_some()
+                || fresh_fee.err_code.is_some()
+                || fresh_fee.finished_at.is_some()
+                || fresh_fee.transaction_time.is_some()
+            {
                 info!(trade_no = %trade_no, source = "shadow_fee_worker", "raw_tx empty or last_broadcast_at exists, skipping Broadcast");
                 return Ok(());
             }
@@ -1222,9 +1234,36 @@ impl ShadowFeeWorker {
             return Ok(());
         }
 
-        // BuildTx 失败只需要释放 build slot，让 scanner 后续重试。
-        // 这里不写失败事实，避免把可重试的构建失败误记成终态失败。
+        // Only payer shortage is terminal here. Transient build failures keep
+        // releasing the slot for retry; post-broadcast facts are protected by CAS.
         if fee.raw_tx.is_none() {
+            use crate::error::business::{BusinessError, chain::ChainError};
+            let shortage = if Self::is_solana_recipient_rent_error(&err) {
+                None
+            } else {
+                match &err {
+                    ServiceError::Business(BusinessError::Chain(
+                        ChainError::InsufficientBalance(_),
+                    )) => Some(ErrCode::BalanceInsufficient),
+                    ServiceError::Business(BusinessError::Chain(
+                        ChainError::InsufficientFeeBalance,
+                    )) => Some(ErrCode::FeeInsufficient),
+                    _ => None,
+                }
+            };
+            if let Some(code) = shortage {
+                let affected = ApiFeeRepo::fail_unbuilt_fee(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                    code,
+                    &err.to_string(),
+                )
+                .await?;
+                if affected > 0 {
+                    self.scanner.try_advance(trade_no).await;
+                }
+                return Ok(());
+            }
             let rows_affected = ApiFeeRepo::clear_building_at(&self.ctx.api_transaction_pool()?, trade_no)
                 .await
                 .map_err(|db_err: wallet_database::Error| {

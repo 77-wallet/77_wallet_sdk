@@ -21,6 +21,8 @@ struct RecordingAdapterState {
     recorded_raw: Mutex<Vec<Vec<u8>>>,
     build_calls: AtomicUsize,
     fail_build: AtomicBool,
+    build_payer_shortage: AtomicBool,
+    build_timeout: AtomicBool,
     block_build: AtomicBool,
     canonical_hash: AtomicBool,
     nonce_sender: Mutex<Option<String>>,
@@ -96,6 +98,14 @@ impl RecordingEthAdapter {
     }
     pub(crate) fn fail_build(&self, fail: bool) {
         self.state.fail_build.store(fail, Ordering::SeqCst);
+    }
+
+    pub(crate) fn build_payer_shortage(&self, fail: bool) {
+        self.state.build_payer_shortage.store(fail, Ordering::SeqCst);
+    }
+
+    pub(crate) fn build_timeout(&self, fail: bool) {
+        self.state.build_timeout.store(fail, Ordering::SeqCst);
     }
 
     pub(crate) fn build_calls(&self) -> usize {
@@ -317,6 +327,20 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         }
         if self.state.fail_build.load(Ordering::SeqCst) {
             return Err(ServiceError::Parameter("simulated pre-send build failure".into()));
+        }
+        if self.state.build_payer_shortage.load(Ordering::SeqCst) {
+            return Err(ServiceError::Business(wallet_api::error::business::BusinessError::Chain(
+                wallet_api::error::business::chain::ChainError::insufficient_balance_with_detail(
+                    wallet_api::error::business::chain::InsufficientBalanceDetail::new()
+                        .reason("main coin balance is insufficient")
+                        .from_addr(&params.base.from)
+                        .balance("0")
+                        .need("1"),
+                ),
+            )));
+        }
+        if self.state.build_timeout.load(Ordering::SeqCst) {
+            return Err(ServiceError::Timeout);
         }
         Ok((
             self.tx_hash(params.nonce),

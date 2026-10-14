@@ -42,6 +42,45 @@ impl FeeBuildScenario {
     pub async fn when_build(&self) -> Result<(), ServiceError> {
         self.worker.build(&self.trade).await
     }
+
+    pub async fn when_inflight_build_loses_to_shortage(&self) -> Result<(), ServiceError> {
+        self.adapter.block_build(true);
+        let building = self.when_build();
+        tokio::pin!(building);
+        tokio::select! {
+            result = &mut building => panic!("build must wait at adapter boundary: {result:?}"),
+            _ = self.adapter.wait_for_first_entry() => {}
+        }
+        use wallet_api::error::business::{
+            BusinessError,
+            chain::{ChainError, InsufficientBalanceDetail},
+        };
+        self.worker
+            .fail(
+                &self.trade,
+                ServiceError::Business(BusinessError::Chain(
+                    ChainError::insufficient_balance_with_detail(
+                        InsufficientBalanceDetail::new()
+                            .reason("main coin balance is insufficient"),
+                    ),
+                )),
+            )
+            .await?;
+        self.adapter.release_first();
+        building.await
+    }
+
+    pub async fn when_recipient_rent_error_occurs(&self) -> Result<(), ServiceError> {
+        use wallet_api::error::business::{
+            BusinessError,
+            chain::{ChainError, InsufficientBalanceDetail},
+        };
+        self.worker.fail(&self.trade, ServiceError::Business(BusinessError::Chain(
+            ChainError::insufficient_balance_with_detail(
+                InsufficientBalanceDetail::new().reason("recipient account is not initialized and transfer amount is below rent-exempt minimum"),
+            ),
+        ))).await
+    }
     pub async fn given_occupied_slot(&self) {
         assert_eq!(ApiFeeRepo::update_building_at(&self.pool, &self.trade).await.unwrap(), 1);
     }
@@ -71,5 +110,28 @@ impl FeeBuildScenario {
                 .building_at
                 .is_none()
         );
+    }
+
+    pub async fn then_failed_for_balance(&self) {
+        use wallet_database::entities::api_fee::{ApiFeeStatus, ErrCode};
+        let row = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, &self.trade).await.unwrap();
+        assert_eq!(row.err_code, Some(ErrCode::BalanceInsufficient));
+        assert_eq!(row.status, ApiFeeStatus::SendingTxFailed);
+        assert!(row.err_msg.as_deref().unwrap().contains("main coin balance is insufficient"));
+        assert!(row.finished_at.is_none(), "failure still needs receipt upload");
+        let buildable = ApiFeeRepo::scan_can_build(&self.pool, 1000).await.unwrap();
+        assert!(!buildable.iter().any(|row| row.trade_no == self.trade));
+        let reportable =
+            ApiFeeRepo::scan_need_tx_exec_receipt_upload(&self.pool, 1000).await.unwrap();
+        assert!(reportable.iter().any(|row| row.trade_no == self.trade));
+    }
+
+    pub async fn then_retryable(&self) {
+        let row = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, &self.trade).await.unwrap();
+        assert!(row.err_code.is_none());
+        assert!(row.finished_at.is_none());
+        assert!(row.building_at.is_none());
+        let buildable = ApiFeeRepo::scan_can_build(&self.pool, 1000).await.unwrap();
+        assert!(buildable.iter().any(|row| row.trade_no == self.trade));
     }
 }

@@ -259,3 +259,13 @@ in [the Arbitrum recovery note](arbitrum-collect-fee-nonce-recovery.md).
   reuse and repaired local runtime; no code commit. Do not introduce a general
   recovery mechanism for this disposable test incident. This scope supersedes
   prior read-only data boundary for these local records only, not production.
+
+### Collect-fee payer shortage policy (user confirmation, 2026-10-14)
+
+User explicitly selects a local SDK fix: insufficient payer transfer/gas
+balance during fee construction is terminal for that fee child and must be
+reported; later funding must not restart the failed order. Network/timeouts
+remain retryable and already-broadcast uncertainty remains observable. Source:
+direct user instruction in this chat, 2026-10-14. Applies to the common
+collect-fee workflow; this does not confirm a parent association field or
+authorize backend/App changes, transaction execution, commit or push.

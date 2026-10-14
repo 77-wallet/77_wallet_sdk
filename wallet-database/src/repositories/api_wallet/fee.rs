@@ -53,7 +53,41 @@ pub struct SignedFeeCandidate<'a> {
 #[path = "fee_signed_candidate_tests.rs"]
 mod fee_signed_candidate_tests;
 
+#[cfg(test)]
+#[path = "fee_build_failure_tests.rs"]
+mod fee_build_failure_tests;
+
 impl ApiFeeRepo {
+    /// Freeze an unbuilt order without overwriting concurrent execution facts.
+    /// Receipt upload remains pending until the existing side-effect flow succeeds.
+    pub async fn fail_unbuilt_fee(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        err_code: crate::entities::api_fee::ErrCode,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        let result = sqlx::query(
+            r#"UPDATE api_fee
+            SET status = ?, err_code = ?, err_msg = ?, building_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+              AND raw_tx IS NULL AND tx_hash IS NULL
+              AND last_broadcast_at IS NULL AND transaction_time IS NULL
+              AND broadcast_uncertain_since_at IS NULL
+              AND tx_res_received_at IS NULL AND tx_res_ack_sent_at IS NULL
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND finished_at IS NULL AND err_code IS NULL"#,
+        )
+        .bind(ApiFeeStatus::SendingTxFailed)
+        .bind(err_code as u32)
+        .bind(err_msg)
+        .bind(trade_no)
+        .execute(pool.write_ref())
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result.rows_affected())
+    }
+
     pub async fn list_api_fee(
         pool: &ApiTransactionDbPool,
         uid: &str,

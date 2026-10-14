@@ -95,6 +95,7 @@ pub(crate) use predicate::evaluate_point;
 pub use scanner::{ScannerConfig, ShadowScanner};
 pub(crate) use stage::{ADVANCEMENT_ORDER, AdvancementPoint};
 pub use worker::ShadowFeeWorker;
+pub(crate) use worker::{ShadowFeeCommand, SideEffectCommand, SideEffectWorker};
 
 /// Shadow系统初始化
 pub(crate) async fn init(

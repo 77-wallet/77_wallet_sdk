@@ -977,6 +977,102 @@ async fn collect_fee_build_failure_retries_same_nonce_then_commits() -> anyhow::
 
 #[tokio::test]
 #[serial]
+async fn collect_fee_payer_shortage_stops_build_after_later_funding() -> anyhow::Result<()> {
+    let scenario = support::FeeBuildScenario::given().await?;
+    scenario.adapter.build_payer_shortage(true);
+
+    scenario.when_build().await?;
+
+    scenario.then_failed_for_balance().await;
+    scenario.then_slot_released().await;
+    scenario.then_facts(0, false).await;
+    scenario.adapter.build_payer_shortage(false);
+    scenario.when_build().await?;
+    scenario.when_build().await?;
+    scenario.then_failed_for_balance().await;
+    scenario.then_facts(0, false).await;
+    assert_eq!(scenario.adapter.build_calls(), 1);
+    assert_eq!(scenario.adapter.nonce_queries(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_fee_build_timeout_retries_without_terminal_failure() -> anyhow::Result<()> {
+    let scenario = support::FeeBuildScenario::given().await?;
+    scenario.adapter.build_timeout(true);
+
+    scenario.when_build().await?;
+
+    scenario.then_retryable().await;
+    scenario.then_facts(0, false).await;
+    scenario.adapter.build_timeout(false);
+    scenario.when_build().await?;
+    scenario.then_facts(6, true).await;
+    assert_eq!(scenario.adapter.build_calls(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_fee_shortage_reports_failure_and_never_executes_again() {
+    let scenario = support::FeeFailureScenario::given().await;
+
+    scenario.when_gas_balance_shortage().await;
+    scenario.when_upload_receipt().await;
+    scenario.when_stale_execution_is_queued().await;
+    scenario.when_upload_receipt().await;
+
+    scenario.then_failure_state(true).await;
+    scenario.then_failure_receipts(1);
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_fee_shortage_retries_only_failed_receipt_upload() {
+    let scenario = support::FeeFailureScenario::given().await;
+    scenario.when_gas_balance_shortage().await;
+    scenario.given_receipt_upload_failure();
+
+    scenario.when_upload_receipt().await;
+
+    scenario.then_failure_state(false).await;
+    scenario.then_failure_receipts(1);
+    scenario.when_restarted_execution_is_queued().await;
+    scenario.when_upload_receipt().await;
+    scenario.then_failure_state(true).await;
+    scenario.then_failure_receipts(2);
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_fee_shortage_freezes_inflight_build_before_nonce_commit() -> anyhow::Result<()> {
+    let scenario = support::FeeBuildScenario::given().await?;
+
+    scenario.when_inflight_build_loses_to_shortage().await?;
+
+    scenario.then_failed_for_balance().await;
+    scenario.then_slot_released().await;
+    scenario.then_facts(0, false).await;
+    assert_eq!(scenario.adapter.build_calls(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_fee_recipient_rent_shortage_keeps_existing_retry() -> anyhow::Result<()> {
+    let scenario = support::FeeBuildScenario::given().await?;
+
+    scenario.when_recipient_rent_error_occurs().await?;
+
+    scenario.then_retryable().await;
+    scenario.then_facts(0, false).await;
+    assert_eq!(scenario.adapter.build_calls(), 0);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn collect_fee_build_occupied_slot_skips_nonce_and_build() -> anyhow::Result<()> {
     let scenario = support::FeeBuildScenario::given().await?;
     scenario.given_occupied_slot().await;

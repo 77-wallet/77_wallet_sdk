@@ -257,4 +257,30 @@ impl FeeBuildTestWorker {
         }
         Ok(())
     }
+
+    pub async fn fail(&self, trade_no: &str, error: ServiceError) -> Result<(), ServiceError> {
+        self.0.handle_fee_tx_failed(trade_no, error).await
+    }
+
+    pub async fn broadcast(&self, trade_no: &str) -> Result<(), ServiceError> {
+        self.0
+            .handle(
+                crate::infrastructure::api_trans::collect_fee::shadow::ShadowFeeCommand::Broadcast(
+                    trade_no.to_owned(),
+                ),
+            )
+            .await
+    }
+}
+
+/// Exercise the existing receipt worker against the integration backend recorder.
+pub async fn upload_fee_receipt_via_worker(ctx: &'static Context, trade_no: &str) {
+    use crate::infrastructure::api_trans::collect_fee::shadow::{
+        ScannerConfig, ShadowScanner, SideEffectCommand, SideEffectWorker,
+    };
+    let (tx, _) = tokio::sync::mpsc::channel(8);
+    let scanner = std::sync::Arc::new(ShadowScanner::new(ctx, ScannerConfig::default(), tx, None));
+    SideEffectWorker::new(ctx, scanner)
+        .handle(SideEffectCommand::UploadTxExecReceipt(trade_no.to_owned()))
+        .await;
 }
