@@ -258,12 +258,12 @@ async fn withdrawal_nonce_syncs_chain_progress() -> anyhow::Result<()> {
     scenario.given().fake_chain_adapter();
     scenario.given_chain_next_nonce(Some(9));
 
-    let first = scenario.when_withdrawal_nonce_is_allocated().await?;
+    let first = scenario.when_withdrawal_nonce_is_observed().await?;
     scenario.given_chain_next_nonce(Some(15));
-    let second = scenario.when_withdrawal_nonce_is_allocated().await?;
+    let second = scenario.when_withdrawal_nonce_is_observed().await?;
 
     assert_eq!([first, second], [9, 15]);
-    scenario.then_nonce_floor_and_queries_are(15, 2).await;
+    scenario.then_nonce_floor_and_queries_are(0, 2).await;
     Ok(())
 }
 
@@ -275,33 +275,27 @@ async fn withdrawal_nonce_rpc_failure_recovers_without_reservation() -> anyhow::
     scenario.given().fake_chain_adapter();
     scenario.given_chain_next_nonce(None);
 
-    let error = scenario.when_withdrawal_nonce_is_allocated().await.unwrap_err();
+    let error = scenario.when_withdrawal_nonce_is_observed().await.unwrap_err();
 
     assert!(error.to_string().contains("simulated nonce RPC failure"));
     scenario.then_nonce_floor_and_queries_are(0, 1).await;
     scenario.given_chain_next_nonce(Some(9));
-    assert_eq!(scenario.when_withdrawal_nonce_is_allocated().await?, 9);
-    scenario.then_nonce_floor_and_queries_are(9, 2).await;
+    assert_eq!(scenario.when_withdrawal_nonce_is_observed().await?, 9);
+    scenario.then_nonce_floor_and_queries_are(0, 2).await;
     Ok(())
 }
 
 #[tokio::test]
 #[serial]
-async fn withdrawal_nonce_concurrent_collect_keeps_reservations_unique() -> anyhow::Result<()> {
+async fn withdrawal_nonce_observation_does_not_consume_collect_reservation() -> anyhow::Result<()> {
     let scenario = TransferNonceScenario::new().await;
     scenario.given().bnb_transfer_fixture().await?;
     scenario.given().fake_chain_adapter();
     scenario.given_chain_next_nonce(Some(9));
 
-    let (withdraw, collect) = tokio::join!(
-        scenario.when_withdrawal_nonce_is_allocated(),
-        scenario.when_collect_nonce_is_allocated(),
-    );
-
-    let mut allocated = [withdraw?, collect? as u64];
-    allocated.sort();
-    assert_eq!(allocated, [9, 10]);
-    scenario.then_nonce_floor_and_queries_are(10, 2).await;
+    assert_eq!(scenario.when_withdrawal_nonce_is_observed().await?, 9);
+    assert_eq!(scenario.when_collect_nonce_is_allocated().await?, 9);
+    scenario.then_nonce_floor_and_queries_are(9, 2).await;
     Ok(())
 }
 
@@ -1229,5 +1223,92 @@ async fn withdrawal_broadcast_order_node_nonce_lag_keeps_order_retryable() -> an
     assert_eq!(scenario.adapter.recorded_nonces(), vec![14, 14]);
     let raw = scenario.adapter.recorded_raw();
     assert_eq!(raw[0], raw[1]);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_broadcast_terminal_gap_fails_unsent_followers_and_reuses_nonce()
+-> anyhow::Result<()> {
+    let scenario = support::WithdrawBroadcastScenario::given_signed_batch().await?;
+    scenario.given_predecessor_failed().await?;
+    scenario.when_broadcast(15).await?;
+    scenario.when_broadcast(16).await?;
+    scenario.when_broadcast(15).await?;
+    scenario.then_gap_failed(15).await?;
+    scenario.then_gap_failed(16).await?;
+    scenario.then_next_nonce_reusable().await?;
+    assert!(scenario.adapter.recorded_nonces().is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_broadcast_cancel_during_send_keeps_durable_uncertainty() -> anyhow::Result<()> {
+    let scenario = support::WithdrawBroadcastScenario::given_signed_batch().await?;
+    scenario.adapter.block_first_transfer();
+    let sending = scenario.when_broadcast_starts(14);
+    scenario.adapter.wait_for_first_entry().await;
+    scenario.then_send_is_uncertain(14).await?;
+    sending.abort();
+    assert!(sending.await.unwrap_err().is_cancelled());
+    scenario.when_broadcast(14).await?;
+    scenario.then_send_is_uncertain(14).await?;
+    assert_eq!(scenario.adapter.recorded_nonces(), vec![14]);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_build_failure_retries_same_nonce_then_commits_signed_facts()
+-> anyhow::Result<()> {
+    let scenario = support::WithdrawBuildScenario::given().await?;
+    scenario.adapter.fail_build(true);
+    scenario.when_build().await?;
+    scenario.then_facts(false).await?;
+    scenario.adapter.fail_build(false);
+    scenario.when_build().await?;
+    scenario.then_facts(true).await?;
+    scenario.when_build().await?;
+    assert_eq!(scenario.adapter.build_calls(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_build_frozen_sender_does_not_observe_sign_or_reserve() -> anyhow::Result<()> {
+    let scenario = support::WithdrawBuildScenario::given().await?;
+    scenario.given_frozen(true)?;
+    scenario.when_build().await?;
+    scenario.then_facts(false).await?;
+    scenario.then_no_nonce_query_or_build();
+    scenario.given_frozen(false)?;
+    scenario.when_build().await?;
+    scenario.then_facts(true).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_broadcast_mismatching_ack_keeps_nonce_uncertain() -> anyhow::Result<()> {
+    let scenario = support::WithdrawBroadcastScenario::given_signed_batch().await?;
+    scenario.adapter.mismatch_hash();
+    scenario.when_broadcast(14).await?;
+    scenario.then_send_is_uncertain(14).await?;
+    scenario.when_broadcast(14).await?;
+    assert_eq!(scenario.adapter.recorded_nonces(), vec![14]);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_broadcast_storage_failure_after_send_keeps_nonce_uncertain()
+-> anyhow::Result<()> {
+    let scenario = support::WithdrawBroadcastScenario::given_signed_batch().await?;
+    scenario.given_broadcast_persistence_fails().await?;
+    scenario.when_broadcast(14).await?;
+    scenario.then_send_is_uncertain(14).await?;
+    scenario.when_broadcast(14).await?;
+    assert_eq!(scenario.adapter.recorded_nonces(), vec![14]);
     Ok(())
 }

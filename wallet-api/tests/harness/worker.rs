@@ -450,28 +450,7 @@ pub(crate) async fn ensure_worker_env() -> &'static WorkerTestEnv {
             unsafe {
                 std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
             }
-            let config = wallet_api::config::Config::new(&format!(
-                r#"
-app_code: "test"
-crypto:
-  aes_key: "1234567890abcdef"
-  aes_iv: "abcdef1234567890"
-backend_api:
-  dev_url: "{backend_url}"
-  test_url: "{backend_url}"
-  prod_url: "{backend_url}"
-aggregate_api:
-  dev_url: "{backend_url}"
-  test_url: "{backend_url}"
-  prod_url: "{backend_url}"
-oss:
-  access_key_id: "id"
-  access_key_secret: "secret"
-  bucket_name: "bucket"
-  endpoint: "oss-endpoint"
-"#
-            ))
-            .expect("parse test config");
+            let config = worker_test_config(&backend_url);
 
             let root = create_worker_test_root_dir();
             let dirs = Dirs::new(root.to_str().expect("utf8 root dir")).expect("create dirs");
@@ -509,4 +488,53 @@ pub(crate) fn decrypt_captured_api_backend_body(body: &str) -> serde_json::Value
     let data = wallet_utils::base64_to_bytes(&req.body.data).expect("decode encrypted data");
     let plain = GLOBAL_KEY.decrypt(&data, &key).expect("decrypt backend body");
     serde_json::from_slice(&plain).expect("deserialize decrypted payload")
+}
+
+fn worker_test_config(backend_url: &str) -> wallet_api::config::Config {
+    wallet_api::config::Config::new(&format!(
+        r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "{backend_url}"
+  test_url: "{backend_url}"
+  prod_url: "{backend_url}"
+aggregate_api:
+  dev_url: "{backend_url}"
+  test_url: "{backend_url}"
+  prod_url: "{backend_url}"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#
+    ))
+    .expect("parse test config")
+}
+
+/// Explicit worker-step tests must not race auto-started background actors.
+pub(crate) async fn worker_context_without_actors()
+-> (&'static Context, PathBuf, MockBackendRecorder) {
+    let (backend_url, recorder) = start_mock_backend_server().expect("start mock backend server");
+    unsafe {
+        std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
+    }
+    let config = worker_test_config(&backend_url);
+    let root = create_worker_test_root_dir();
+    let dirs = Dirs::new(root.to_str().expect("utf8 root")).expect("test dirs");
+    GLOBAL_KEY.set_shared_secret(WORKER_TEST_PUB_KEY).expect("test shared secret");
+    GLOBAL_KEY.set_sn(WORKER_TEST_SN);
+    let db_dir = dirs.db_dir.clone();
+    let ctx = wallet_api::testkit::context::init_without_workers(
+        WORKER_TEST_SN,
+        WORKER_TEST_DEVICE_TYPE,
+        dirs,
+        config,
+    )
+    .await
+    .expect("worker-step context");
+    (ctx, db_dir, recorder)
 }

@@ -709,3 +709,61 @@ err_code, finished_at, receipt upload and broadcast uncertainty. A predecessor
 that never progresses can keep successors pending; automatic gap filling,
 terminal-predecessor repair and changes to historical failed orders are outside
 this fix. No live transactions are used for validation.
+
+## Withdrawal nonce continuity and legacy gaps (2026-10-15)
+
+Supersedes the withdrawal allocation-step expectations in batch 2b above:
+BuildTx observes without consuming a nonce, then atomically saves signed raw/hash,
+nonce and the shared counter. The build slot precedes observation. A competing
+allocator invalidates the candidate; retry never publishes stale signed bytes.
+The chain's next nonce and persisted live claims remain authoritative. Observation
+never lowers the counter; a replacement commits only after accounting for every
+slot in the retired tail. Other flows and unaccounted reservations remain protected.
+
+- DB `withdrawal_signed_nonce_*`: publication, eligibility, rollback, stale and
+  concurrent candidates; no counter-only reservation or raw-only publication.
+- DB `withdrawal_nonce_reuse_*`: deterministic errors require no text whitelist;
+  active/uncertain/other-flow/on-chain facts prevent unsafe reuse, while a fully
+  failed unsent tail allows a new order to reuse the chain nonce. Old raw audit stays.
+- API `withdrawal_nonce_*`: chain progress and RPC failure affect observations,
+  never consume a reservation before signing; collect can still reserve that nonce.
+- API `withdrawal_build_failure_retries_same_nonce_then_commits_signed_facts`:
+  real BuildTx with fixture keys and fake adapter; failed build keeps counter,
+  successful retry commits signed facts, duplicate command does not rebuild.
+- API `withdrawal_broadcast_terminal_gap_*`: failed predecessor plus signed unsent
+  followers become ERR_6008 without sending; the existing receipt worker uploads
+  FAIL once per order and the next candidate is reusable.
+- API `withdrawal_broadcast_cancel_during_send_keeps_durable_uncertainty`: marker
+  exists before adapter entry and survives cancellation; duplicate Broadcast does
+  not resend or release the potentially sent signature.
+- Existing `withdrawal_broadcast_order_*` remain regression coverage for normal
+  ordering, in-flight predecessor, cancelled waiter, failed RPC and node lag.
+
+No schema migration, filler transaction, failed-order revival, device SQL repair
+or real network transaction. External copies of signed raw transactions are not
+cryptographically revoked by local terminal status. Legacy unknown reservations
+remain fenced; this change does not claim every nonce user can never create gaps.
+
+Receipt verification runs in the dedicated `withdraw_nonce_receipt` integration
+target: WorkerTestEnv requires its own process because Context is a singleton.
+Run `cargo test -p wallet-api --test mod transfer_nonce::withdrawal_ -- --test-threads=1`
+and `cargo test -p wallet-api --test withdraw_nonce_receipt -- --test-threads=1`
+separately. The receipt uses a local mock HTTP server, with no external backend.
+
+Post-send safety: `withdrawal_broadcast_mismatching_ack_keeps_nonce_uncertain`
+and `withdrawal_broadcast_storage_failure_after_send_keeps_nonce_uncertain`
+reproduce a node response followed by a hash mismatch or failed broadcast-fact
+write. Broadcast/Recover errors cannot clear a durable unresolved EVM send claim
+merely because retry policy is Never; retain the original raw/hash and recover.
+An explicit nonce-too-high rejection retains its existing defer path. The receipt
+step fixture initializes Context without background actors. Its repeated sequential
+commands demonstrate persisted idempotency, not concurrent exactly-once delivery.
+
+`withdrawal_nonce_manual_review_error_keeps_uncertainty_and_blocks_reuse` verifies
+manual-review timeout reports retain raw/hash, uncertainty and Chain failure stage;
+repeat writes are idempotent and the reported error never releases its nonce.
+
+The shared broadcast flow also preserves uncertainty for EVM nonce-too-high after
+an internal authentication retry: a prior send may already have succeeded before
+visibility requested refresh. Initial nonce-too-high retains existing retry behavior.
+The combined two-attempt auth scenario is reviewed in code, not simulated end to end.

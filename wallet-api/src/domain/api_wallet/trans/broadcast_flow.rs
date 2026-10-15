@@ -169,6 +169,21 @@ impl ApiTransDomain {
                     continue 'auth_retry;
                 }
                 Err(e) => {
+                    // A refresh can follow a successful send's visibility probe.
+                    // A later nonce-too-high response cannot reject that first send.
+                    use crate::infrastructure::nonce::nonce_engine::{
+                        ChainErrorNormalizer, NonceErrorKind,
+                    };
+                    if auth_retry_attempted
+                        && is_evm_raw
+                        && matches!(
+                            ChainErrorNormalizer::normalize(&e.to_string()),
+                            NonceErrorKind::NonceTooHigh
+                        )
+                    {
+                        tracing::warn!(chain_code, error = %e, "EVM nonce rejection after auth retry retains uncertain submission");
+                        return Ok(None);
+                    }
                     if broadcast_mechanism::is_duplicate_broadcast_error(&e) {
                         let tx_hash = if let Some(tx_hash) =
                             broadcast_mechanism::resolve_duplicate_tx_hash(

@@ -21,3 +21,6 @@ pub(super) use fee_failure::FeeFailureScenario;
 
 mod withdraw_broadcast;
 pub(super) use withdraw_broadcast::WithdrawBroadcastScenario;
+
+mod withdraw_build;
+pub(super) use withdraw_build::WithdrawBuildScenario;

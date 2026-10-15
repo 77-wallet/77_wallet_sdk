@@ -20,6 +20,7 @@ struct RecordingAdapterState {
     recorded_nonces: Mutex<Vec<u64>>,
     recorded_raw: Mutex<Vec<Vec<u8>>>,
     build_calls: AtomicUsize,
+    funded_balance: AtomicBool,
     fail_build: AtomicBool,
     build_payer_shortage: AtomicBool,
     build_timeout: AtomicBool,
@@ -94,6 +95,9 @@ impl RecordingEthAdapter {
     pub(crate) fn set_visibility(&self, visible: bool, error: bool) {
         self.state.invisible_transfer.store(!visible, Ordering::SeqCst);
         self.state.visibility_error.store(error, Ordering::SeqCst);
+    }
+    pub(crate) fn fund_withdrawal(&self) {
+        self.state.funded_balance.store(true, Ordering::SeqCst);
     }
     pub(crate) fn block_build(&self, block: bool) {
         self.state.block_build.store(block, Ordering::SeqCst);
@@ -264,7 +268,11 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         _addr: &str,
         _token: AssetTokenKey,
     ) -> Result<U256, ChainError> {
-        Ok(U256::ZERO)
+        Ok(if self.state.funded_balance.load(Ordering::SeqCst) {
+            U256::from(10).pow(U256::from(21))
+        } else {
+            U256::ZERO
+        })
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {

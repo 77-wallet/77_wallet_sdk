@@ -330,9 +330,9 @@ impl TransferNonceScenario {
 }
 
 impl TransferNonceScenario {
-    pub(crate) async fn when_withdrawal_nonce_is_allocated(&self) -> Result<u64, ServiceError> {
+    pub(crate) async fn when_withdrawal_nonce_is_observed(&self) -> Result<u64, ServiceError> {
         let address = self.from_addr.borrow().clone();
-        wallet_api::testkit::withdraw::allocate_withdraw_nonce(
+        wallet_api::testkit::withdraw::observe_withdraw_nonce(
             self.env.manager.ctx(),
             &address,
             "bnb",

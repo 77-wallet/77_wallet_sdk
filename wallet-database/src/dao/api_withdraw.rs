@@ -24,6 +24,65 @@ pub(crate) struct ApiWithdrawDao;
 
 #[allow(dead_code)]
 impl ApiWithdrawDao {
+    /// A manual-review error is reportable, but its signed nonce remains fenced.
+    pub async fn mark_uncertain_manual_review<'a, E>(
+        exec: E,
+        trade_no: &str,
+        message: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"UPDATE api_withdraws SET err_code=$3,err_msg=$2,status=$4,failure_stage=$5,
+            updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
+            WHERE trade_no=$1 AND trade_type=1 AND err_code IS NULL AND finished_at IS NULL
+              AND raw_tx IS NOT NULL AND broadcast_uncertain_since_at IS NOT NULL
+              AND last_broadcast_at IS NULL AND transaction_time IS NULL
+              AND chain_success_at IS NULL AND chain_failed_at IS NULL
+              AND chain_code IN (SELECT value FROM json_each($6))"#;
+        Ok(sqlx::query(sql)
+            .bind(trade_no)
+            .bind(message)
+            .bind(ErrCode::TransactionOnChainException)
+            .bind(ApiWithdrawStatus::SendingTxFailed)
+            .bind(WithdrawFailureStage::Chain)
+            .bind(signed_evm_chain_codes_json())
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?
+            .rows_affected())
+    }
+
+    pub async fn mark_terminal_nonce_gap<'a, E>(
+        exec: E,
+        trade_no: &str,
+        hash: &str,
+        chain_next: i64,
+        message: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"UPDATE api_withdraws SET err_code=6008,err_msg=$4,failure_stage=2,building_at=NULL,
+            updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
+            WHERE trade_no=$1 AND trade_type=1 AND tx_hash=$2 AND nonce>$3
+              AND raw_tx IS NOT NULL AND err_code IS NULL AND finished_at IS NULL
+              AND tx_exec_receipt_uploaded_at IS NULL AND transaction_time IS NULL
+              AND chain_success_at IS NULL AND chain_failed_at IS NULL AND last_broadcast_at IS NULL
+              AND broadcast_uncertain_since_at IS NULL AND broadcast_uncertain_retry_count=0
+              AND broadcast_uncertain_rebroadcast_count=0 AND broadcast_uncertain_last_checked_at IS NULL
+              AND broadcast_uncertain_reconciled_at IS NULL"#;
+        Ok(sqlx::query(sql)
+            .bind(trade_no)
+            .bind(hash)
+            .bind(chain_next)
+            .bind(message)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?
+            .rows_affected())
+    }
+
     /// Insert ordinary signed facts without entering the backend withdrawal flow.
     /// The repository owns the transaction and validates any conflicting identity.
     pub async fn insert_signed_self_transfer<'a, E>(

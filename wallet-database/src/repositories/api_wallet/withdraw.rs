@@ -42,9 +42,246 @@ use crate::{
     pagination::Pagination,
 };
 
+/// A signed backend withdrawal; the nonce becomes reserved only with durable bytes.
+pub struct SignedWithdrawCandidate<'a> {
+    pub trade_no: &'a str,
+    pub from_addr: &'a str,
+    pub chain_code: &'a str,
+    pub nonce: i64,
+    pub chain_next: i64,
+    pub tx_hash: &'a str,
+    pub raw_tx: &'a str,
+    pub transaction_fee: &'a str,
+}
+
 pub struct ApiWithdrawRepo;
 
 impl ApiWithdrawRepo {
+    pub async fn mark_uncertain_manual_review(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        message: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows =
+            ApiWithdrawDao::mark_uncertain_manual_review(pool.write_ref(), trade_no, message)
+                .await?;
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+        Ok(rows)
+    }
+
+    pub async fn observe_withdraw_nonce(
+        pool: &ApiTransactionDbPool,
+        address: &str,
+        chain: &str,
+        chain_next: i64,
+    ) -> Result<crate::entities::api_nonce_claim::WithdrawNonceDecision, crate::Error> {
+        if chain_next < 0 {
+            return Ok(crate::entities::api_nonce_claim::WithdrawNonceDecision::Wait);
+        }
+        let mut tx = pool.read_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        let last = ApiNonceDao::get_api_nonce_optional(&mut *tx, address, chain)
+            .await?
+            .unwrap_or(chain_next - 1);
+        let claims = ApiNonceDao::nonce_claims(&mut *tx, address, chain, chain_next, last).await?;
+        let decision =
+            crate::entities::api_nonce_claim::withdraw_nonce_decision(chain_next, last, &claims);
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(decision)
+    }
+
+    pub async fn fail_on_terminal_nonce_gap(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        chain_next: i64,
+    ) -> Result<u64, crate::Error> {
+        if chain_next < 0 {
+            return Ok(0);
+        }
+        let initial =
+            Self::get_api_withdraw_by_trade_no(pool, trade_no, ApiTradeType::Withdraw).await?;
+        if !is_signed_evm_chain(&initial.chain_code) {
+            return Ok(0);
+        }
+        let _writer = pool.lock_write_with_metric("fail_on_terminal_nonce_gap").await;
+        let mut tx =
+            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        ApiNonceDao::upsert_nonce_floor(
+            &mut *tx,
+            &initial.from_addr,
+            &initial.chain_code,
+            chain_next - 1,
+        )
+        .await?;
+        let target = ApiWithdrawDao::get_api_withdraw_by_trade_no(
+            &mut *tx,
+            trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await?;
+        if target.from_addr != initial.from_addr
+            || target.chain_code != initial.chain_code
+            || target.tx_hash.as_deref() != Some(tx_hash)
+        {
+            tx.rollback().await.map_err(|e| crate::Error::Database(e.into()))?;
+            return Ok(0);
+        }
+        let claims = ApiNonceDao::nonce_claims(
+            &mut *tx,
+            &target.from_addr,
+            &target.chain_code,
+            chain_next,
+            chain_next,
+        )
+        .await?;
+        if claims.is_empty() || !claims.iter().all(|c| c.is_reusable_failure()) {
+            tx.rollback().await.map_err(|e| crate::Error::Database(e.into()))?;
+            return Ok(0);
+        }
+        let message = format!(
+            "nonce_gap_predecessor_failed: chain_next={chain_next}, blocked_nonce={}; preceding withdrawal failed deterministically, no broadcast attempted",
+            target.nonce
+        );
+        let rows = ApiWithdrawDao::mark_terminal_nonce_gap(
+            &mut *tx, trade_no, tx_hash, chain_next, &message,
+        )
+        .await?;
+        if rows == 0 {
+            tx.rollback().await.map_err(|e| crate::Error::Database(e.into()))?;
+            return Ok(0);
+        }
+        let saved = ApiWithdrawDao::get_api_withdraw_by_trade_no(
+            &mut *tx,
+            trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await?;
+        let status = Self::derive_status(&saved);
+        if !Self::monotonic_allow(saved.status, status) {
+            tx.rollback().await.map_err(|e| crate::Error::Database(e.into()))?;
+            return Ok(0);
+        }
+        ApiWithdrawDao::update_status(&mut *tx, trade_no, status).await?;
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(rows)
+    }
+
+    pub async fn reserve_signed_withdraw(
+        pool: &ApiTransactionDbPool,
+        input: &SignedWithdrawCandidate<'_>,
+    ) -> Result<u64, crate::Error> {
+        if !is_signed_evm_chain(input.chain_code)
+            || input.nonce < 0
+            || input.chain_next < 0
+            || input.nonce < input.chain_next
+            || input.from_addr.is_empty()
+            || input.trade_no.is_empty()
+            || input.tx_hash.is_empty()
+            || input.raw_tx.is_empty()
+        {
+            return Err(crate::Error::Other("invalid signed withdrawal candidate".into()));
+        }
+        let _writer = pool.lock_write_with_metric("reserve_signed_withdraw").await;
+        let mut tx =
+            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        // Acquire the SQLite writer before eligibility/counter reads. A losing
+        // candidate or any later SQL failure rolls back both facts and floor.
+        let last = ApiNonceDao::upsert_nonce_floor(
+            &mut *tx,
+            input.from_addr,
+            input.chain_code,
+            input.chain_next - 1,
+        )
+        .await?;
+        let row = ApiWithdrawDao::get_api_withdraw_by_trade_no(
+            &mut *tx,
+            input.trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await?;
+        if row.from_addr != input.from_addr || row.chain_code != input.chain_code {
+            return Err(crate::Error::Other("withdrawal candidate identity conflict".into()));
+        }
+        if row.raw_tx.is_some()
+            || row.tx_hash.is_some()
+            || row.finished_at.is_some()
+            || row.chain_success_at.is_some()
+            || row.chain_failed_at.is_some()
+            || row.transaction_time.is_some()
+            || row.err_code.is_some()
+            || row.tx_ack_sent_at.is_none()
+            || row.audit_passed_at.is_none()
+            || row.building_at.is_none()
+            || row.last_broadcast_at.is_some()
+            || row.broadcast_uncertain_since_at.is_some()
+        {
+            tx.rollback().await.map_err(|e| crate::Error::Database(e.into()))?;
+            return Ok(0);
+        }
+        let claims = ApiNonceDao::nonce_claims(
+            &mut *tx,
+            input.from_addr,
+            input.chain_code,
+            input.chain_next,
+            last,
+        )
+        .await?;
+        if crate::entities::api_nonce_claim::withdraw_nonce_decision(
+            input.chain_next,
+            last,
+            &claims,
+        ) != crate::entities::api_nonce_claim::WithdrawNonceDecision::Ready(input.nonce)
+        {
+            return Err(crate::Error::NonceCandidateConflict {
+                candidate: input.nonce,
+                local_last: last,
+            });
+        }
+        // This is a transaction-aware tail release, never a blind RPC counter reset.
+        // Every vacated slot was checked above; competing allocators hold SQLite's
+        // writer lock and cannot enter until the signed replacement is committed.
+        if input.nonce <= last {
+            ApiNonceDao::upsert_nonce_exact(
+                &mut *tx,
+                input.from_addr,
+                input.chain_code,
+                input.nonce - 1,
+            )
+            .await?;
+        }
+        let rows = ApiWithdrawDao::update_after_build(
+            &mut *tx,
+            input.trade_no,
+            input.tx_hash,
+            input.raw_tx,
+            input.transaction_fee,
+            input.nonce,
+        )
+        .await?;
+        if rows == 0 {
+            tx.rollback().await.map_err(|e| crate::Error::Database(e.into()))?;
+            return Ok(0);
+        }
+        let saved = ApiWithdrawDao::get_api_withdraw_by_trade_no(
+            &mut *tx,
+            input.trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await?;
+        let status = Self::derive_status(&saved);
+        if !Self::monotonic_allow(saved.status, status) {
+            tx.rollback().await.map_err(|e| crate::Error::Database(e.into()))?;
+            return Ok(0);
+        }
+        ApiWithdrawDao::update_status(&mut *tx, input.trade_no, status).await?;
+        ApiNonceDao::upsert_nonce_floor(&mut *tx, input.from_addr, input.chain_code, input.nonce)
+            .await?;
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(rows)
+    }
+
     /// Atomically save the signed intent and preserve the nonce floor. An
     /// identical retry is a no-op; a trade number must never acquire new bytes.
     /// Uncertainty starts before the caller's RPC, covering a crash during send.
@@ -2535,3 +2772,7 @@ mod tests {
 #[cfg(test)]
 #[path = "withdraw/self_transfer_tests.rs"]
 mod self_transfer_tests;
+
+#[cfg(test)]
+#[path = "withdraw/nonce_reservation_tests.rs"]
+mod nonce_reservation_tests;

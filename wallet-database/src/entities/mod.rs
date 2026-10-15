@@ -77,3 +77,4 @@ fn has_expiration(timestamp: i64, chain_code: wallet_types::chain::chain::ChainC
         }
     }
 }
+pub mod api_nonce_claim;

@@ -269,3 +269,25 @@ remain retryable and already-broadcast uncertainty remains observable. Source:
 direct user instruction in this chat, 2026-10-14. Applies to the common
 collect-fee workflow; this does not confirm a parent association field or
 authorize backend/App changes, transaction execution, commit or push.
+
+### Withdrawal failure and nonce reuse contract (2026-10-15)
+
+User confirms persisted withdrawal error records (`err_code`/`err_msg`) represent
+**deterministic failures**, not RPC timeouts or unknown broadcast outcomes.
+Source: direct instruction in this chat on2026-10-15. Apply to the backend EVM
+withdrawal nonce-gap correction; do not infer reusability from error wording.
+User selects failure upload for withdrawals blocked by a terminal predecessor
+nonce gap and safe reuse for subsequent orders; failed orders must not be revived.
+Release requires no broadcast, uncertainty or chain-execution evidence. A failed
+on-chain transaction can consume nonce, so chain next nonce is authoritative,
+not the last business-success row. Reuse existing error/uncertainty facts and the
+sender+chain gate; do not blindly reset shared allocation counters. Unknown or
+other-flow reservations remain protected. No authorization to alter device orders,
+sign/broadcast real transactions, commit/push or publish this next change.
+
+Implementation safety qualification (2026-10-15): existing code also has a future
+EVM uncertainty timeout that reports manual handling. Keep its uncertainty marker
+when writing that report, so err_code alone never releases a potentially sent
+signature. Likewise Broadcast/Recover local/observation failures after a durable
+send claim retain uncertainty. This qualifies future lifecycle behavior; the
+user-confirmed current incident errors remain deterministic failures.

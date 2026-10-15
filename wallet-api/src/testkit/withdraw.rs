@@ -194,8 +194,8 @@ fn withdraw_intent_summary(intent: WithdrawIntent) -> (String, String) {
     }
 }
 
-/// Exercise the same allocator used by withdrawal BuildTx, without signing.
-pub async fn allocate_withdraw_nonce(
+/// Observe the candidate used by withdrawal BuildTx, without reserving or signing.
+pub async fn observe_withdraw_nonce(
     ctx: &'static Context,
     address: &str,
     chain: &str,
@@ -212,7 +212,11 @@ pub async fn allocate_withdraw_nonce(
         intent_tx,
         None,
     ));
-    ShadowWithdrawWorker::new(ctx, scanner).get_nonce(address, chain).await
+    ShadowWithdrawWorker::new(ctx, scanner)
+        .observe_withdraw_nonce(address, chain)
+        .await?
+        .map(|(nonce, _)| nonce)
+        .ok_or_else(|| ServiceError::Parameter("withdrawal nonce blocked".into()))
 }
 
 pub async fn observe_pending_self_transfers(ctx: &'static Context) -> Result<(), ServiceError> {
@@ -261,5 +265,39 @@ pub async fn broadcast_withdraw_via_worker(
     ));
     ShadowWithdrawWorker::new(ctx, scanner)
         .handle(ShadowWithdrawCommand::Broadcast(trade_no.to_owned()))
+        .await
+}
+
+/// Run the existing withdrawal failure receipt worker against an injected backend.
+pub async fn upload_withdraw_tx_exec_receipt_via_worker(
+    ctx: &'static Context,
+    trade_no: &str,
+) -> Result<(), ServiceError> {
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let scanner = Arc::new(WithdrawShadowScanner::new(
+        ctx,
+        WithdrawShadowScannerConfig::default(),
+        intent_tx,
+        None,
+    ));
+    WithdrawShadowSideEffectWorker::new(ctx, scanner)
+        .handle(WithdrawShadowSideEffectCommand::UploadTxExecReceipt(trade_no.to_owned()))
+        .await
+}
+
+/// Run BuildTx with fixture keys and an injected chain adapter.
+pub async fn build_withdraw_via_worker(
+    ctx: &'static Context,
+    trade_no: &str,
+) -> Result<(), ServiceError> {
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let scanner = Arc::new(WithdrawShadowScanner::new(
+        ctx,
+        WithdrawShadowScannerConfig::default(),
+        intent_tx,
+        None,
+    ));
+    ShadowWithdrawWorker::new(ctx, scanner)
+        .process_build_tx_with_key(trade_no.to_owned(), Some("mock-private-key".to_string().into()))
         .await
 }

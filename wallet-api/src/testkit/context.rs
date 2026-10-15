@@ -63,3 +63,13 @@ pub async fn api_trans_test_pool() -> wallet_database::ApiTransactionDbPool {
 pub async fn api_resource_test_pool() -> wallet_database::ApiResourceDbPool {
     api_trans_test_ctx().await.api_resource_pool().expect("api resource test pool")
 }
+
+/// Initialize the usual Context for explicit worker steps without starting actors.
+pub async fn init_without_workers(
+    sn: &str,
+    device_type: &str,
+    dirs: crate::dirs::Dirs,
+    config: Config,
+) -> Result<&'static Context, crate::error::service::ServiceError> {
+    crate::context::init_context(sn, device_type, dirs, None, config).await
+}

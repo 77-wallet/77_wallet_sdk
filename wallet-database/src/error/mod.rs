@@ -3,6 +3,8 @@ pub use database::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("nonce candidate conflict: candidate={candidate}, local_last={local_last}")]
+    NonceCandidateConflict { candidate: i64, local_last: i64 },
     #[error("Database error: {0}")]
     Database(#[from] database::DatabaseError),
     #[error("Utils error: {0}")]

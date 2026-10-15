@@ -1701,31 +1701,13 @@ impl ShadowWithdrawWorker {
                     "EVM broadcast uncertain exceeded manual review timeout after {}s; human intervention required",
                     Self::EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS
                 );
-                let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
+                let rows_affected = ApiWithdrawRepo::mark_uncertain_manual_review(
                     &self.ctx.api_transaction_pool()?,
                     &refreshed.trade_no,
-                    wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
-                    ErrCode::TransactionOnChainException,
                     &error_msg,
                 )
-                .await
-                .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %refreshed.trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to mark EVM uncertain manual-review timeout as failed");
-                    ServiceError::Database(db_err.into())
-                })?;
-
-                let stage_rows = ApiWithdrawRepo::set_failure_stage(
-                    &self.ctx.api_transaction_pool()?,
-                    &refreshed.trade_no,
-                    WithdrawFailureStage::Chain,
-                )
-                .await
-                .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %refreshed.trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to set withdraw failure_stage for manual-review timeout");
-                    ServiceError::Database(db_err.into())
-                })?;
-
-                if rows_affected > 0 || stage_rows > 0 {
+                .await?;
+                if rows_affected > 0 {
                     self.scanner.try_advance(&refreshed.trade_no).await;
                 }
                 return Ok(());
@@ -1777,10 +1759,19 @@ impl ShadowWithdrawWorker {
 
     /// 执行 BuildTx Command - 外层wrapper，确保所有错误都被捕获
     async fn process_build_tx(&self, trade_no: String) -> Result<(), ServiceError> {
+        self.process_build_tx_with_key(trade_no, None).await
+    }
+
+    // The injected key is used only by testkit with a fake signing adapter.
+    pub(crate) async fn process_build_tx_with_key(
+        &self,
+        trade_no: String,
+        fixture_key: Option<wallet_chain_interact::types::ChainPrivateKey>,
+    ) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Processing BuildTx command");
 
         // 使用内层函数来捕获所有错误
-        if let Err(err) = self.process_build_tx_inner(&trade_no).await {
+        if let Err(err) = self.process_build_tx_inner(&trade_no, fixture_key).await {
             error!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "BuildTx inner failed, handling error");
             self.resource_reservations.release(&trade_no);
             self.handle_withdraw_tx_failed(&trade_no, WithdrawFailureStage::Build, err).await?;
@@ -1790,7 +1781,11 @@ impl ShadowWithdrawWorker {
     }
 
     /// BuildTx 内部实现，可能返回错误
-    async fn process_build_tx_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
+    async fn process_build_tx_inner(
+        &self,
+        trade_no: &str,
+        fixture_key: Option<wallet_chain_interact::types::ChainPrivateKey>,
+    ) -> Result<(), ServiceError> {
         // 1. 从数据库中获取提币交易信息
         let withdraw = self.get_withdraw_entity(trade_no).await?;
 
@@ -1827,7 +1822,7 @@ impl ShadowWithdrawWorker {
 
         // ====== phase 1: 事实检查与 nonce 分配 ======
         // EVM 分配会查询链上 nonce；RPC 失败必须在签名之前返回。
-        let nonce = {
+        let withdraw = {
             // 🔒 必须重新读取，确保基于最新状态做决策
             // ⚠️ 只读"裁决字段"，不做任何业务推断
             let fresh_withdraw = self.get_withdraw_entity(trade_no).await?;
@@ -1854,12 +1849,7 @@ impl ShadowWithdrawWorker {
                 return Ok(());
             }
 
-            // 7. 获取并更新 nonce
-            let nonce =
-                self.get_nonce(&fresh_withdraw.from_addr, &fresh_withdraw.chain_code).await?;
-            info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_withdraw_worker", "Retrieved nonce");
-
-            nonce
+            fresh_withdraw
         };
 
         // 先占位 build slot，防止同一 trade_no 在构建期间被重复推进。
@@ -1897,16 +1887,30 @@ impl ShadowWithdrawWorker {
             }
         }
 
+        // Observation has no reservation side effect. Failed/cancelled builds
+        // leave the next nonce available until signed facts commit atomically.
+        let Some((nonce, chain_next)) =
+            self.observe_withdraw_nonce(&withdraw.from_addr, &withdraw.chain_code).await?
+        else {
+            self.clear_build_slot_after_claim(trade_no).await?;
+            return Ok(());
+        };
+
         // ====== phase 2: 网络执行 ======
         // 通过Context获取Handles实例，然后获取私钥管理器
-        let handles = self.ctx.get_handles_arc().await?;
-        let private_key_manager = handles.get_global_private_key_manager();
-        let private_key =
-            private_key_manager.get_private_key(&withdraw.from_addr, &withdraw.chain_code).await?;
+        let private_key = if let Some(key) = fixture_key {
+            key
+        } else {
+            let handles = self.ctx.get_handles_arc().await?;
+            handles
+                .get_global_private_key_manager()
+                .get_private_key(&withdraw.from_addr, &withdraw.chain_code)
+                .await?
+        };
         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Retrieved private key from manager");
 
         // 9. 生成转账请求
-        // ⚠️ nonce 只在 phase 1 分配，这里直接传入
+        // nonce is an unreserved candidate until signed facts commit.
         let transfer_req = self.gen_transfer_req(&withdraw, nonce).await?;
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_withdraw_worker", "Generated transfer request with nonce");
 
@@ -1940,15 +1944,41 @@ impl ShadowWithdrawWorker {
         {
             // 11. 立即将tx_hash、raw_tx和nonce存储到数据库
             let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
-            let rows_affected = ApiWithdrawRepo::update_after_build(
-                &self.ctx.api_transaction_pool()?,
-                &withdraw.trade_no,
-                &tx_hash,
-                &raw_tx_str,
-                &fee_str,
-                nonce as i64,
-            )
-            .await?;
+            let pool = self.ctx.api_transaction_pool()?;
+            let saved = if shared_mechanism::is_evm_chain(&withdraw.chain_code) {
+                use wallet_database::repositories::api_wallet::withdraw::SignedWithdrawCandidate;
+                ApiWithdrawRepo::reserve_signed_withdraw(
+                    &pool,
+                    &SignedWithdrawCandidate {
+                        trade_no,
+                        from_addr: &withdraw.from_addr,
+                        chain_code: &withdraw.chain_code,
+                        nonce: nonce as i64,
+                        chain_next,
+                        tx_hash: &tx_hash,
+                        raw_tx: &raw_tx_str,
+                        transaction_fee: &fee_str,
+                    },
+                )
+                .await
+            } else {
+                ApiWithdrawRepo::update_after_build(
+                    &pool,
+                    trade_no,
+                    &tx_hash,
+                    &raw_tx_str,
+                    &fee_str,
+                    nonce as i64,
+                )
+                .await
+            };
+            let rows_affected = match saved {
+                Err(wallet_database::Error::NonceCandidateConflict { .. }) => {
+                    self.clear_build_slot_after_claim(trade_no).await?;
+                    return Ok(());
+                }
+                result => result?,
+            };
 
             // 显式处理幂等情况：如果影响行数为0，表示raw_tx已存在或被并发写入
             if rows_affected == 0 {
@@ -2061,6 +2091,21 @@ impl ShadowWithdrawWorker {
             }
             match ApiTransDomain::nonce(self.ctx, &withdraw.from_addr, &withdraw.chain_code).await {
                 Ok(chain_nonce) if withdraw.nonce as u64 > chain_nonce => {
+                    let chain_next = i64::try_from(chain_nonce).map_err(|_| {
+                        ServiceError::Parameter("EVM nonce exceeds supported range".into())
+                    })?;
+                    if ApiWithdrawRepo::fail_on_terminal_nonce_gap(
+                        &self.ctx.api_transaction_pool()?,
+                        trade_no,
+                        withdraw.tx_hash.as_deref().unwrap(),
+                        chain_next,
+                    )
+                    .await?
+                        > 0
+                    {
+                        self.scanner.try_advance(trade_no).await;
+                        return Ok(());
+                    }
                     info!(
                         trade_no,
                         chain_nonce,
@@ -2086,6 +2131,20 @@ impl ShadowWithdrawWorker {
             &withdraw.raw_tx.as_deref().unwrap_or_default(),
         )?;
         info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Deserialized raw_tx successfully");
+
+        // Persist before entering the network: cancellation/crash must never
+        // make a potentially sent signature look reusable.
+        let evm_send_claim = shared_mechanism::is_evm_chain(&withdraw.chain_code);
+        if evm_send_claim
+            && ApiWithdrawRepo::mark_broadcast_uncertain_attempt(
+                &self.ctx.api_transaction_pool()?,
+                trade_no,
+            )
+            .await?
+                == 0
+        {
+            return Ok(());
+        }
 
         // 7. 广播交易
         info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Starting to broadcast transaction");
@@ -2121,6 +2180,11 @@ impl ShadowWithdrawWorker {
                 // terminal chain failure; preserve this exact signed transaction.
                 warn!(trade_no, error = %err, source = "shadow_withdraw_worker",
                     "EVM node nonce is behind; defer signed withdrawal broadcast");
+                ApiWithdrawRepo::clear_broadcast_uncertain_tracking(
+                    &self.ctx.api_transaction_pool()?,
+                    trade_no,
+                )
+                .await?;
                 return Ok(());
             }
             result => result?.flatten(),
@@ -2202,12 +2266,15 @@ impl ShadowWithdrawWorker {
                     return Ok(());
                 }
                 let had_uncertain_since = withdraw.broadcast_uncertain_since_at.is_some();
-                let rows_affected = ApiWithdrawRepo::mark_broadcast_uncertain_attempt(
-                    &self.ctx.api_transaction_pool()?,
-                    trade_no,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected = if evm_send_claim {
+                    1
+                } else {
+                    ApiWithdrawRepo::mark_broadcast_uncertain_attempt(
+                        &self.ctx.api_transaction_pool()?,
+                        trade_no,
+                    )
+                    .await?
+                };
                 let refreshed = self.get_withdraw_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -2241,39 +2308,34 @@ impl ShadowWithdrawWorker {
         Ok(entity)
     }
 
-    /// Allocate nonce for transaction.
-    ///
-    /// Observe chain next nonce before reserving via an atomic DB increment.
-    /// A reservation is not proof of chain inclusion. Build/broadcast failure
-    /// must not rewind it; recovery of an existing signed transaction preserves
-    /// its original nonce and hash. RPC failure must not allocate from stale data.
-    pub(crate) async fn get_nonce(
+    /// Observe a candidate; only reserve_signed_withdraw may publish it.
+    pub(crate) async fn observe_withdraw_nonce(
         &self,
         from_addr: &str,
         chain_code: &str,
-    ) -> Result<u64, ServiceError> {
-        info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_withdraw_worker", "Getting nonce");
-        let chain: ChainCode = chain_code.try_into()?;
-
-        // ⚠️ EVM nonce MUST be allocated via DB atomic upsert.
-        // Any read-modify-write logic here is forbidden.
-        match chain {
-            c if crate::domain::chain::is_evm_chain(c) => {
-                // 对于以太坊类链，使用NonceEngine来分配nonce
-                // ⚠️ INVARIANT:
-                // This method MUST guarantee DB-level atomic CAS for nonce allocation.
-                // Any refactor breaking this invariant will cause nonce duplication.
-                use crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx;
-
-                let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                let nonce = nonce_engine.allocate_nonce_synced(from_addr, chain_code).await?;
-                info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_withdraw_worker", "Retrieved nonce using NonceEngine");
-                Ok(nonce as u64)
-            }
-            _ => {
-                // 非 EVM 链不参与 nonce 分配
-                Ok(0)
-            }
+    ) -> Result<Option<(u64, i64)>, ServiceError> {
+        if !shared_mechanism::is_evm_chain(chain_code) {
+            return Ok(Some((0, 0)));
+        }
+        if get_nonce_engine_with_ctx(self.ctx)?.is_frozen(from_addr, chain_code) {
+            return Err(ServiceError::Parameter(format!(
+                "Address {from_addr} on chain {chain_code} is frozen"
+            )));
+        }
+        use wallet_database::entities::api_nonce_claim::WithdrawNonceDecision;
+        let chain_next = ApiTransDomain::nonce(self.ctx, from_addr, chain_code).await?;
+        let chain_next = i64::try_from(chain_next)
+            .map_err(|_| ServiceError::Parameter("EVM nonce exceeds supported range".into()))?;
+        let decision = ApiWithdrawRepo::observe_withdraw_nonce(
+            &self.ctx.api_transaction_pool()?,
+            from_addr,
+            chain_code,
+            chain_next,
+        )
+        .await?;
+        match decision {
+            WithdrawNonceDecision::Ready(nonce) => Ok(Some((nonce as u64, chain_next))),
+            WithdrawNonceDecision::Wait | WithdrawNonceDecision::TerminalGap(_) => Ok(None),
         }
     }
 
@@ -2293,8 +2355,7 @@ impl ShadowWithdrawWorker {
     ///
     /// 🔒 关键语义：
     /// - nonce 由调用方传入，不再内部获取
-    /// - nonce 已经在 phase 1 中分配，这里只使用
-    /// - 确保 nonce 从"动态信息"升级为"已裁决事实"
+    /// - 此处只使用候选 nonce，签名保存时才原子占位
     async fn gen_transfer_req(
         &self,
         req: &ApiWithdrawEntity,
@@ -2561,6 +2622,23 @@ impl ShadowWithdrawWorker {
                 source = "shadow_withdraw_worker",
                 "Skip mark failed: transaction already confirmed (monotonicity constraint)"
             );
+            return Ok(());
+        }
+
+        // Once a send attempt is durable, an observation/auth/local-write error
+        // cannot prove rejection. Keep the signed intent fenced for recovery;
+        // RetryPolicy::Never alone must never turn it into a reusable nonce.
+        if matches!(stage, WithdrawFailureStage::Broadcast | WithdrawFailureStage::Chain)
+            && shared_mechanism::is_evm_chain(&withdraw.chain_code)
+            && withdraw.broadcast_uncertain_since_at.is_some()
+            && withdraw.last_broadcast_at.is_none()
+            && withdraw.transaction_time.is_none()
+            && withdraw.chain_success_at.is_none()
+            && withdraw.chain_failed_at.is_none()
+        {
+            warn!(trade_no, error = %err, source = "shadow_withdraw_worker",
+                "Preserving EVM send uncertainty after observation or persistence failure");
+            self.scanner.try_advance(trade_no).await;
             return Ok(());
         }
 
