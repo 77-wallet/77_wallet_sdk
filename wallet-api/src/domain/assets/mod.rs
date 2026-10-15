@@ -1,3 +1,4 @@
+pub(crate) mod refresh_order;
 use super::chain::adapter::ChainAdapterFactory;
 use crate::{
     context::Context,
@@ -280,6 +281,13 @@ impl AssetsDomain {
         };
 
         for code in codes {
+            let assets =
+                AssetsRepo::backend_balance_assets(&pool, Some(&addr), None, Some(&code), None)
+                    .await?;
+            let refresh = ctx
+                .ordinary_balance_order
+                .batch(assets.iter().map(AssetsEntity::get_assets_id))
+                .await;
             let resp = backhand.wallet_assets_chain_list(&addr, &code).await?;
 
             for item in resp.list.into_iter() {
@@ -291,6 +299,8 @@ impl AssetsDomain {
                         token_address: item.contract_address.into(),
                     };
 
+                    let Some(ticket) = refresh.get(&assets_id) else { continue };
+                    let Some(_current) = ticket.current().await else { continue };
                     let r = AssetsRepo::update_balance(&pool, &assets_id, &item.amount).await;
 
                     if let Err(e) = r {
@@ -317,6 +327,18 @@ impl AssetsDomain {
 
             // 本地的index 进行了 + 1
             let index = account_id.map(|x| x - 1);
+            let assets = AssetsRepo::backend_balance_assets(
+                &pool,
+                None,
+                Some(&wallet_address),
+                None,
+                account_id,
+            )
+            .await?;
+            let refresh = ctx
+                .ordinary_balance_order
+                .batch(assets.iter().map(AssetsEntity::get_assets_id))
+                .await;
             let resp = backhand.wallet_assets_list(wallet.uid, index).await?;
 
             tracing::warn!("resp = {:#?}", resp);
@@ -329,6 +351,8 @@ impl AssetsDomain {
                         token_address: item.contract_address.into(),
                     };
 
+                    let Some(ticket) = refresh.get(&assets_id) else { continue };
+                    let Some(_current) = ticket.current().await else { continue };
                     let r = AssetsRepo::update_balance(&pool, &assets_id, &item.amount).await;
 
                     if let Err(e) = r {
@@ -370,10 +394,14 @@ impl AssetsDomain {
         }
         assets = selected_assets;
 
+        let refresh =
+            ctx.ordinary_balance_order.batch(assets.iter().map(AssetsEntity::get_assets_id)).await;
         let results = ChainBalance::sync_address_balance(ctx, assets.as_slice()).await?;
 
         let mut done = 0;
         for (assets_id, balance) in &results {
+            let Some(ticket) = refresh.get(assets_id) else { continue };
+            let Some(_current) = ticket.current().await else { continue };
             match AssetsRepo::update_balance(&pool, assets_id, balance).await {
                 Ok(_) => {
                     tracing::info!("更新余额成功: {:?}", assets_id);

@@ -129,6 +129,7 @@ pub struct Context {
     wallet_unlock_session: Arc<RwLock<Option<WalletUnlockSession>>>,
     pub(crate) api_chain_sync_lock: Mutex<()>,
     pub(crate) ordinary_catalog_sync_lock: Mutex<()>,
+    pub(crate) ordinary_balance_order: crate::domain::assets::refresh_order::RefreshOrder,
     pub(crate) api_chain_recovery:
         Arc<crate::domain::api_wallet::chain::recovery::RecoveryCoordinator>,
     current_wallet_type: Arc<RwLock<Option<ApiWalletType>>>,
@@ -349,6 +350,7 @@ impl Context {
             wallet_unlock_session: Arc::new(RwLock::new(None)),
             api_chain_sync_lock: Mutex::new(()),
             ordinary_catalog_sync_lock: Mutex::new(()),
+            ordinary_balance_order: Default::default(),
             api_chain_recovery: Arc::new(Default::default()),
             current_wallet_type: Arc::new(RwLock::new(None)),
             handles: RwLock::new(Weak::new()),

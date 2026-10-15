@@ -12,6 +12,16 @@ mod ordinary_default_assets_tests;
 pub struct AssetsRepo;
 
 impl AssetsRepo {
+    pub async fn backend_balance_assets(
+        pool: &CoreDbPool,
+        address: Option<&str>,
+        wallet: Option<&str>,
+        chain: Option<&str>,
+        account_id: Option<u32>,
+    ) -> Result<Vec<AssetsEntity>, crate::Error> {
+        AssetsDao::backend_balance_assets(pool.read_ref(), address, wallet, chain, account_id).await
+    }
+
     /// Add missing default assets without updating existing or hidden rows.
     pub async fn reconcile_ordinary_default_assets(pool: &CoreDbPool) -> Result<u64, crate::Error> {
         let upper = {

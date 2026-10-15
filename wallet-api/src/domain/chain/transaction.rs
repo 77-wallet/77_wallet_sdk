@@ -88,13 +88,32 @@ impl ChainTransDomain {
         token_key: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = ctx.core_pool()?;
+        let id = AssetsId::new(address, chain_code, token_key.clone());
+        let ticket = ctx.ordinary_balance_order.begin(&id).await;
+        Self::update_balance_ordered(
+            ctx,
+            address,
+            chain_code,
+            refresh_symbol,
+            token_key,
+            balance,
+            &ticket,
+        )
+        .await
+    }
 
-        let assets_id = AssetsId {
-            address: address.to_string(),
-            chain_code: chain_code.to_string(),
-            token_address: token_key,
-        };
+    pub(crate) async fn update_balance_ordered(
+        ctx: &'static Context,
+        address: &str,
+        chain_code: &str,
+        refresh_symbol: &str,
+        token_key: AssetTokenKey,
+        balance: &str,
+        ticket: &crate::domain::assets::refresh_order::Ticket<'_>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let Some(current) = ticket.current().await else { return Ok(()) };
+        let pool = ctx.core_pool()?;
+        let assets_id = AssetsId::new(address, chain_code, token_key);
 
         // 查询余额
         let asset = AssetsRepo::assets_by_id(&pool, &assets_id).await?;
@@ -106,6 +125,7 @@ impl ChainTransDomain {
                     .await
                     .map_err(crate::error::service::ServiceError::Database)?;
 
+                drop(current);
                 // 上报后端修改余额
                 let backend = ctx.get_global_backend_api();
                 let rs =

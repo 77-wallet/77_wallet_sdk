@@ -27,3 +27,6 @@ pub mod seed;
 pub mod sol_transaction;
 #[cfg(any(test, feature = "integration-tests"))]
 pub mod withdraw;
+
+#[cfg(any(test, feature = "integration-tests"))]
+pub mod ordinary_business;

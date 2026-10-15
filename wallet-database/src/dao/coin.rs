@@ -243,7 +243,12 @@ impl CoinDao {
         let mut params: Vec<String> = Vec::new();
 
         for (chain_code, token_address) in chain_list {
-            where_parts.push("(chain_code = ? AND token_address = ?)".to_string());
+            let comparison = if crate::entities::api_withdraw::is_signed_evm_chain(chain_code) {
+                "(chain_code = ? AND token_address = ? COLLATE NOCASE)"
+            } else {
+                "(chain_code = ? AND token_address = ?)"
+            };
+            where_parts.push(comparison.to_string());
             params.push(chain_code.clone());
             params.push(token_address.clone());
         }

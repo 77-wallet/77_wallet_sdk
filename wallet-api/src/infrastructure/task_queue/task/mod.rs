@@ -98,7 +98,7 @@ pub(crate) async fn dispatch_task_entities_with_ctx(
     entities: Vec<TaskQueueEntity>,
 ) -> Result<(), crate::error::service::ServiceError> {
     #[cfg(any(test, feature = "integration-tests"))]
-    if is_noop_task_execution_mode() {
+    if is_noop_task_execution_mode() || crate::testkit::ordinary_business::is_noop_context(ctx) {
         return Ok(());
     }
 
@@ -216,7 +216,8 @@ impl Tasks {
         ctx: &'static crate::context::Context,
     ) -> Result<(), crate::error::service::ServiceError> {
         #[cfg(any(test, feature = "integration-tests"))]
-        if is_noop_task_execution_mode() {
+        if is_noop_task_execution_mode() || crate::testkit::ordinary_business::is_noop_context(ctx)
+        {
             return Ok(());
         }
 

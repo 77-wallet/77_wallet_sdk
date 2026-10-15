@@ -27,6 +27,36 @@ const DEFAULT_ASSET_ELIGIBLE: &str = "
         AND earlier.rowid<c.rowid)";
 
 impl AssetsDao {
+    /// Backend balance observations include hidden assets and inactive accounts/chains.
+    /// Scope by persisted identity, without changing the public active-assets query.
+    pub async fn backend_balance_assets<'a, E>(
+        exec: E,
+        address: Option<&str>,
+        wallet: Option<&str>,
+        chain: Option<&str>,
+        account_id: Option<u32>,
+    ) -> Result<Vec<AssetsEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT assets.* FROM assets WHERE ");
+        if let Some(address) = address {
+            query.push("assets.address = ").push_bind(address);
+        } else if let Some(wallet) = wallet {
+            query.push("EXISTS (SELECT 1 FROM account WHERE account.address=assets.address AND account.chain_code=assets.chain_code AND account.wallet_address=").push_bind(wallet);
+            if let Some(index) = account_id {
+                query.push(" AND account.account_id=").push_bind(index);
+            }
+            query.push(")");
+        } else {
+            return Ok(vec![]);
+        }
+        if let Some(chain) = chain {
+            query.push(" AND assets.chain_code=").push_bind(chain);
+        }
+        query.build_query_as().fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn list<'a, E>(exec: E) -> Result<Vec<AssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

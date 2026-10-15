@@ -840,3 +840,6 @@ pub fn derive_uid(phrase: &str, salt: &str) -> String {
     wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)
         .expect("derive uid from phrase and salt")
 }
+
+#[cfg(any(test, feature = "integration-tests"))]
+pub mod ordinary_business;

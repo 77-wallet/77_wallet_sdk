@@ -92,6 +92,11 @@ impl TransactionService {
         );
         let resolved_token_key = coin.token_address.clone();
         let resolved_token_address = resolved_token_key.to_option_string_for_api();
+        let ticket = self
+            .ctx
+            .ordinary_balance_order
+            .begin(&AssetsId::new(address, chain_code, resolved_token_key.clone()))
+            .await;
         let balance = match adapter.balance(address, resolved_token_key).await {
             Ok(balance) => balance,
             Err(error) => {
@@ -135,13 +140,14 @@ impl TransactionService {
             original_balance: balance.to_string(),
         };
 
-        ChainTransDomain::update_balance(
+        ChainTransDomain::update_balance_ordered(
             self.ctx,
             address,
             chain_code,
             &coin.symbol,
             coin.token_address.clone(),
             &format_balance,
+            &ticket,
         )
         .await?;
 
@@ -346,6 +352,15 @@ impl TransactionService {
             return Ok(transaction);
         }
 
+        let ticket = self
+            .ctx
+            .ordinary_balance_order
+            .begin(&AssetsId::new(
+                &transaction.owner,
+                &transaction.chain_code,
+                transaction.token.clone().into(),
+            ))
+            .await;
         let sync_bill = match self.get_tx_res(&transaction).await? {
             Some(tx_result) => tx_result,
             None => {
@@ -362,6 +377,9 @@ impl TransactionService {
             Self::handle_tx_kind(&transaction, &pool).await?;
         }
 
+        // Acquire before the DB transaction: lock order is always asset -> DB.
+        // A stale balance must not suppress durable bill confirmation facts.
+        let current = ticket.current().await;
         // query transaction and handle result
         let tx = pool.as_ref().begin().await.map_err(|e| {
             crate::error::service::ServiceError::System(crate::error::system::SystemError::Service(
@@ -369,7 +387,9 @@ impl TransactionService {
             ))
         })?;
 
-        match Self::handle_pending_tx_status(&transaction, &sync_bill, tx).await? {
+        match Self::handle_pending_tx_status(&transaction, &sync_bill, tx, current.is_some())
+            .await?
+        {
             Some(tx) => Ok(tx),
             None => Ok(transaction),
         }
@@ -379,6 +399,7 @@ impl TransactionService {
         transaction: &BillEntity,
         sync_bill: &SyncBillEntity,
         mut tx: sqlx::Transaction<'static, sqlx::Sqlite>,
+        apply_balance: bool,
     ) -> Result<Option<BillEntity>, crate::error::service::ServiceError> {
         let assets_id = AssetsId {
             chain_code: transaction.chain_code.clone(),
@@ -390,13 +411,15 @@ impl TransactionService {
         let tx_result = BillRepo::update(&sync_bill.tx_update, tx.as_mut()).await?;
 
         // 1. 更新余额
-        AssetsRepo::update_balance_with_executor(&mut tx, &assets_id, &sync_bill.balance)
-            .await
-            .map_err(|e| {
-                crate::error::service::ServiceError::System(
-                    crate::error::system::SystemError::Service(e.to_string()),
-                )
-            })?;
+        if apply_balance {
+            AssetsRepo::update_balance_with_executor(&mut tx, &assets_id, &sync_bill.balance)
+                .await
+                .map_err(|e| {
+                    crate::error::service::ServiceError::System(
+                        crate::error::system::SystemError::Service(e.to_string()),
+                    )
+                })?;
+        }
 
         // 3. 如果queue_id 存在表示是多签交易，需要同步多签队列里面的状态
         if !transaction.queue_id.is_empty() {
@@ -587,7 +610,8 @@ mod tests {
         };
         let tx = pool.write_ref().begin().await.unwrap();
 
-        let result = TransactionService::handle_pending_tx_status(&bill, &sync_bill, tx).await;
+        let result =
+            TransactionService::handle_pending_tx_status(&bill, &sync_bill, tx, true).await;
 
         assert!(result.is_err());
         let stored =
