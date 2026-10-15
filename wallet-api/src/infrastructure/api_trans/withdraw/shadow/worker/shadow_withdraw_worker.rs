@@ -77,7 +77,9 @@ use crate::{
             resource_rpc_auth, shadow_rpc_policy,
             withdraw::shadow::ShadowScanner,
         },
-        nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
+        nonce::nonce_engine::{
+            ChainErrorNormalizer, NonceErrorKind, ReconcileReason, get_nonce_engine_with_ctx,
+        },
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
     response_vo::{
@@ -2014,111 +2016,68 @@ impl ShadowWithdrawWorker {
 
     /// Broadcast 内部实现，可能返回错误
     async fn process_broadcast_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
-        // 1. 从数据库中获取提币交易信息
+        let initial = self.get_withdraw_entity(trade_no).await?;
+        // Reuse the same sender/chain gate as ordinary transfers. Hold it through
+        // the RPC and durable broadcast fact so the next waiter observes progress.
+        // Cancellation releases the owned permit; no signed intent is rewritten.
+        let _sender_gate = if shared_mechanism::is_evm_chain(&initial.chain_code) {
+            Some(
+                get_nonce_engine_with_ctx(self.ctx)?
+                    .acquire_transfer_gate(&initial.from_addr, &initial.chain_code)
+                    .await,
+            )
+        } else {
+            None
+        };
         let withdraw = self.get_withdraw_entity(trade_no).await?;
-
-        // ====== phase 1: 事实检查与 nonce 分配 ======
-        // EVM 分配会查询链上 nonce；RPC 失败必须在签名之前返回。
+        if withdraw.raw_tx.is_none() {
+            return Ok(());
+        }
+        // Preserve the shared uncertainty guard for TRON/Solana too.
+        if shared_mechanism::tracks_broadcast_uncertain_state(&withdraw.chain_code)
+            && withdraw.broadcast_uncertain_since_at.is_some()
+            && withdraw.last_broadcast_at.is_none()
+            && withdraw.transaction_time.is_none()
+            && withdraw.tx_exec_receipt_uploaded_at.is_none()
+            && withdraw.err_code.is_none()
         {
-            // 🔒 必须重新读取，确保基于最新状态做决策
-            // ⚠️ 只读"裁决字段"，不做任何业务推断
-            let fresh_withdraw = self.get_withdraw_entity(trade_no).await?;
+            return Ok(());
+        }
+        if withdraw.tx_hash.is_none() {
+            return Err(ServiceError::Business(
+                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed(
+                    "Missing transaction data".to_string(),
+                ))
+                .into(),
+            ));
+        }
 
-            // 2. 事实校验：Broadcast 只能处理 raw_tx 存在的交易
-            // 🔒 与 predicate::can_broadcast 同构，确保模型自洽
-            // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
-            if fresh_withdraw.raw_tx.is_none() {
-                info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "raw_tx empty, skipping Broadcast");
+        if shared_mechanism::is_evm_chain(&withdraw.chain_code) {
+            use crate::infrastructure::api_trans::withdraw::shadow::{
+                predicate, stage::AdvancementPoint,
+            };
+            if !predicate::evaluate_point(AdvancementPoint::CanBroadcast, &withdraw).can_advance {
                 return Ok(());
             }
-
-            if shared_mechanism::tracks_broadcast_uncertain_state(&fresh_withdraw.chain_code)
-                && fresh_withdraw.broadcast_uncertain_since_at.is_some()
-                && fresh_withdraw.last_broadcast_at.is_none()
-                && fresh_withdraw.transaction_time.is_none()
-                && fresh_withdraw.tx_exec_receipt_uploaded_at.is_none()
-                && fresh_withdraw.err_code.is_none()
-            {
-                info!(
-                    observability_event = "shadow_broadcast_skipped",
-                    reason = "broadcast_uncertain_in_progress",
-                    trade_no = %trade_no,
-                    tx_hash = %fresh_withdraw.tx_hash.as_deref().unwrap_or_default(),
-                    nonce = fresh_withdraw.nonce,
-                    source = "shadow_withdraw_worker",
-                    "Skip Broadcast: uncertain state in progress; recover should proceed"
-                );
-                return Ok(());
-            }
-
-            if shared_mechanism::is_evm_chain(&fresh_withdraw.chain_code) {
-                match ApiTransDomain::nonce(
-                    &self.ctx,
-                    &fresh_withdraw.from_addr,
-                    &fresh_withdraw.chain_code,
-                )
-                .await
-                {
-                    Ok(chain_nonce) => {
-                        if shared_mechanism::should_force_align_nonce_gap(
-                            chain_nonce,
-                            fresh_withdraw.nonce as u64,
-                        ) {
-                            let gap = fresh_withdraw.nonce as u64 - chain_nonce;
-                            warn!(
-                                trade_no = %fresh_withdraw.trade_no,
-                                from_addr = %fresh_withdraw.from_addr,
-                                tx_hash = %fresh_withdraw.tx_hash.as_deref().unwrap_or_default(),
-                                chain_code = %fresh_withdraw.chain_code,
-                                chain_nonce = %chain_nonce,
-                                local_nonce = %fresh_withdraw.nonce,
-                                gap = %gap,
-                                source = "shadow_withdraw_worker",
-                                "EVM pre-broadcast nonce-gap detected; check floor while preserving signed transaction"
-                            );
-
-                            let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                            if let Err(e) = nonce_engine
-                                .force_align_to_chain_next_nonce(
-                                    &fresh_withdraw.from_addr,
-                                    &fresh_withdraw.chain_code,
-                                    ReconcileReason::Other(
-                                        "evm_prebroadcast_nonce_gap".to_string(),
-                                    ),
-                                )
-                                .await
-                            {
-                                warn!(
-                                    trade_no = %fresh_withdraw.trade_no,
-                                    error = %e,
-                                    source = "shadow_withdraw_worker",
-                                    "Nonce alignment unavailable or gap unresolved; preserve original nonce and continue broadcast"
-                                );
-                            }
-                            info!(
-                                trade_no = %fresh_withdraw.trade_no,
-                                source = "shadow_withdraw_worker",
-                                "Best-effort pre-broadcast nonce check completed; continue broadcast"
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        warn!(
-                            trade_no = %fresh_withdraw.trade_no,
-                            error = %e,
-                            source = "shadow_withdraw_worker",
-                            "Best-effort pre-broadcast nonce check failed; continue broadcast"
-                        );
-                    }
+            match ApiTransDomain::nonce(self.ctx, &withdraw.from_addr, &withdraw.chain_code).await {
+                Ok(chain_nonce) if withdraw.nonce as u64 > chain_nonce => {
+                    info!(
+                        trade_no,
+                        chain_nonce,
+                        nonce = withdraw.nonce,
+                        source = "shadow_withdraw_worker",
+                        "Waiting for preceding EVM nonce before broadcast"
+                    );
+                    // No terminal or uncertainty fact: the existing scanner will
+                    // retry CanBroadcast, also after process restart.
+                    return Ok(());
                 }
-            }
-
-            // 3. 检查是否已有raw_tx和tx_hash
-            if fresh_withdraw.tx_hash.is_none() || fresh_withdraw.raw_tx.is_none() {
-                error!(trade_no = %trade_no, source = "shadow_withdraw_worker", "No raw_tx or tx_hash found");
-                return Err(ServiceError::Business(
-                    ApiWalletError::Trans(crate::error::business::api_wallet::trans::TransError::BuildWithdrawTransactionFailed("Missing transaction data".to_string())).into(),
-                ));
+                Err(err) => {
+                    warn!(trade_no, error = %err, source = "shadow_withdraw_worker",
+                        "Waiting for EVM nonce observation before broadcast");
+                    return Ok(());
+                }
+                _ => {}
             }
         }
 
@@ -2149,8 +2108,23 @@ impl ShadowWithdrawWorker {
                 withdraw.tx_hash.as_deref(),
             ),
         )
-        .await?
-        .flatten();
+        .await;
+        let tx_resp = match tx_resp {
+            Err(err)
+                if shared_mechanism::is_evm_chain(&withdraw.chain_code)
+                    && matches!(
+                        ChainErrorNormalizer::normalize(&err.to_string()),
+                        NonceErrorKind::NonceTooHigh
+                    ) =>
+            {
+                // An RPC node may lag the observation node. Rejection proves no
+                // terminal chain failure; preserve this exact signed transaction.
+                warn!(trade_no, error = %err, source = "shadow_withdraw_worker",
+                    "EVM node nonce is behind; defer signed withdrawal broadcast");
+                return Ok(());
+            }
+            result => result?.flatten(),
+        };
 
         match tx_resp {
             Some(tx) => {

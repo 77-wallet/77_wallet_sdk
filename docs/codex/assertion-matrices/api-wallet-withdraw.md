@@ -679,3 +679,33 @@ Polygon field was rejected after build and before persist/broadcast by the old e
 | api_wallet_transfer_nonce_new_evm_timeout_recovers_from_failed_receipt_without_resend | All6 extended EVM chains: timed out send leaves durable uncertainty, failed on-chain receipt finalizes failure and pending scan clears; sender nonce remainsreserved, no resend. |
 
 Existing self_transfer tests retain reopen, concurrent claims, transaction rollback/receipt retry and unsigned legacy behavior. Existing transfer_nonce flow suite retains sender lock, cancellation, wrong RPC hash, observer/restart, frozen/uncertain nonce and bounded retries. Test fixtures use no real keys or RPC; fake raw bytes cannot be broadcast to a real chain. Real Polygon device transfer is not reattempted as validation.
+
+## Same-sender EVM broadcast ordering (2026-10-15)
+
+Scope: backend withdrawal Broadcast; reuse the existing NonceEngine transfer gate
+keyed by sender + chain. Holding the gate covers fresh durable-state/chain-nonce
+observation through broadcast and its fact commit. A higher signed nonce waits
+for preceding chain progress; it remains eligible for the existing scanner's
+CanBroadcast retry (including restart). No signed raw/hash/nonce or allocation
+floor is rewritten. Different senders/chains and non-EVM flows keep their scope.
+
+Integration entrypoint `transfer_nonce::withdrawal_broadcast_order_*` uses the real
+worker, temporary SQLite and the existing recording chain adapter with strict
+nonce admission. Cases:
+
+- `defers_16_until_14_and_15_are_sent`: reproduces incident ordering 16 before
+  14/15, no early send or ERR_6008; retries broadcast 14/15/16 with original bytes.
+- `waits_for_inflight_predecessor`: block 14 inside the adapter; 15 cannot enter
+  until 14 completes, then both durable broadcast facts exist.
+- `cancelled_waiter_preserves_signed_transaction`: cancel 15 while 14 holds the
+  gate; retry sends unchanged signed 15, no leaked permit or failed order.
+- `nonce_query_failure_waits_without_send`: observation failure sends nothing,
+  preserves signed facts/counter and resumes once observation succeeds.
+- `node_nonce_lag_keeps_order_retryable`: node rejects with nonce-too-high after
+  successful observation; preserve signed intent and retry identical bytes.
+
+Every row assertion checks raw/hash/nonce, allocation floor, last_broadcast_at,
+err_code, finished_at, receipt upload and broadcast uncertainty. A predecessor
+that never progresses can keep successors pending; automatic gap filling,
+terminal-predecessor repair and changes to historical failed orders are outside
+this fix. No live transactions are used for validation.

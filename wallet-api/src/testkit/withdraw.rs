@@ -246,3 +246,20 @@ pub async fn broadcast_transfer_for_test(
     )
     .await
 }
+
+/// Run the real backend withdrawal Broadcast step against injected chain adapters.
+pub async fn broadcast_withdraw_via_worker(
+    ctx: &'static Context,
+    trade_no: &str,
+) -> Result<(), ServiceError> {
+    let (intent_tx, _intent_rx) = tokio::sync::mpsc::channel(8);
+    let scanner = Arc::new(WithdrawShadowScanner::new(
+        ctx,
+        WithdrawShadowScannerConfig::default(),
+        intent_tx,
+        None,
+    ));
+    ShadowWithdrawWorker::new(ctx, scanner)
+        .handle(ShadowWithdrawCommand::Broadcast(trade_no.to_owned()))
+        .await
+}

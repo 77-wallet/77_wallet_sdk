@@ -43,6 +43,8 @@ struct RecordingAdapterState {
     mismatch_hash: AtomicBool,
     duplicate_transfer: AtomicBool,
     block_first: AtomicBool,
+    require_next_nonce: AtomicBool,
+    reject_next_nonce: AtomicBool,
     hang_send: AtomicBool,
     release_first: Notify,
     entered_notify: Notify,
@@ -152,6 +154,14 @@ impl RecordingEthAdapter {
         self.state.timeout_transfer.store(true, Ordering::SeqCst);
     }
 
+    pub(crate) fn reject_next_nonce(&self) {
+        self.state.reject_next_nonce.store(true, Ordering::SeqCst);
+    }
+
+    pub(crate) fn require_next_nonce(&self) {
+        self.state.require_next_nonce.store(true, Ordering::SeqCst);
+    }
+
     pub(crate) fn block_first_transfer(&self) {
         self.state.block_first.store(true, Ordering::SeqCst);
     }
@@ -205,6 +215,24 @@ impl RecordingEthAdapter {
 
         if self.state.duplicate_transfer.load(Ordering::SeqCst) {
             return Err(ServiceError::Parameter("already known".into()));
+        }
+        if self.state.reject_next_nonce.swap(false, Ordering::SeqCst) {
+            return Err(ServiceError::Parameter(
+                "nonce too high: node state lagged after observation".into(),
+            ));
+        }
+        if self.state.require_next_nonce.load(Ordering::SeqCst) {
+            let expected = self
+                .state
+                .nonce_response
+                .lock()
+                .unwrap()
+                .ok_or_else(|| ServiceError::Parameter("node fixture unavailable".into()))?;
+            if nonce > expected {
+                return Err(ServiceError::Parameter(format!(
+                    "nonce too high: tx: {nonce} state: {expected}"
+                )));
+            }
         }
         self.set_nonce_response(Some(nonce + 1));
         if self.state.canonical_hash.load(Ordering::SeqCst) {

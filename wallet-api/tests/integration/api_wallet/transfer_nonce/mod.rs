@@ -1126,3 +1126,108 @@ async fn collect_fee_build_competing_allocator_discards_candidate() -> anyhow::R
     assert_eq!(scenario.adapter.build_calls(), 1);
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_broadcast_order_defers_16_until_14_and_15_are_sent() -> anyhow::Result<()> {
+    let scenario = support::WithdrawBroadcastScenario::given_signed_batch().await?;
+
+    scenario.when_broadcast(16).await?;
+    scenario.then_order_is(16, false).await?;
+    assert!(scenario.adapter.recorded_nonces().is_empty());
+
+    scenario.when_broadcast(14).await?;
+    scenario.then_order_is(14, true).await?;
+    scenario.when_broadcast(14).await?; // Duplicate queued command must not resend.
+    scenario.when_broadcast(16).await?;
+    scenario.then_order_is(16, false).await?;
+    scenario.when_broadcast(15).await?;
+    scenario.when_broadcast(16).await?;
+
+    scenario.then_order_is(15, true).await?;
+    scenario.then_order_is(16, true).await?;
+    assert_eq!(scenario.adapter.recorded_nonces(), vec![14, 15, 16]);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_broadcast_order_waits_for_inflight_predecessor() -> anyhow::Result<()> {
+    let scenario = support::WithdrawBroadcastScenario::given_signed_batch().await?;
+    scenario.adapter.block_first_transfer();
+    let first = scenario.when_broadcast_starts(14);
+    scenario.adapter.wait_for_first_entry().await;
+    let second = scenario.when_broadcast(15);
+    tokio::pin!(second);
+    // Poll the actual second step while the predecessor is blocked, instead of
+    // assuming a spawned task ran during a sleep.
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut second).await.is_err()
+    );
+    assert_eq!(scenario.adapter.recorded_nonces(), vec![14]);
+    scenario.adapter.release_first();
+    first.await??;
+    second.await?;
+    scenario.then_order_is(14, true).await?;
+    scenario.then_order_is(15, true).await?;
+    assert_eq!(scenario.adapter.recorded_nonces(), vec![14, 15]);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_broadcast_order_cancelled_waiter_preserves_signed_transaction()
+-> anyhow::Result<()> {
+    let scenario = support::WithdrawBroadcastScenario::given_signed_batch().await?;
+    scenario.adapter.block_first_transfer();
+    let first = scenario.when_broadcast_starts(14);
+    scenario.adapter.wait_for_first_entry().await;
+    // Timeout polls and then drops the blocked worker future: cancellation must
+    // preserve the signed order and leave no gate reservation behind.
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), scenario.when_broadcast(15))
+            .await
+            .is_err()
+    );
+    scenario.then_order_is(15, false).await?;
+    scenario.adapter.release_first();
+    first.await??;
+
+    scenario.when_broadcast(15).await?;
+    scenario.then_order_is(15, true).await?;
+    assert_eq!(scenario.adapter.recorded_nonces(), vec![14, 15]);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_broadcast_order_nonce_query_failure_waits_without_send() -> anyhow::Result<()> {
+    let scenario = support::WithdrawBroadcastScenario::given_signed_batch().await?;
+    scenario.adapter.set_nonce_response(None);
+
+    scenario.when_broadcast(14).await?;
+
+    scenario.then_order_is(14, false).await?;
+    assert!(scenario.adapter.recorded_nonces().is_empty());
+    scenario.adapter.set_nonce_response(Some(14));
+    scenario.when_broadcast(14).await?;
+    scenario.then_order_is(14, true).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn withdrawal_broadcast_order_node_nonce_lag_keeps_order_retryable() -> anyhow::Result<()> {
+    let scenario = support::WithdrawBroadcastScenario::given_signed_batch().await?;
+    scenario.adapter.reject_next_nonce();
+
+    scenario.when_broadcast(14).await?;
+
+    scenario.then_order_is(14, false).await?;
+    scenario.when_broadcast(14).await?;
+    scenario.then_order_is(14, true).await?;
+    assert_eq!(scenario.adapter.recorded_nonces(), vec![14, 14]);
+    let raw = scenario.adapter.recorded_raw();
+    assert_eq!(raw[0], raw[1]);
+    Ok(())
+}
