@@ -767,3 +767,41 @@ The shared broadcast flow also preserves uncertainty for EVM nonce-too-high afte
 an internal authentication retry: a prior send may already have succeeded before
 visibility requested refresh. Initial nonce-too-high retains existing retry behavior.
 The combined two-attempt auth scenario is reviewed in code, not simulated end to end.
+
+
+## Receipt observation classification (2026-10-16)
+
+Recover-stage classification is preserved through a typed worker observation:
+`Confirmed`, explicit null `Missing`, and `QueryUncertain`. Core HTTP/RPC/transport/
+parse failures (including HTTP500 bodies containing `result:null`) never become
+`Missing`. Missing result fields are malformed; 401 refresh policy is retained.
+Collect/withdraw/fee QueryUncertain performs no order-fact mutation, missing-receipt
+nonce compensation, rebroadcast or failure upload. Breaker skips also stay in this
+category. Legacy public optional resource recovery callers keep their "no definitive
+result" contract through a compatibility wrapper. Resource operations are Tron-only
+and retain their existing recovery semantics.
+
+A withdrawal with signed bytes, an unconfirmed broadcast and >24h uncertainty is
+not failed merely for reaching the manual-review threshold: warn and continue
+observing. Only the local typed confirmed-chain-failure sentinel may trigger the
+Recover wrapper's failure path; remote error text cannot spoof it. Fee-child explicit null also remains pending after the 5m threshold and exhausted
+retry counters: neither invalidate/rebuild signed bytes nor auto-fail based only
+on missing visibility. Existing collect/withdraw real
+missing-receipt nonce recovery/finalized-conflict proof, non-EVM recovery rules,
+and confirmation CAS guards remain separate and otherwise unchanged.
+
+Evidence: Core `wallet-chain-interact/tests/eth_actual_fee.rs` receipt_query tests;
+SDK recover_mechanism classification/spoofed-error tests; per-worker
+`receipt_observation_tests` use real repo/temporary SQLite, old uncertain orders,
+no-side-effect intent assertions, null retention and same-order retry/success plus
+duplicate-result idempotency. A fresh collect null stays pending; a 25h withdrawal
+null does not become failed. Fee-child SQLite tests cover query errors, 25h null
+with zero/exhausted retry counters, and same-order confirmation after query retry.
+Existing EVM and recovery tests are rerun narrowly.
+No live node, signing or real broadcast. Concurrent wallet deletion work is
+excluded from this task's temporary SDK validation copy and review scope.
+
+Core receipt classification is committed at `e2e203dbfa1d5785e522240b91cc73789e4cbae5`.
+SDK pins all seven Core dependencies to that revision. Adoption validation uses
+the fetched fixed revision without a local Core patch; prior local-patch
+regressions remain evidence for the identical implementation.

@@ -18,7 +18,7 @@ use crate::{
         adapter::tx::RawTx,
         adapter_factory::ApiChainAdapterFactory,
         coin::ApiCoinDomain,
-        trans::{ApiTransDomain, broadcast_mechanism, shared_mechanism},
+        trans::{ApiTransDomain, RecoveredTxObservation, broadcast_mechanism, shared_mechanism},
         wallet::ApiWalletDomain,
     },
     error::{
@@ -26,12 +26,9 @@ use crate::{
         service::ServiceError,
         system::SystemError,
     },
-    infrastructure::{
-        api_trans::{
-            AddressLockManager, collect_fee::shadow::ShadowScanner, nonce_recovery_mechanism,
-            shadow_rpc_policy,
-        },
-        nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
+    infrastructure::api_trans::{
+        AddressLockManager, collect_fee::shadow::ShadowScanner, nonce_recovery_mechanism,
+        shadow_rpc_policy,
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -88,8 +85,6 @@ impl ShadowFeeWorker {
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
-    const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
-    const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
     const BUILD_SLOT_STALE_SECS: i64 = 30;
     const TRON_POST_BROADCAST_CONFIRM_DELAYS_SECS: [u64; 5] = [3, 5, 8, 15, 30];
 
@@ -220,7 +215,11 @@ impl ShadowFeeWorker {
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_recover_inner(&trade_no).await {
             error!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "Recover inner failed, handling error");
-            self.handle_fee_tx_failed(&trade_no, err).await?;
+            if crate::domain::api_wallet::trans::is_confirmed_recover_chain_failure(&err) {
+                self.handle_fee_tx_failed(&trade_no, err).await?;
+            } else {
+                warn!(trade_no = %trade_no, error = %err, "Recover observation failed; keep fee pending for retry");
+            }
         }
 
         Ok(())
@@ -319,8 +318,21 @@ impl ShadowFeeWorker {
                 Some(result) => result,
                 None => return Ok(()),
             };
+        self.apply_recover_observation(&req, recover_result).await
+    }
+
+    async fn apply_recover_observation(
+        &self,
+        req: &ApiFeeEntity,
+        recover_result: Result<RecoveredTxObservation, ServiceError>,
+    ) -> Result<(), ServiceError> {
+        let trade_no = req.trade_no.as_str();
         match recover_result {
-            Ok(Some(tx_resp)) => {
+            Ok(RecoveredTxObservation::QueryUncertain) => {
+                info!(trade_no = %trade_no, "Fee receipt query uncertain; preserve facts and retry");
+                return Ok(());
+            }
+            Ok(RecoveredTxObservation::Confirmed(tx_resp)) => {
                 info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_fee_worker", "Transaction recover successful");
 
                 // ====== phase 3: 锁内 · 提交不可逆事实 ======
@@ -423,7 +435,7 @@ impl ShadowFeeWorker {
                     }
                 }
             }
-            Ok(None) => {
+            Ok(RecoveredTxObservation::Missing) => {
                 info!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction recover result is uncertain");
                 if let Some(raw_tx_json) = req.raw_tx.as_deref() {
                     if shared_mechanism::should_invalidate_expired_tron_raw_for_recover(
@@ -491,93 +503,9 @@ impl ShadowFeeWorker {
 
                 let elapsed_secs =
                     Self::evm_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default();
-                let timed_out = elapsed_secs >= Self::EVM_UNCERTAIN_TIMEOUT_SECS;
-                if !timed_out {
-                    return Ok(());
-                }
-
-                if refreshed.broadcast_uncertain_reconciled_at.is_none() {
-                    warn!(
-                        trade_no = %refreshed.trade_no,
-                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
-                        nonce = refreshed.nonce,
-                        uncertain_duration_sec = elapsed_secs,
-                        source = "shadow_fee_worker",
-                        "EVM uncertain timeout reached; running nonce reconcile"
-                    );
-
-                    let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                    nonce_engine.trigger_reconcile_with_reason(
-                        &refreshed.from_addr,
-                        &refreshed.chain_code,
-                        ReconcileReason::Other("evm_uncertain_timeout".to_string()),
-                        true,
-                    );
-                    let _ = ApiFeeRepo::mark_broadcast_uncertain_reconciled(
-                        &self.ctx.api_transaction_pool()?,
-                        &refreshed.trade_no,
-                    )
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
-                }
-
-                if refreshed.broadcast_uncertain_rebroadcast_count
-                    < Self::EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT
-                {
-                    warn!(
-                        trade_no = %refreshed.trade_no,
-                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
-                        nonce = refreshed.nonce,
-                        decision = "rebuild_retry_once",
-                        source = "shadow_fee_worker",
-                        "EVM uncertain reconcile decision"
-                    );
-                    let rows = ApiFeeRepo::invalidate_raw_tx(
-                        &self.ctx.api_transaction_pool()?,
-                        &refreshed.trade_no,
-                        None,
-                        None,
-                        None,
-                    )
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
-                    if rows > 0 {
-                        let _ = ApiFeeRepo::mark_broadcast_uncertain_rebroadcast_attempted(
-                            &self.ctx.api_transaction_pool()?,
-                            &refreshed.trade_no,
-                        )
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
-                        self.scanner.try_advance(&refreshed.trade_no).await;
-                    }
-                    return Ok(());
-                }
-
-                warn!(
-                    trade_no = %refreshed.trade_no,
-                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
-                    nonce = refreshed.nonce,
-                    uncertain_duration_sec = elapsed_secs,
-                    reconcile_done = %refreshed.broadcast_uncertain_reconciled_at.is_some(),
-                    rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
-                    source = "shadow_fee_worker",
-                    "EVM uncertain exhausted; auto fail order"
-                );
-
-                let rows_affected = ApiFeeRepo::update_api_fee_status_and_err(
-                    &self.ctx.api_transaction_pool()?,
-                    &refreshed.trade_no,
-                    wallet_database::entities::api_fee::ApiFeeStatus::SendingTxFailed,
-                    Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE as u32,
-                    "EVM broadcast uncertain timeout after 5m; same-rpc tx not visible; reconcile+1 retry exhausted",
-                )
-                .await
-                .map_err(|db_err: wallet_database::Error| {
-                    error!(trade_no = %refreshed.trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to mark EVM uncertain timeout auto-fail");
-                    ServiceError::Database(db_err.into())
-                })?;
-                if rows_affected > 0 {
-                    self.scanner.try_advance(&refreshed.trade_no).await;
+                if elapsed_secs >= Self::EVM_UNCERTAIN_TIMEOUT_SECS {
+                    warn!(trade_no = %refreshed.trade_no, uncertain_duration_sec = elapsed_secs,
+                        "EVM fee receipt still missing; preserve signed transaction and keep observing");
                 }
             }
             Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
@@ -1168,11 +1096,11 @@ impl ShadowFeeWorker {
     async fn recover_tx(
         &self,
         fee: &wallet_database::entities::api_fee::ApiFeeEntity,
-    ) -> Result<Option<crate::domain::chain::TransferResp>, ServiceError> {
+    ) -> Result<RecoveredTxObservation, ServiceError> {
         let tx_hash = fee.tx_hash.as_ref().unwrap();
         info!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Processing recovered tx");
 
-        match ApiTransDomain::process_recovered_tx(
+        match ApiTransDomain::observe_recovered_tx_with_ctx(
             &self.ctx,
             &fee.chain_code,
             &fee.from_addr,
@@ -1182,13 +1110,16 @@ impl ShadowFeeWorker {
         )
         .await
         {
-            Ok(Some(tx_resp)) => {
+            Ok(RecoveredTxObservation::Confirmed(tx_resp)) => {
                 info!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Recovered tx success");
-                Ok(Some(tx_resp))
+                Ok(RecoveredTxObservation::Confirmed(tx_resp))
             }
-            Ok(None) => {
+            Ok(RecoveredTxObservation::Missing) => {
                 info!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Recovered tx result is uncertain, will retry");
-                Ok(None)
+                Ok(RecoveredTxObservation::Missing)
+            }
+            Ok(RecoveredTxObservation::QueryUncertain) => {
+                Ok(RecoveredTxObservation::QueryUncertain)
             }
             Err(err) => {
                 error!(trade_no = %fee.trade_no, tx_hash = %tx_hash, error = %err, source = "shadow_fee_worker", "Recovered tx failed");
@@ -1763,3 +1694,7 @@ oss:
         assert_eq!(claimed, 0);
     }
 }
+
+#[cfg(test)]
+#[path = "shadow_fee_worker/receipt_observation_tests.rs"]
+mod receipt_observation_tests;

@@ -1,4 +1,6 @@
 #![allow(deprecated)]
+
+use crate::domain::api_wallet::trans::RecoveredTxObservation;
 // collect/shadow/worker/collect_worker.rs
 
 // Architecture Rule:
@@ -2196,8 +2198,21 @@ impl ShadowCollectWorker {
                 Some(result) => result,
                 None => return Ok(()),
             };
+        self.apply_recover_observation(&req, recover_result).await
+    }
+
+    async fn apply_recover_observation(
+        &self,
+        req: &ApiCollectEntity,
+        recover_result: Result<RecoveredTxObservation, ServiceError>,
+    ) -> Result<(), ServiceError> {
+        let trade_no = req.trade_no.as_str();
         match recover_result {
-            Ok(Some(tx_resp)) => {
+            Ok(RecoveredTxObservation::QueryUncertain) => {
+                warn!(trade_no = %trade_no, "Receipt observation failed; keep order and retry without missing-receipt compensation");
+                return Ok(());
+            }
+            Ok(RecoveredTxObservation::Confirmed(tx_resp)) => {
                 info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_worker_v2", "Transaction recover successful");
 
                 // ====== phase 3: 锁内 · 提交不可逆事实 ======
@@ -2311,7 +2326,7 @@ impl ShadowCollectWorker {
                     }
                 }
             }
-            Ok(None) => {
+            Ok(RecoveredTxObservation::Missing) => {
                 if let Some(raw_tx_json) = req.raw_tx.as_deref() {
                     if shared_mechanism::should_invalidate_expired_tron_raw_for_recover(
                         &req.chain_code,
@@ -4010,11 +4025,11 @@ impl ShadowCollectWorker {
     async fn recover_tx(
         &self,
         req: &ApiCollectEntity,
-    ) -> Result<Option<crate::domain::chain::TransferResp>, ServiceError> {
+    ) -> Result<RecoveredTxObservation, ServiceError> {
         let tx_hash = req.tx_hash.as_ref().unwrap();
         info!(trade_no = %req.trade_no, tx_hash = %tx_hash, source = "shadow_worker_v2", "Processing recovered tx");
 
-        match crate::domain::api_wallet::trans::ApiTransDomain::process_recovered_tx(
+        match crate::domain::api_wallet::trans::ApiTransDomain::observe_recovered_tx_with_ctx(
             &self.ctx,
             &req.chain_code,
             &req.from_addr,
@@ -4024,13 +4039,16 @@ impl ShadowCollectWorker {
         )
         .await
         {
-            Ok(Some(tx_resp)) => {
+            Ok(RecoveredTxObservation::Confirmed(tx_resp)) => {
                 info!(trade_no = %req.trade_no, tx_hash = %tx_hash, source = "shadow_worker_v2", "Recovered tx success");
-                Ok(Some(tx_resp))
+                Ok(RecoveredTxObservation::Confirmed(tx_resp))
             }
-            Ok(None) => {
+            Ok(RecoveredTxObservation::Missing) => {
                 info!(trade_no = %req.trade_no, tx_hash = %tx_hash, source = "shadow_worker_v2", "Recovered tx result is uncertain, will retry");
-                Ok(None)
+                Ok(RecoveredTxObservation::Missing)
+            }
+            Ok(RecoveredTxObservation::QueryUncertain) => {
+                Ok(RecoveredTxObservation::QueryUncertain)
             }
             Err(err) => {
                 error!(trade_no = %req.trade_no, tx_hash = %tx_hash, error = %err, source = "shadow_worker_v2", "Recovered tx failed");
@@ -4040,7 +4058,7 @@ impl ShadowCollectWorker {
     }
 
     fn is_recovered_tx_terminal_chain_failure(err: &ServiceError) -> bool {
-        format!("{err}").contains("broadcasted tx failed")
+        crate::domain::api_wallet::trans::is_confirmed_recover_chain_failure(err)
     }
 
     pub(super) fn should_reopen_evm_fee_cycle(req: &ApiCollectEntity, err: &ServiceError) -> bool {
@@ -6502,3 +6520,7 @@ fn local_delegation_post_broadcast_confirm_delays_cover_short_window() {
         [3, 8, 15]
     );
 }
+
+#[cfg(test)]
+#[path = "collect_worker/receipt_observation_tests.rs"]
+mod receipt_observation_tests;

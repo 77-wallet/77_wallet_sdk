@@ -1,6 +1,8 @@
 // withdraw/shadow/worker/shadow_withdraw_worker.rs
 #![allow(deprecated)]
 
+use crate::domain::api_wallet::trans::RecoveredTxObservation;
+
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -184,7 +186,7 @@ impl ShadowWithdrawWorker {
         shared_mechanism::broadcast_uncertain_elapsed_secs(req.broadcast_uncertain_since_at, now)
     }
 
-    fn should_mark_evm_uncertain_for_manual_review(
+    fn should_warn_evm_uncertain_for_manual_review(
         req: &ApiWithdrawEntity,
         now: chrono::DateTime<Utc>,
     ) -> bool {
@@ -1341,7 +1343,11 @@ impl ShadowWithdrawWorker {
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_recover_inner(&trade_no).await {
             error!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "Recover inner failed, handling error");
-            self.handle_withdraw_tx_failed(&trade_no, WithdrawFailureStage::Chain, err).await?;
+            if crate::domain::api_wallet::trans::is_confirmed_recover_chain_failure(&err) {
+                self.handle_withdraw_tx_failed(&trade_no, WithdrawFailureStage::Chain, err).await?;
+            } else {
+                warn!(trade_no = %trade_no, error = %err, "Recovery observation failed; keep withdraw pending for retry");
+            }
         }
 
         Ok(())
@@ -1443,8 +1449,21 @@ impl ShadowWithdrawWorker {
                 Some(result) => result,
                 None => return Ok(()),
             };
+        self.apply_recover_observation(&req, recover_result).await
+    }
+
+    async fn apply_recover_observation(
+        &self,
+        req: &ApiWithdrawEntity,
+        recover_result: Result<RecoveredTxObservation, ServiceError>,
+    ) -> Result<(), ServiceError> {
+        let trade_no = req.trade_no.as_str();
         match recover_result {
-            Ok(Some(tx_resp)) => {
+            Ok(RecoveredTxObservation::QueryUncertain) => {
+                warn!(trade_no = %trade_no, "Receipt observation failed; keep order and retry without missing-receipt compensation");
+                return Ok(());
+            }
+            Ok(RecoveredTxObservation::Confirmed(tx_resp)) => {
                 info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_withdraw_worker", "Transaction recover successful");
 
                 // ====== phase 3: 提交不可逆事实 ======
@@ -1575,7 +1594,7 @@ impl ShadowWithdrawWorker {
                     }
                 }
             }
-            Ok(None) => {
+            Ok(RecoveredTxObservation::Missing) => {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Transaction recover result is uncertain");
                 if let Some(raw_tx_json) = req.raw_tx.as_deref() {
                     if shared_mechanism::should_invalidate_expired_tron_raw_for_recover(
@@ -1673,7 +1692,7 @@ impl ShadowWithdrawWorker {
                     .map_err(|e| ServiceError::Database(e.into()))?;
                 }
 
-                if !Self::should_mark_evm_uncertain_for_manual_review(&refreshed, now) {
+                if !Self::should_warn_evm_uncertain_for_manual_review(&refreshed, now) {
                     warn!(
                         trade_no = %refreshed.trade_no,
                         tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
@@ -1691,25 +1710,9 @@ impl ShadowWithdrawWorker {
                     tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
                     nonce = refreshed.nonce,
                     uncertain_duration_sec = elapsed_secs,
-                    reconcile_done = %refreshed.broadcast_uncertain_reconciled_at.is_some(),
-                    rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
                     source = "shadow_withdraw_worker",
-                    "EVM uncertain exceeded manual review timeout; marking failed for human handling"
+                    "EVM receipt still missing after manual-review threshold; keep observing without a chain-failure fact"
                 );
-
-                let error_msg = format!(
-                    "EVM broadcast uncertain exceeded manual review timeout after {}s; human intervention required",
-                    Self::EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS
-                );
-                let rows_affected = ApiWithdrawRepo::mark_uncertain_manual_review(
-                    &self.ctx.api_transaction_pool()?,
-                    &refreshed.trade_no,
-                    &error_msg,
-                )
-                .await?;
-                if rows_affected > 0 {
-                    self.scanner.try_advance(&refreshed.trade_no).await;
-                }
                 return Ok(());
             }
             Err(err) if shared_mechanism::is_tron_missing_confirmed_and_pending_error(&err) => {
@@ -2537,7 +2540,7 @@ impl ShadowWithdrawWorker {
     async fn recover_tx(
         &self,
         withdraw: &wallet_database::entities::api_withdraw::ApiWithdrawEntity,
-    ) -> Result<Option<crate::domain::chain::TransferResp>, ServiceError> {
+    ) -> Result<RecoveredTxObservation, ServiceError> {
         let tx_hash = withdraw.tx_hash.as_ref().unwrap();
         info!(trade_no = %withdraw.trade_no, tx_hash = %tx_hash, source = "shadow_withdraw_worker", "Processing recovered tx");
 
@@ -2565,10 +2568,10 @@ impl ShadowWithdrawWorker {
                 source = "shadow_withdraw_worker",
                 "TEST STUB: force withdraw EVM recover result None"
             );
-            return Ok(None);
+            return Ok(RecoveredTxObservation::Missing);
         }
 
-        match ApiTransDomain::process_recovered_tx(
+        match ApiTransDomain::observe_recovered_tx_with_ctx(
             &self.ctx,
             &withdraw.chain_code,
             &withdraw.from_addr,
@@ -2578,13 +2581,16 @@ impl ShadowWithdrawWorker {
         )
         .await
         {
-            Ok(Some(tx_resp)) => {
+            Ok(RecoveredTxObservation::Confirmed(tx_resp)) => {
                 info!(trade_no = %withdraw.trade_no, tx_hash = %tx_hash, source = "shadow_withdraw_worker", "Recovered tx success");
-                Ok(Some(tx_resp))
+                Ok(RecoveredTxObservation::Confirmed(tx_resp))
             }
-            Ok(None) => {
+            Ok(RecoveredTxObservation::Missing) => {
                 info!(trade_no = %withdraw.trade_no, tx_hash = %tx_hash, source = "shadow_withdraw_worker", "Recovered tx result is uncertain, will retry");
-                Ok(None)
+                Ok(RecoveredTxObservation::Missing)
+            }
+            Ok(RecoveredTxObservation::QueryUncertain) => {
+                Ok(RecoveredTxObservation::QueryUncertain)
             }
             Err(err) => {
                 error!(trade_no = %withdraw.trade_no, tx_hash = %tx_hash, error = %err, source = "shadow_withdraw_worker", "Recovered tx failed");
@@ -3384,7 +3390,7 @@ oss:
         withdraw.broadcast_uncertain_since_at = Some(Utc::now() - chrono::Duration::hours(25));
         withdraw.broadcast_uncertain_reconciled_at = Some(Utc::now() - chrono::Duration::hours(1));
 
-        assert!(ShadowWithdrawWorker::should_mark_evm_uncertain_for_manual_review(
+        assert!(ShadowWithdrawWorker::should_warn_evm_uncertain_for_manual_review(
             &withdraw,
             Utc::now()
         ));
@@ -4009,3 +4015,7 @@ oss:
         assert_eq!(org_id, "merchant_1");
     }
 }
+
+#[cfg(test)]
+#[path = "shadow_withdraw_worker/receipt_observation_tests.rs"]
+mod receipt_observation_tests;

@@ -30,6 +30,14 @@ use std::sync::Arc;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_utils::RetryableError as _;
 
+// Unlike the legacy optional result, workers must distinguish a missing receipt
+// from an observation failure before running timeout/nonce recovery policies.
+pub(crate) enum RecoveredTxObservation {
+    Confirmed(TransferResp),
+    Missing,
+    QueryUncertain,
+}
+
 enum RecoverAdapterAcquire {
     Ready(Arc<dyn Tx + Send + Sync>),
     RetryAuth,
@@ -56,7 +64,7 @@ impl ApiTransDomain {
     ///
     /// 返回语义约定：
     /// Ok(Some(resp))  -> 链上已确认成功，立即落成
-    /// Err(_)          -> 已确认不可能成功，可推进失败
+    /// Err(_)          -> 调用方须区分明确链上失败与查询准备错误
     /// Ok(None)        -> 不确定态（RPC/网络/索引问题），等待 scanner/recover
     pub async fn process_recovered_tx(
         ctx: &'static Context,
@@ -83,10 +91,37 @@ impl ApiTransDomain {
         chain_code: &str,
         from_addr: &str,
         tx_hash: &str,
-        // raw_tx: &str,
         nonce: i64,
         transaction_fee: &str,
     ) -> Result<Option<TransferResp>, ServiceError> {
+        // Preserve the public optional "no definitive result" contract for resource
+        // callers. Collect/withdraw/fee workers consume the richer observation below.
+        Ok(
+            match Self::observe_recovered_tx_with_ctx(
+                ctx,
+                chain_code,
+                from_addr,
+                tx_hash,
+                nonce,
+                transaction_fee,
+            )
+            .await?
+            {
+                RecoveredTxObservation::Confirmed(resp) => Some(resp),
+                RecoveredTxObservation::Missing | RecoveredTxObservation::QueryUncertain => None,
+            },
+        )
+    }
+
+    pub(crate) async fn observe_recovered_tx_with_ctx(
+        ctx: &'static Context,
+        chain_code: &str,
+        from_addr: &str,
+        tx_hash: &str,
+        // raw_tx: &str,
+        nonce: i64,
+        transaction_fee: &str,
+    ) -> Result<RecoveredTxObservation, ServiceError> {
         tracing::info!(tx_hash=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
         let _breaker_probe = match chain_rpc_guard::admit_breaker_for_attempt_with_ctx(
@@ -99,7 +134,9 @@ impl ApiTransDomain {
         .await
         {
             chain_rpc_guard::ChainRpcBreakerAttempt::Proceed(probe) => probe,
-            chain_rpc_guard::ChainRpcBreakerAttempt::Skip => return Ok(None),
+            chain_rpc_guard::ChainRpcBreakerAttempt::Skip => {
+                return Ok(RecoveredTxObservation::QueryUncertain);
+            }
         };
 
         let mut auth_retry = RecoverAuthRetryState::default();
@@ -108,7 +145,9 @@ impl ApiTransDomain {
                 match Self::acquire_recover_adapter(ctx, &mut auth_retry, chain_code).await? {
                     RecoverAdapterAcquire::Ready(adapter) => adapter,
                     RecoverAdapterAcquire::RetryAuth => continue 'recover_auth_retry,
-                    RecoverAdapterAcquire::StayUncertain => return Ok(None),
+                    RecoverAdapterAcquire::StayUncertain => {
+                        return Ok(RecoveredTxObservation::QueryUncertain);
+                    }
                 };
             let rpc = adapter.rpc_endpoint_for_log().unwrap_or_else(|| "<unknown>".to_string());
 
@@ -122,7 +161,11 @@ impl ApiTransDomain {
                         transaction_fee,
                         tx_result,
                     )
-                    .await;
+                    .await
+                    .map(|result| match result {
+                        Some(resp) => RecoveredTxObservation::Confirmed(resp),
+                        None => RecoveredTxObservation::QueryUncertain,
+                    });
                 }
                 RecoverQueryOutcome::Missing => {
                     return Self::handle_missing_recovered_tx(
@@ -134,7 +177,11 @@ impl ApiTransDomain {
                         &rpc,
                         adapter.as_ref(),
                     )
-                    .await;
+                    .await
+                    .map(|result| match result {
+                        Some(resp) => RecoveredTxObservation::Confirmed(resp),
+                        None => RecoveredTxObservation::Missing,
+                    });
                 }
                 RecoverQueryOutcome::QueryError(service_err) => {
                     match Self::handle_recover_query_error_action(
@@ -148,7 +195,9 @@ impl ApiTransDomain {
                     .await?
                     {
                         RecoverQueryErrorAction::RetryAuth => continue 'recover_auth_retry,
-                        RecoverQueryErrorAction::StayUncertain => return Ok(None),
+                        RecoverQueryErrorAction::StayUncertain => {
+                            return Ok(RecoveredTxObservation::QueryUncertain);
+                        }
                     }
                 }
             }

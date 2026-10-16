@@ -396,3 +396,14 @@ mod tests {
         assert_eq!(route.wait_reason(), Some("非EVM链，链上未找到该交易，等待下一轮Scanner重试"));
     }
 }
+
+#[cfg(test)]
+#[path = "recover_mechanism/receipt_query_tests.rs"]
+mod receipt_query_tests;
+
+// Match only the local, confirmed-chain-failure sentinel. A remote HTTP/RPC
+// message containing the same words is still merely an observation failure.
+pub(crate) fn is_confirmed_recover_chain_failure(err: &ServiceError) -> bool {
+    matches!(err, ServiceError::System(crate::error::system::SystemError::Internal(message))
+        if message == "broadcasted tx failed")
+}
