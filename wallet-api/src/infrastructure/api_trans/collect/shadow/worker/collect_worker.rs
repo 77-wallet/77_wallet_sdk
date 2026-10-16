@@ -33,9 +33,11 @@ use wallet_database::{
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
-        account::ApiAccountRepo, collect::ApiCollectRepo,
+        account::ApiAccountRepo,
+        collect::{ApiCollectRepo, SignedCollectCandidate},
         resource_delegation::ApiResourceDelegationRepo,
-        tron_account_activation::ApiTronAccountActivationRepo, wallet::ApiWalletRepo,
+        tron_account_activation::ApiTronAccountActivationRepo,
+        wallet::ApiWalletRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::{
@@ -50,7 +52,7 @@ use wallet_utils::{RetryableError as _, conversion, unit};
 use crate::{
     domain::api_wallet::wallet::ApiWalletDomain,
     error::{business::api_wallet::trans::TransError, system::SystemError},
-    infrastructure::nonce::nonce_engine::{ReconcileReason, get_nonce_engine_with_ctx},
+    infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx,
     request::api_wallet::trans::ApiTransferReq,
     response_vo::{
         CommonFeeDetails, TronFeeDetails, api_wallet::transaction::ApiWalletResourceConsume,
@@ -2626,6 +2628,14 @@ impl ShadowCollectWorker {
 
     /// BuildTx 内部实现，可能返回错误
     async fn process_build_tx_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
+        self.build_collect_candidate(trade_no, None).await
+    }
+
+    pub(crate) async fn build_collect_candidate(
+        &self,
+        trade_no: &str,
+        private_key_override: Option<wallet_chain_interact::types::ChainPrivateKey>,
+    ) -> Result<(), ServiceError> {
         // 1. 从数据库中获取归集交易信息
         let mut req = self.get_collect_entity(trade_no).await?;
 
@@ -2780,97 +2790,34 @@ impl ShadowCollectWorker {
 
         // ====== phase 1: 锁内 · 快速检查 ======
         // ⚠️ 锁内禁止任何网络调用、sleep、await RPC
-        let mut nonce = {
-            // 获取地址锁，保护地址级并发
+        {
             let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired address lock");
-
-            // 🔒 必须锁内重新读取，确保基于最新状态做决策
-            // ⚠️ 只读"裁决字段"，不做任何业务推断
             let fresh_req = self.get_collect_entity(trade_no).await?;
-
-            // 事实校验：BuildTx 只能处理 raw_tx 为空的交易
-            // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
             if fresh_req.raw_tx.is_some() {
-                info!(trade_no = %trade_no, source = "shadow_worker_v2", "raw_tx already exists, skipping BuildTx");
                 self.clear_build_slot_after_claim(trade_no).await?;
                 return Ok(());
             }
-
-            // 获取并更新 nonce - 使用唯一入口 upsert_and_get_api_nonce
-            // ⚠️ nonce 获取必须在锁内，确保同一地址的 nonce 串行化
-            let nonce = self.get_nonce(&fresh_req.from_addr, &fresh_req.chain_code).await?;
-            info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_worker_v2", "Retrieved nonce");
-
-            nonce
-        };
-        // 🔓 锁在这里已经释放
-
-        // ====== phase 1.5: 锁外 · EVM nonce-gap 前置检查（禁止回退已分配 nonce） ======
-        if shared_mechanism::is_evm_chain(&req.chain_code) {
-            let chain_nonce =
-                ApiTransDomain::nonce(&self.ctx, &req.from_addr, &req.chain_code).await?;
-            if shared_mechanism::should_force_align_nonce_gap(chain_nonce, nonce) {
-                let old_nonce = nonce;
-                let gap = old_nonce.saturating_sub(chain_nonce);
-                warn!(
-                    trade_no = %trade_no,
-                    from_addr = %req.from_addr,
-                    chain_code = %req.chain_code,
-                    chain_nonce = %chain_nonce,
-                    local_nonce = %old_nonce,
-                    gap = %gap,
-                    source = "shadow_worker_v2",
-                    "EVM pre-build nonce-gap detected; checking allocation floor without releasing reservations"
-                );
-
-                let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                let _ = nonce_engine
-                    .force_align_to_chain_next_nonce(
-                        &req.from_addr,
-                        &req.chain_code,
-                        ReconcileReason::Other("evm_prebuild_nonce_gap".to_string()),
-                    )
-                    .await?;
-
-                nonce = {
-                    let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
-                    let fresh_req = self.get_collect_entity(trade_no).await?;
-
-                    if fresh_req.raw_tx.is_some() {
-                        info!(
-                            trade_no = %trade_no,
-                            source = "shadow_worker_v2",
-                            "raw_tx already exists, skipping BuildTx after pre-build nonce align"
-                        );
-                        self.clear_build_slot_after_claim(trade_no).await?;
-                        return Ok(());
-                    }
-
-                    let new_nonce =
-                        self.get_nonce(&fresh_req.from_addr, &fresh_req.chain_code).await?;
-                    info!(
-                        trade_no = %trade_no,
-                        old_nonce = %old_nonce,
-                        new_nonce = %new_nonce,
-                        source = "shadow_worker_v2",
-                        "Retrieved nonce after EVM pre-build force-align"
-                    );
-                    new_nonce
-                };
-            }
         }
+        // Observation performs RPC outside the address lock and reserves nothing.
+        // The shared counter is rechecked when signed facts commit in phase 3.
+        let nonce = self.get_nonce(&req.from_addr, &req.chain_code).await?;
+        info!(trade_no = %trade_no, nonce, source = "shadow_worker_v2", "Observed nonce candidate");
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 通过Context获取Handles实例，然后获取私钥管理器
-        let handles = self.ctx.get_handles_arc().await?;
-        let private_key_manager = handles.get_global_private_key_manager();
-        let private_key =
-            private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
+        let private_key = if let Some(key) = private_key_override {
+            key
+        } else {
+            let handles = self.ctx.get_handles_arc().await?;
+            handles
+                .get_global_private_key_manager()
+                .get_private_key(&req.from_addr, &req.chain_code)
+                .await?
+        };
         info!(trade_no = %trade_no, source = "shadow_worker_v2", "Retrieved private key from manager");
 
         // 生成转账请求 - 使用解析后的执行地址和获取到的nonce
-        // ⚠️ nonce 只在 phase 1 分配，这里直接传入
+        // Candidate is reserved only with signed facts in phase 3.
         let transfer_req = self.gen_transfer_req(&req, &exec_to_addr, nonce).await?;
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_worker_v2", "Generated transfer request with nonce");
 
@@ -2957,15 +2904,32 @@ impl ShadowCollectWorker {
             // 立即将tx_hash和raw_tx存储到数据库
             // 注意：使用序列化而非格式化，避免格式问题
             let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
-            let rows_affected = ApiCollectRepo::update_after_build(
-                &self.ctx.api_transaction_pool()?,
-                &fresh_req.trade_no,
-                &tx_hash,
-                &raw_tx_str,
-                &fee,
-                nonce as i64,
-            )
-            .await?;
+            let pool = self.ctx.api_transaction_pool()?;
+            let rows_affected = if shared_mechanism::is_evm_chain(&req.chain_code) {
+                ApiCollectRepo::reserve_signed_collect(
+                    &pool,
+                    &SignedCollectCandidate {
+                        trade_no: &req.trade_no,
+                        from_addr: &req.from_addr,
+                        chain_code: &req.chain_code,
+                        tx_hash: &tx_hash,
+                        raw_tx: &raw_tx_str,
+                        transaction_fee: &fee,
+                        nonce: nonce as i64,
+                    },
+                )
+                .await?
+            } else {
+                ApiCollectRepo::update_after_build(
+                    &pool,
+                    &fresh_req.trade_no,
+                    &tx_hash,
+                    &raw_tx_str,
+                    &fee,
+                    nonce as i64,
+                )
+                .await?
+            };
 
             // 显式处理幂等情况：如果影响行数为0，表示raw_tx已存在或被并发写入
             if rows_affected == 0 {
@@ -3923,7 +3887,7 @@ impl ShadowCollectWorker {
 
     /// 生成转账请求
     ///
-    /// ⚠️ nonce is a FACT decided in Phase 1.
+    /// The nonce candidate is observed in Phase 1 and committed after signing.
     /// gen_transfer_req MUST NOT:
     /// - compute nonce
     /// - fallback nonce
@@ -3972,41 +3936,18 @@ impl ShadowCollectWorker {
         Ok(transfer_req)
     }
 
-    /// Allocate nonce for transaction.
-    ///
-    /// ⚠️ NONCE INVARIANT:
-    /// - EVM nonce is an irreversible, monotonic fact once allocated.
-    /// - Once this function returns, the nonce is considered CONSUMED,
-    ///   regardless of whether build/broadcast succeeds or fails.
-    /// - Nonce MUST NOT be rolled back under any circumstances.
-    /// - Any retry MUST allocate a NEW nonce.
-    ///
-    /// This matches EVM semantics:
-    /// nonce = count of sent (confirmed OR pending) transactions.
-    ///
-    /// ⚠️ DO NOT:
-    /// - read nonce then +1
-    /// - fallback to chain nonce
-    /// - attempt to "reuse" nonce on failure
-    ///
-    /// Violating any of the above will cause nonce duplication
-    /// under concurrency or restart scenarios.
+    /// Observe an unreserved EVM nonce candidate. Failures and cancellations
+    /// consume nothing; reserve_signed_collect rechecks the counter when signed
+    /// facts commit. Existing reservations are never rolled back or bypassed.
     async fn get_nonce(&self, from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
         info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_worker_v2", "Getting nonce");
         let chain: ChainCode = chain_code.try_into()?;
 
-        // ⚠️ EVM nonce MUST be allocated via DB atomic upsert.
-        // Any read-modify-write logic here is forbidden.
         match chain {
             c if crate::domain::chain::is_evm_chain(c) => {
-                // 对于以太坊类链，使用NonceEngine来分配nonce
-                // ⚠️ INVARIANT:
-                // This method MUST guarantee DB-level atomic CAS for nonce allocation.
-                // Any refactor breaking this invariant will cause nonce duplication.
-
                 let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                let nonce = nonce_engine.allocate_nonce_synced(from_addr, chain_code).await?;
-                info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_worker_v2", "Retrieved nonce using NonceEngine");
+                let nonce =
+                    nonce_engine.observe_ordinary_transfer_nonce(from_addr, chain_code).await?;
                 Ok(nonce as u64)
             }
             _ => {

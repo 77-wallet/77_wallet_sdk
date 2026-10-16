@@ -291,3 +291,12 @@ when writing that report, so err_code alone never releases a potentially sent
 signature. Likewise Broadcast/Recover local/observation failures after a durable
 send claim retain uncertainty. This qualifies future lifecycle behavior; the
 user-confirmed current incident errors remain deterministic failures.
+
+### Collect main build nonce policy (user confirmation, 2026-10-16)
+User requests that a failed collect-main build must not consume an EVM nonce,
+and retries must not skip numbers. Source: direct instruction after Scroll
+C2111021523509907456 used nonce5 on a failed build and nonce6 on retry while
+chain next remained5. Reuse read-only candidate observation and atomic signed
+facts/counter publication already used by fee orders. This authorizes the SDK
+source fix and regression validation, not historical order/counter cleanup,
+real transaction execution, dependency publication or App changes.

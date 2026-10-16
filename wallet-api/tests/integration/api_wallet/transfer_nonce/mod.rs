@@ -1312,3 +1312,60 @@ async fn withdrawal_broadcast_storage_failure_after_send_keeps_nonce_uncertain()
     assert_eq!(scenario.adapter.recorded_nonces(), vec![14]);
     Ok(())
 }
+
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_main_failed_build_retries_same_nonce() -> anyhow::Result<()> {
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.adapter.fail_build(true);
+    assert!(scenario.when_build().await.is_err());
+    scenario.then_no_signed_reservation().await;
+    scenario.adapter.fail_build(false);
+    scenario.when_build().await?;
+    scenario.then_signed_once().await;
+    scenario.when_build().await?;
+    scenario.then_signed_once().await;
+    assert_eq!(scenario.adapter.build_calls(), 2);
+    Ok(())
+}
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_main_cancelled_build_retries_same_nonce() -> anyhow::Result<()> {
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.when_cancel_inflight().await;
+    scenario.then_no_signed_reservation().await;
+    scenario.given_stale_build_slot().await;
+    scenario.when_build().await?;
+    scenario.then_signed_once().await;
+    Ok(())
+}
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_main_timeout_build_retries_same_nonce() -> anyhow::Result<()> {
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.adapter.build_timeout(true);
+    assert!(scenario.when_build().await.is_err());
+    scenario.then_no_signed_reservation().await;
+    scenario.adapter.build_timeout(false);
+    scenario.when_build().await?;
+    scenario.then_signed_once().await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_main_competing_reservation_discards_built_candidate() -> anyhow::Result<()> {
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.when_build_loses_reservation_race().await;
+    Ok(())
+}
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_main_existing_gap_never_allocates_another_nonce() -> anyhow::Result<()> {
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.given_competing_reservation().await;
+    assert!(scenario.when_build().await.is_err());
+    scenario.then_no_raw().await;
+    assert_eq!(scenario.adapter.build_calls(), 0);
+    Ok(())
+}

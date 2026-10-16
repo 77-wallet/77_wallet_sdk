@@ -37,6 +37,21 @@ pub struct FinalizedCollectNonceConflict {
     pub block_number: u64,
 }
 
+/// Built EVM bytes awaiting atomic nonce reservation. Never broadcast before commit.
+pub struct SignedCollectCandidate<'a> {
+    pub trade_no: &'a str,
+    pub from_addr: &'a str,
+    pub chain_code: &'a str,
+    pub tx_hash: &'a str,
+    pub raw_tx: &'a str,
+    pub transaction_fee: &'a str,
+    pub nonce: i64,
+}
+
+#[cfg(test)]
+#[path = "collect_signed_candidate_tests.rs"]
+mod collect_signed_candidate_tests;
+
 pub struct ApiCollectRepo;
 
 impl ApiCollectRepo {
@@ -435,6 +450,82 @@ impl ApiCollectRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_post_confirm_tx_count(pool.write_ref(), trade_no).await
+    }
+
+    /// Save signed facts and reserve the candidate in one SQLite transaction.
+    /// The shared counter write serializes all senders, including legacy allocators.
+    pub async fn reserve_signed_collect(
+        pool: &ApiTransactionDbPool,
+        input: &SignedCollectCandidate<'_>,
+    ) -> Result<u64, crate::Error> {
+        use crate::dao::api_nonce::ApiNonceDao;
+        if !crate::entities::api_withdraw::is_signed_evm_chain(input.chain_code)
+            || input.nonce < 0
+            || input.tx_hash.is_empty()
+            || input.raw_tx.is_empty()
+            || input.from_addr.is_empty()
+            || input.trade_no.is_empty()
+        {
+            return Err(crate::Error::Other("invalid signed EVM collect candidate".into()));
+        }
+        let mut tx =
+            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        let last = ApiNonceDao::upsert_nonce_floor(
+            &mut *tx,
+            input.from_addr,
+            input.chain_code,
+            input.nonce - 1,
+        )
+        .await?;
+        let row = ApiCollectDao::get_api_collect_by_trade_no(&mut *tx, input.trade_no).await?;
+        if row.from_addr != input.from_addr || row.chain_code != input.chain_code {
+            return Err(crate::Error::Other("collect candidate identity conflict".into()));
+        }
+        if row.raw_tx.is_some() {
+            if row.raw_tx.as_deref() == Some(input.raw_tx)
+                && row.tx_hash.as_deref() == Some(input.tx_hash)
+                && row.nonce == input.nonce
+                && row.transaction_fee == input.transaction_fee
+            {
+                return Ok(0);
+            }
+            return Err(crate::Error::Other("collect candidate signed facts conflict".into()));
+        }
+        if last >= input.nonce
+            || row.building_at.is_none()
+            || row.order_ack_sent_at.is_none()
+            || row.is_fact_terminal()
+            || row.transaction_time.is_some()
+            || row.err_code.is_some()
+            || row.tx_hash.is_some()
+            || row.last_broadcast_at.is_some()
+            || row.broadcast_uncertain_since_at.is_some()
+            || row.tx_exec_receipt_uploaded_at.is_some()
+            || row.need_service_fee == Some(true)
+            || (row.ever_needed_service_fee && row.tx_fee_res_ack_sent_at.is_none())
+        {
+            return Err(crate::Error::Other(
+                "collect nonce candidate or lifecycle conflict".into(),
+            ));
+        }
+        let rows = ApiCollectDao::update_after_build(
+            &mut *tx,
+            input.trade_no,
+            input.tx_hash,
+            input.raw_tx,
+            input.transaction_fee,
+            input.nonce,
+        )
+        .await?;
+        if rows != 1 {
+            return Err(crate::Error::Other("collect candidate commit conflict".into()));
+        }
+        let signed = ApiCollectDao::get_api_collect_by_trade_no(&mut *tx, input.trade_no).await?;
+        ApiCollectDao::update_status(&mut *tx, input.trade_no, signed.recompute_status()).await?;
+        ApiNonceDao::upsert_nonce_floor(&mut *tx, input.from_addr, input.chain_code, input.nonce)
+            .await?;
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(rows)
     }
 
     pub async fn update_after_build(

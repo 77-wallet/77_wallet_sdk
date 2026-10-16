@@ -24,3 +24,6 @@ pub(super) use withdraw_broadcast::WithdrawBroadcastScenario;
 
 mod withdraw_build;
 pub(super) use withdraw_build::WithdrawBuildScenario;
+
+mod collect_build;
+pub(super) use collect_build::CollectBuildScenario;

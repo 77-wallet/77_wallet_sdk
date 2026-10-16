@@ -278,3 +278,19 @@ pub async fn scan_collect_resource_receipt_intent_labels_once(
 
     Ok(records.into_iter().map(|_| "UploadResourceTxExecReceipt".to_string()).collect())
 }
+
+/// Runs the real collect build lifecycle with a fake adapter and synthetic key.
+pub async fn build_collect_candidate_for_test(
+    ctx: &'static Context,
+    trade_no: &str,
+) -> Result<(), ServiceError> {
+    let (tx, _) = tokio::sync::mpsc::channel(32);
+    let advancer = Arc::new(ShadowAdvancer::new(ctx, tx, None));
+    let worker = ShadowCollectWorker::new(ctx, Arc::new(AddressLockManager::new()), advancer);
+    let result =
+        worker.build_collect_candidate(trade_no, Some("mock-private-key".to_string().into())).await;
+    if result.is_err() {
+        ApiCollectRepo::clear_building_at(&ctx.api_transaction_pool()?, trade_no).await?;
+    }
+    result
+}

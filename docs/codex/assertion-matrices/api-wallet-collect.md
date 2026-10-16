@@ -1865,3 +1865,13 @@ Core receipt classification is committed at `e2e203dbfa1d5785e522240b91cc73789e4
 SDK pins all seven Core dependencies to that revision. Adoption validation uses
 the fetched fixed revision without a local Core patch; prior local-patch
 regressions remain evidence for the identical implementation.
+
+### Main EVM build nonce reservation (2026-10-16)
+- A failed/timed-out/cancelled build publishes no signed facts and reserves no nonce;
+  retry observes the same chain candidate unless another valid sender consumed it.
+- Signed raw/hash/fee/status and api_nonce commit in one SQLite transaction;
+  competing allocations, stale lifecycle and partial write failures roll back.
+- A duplicate build/restart reuses durable signed facts without reallocation.
+- Existing nonce gaps stop new builds; no automatic rollback or historical repair.
+- Evidence: transfer_nonce::collect_main_* integration cases and
+  collect_signed_candidate component cases (target/collect-main-nonce-fix logs).

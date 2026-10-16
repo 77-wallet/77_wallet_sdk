@@ -342,6 +342,13 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         self.send_nonce(params.nonce).await
     }
 
+    async fn estimate_native_fee_wei(
+        &self,
+        _req: ApiBaseTransferReq,
+    ) -> Result<U256, ServiceError> {
+        Ok(U256::ZERO)
+    }
+
     async fn estimate_fee(
         &self,
         _req: ApiBaseTransferReq,
