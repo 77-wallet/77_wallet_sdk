@@ -46,6 +46,7 @@ pub struct SignedCollectCandidate<'a> {
     pub raw_tx: &'a str,
     pub transaction_fee: &'a str,
     pub nonce: i64,
+    pub chain_next: i64,
 }
 
 #[cfg(test)]
@@ -461,6 +462,8 @@ impl ApiCollectRepo {
         use crate::dao::api_nonce::ApiNonceDao;
         if !crate::entities::api_withdraw::is_signed_evm_chain(input.chain_code)
             || input.nonce < 0
+            || input.chain_next < 0
+            || input.nonce < input.chain_next
             || input.tx_hash.is_empty()
             || input.raw_tx.is_empty()
             || input.from_addr.is_empty()
@@ -470,11 +473,11 @@ impl ApiCollectRepo {
         }
         let mut tx =
             pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
-        let last = ApiNonceDao::upsert_nonce_floor(
+        ApiNonceDao::upsert_nonce_floor(
             &mut *tx,
             input.from_addr,
             input.chain_code,
-            input.nonce - 1,
+            input.chain_next - 1,
         )
         .await?;
         let row = ApiCollectDao::get_api_collect_by_trade_no(&mut *tx, input.trade_no).await?;
@@ -491,7 +494,14 @@ impl ApiCollectRepo {
             }
             return Err(crate::Error::Other("collect candidate signed facts conflict".into()));
         }
-        if last >= input.nonce
+        let decision = ApiNonceDao::signed_nonce_decision(
+            &mut tx,
+            input.from_addr,
+            input.chain_code,
+            input.chain_next,
+        )
+        .await?;
+        if decision != crate::entities::api_nonce_claim::WithdrawNonceDecision::Ready(input.nonce)
             || row.building_at.is_none()
             || row.order_ack_sent_at.is_none()
             || row.is_fact_terminal()

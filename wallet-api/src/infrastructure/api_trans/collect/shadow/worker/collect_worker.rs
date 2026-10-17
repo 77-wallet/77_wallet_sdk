@@ -2800,7 +2800,7 @@ impl ShadowCollectWorker {
         }
         // Observation performs RPC outside the address lock and reserves nothing.
         // The shared counter is rechecked when signed facts commit in phase 3.
-        let nonce = self.get_nonce(&req.from_addr, &req.chain_code).await?;
+        let (nonce, chain_next) = self.get_nonce(&req.from_addr, &req.chain_code).await?;
         info!(trade_no = %trade_no, nonce, source = "shadow_worker_v2", "Observed nonce candidate");
 
         // ====== phase 2: 锁外 · 网络执行 ======
@@ -2916,6 +2916,7 @@ impl ShadowCollectWorker {
                         raw_tx: &raw_tx_str,
                         transaction_fee: &fee,
                         nonce: nonce as i64,
+                        chain_next,
                     },
                 )
                 .await?
@@ -3938,21 +3939,23 @@ impl ShadowCollectWorker {
 
     /// Observe an unreserved EVM nonce candidate. Failures and cancellations
     /// consume nothing; reserve_signed_collect rechecks the counter when signed
-    /// facts commit. Existing reservations are never rolled back or bypassed.
-    async fn get_nonce(&self, from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
+    /// facts commit. Persisted signed slots are retained when selecting unsigned holes.
+    async fn get_nonce(
+        &self,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<(u64, i64), ServiceError> {
         info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_worker_v2", "Getting nonce");
         let chain: ChainCode = chain_code.try_into()?;
 
         match chain {
             c if crate::domain::chain::is_evm_chain(c) => {
                 let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                let nonce =
-                    nonce_engine.observe_ordinary_transfer_nonce(from_addr, chain_code).await?;
-                Ok(nonce as u64)
+                nonce_engine.observe_signed_nonce_candidate(from_addr, chain_code).await
             }
             _ => {
                 // 非 EVM 链不参与 nonce 分配
-                Ok(0)
+                Ok((0, 0))
             }
         }
     }

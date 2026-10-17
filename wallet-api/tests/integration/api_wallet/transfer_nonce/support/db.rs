@@ -180,3 +180,53 @@ pub(crate) async fn allow_signed_persistence(
     }
     Ok(())
 }
+
+pub(crate) async fn seed_signed_collect_six(
+    pool: &ApiTransactionDbPool,
+    address: &str,
+    chain: &str,
+) -> anyhow::Result<String> {
+    use wallet_database::{
+        entities::api_collect::ApiCollectStatus,
+        repositories::api_wallet::collect::{ApiCollectRepo, SignedCollectCandidate},
+    };
+    let trade = next_tag("historical-six");
+    ApiCollectRepo::upsert_api_collect(
+        pool,
+        "uid",
+        "old",
+        address,
+        "receiver",
+        "1",
+        "v",
+        chain,
+        None,
+        "ETH",
+        &trade,
+        2,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await?;
+    ApiCollectRepo::set_order_ack_sent(pool, &trade).await?;
+    ApiCollectRepo::update_building_at(pool, &trade).await?;
+    ApiCollectRepo::reserve_signed_collect(
+        pool,
+        &SignedCollectCandidate {
+            trade_no: &trade,
+            from_addr: address,
+            chain_code: chain,
+            nonce: 6,
+            chain_next: 6,
+            tx_hash: "saved-hash-six",
+            raw_tx: "saved-raw-six",
+            transaction_fee: "0.1",
+        },
+    )
+    .await?;
+    sqlx::query("UPDATE api_collect SET last_broadcast_at=CURRENT_TIMESTAMP WHERE trade_no=?")
+        .bind(&trade)
+        .execute(pool.write_ref())
+        .await?;
+    Ok(trade)
+}

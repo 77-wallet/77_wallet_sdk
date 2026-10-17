@@ -1875,3 +1875,16 @@ regressions remain evidence for the identical implementation.
 - Existing nonce gaps stop new builds; no automatic rollback or historical repair.
 - Evidence: transfer_nonce::collect_main_* integration cases and
   collect_signed_candidate component cases (target/collect-main-nonce-fix logs).
+
+## Shared unsigned nonce frontier (2026-10-18)
+Build observation uses the persisted collect/fee/withdraw ownership ledger. An
+unsigned hole before a retained live signed order can be selected; a bare counter
+reservation and terminal signed slots remain blocked. Candidate commit rechecks
+the same policy under the SQLite writer transaction with the original chain
+frontier. Raw/hash/nonce/status publication is atomic; the high-water counter is
+never rewound. Filling a hole does not cancel higher signed transactions.
+Evidence: `shared_nonce_recovery_*` database component cases,
+`*_new_order_uses_unsigned_five_with_saved_six` integration cases, and existing
+failed/cancelled/timed-out build, rollback, race and signed restart cases. All
+chain interactions in regression tests use recording adapters, never live signing
+or broadcasting.

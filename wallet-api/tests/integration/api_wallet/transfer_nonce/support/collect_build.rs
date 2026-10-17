@@ -90,6 +90,60 @@ impl CollectBuildScenario {
         let guard = install_adapter_for_chain(&adapter, "scroll");
         Ok(Self { ctx: env.manager.ctx(), pool, trade, from, adapter, _guard: guard })
     }
+    pub async fn given_saved_six(&self) -> anyhow::Result<()> {
+        use wallet_database::repositories::api_wallet::collect::SignedCollectCandidate;
+        let row = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, &self.trade).await?;
+        ApiCollectRepo::upsert_api_collect(
+            &self.pool,
+            &row.uid,
+            "old-collect",
+            &self.from,
+            "receiver",
+            "1",
+            "v",
+            "scroll",
+            None,
+            "ETH",
+            "saved-six",
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+        ApiCollectRepo::set_order_ack_sent(&self.pool, "saved-six").await?;
+        ApiCollectRepo::update_building_at(&self.pool, "saved-six").await?;
+        ApiCollectRepo::reserve_signed_collect(
+            &self.pool,
+            &SignedCollectCandidate {
+                trade_no: "saved-six",
+                from_addr: &self.from,
+                chain_code: "scroll",
+                nonce: 6,
+                chain_next: 6,
+                tx_hash: "saved-hash-six",
+                raw_tx: "saved-raw-six",
+                transaction_fee: "0.1",
+            },
+        )
+        .await?;
+        sqlx::query(
+            "UPDATE api_collect SET last_broadcast_at=CURRENT_TIMESTAMP WHERE trade_no='saved-six'",
+        )
+        .execute(self.pool.write_ref())
+        .await?;
+        Ok(())
+    }
+    pub async fn then_hole_filled_and_six_preserved(&self) -> anyhow::Result<()> {
+        let five = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, &self.trade).await?;
+        assert_eq!(five.nonce, 5);
+        assert!(five.raw_tx.is_some());
+        let six = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, "saved-six").await?;
+        assert_eq!(six.nonce, 6);
+        assert_eq!(six.raw_tx.as_deref(), Some("saved-raw-six"));
+        assert!(six.last_broadcast_at.is_some());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 6);
+        Ok(())
+    }
     pub async fn when_build(&self) -> anyhow::Result<()> {
         wallet_api::testkit::collect::build_collect_candidate_for_test(self.ctx, &self.trade)
             .await?;

@@ -3,6 +3,30 @@ use sqlx::{Executor, Sqlite};
 pub(crate) struct ApiNonceDao;
 
 impl ApiNonceDao {
+    pub async fn signed_nonce_decision(
+        conn: &mut sqlx::SqliteConnection,
+        address: &str,
+        chain: &str,
+        chain_next: i64,
+    ) -> Result<crate::entities::api_nonce_claim::WithdrawNonceDecision, crate::Error> {
+        let counter: Option<i64> = sqlx::query_scalar(
+            "SELECT MAX(nonce) FROM api_nonce WHERE lower(from_addr)=lower(?) AND chain_code=?",
+        )
+        .bind(address)
+        .bind(chain)
+        .fetch_one(&mut *conn)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        let claims = Self::nonce_claims(&mut *conn, address, chain, chain_next, i64::MAX).await?;
+        let last = claims
+            .iter()
+            .map(|c| c.nonce)
+            .max()
+            .unwrap_or(chain_next - 1)
+            .max(counter.unwrap_or(chain_next - 1));
+        Ok(crate::entities::api_nonce_claim::withdraw_nonce_decision(chain_next, last, &claims))
+    }
+
     pub async fn nonce_claims<'c, E>(
         executor: E,
         address: &str,
@@ -21,21 +45,27 @@ impl ApiNonceDao {
             (transaction_time IS NOT NULL OR chain_success_at IS NOT NULL OR chain_failed_at IS NOT NULL) AS executed,
             (err_code IS NOT NULL OR finished_at IS NOT NULL) AS terminal
           FROM api_withdraws WHERE lower(from_addr)=lower($1) AND chain_code=$2 AND nonce BETWEEN $3 AND $4
-            AND (raw_tx IS NOT NULL OR tx_hash IS NOT NULL OR last_broadcast_at IS NOT NULL OR transaction_time IS NOT NULL)
+            AND (raw_tx IS NOT NULL OR tx_hash IS NOT NULL OR last_broadcast_at IS NOT NULL OR transaction_time IS NOT NULL
+             OR broadcast_uncertain_since_at IS NOT NULL OR broadcast_uncertain_retry_count>0
+             OR broadcast_uncertain_rebroadcast_count>0 OR broadcast_uncertain_last_checked_at IS NOT NULL)
           UNION ALL
           SELECT 'collect',nonce,raw_tx,tx_hash,err_code,err_msg,NULL,last_broadcast_at,
             (broadcast_uncertain_since_at IS NOT NULL OR broadcast_uncertain_retry_count>0
              OR broadcast_uncertain_rebroadcast_count>0 OR broadcast_uncertain_last_checked_at IS NOT NULL),
             transaction_time IS NOT NULL,(err_code IS NOT NULL OR finished_at IS NOT NULL)
           FROM api_collect WHERE lower(from_addr)=lower($1) AND chain_code=$2 AND nonce BETWEEN $3 AND $4
-            AND (raw_tx IS NOT NULL OR tx_hash IS NOT NULL OR last_broadcast_at IS NOT NULL OR transaction_time IS NOT NULL)
+            AND (raw_tx IS NOT NULL OR tx_hash IS NOT NULL OR last_broadcast_at IS NOT NULL OR transaction_time IS NOT NULL
+             OR broadcast_uncertain_since_at IS NOT NULL OR broadcast_uncertain_retry_count>0
+             OR broadcast_uncertain_rebroadcast_count>0 OR broadcast_uncertain_last_checked_at IS NOT NULL)
           UNION ALL
           SELECT 'fee',nonce,raw_tx,tx_hash,err_code,err_msg,NULL,last_broadcast_at,
             (broadcast_uncertain_since_at IS NOT NULL OR broadcast_uncertain_retry_count>0
              OR broadcast_uncertain_rebroadcast_count>0 OR broadcast_uncertain_last_checked_at IS NOT NULL),
             transaction_time IS NOT NULL,(err_code IS NOT NULL OR finished_at IS NOT NULL)
           FROM api_fee WHERE lower(from_addr)=lower($1) AND chain_code=$2 AND nonce BETWEEN $3 AND $4
-            AND (raw_tx IS NOT NULL OR tx_hash IS NOT NULL OR last_broadcast_at IS NOT NULL OR transaction_time IS NOT NULL)
+            AND (raw_tx IS NOT NULL OR tx_hash IS NOT NULL OR last_broadcast_at IS NOT NULL OR transaction_time IS NOT NULL
+             OR broadcast_uncertain_since_at IS NOT NULL OR broadcast_uncertain_retry_count>0
+             OR broadcast_uncertain_rebroadcast_count>0 OR broadcast_uncertain_last_checked_at IS NOT NULL)
         "#;
         sqlx::query_as(sql)
             .bind(address)

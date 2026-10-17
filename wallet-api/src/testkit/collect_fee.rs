@@ -231,6 +231,7 @@ pub async fn allocate_collect_fee_nonce(
     ShadowFeeWorker::new(ctx, Arc::new(AddressLockManager::new()), scanner)
         .get_nonce(address, chain)
         .await
+        .map(|(nonce, _)| nonce)
 }
 
 /// Testkit owns the private worker/scanner; integration tests use this boundary.

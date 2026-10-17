@@ -350,3 +350,38 @@ async fn withdrawal_nonce_manual_review_error_keeps_uncertainty_and_blocks_reuse
         0
     );
 }
+
+#[tokio::test]
+async fn shared_nonce_recovery_withdraw_fills_unsigned_hole_preserving_high_water() {
+    use crate::entities::api_nonce_claim::WithdrawNonceDecision;
+    let pool = setup_api_transaction_pool("shared_nonce_withdraw_hole").await;
+    fixture(&pool, "saved-six").await;
+    let mut old = signed("saved-six");
+    old.nonce = 6;
+    old.chain_next = 6;
+    ApiWithdrawRepo::reserve_signed_withdraw(&pool, &old).await.unwrap();
+    fixture(&pool, "new-five").await;
+    let mut five = signed("new-five");
+    five.nonce = 5;
+    five.chain_next = 5;
+    five.tx_hash = "hash-five";
+    five.raw_tx = "raw-five";
+    assert_eq!(
+        ApiWithdrawRepo::observe_withdraw_nonce(&pool, "sender", "arbitrum", 5).await.unwrap(),
+        WithdrawNonceDecision::Ready(5)
+    );
+    assert_eq!(ApiWithdrawRepo::reserve_signed_withdraw(&pool, &five).await.unwrap(), 1);
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "arbitrum").await.unwrap(), 6);
+    assert_eq!(
+        ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, "saved-six", ApiTradeType::Withdraw)
+            .await
+            .unwrap()
+            .raw_tx
+            .as_deref(),
+        Some("signed-16")
+    );
+    assert_eq!(
+        ApiWithdrawRepo::observe_withdraw_nonce(&pool, "sender", "arbitrum", 5).await.unwrap(),
+        WithdrawNonceDecision::Ready(7)
+    );
+}

@@ -363,6 +363,49 @@ impl NonceEngine {
         Ok(next)
     }
 
+    /// Shared collect/fee candidate, retaining the observed chain frontier.
+    pub(crate) async fn observe_signed_nonce_candidate(
+        &self,
+        address: &str,
+        chain: &str,
+    ) -> Result<(u64, i64), ServiceError> {
+        if self.is_frozen(address, chain) {
+            return Err(ServiceError::Parameter(format!(
+                "Address {address} on chain {chain} is frozen"
+            )));
+        }
+        let chain_next = ApiTransDomain::nonce(self.ctx, address, chain).await?;
+        let chain_next = i64::try_from(chain_next).map_err(|_| {
+            ServiceError::Parameter("chain nonce exceeds supported allocation range".into())
+        })?;
+        let decision =
+            wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::observe_signed_nonce(
+                &self.ctx.api_transaction_pool()?,
+                address,
+                chain,
+                chain_next,
+            )
+            .await?;
+        match decision {
+            wallet_database::entities::api_nonce_claim::WithdrawNonceDecision::Ready(nonce) => {
+                let nonce = i32::try_from(nonce).map_err(|_| {
+                    ServiceError::Parameter("chain nonce exceeds supported allocation range".into())
+                })?;
+                info!(
+                    address,
+                    chain,
+                    chain_next,
+                    nonce,
+                    "Signed nonce candidate observed from durable ownership"
+                );
+                Ok((nonce as u64, chain_next))
+            }
+            _ => Err(ServiceError::Parameter(format!(
+                "nonce_gap_requires_recovery: address={address} chain={chain} chain_next={chain_next}"
+            ))),
+        }
+    }
+
     async fn allocate_nonce_after_observation(
         &self,
         address: &str,

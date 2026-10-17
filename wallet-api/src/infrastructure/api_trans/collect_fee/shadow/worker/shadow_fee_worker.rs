@@ -641,7 +641,7 @@ impl ShadowFeeWorker {
 
         // Observing before signing is read-only. A build failure or cancellation
         // cannot create a nonce reservation, and occupied slots do not query RPC.
-        let nonce = self.get_nonce(&nonce_address, &nonce_chain).await?;
+        let (nonce, chain_next) = self.get_nonce(&nonce_address, &nonce_chain).await?;
         info!(trade_no = %trade_no, nonce, source = "shadow_fee_worker", "Observed nonce candidate");
 
         // ====== phase 2: 锁外 · 网络执行 ======
@@ -708,6 +708,7 @@ impl ShadowFeeWorker {
                         raw_tx: &raw_tx_str,
                         transaction_fee: &fee_str,
                         nonce: nonce as i64,
+                        chain_next,
                     },
                 )
                 .await?
@@ -966,7 +967,7 @@ impl ShadowFeeWorker {
         &self,
         from_addr: &str,
         chain_code: &str,
-    ) -> Result<u64, ServiceError> {
+    ) -> Result<(u64, i64), ServiceError> {
         info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_fee_worker", "Getting nonce");
         let chain: ChainCode = chain_code.try_into()?;
 
@@ -980,14 +981,11 @@ impl ShadowFeeWorker {
                 use crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx;
 
                 let nonce_engine = get_nonce_engine_with_ctx(self.ctx)?;
-                let nonce =
-                    nonce_engine.observe_ordinary_transfer_nonce(from_addr, chain_code).await?;
-                info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_fee_worker", "Observed nonce candidate using NonceEngine");
-                Ok(nonce as u64)
+                nonce_engine.observe_signed_nonce_candidate(from_addr, chain_code).await
             }
             _ => {
                 // 非 EVM 链不参与 nonce 分配
-                Ok(0)
+                Ok((0, 0))
             }
         }
     }

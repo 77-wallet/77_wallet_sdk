@@ -77,18 +77,7 @@ impl ApiWithdrawRepo {
         chain: &str,
         chain_next: i64,
     ) -> Result<crate::entities::api_nonce_claim::WithdrawNonceDecision, crate::Error> {
-        if chain_next < 0 {
-            return Ok(crate::entities::api_nonce_claim::WithdrawNonceDecision::Wait);
-        }
-        let mut tx = pool.read_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
-        let last = ApiNonceDao::get_api_nonce_optional(&mut *tx, address, chain)
-            .await?
-            .unwrap_or(chain_next - 1);
-        let claims = ApiNonceDao::nonce_claims(&mut *tx, address, chain, chain_next, last).await?;
-        let decision =
-            crate::entities::api_nonce_claim::withdraw_nonce_decision(chain_next, last, &claims);
-        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(decision)
+        super::nonce::ApiNonceRepo::observe_signed_nonce(pool, address, chain, chain_next).await
     }
 
     pub async fn fail_on_terminal_nonce_gap(
@@ -220,37 +209,21 @@ impl ApiWithdrawRepo {
             tx.rollback().await.map_err(|e| crate::Error::Database(e.into()))?;
             return Ok(0);
         }
-        let claims = ApiNonceDao::nonce_claims(
-            &mut *tx,
+        if ApiNonceDao::signed_nonce_decision(
+            &mut tx,
             input.from_addr,
             input.chain_code,
             input.chain_next,
-            last,
         )
-        .await?;
-        if crate::entities::api_nonce_claim::withdraw_nonce_decision(
-            input.chain_next,
-            last,
-            &claims,
-        ) != crate::entities::api_nonce_claim::WithdrawNonceDecision::Ready(input.nonce)
+        .await?
+            != crate::entities::api_nonce_claim::WithdrawNonceDecision::Ready(input.nonce)
         {
             return Err(crate::Error::NonceCandidateConflict {
                 candidate: input.nonce,
                 local_last: last,
             });
         }
-        // This is a transaction-aware tail release, never a blind RPC counter reset.
-        // Every vacated slot was checked above; competing allocators hold SQLite's
-        // writer lock and cannot enter until the signed replacement is committed.
-        if input.nonce <= last {
-            ApiNonceDao::upsert_nonce_exact(
-                &mut *tx,
-                input.from_addr,
-                input.chain_code,
-                input.nonce - 1,
-            )
-            .await?;
-        }
+        // Preserve the high-water mark and all historical signed ownership.
         let rows = ApiWithdrawDao::update_after_build(
             &mut *tx,
             input.trade_no,

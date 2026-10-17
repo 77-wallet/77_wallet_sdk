@@ -300,3 +300,14 @@ chain next remained5. Reuse read-only candidate observation and atomic signed
 facts/counter publication already used by fee orders. This authorizes the SDK
 source fix and regression validation, not historical order/counter cleanup,
 real transaction execution, dependency publication or App changes.
+
+### Unsigned nonce holes and historical test recovery (2026-10-18)
+Source: user confirmation in this chat. New collect/fee/withdraw orders must use
+the first available unsigned slot from the observed chain frontier; a failed
+build must not reserve it. Persisted signed/broadcast higher orders are retained,
+not cancelled or declared invalid. For the specific historical Scroll test
+incident (missing5, saved6), user explicitly accepts that filling5 can release6.
+This is not a statement that signed transactions expire or that failed local
+orders are revoked. Terminal signed or unknown reservations remain guarded.
+No authorization to sign/broadcast real transactions, mutate runtime data,
+commit or publish is implied.

@@ -26,6 +26,7 @@ fn candidate() -> SignedFeeCandidate<'static> {
         raw_tx: "raw",
         transaction_fee: "0.1",
         nonce: 6,
+        chain_next: 6,
     }
 }
 

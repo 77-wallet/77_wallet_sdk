@@ -3,6 +3,23 @@ use crate::{ApiTransactionDbPool, dao::api_nonce::ApiNonceDao};
 pub struct ApiNonceRepo;
 
 impl ApiNonceRepo {
+    /// Read-only snapshot of all three durable signed-intent flows.
+    pub async fn observe_signed_nonce(
+        pool: &ApiTransactionDbPool,
+        address: &str,
+        chain: &str,
+        chain_next: i64,
+    ) -> Result<crate::entities::api_nonce_claim::WithdrawNonceDecision, crate::Error> {
+        if chain_next < 0 {
+            return Ok(crate::entities::api_nonce_claim::WithdrawNonceDecision::Wait);
+        }
+        let mut tx = pool.read_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        let decision =
+            ApiNonceDao::signed_nonce_decision(&mut tx, address, chain, chain_next).await?;
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(decision)
+    }
+
     pub async fn get_api_nonce(
         pool: &ApiTransactionDbPool,
         from_addr: &str,

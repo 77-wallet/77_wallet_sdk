@@ -58,6 +58,24 @@ pub fn withdraw_nonce_decision(
         return Wait;
     };
     if slots.len() as i64 != required {
+        // A counter without corresponding signed facts is an unknown reservation,
+        // not evidence that it may be reused. Keep legacy allocator guards.
+        if !slots.contains_key(&local_last) {
+            return Wait;
+        }
+        let mut next = chain_next;
+        for (&nonce, &reusable) in &slots {
+            if nonce > next {
+                return Ready(next);
+            }
+            if reusable {
+                return TerminalGap(nonce);
+            }
+            next = match next.checked_add(1) {
+                Some(n) => n,
+                None => return Wait,
+            };
+        }
         return Wait;
     }
     let highest_live = slots.iter().rev().find_map(|(n, reusable)| (!reusable).then_some(*n));
@@ -68,4 +86,67 @@ pub fn withdraw_nonce_decision(
         return TerminalGap(*nonce);
     }
     highest_live.checked_add(1).map(Ready).unwrap_or(Wait)
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+    #[test]
+    fn shared_nonce_recovery_selects_unsigned_five_before_saved_six() {
+        let saved = NonceClaim {
+            kind: "collect".into(),
+            nonce: 6,
+            raw_tx: Some("saved-six".into()),
+            tx_hash: Some("hash-six".into()),
+            err_code: None,
+            err_msg: None,
+            failure_stage: None,
+            last_broadcast_at: Some("sent".into()),
+            uncertain: true,
+            executed: false,
+            terminal: false,
+        };
+        assert_eq!(withdraw_nonce_decision(5, 6, &[saved]), WithdrawNonceDecision::Ready(5));
+    }
+}
+
+#[cfg(test)]
+mod recovery_guards {
+    use super::*;
+    fn claim(nonce: i64) -> NonceClaim {
+        NonceClaim {
+            kind: "fee".into(),
+            nonce,
+            raw_tx: Some("bytes".into()),
+            tx_hash: Some("hash".into()),
+            err_code: None,
+            err_msg: None,
+            failure_stage: None,
+            last_broadcast_at: None,
+            uncertain: false,
+            executed: false,
+            terminal: false,
+        }
+    }
+    #[test]
+    fn shared_nonce_recovery_unknown_counter_is_not_unsigned_evidence() {
+        assert_eq!(withdraw_nonce_decision(5, 6, &[]), WithdrawNonceDecision::Wait);
+        assert_eq!(withdraw_nonce_decision(5, 7, &[claim(6)]), WithdrawNonceDecision::Wait);
+    }
+    #[test]
+    fn shared_nonce_recovery_keeps_signed_five_and_uncertain_six_owned() {
+        let mut six = claim(6);
+        six.uncertain = true;
+        assert_eq!(
+            withdraw_nonce_decision(5, 6, &[claim(5), six]),
+            WithdrawNonceDecision::Ready(7)
+        );
+    }
+    #[test]
+    fn shared_nonce_recovery_does_not_reuse_signed_terminal_slot() {
+        let mut six = claim(6);
+        six.terminal = true;
+        six.err_code = Some(6008);
+        assert_eq!(withdraw_nonce_decision(5, 6, &[six]), WithdrawNonceDecision::Wait);
+    }
 }

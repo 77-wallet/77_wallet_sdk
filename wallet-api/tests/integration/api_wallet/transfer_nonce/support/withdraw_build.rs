@@ -77,6 +77,25 @@ impl WithdrawBuildScenario {
         assert_eq!(self.adapter.nonce_queries(), 0);
         assert_eq!(self.adapter.build_calls(), 0);
     }
+    pub async fn given_saved_six(&self) -> anyhow::Result<String> {
+        self.adapter.set_nonce_response(Some(5));
+        db::seed_signed_collect_six(&self.pool, &self.from, "bnb").await
+    }
+    pub async fn then_filled_five_with_saved_six(&self, old_trade: &str) -> anyhow::Result<()> {
+        let row = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &self.pool,
+            &self.trade,
+            ApiTradeType::Withdraw,
+        )
+        .await?;
+        assert_eq!(row.nonce, 5);
+        assert!(row.raw_tx.is_some());
+        let old=wallet_database::repositories::api_wallet::collect::ApiCollectRepo::get_api_collect_by_trade_no(&self.pool,old_trade).await?;
+        assert_eq!(old.raw_tx.as_deref(), Some("saved-raw-six"));
+        assert!(old.last_broadcast_at.is_some());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "bnb").await?, 6);
+        Ok(())
+    }
     pub async fn when_build(&self) -> anyhow::Result<()> {
         wallet_api::testkit::withdraw::build_withdraw_via_worker(self.ctx, &self.trade).await?;
         Ok(())

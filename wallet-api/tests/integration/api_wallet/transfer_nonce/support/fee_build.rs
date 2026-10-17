@@ -39,6 +39,20 @@ impl FeeBuildScenario {
         let worker = FeeBuildTestWorker::new(env.manager.ctx());
         Ok(Self { trade, address, pool, adapter, _guard: guard, worker })
     }
+    pub async fn given_saved_six(&self) -> anyhow::Result<String> {
+        self.adapter.set_nonce_response(Some(5));
+        db::seed_signed_collect_six(&self.pool, &self.address, "arbitrum").await
+    }
+    pub async fn then_filled_five_with_saved_six(&self, old_trade: &str) -> anyhow::Result<()> {
+        let row = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, &self.trade).await?;
+        assert_eq!(row.nonce, 5);
+        assert!(row.raw_tx.is_some());
+        let old=wallet_database::repositories::api_wallet::collect::ApiCollectRepo::get_api_collect_by_trade_no(&self.pool,old_trade).await?;
+        assert_eq!(old.raw_tx.as_deref(), Some("saved-raw-six"));
+        assert!(old.last_broadcast_at.is_some());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.address, "arbitrum").await?, 6);
+        Ok(())
+    }
     pub async fn when_build(&self) -> Result<(), ServiceError> {
         self.worker.build(&self.trade).await
     }

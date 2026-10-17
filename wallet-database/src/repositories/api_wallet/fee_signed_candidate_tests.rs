@@ -24,6 +24,7 @@ fn candidate(trade: &str) -> SignedFeeCandidate<'_> {
         raw_tx: "raw",
         transaction_fee: "0.1",
         nonce: 6,
+        chain_next: 6,
     }
 }
 
@@ -110,4 +111,25 @@ async fn fee_signed_candidate_result_ack_terminal_rolls_back_nonce() {
     assert!(
         ApiNonceRepo::get_api_nonce_optional(&pool, "sender", "arbitrum").await.unwrap().is_none()
     );
+}
+
+#[tokio::test]
+async fn shared_nonce_recovery_fee_fills_unsigned_hole_preserving_signed_six() {
+    let pool = setup("shared_nonce_fee_hole", "saved-six").await;
+    ApiFeeRepo::reserve_signed_fee(&pool, &candidate("saved-six")).await.unwrap();
+    ApiFeeRepo::upsert_api_fee(
+        &pool, "uid", "fee", "sender", "receiver", "1", "v", "arbitrum", None, "ETH", "new-five", 0,
+    )
+    .await
+    .unwrap();
+    ApiFeeRepo::set_tx_ack_sent(&pool, "new-five").await.unwrap();
+    ApiFeeRepo::update_building_at(&pool, "new-five").await.unwrap();
+    let mut five = candidate("new-five");
+    five.nonce = 5;
+    five.chain_next = 5;
+    five.tx_hash = "hash-five";
+    five.raw_tx = "raw-five";
+    assert_eq!(ApiFeeRepo::reserve_signed_fee(&pool, &five).await.unwrap(), 1);
+    assert_eq!(ApiFeeRepo::get_api_fee_by_trade_no(&pool, "saved-six").await.unwrap().nonce, 6);
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "arbitrum").await.unwrap(), 6);
 }

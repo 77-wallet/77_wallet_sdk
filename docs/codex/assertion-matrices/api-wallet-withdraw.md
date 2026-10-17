@@ -805,3 +805,16 @@ Core receipt classification is committed at `e2e203dbfa1d5785e522240b91cc73789e4
 SDK pins all seven Core dependencies to that revision. Adoption validation uses
 the fetched fixed revision without a local Core patch; prior local-patch
 regressions remain evidence for the identical implementation.
+
+## Shared unsigned nonce frontier (2026-10-18)
+Build observation uses the persisted collect/fee/withdraw ownership ledger. An
+unsigned hole before a retained live signed order can be selected; a bare counter
+reservation and terminal signed slots remain blocked. Candidate commit rechecks
+the same policy under the SQLite writer transaction with the original chain
+frontier. Raw/hash/nonce/status publication is atomic; the high-water counter is
+never rewound. Filling a hole does not cancel higher signed transactions.
+Evidence: `shared_nonce_recovery_*` database component cases,
+`*_new_order_uses_unsigned_five_with_saved_six` integration cases, and existing
+failed/cancelled/timed-out build, rollback, race and signed restart cases. All
+chain interactions in regression tests use recording adapters, never live signing
+or broadcasting.

@@ -1369,3 +1369,48 @@ async fn collect_main_existing_gap_never_allocates_another_nonce() -> anyhow::Re
     assert_eq!(scenario.adapter.build_calls(), 0);
     Ok(())
 }
+
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_main_new_order_uses_unsigned_five_with_saved_six() -> anyhow::Result<()> {
+    // Given an old signed/broadcast6 and a different, unsigned new order.
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.given_saved_six().await?;
+    // When the new order builds through the real worker with a recording adapter.
+    scenario.when_build().await?;
+    // Then5 is committed,6 is retained and duplicate execution cannot rebuild5.
+    scenario.then_hole_filled_and_six_preserved().await?;
+    scenario.when_build().await?;
+    assert_eq!(scenario.adapter.build_calls(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn fee_new_order_uses_unsigned_five_with_saved_six() -> anyhow::Result<()> {
+    // Given an old signed collect6 on the same sender and an unsigned new order.
+    let scenario = support::FeeBuildScenario::given().await?;
+    let old = scenario.given_saved_six().await?;
+    // When the real worker builds with a recording adapter.
+    scenario.when_build().await?;
+    // Then the new order owns5, the old6 remains, and duplicate work builds once.
+    scenario.then_filled_five_with_saved_six(&old).await?;
+    scenario.when_build().await?;
+    assert_eq!(scenario.adapter.build_calls(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn withdraw_new_order_uses_unsigned_five_with_saved_six() -> anyhow::Result<()> {
+    // Given an old signed collect6 on the same sender and an unsigned new order.
+    let scenario = support::WithdrawBuildScenario::given().await?;
+    let old = scenario.given_saved_six().await?;
+    // When the real worker builds with a recording adapter.
+    scenario.when_build().await?;
+    // Then the new order owns5, the old6 remains, and duplicate work builds once.
+    scenario.then_filled_five_with_saved_six(&old).await?;
+    scenario.when_build().await?;
+    assert_eq!(scenario.adapter.build_calls(), 1);
+    Ok(())
+}
