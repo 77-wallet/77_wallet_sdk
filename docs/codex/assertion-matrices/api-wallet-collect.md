@@ -1888,3 +1888,14 @@ Evidence: `shared_nonce_recovery_*` database component cases,
 failed/cancelled/timed-out build, rollback, race and signed restart cases. All
 chain interactions in regression tests use recording adapters, never live signing
 or broadcasting.
+
+## Verified unsigned nonce gap report (2026-10-18)
+- Missing receipt after existing uncertainty timeout plus chain next below order
+  nonce: atomically verify shared signed claims and fail only if an unsigned
+  hole remains. Existing normal queued lower signed orders prevent failure.
+- Preserve raw/hash/nonce/counter; failure receipt eligible, no recovery or
+  broadcast retries, idempotent report fact. Confirmed/RPC-uncertain untouched.
+- Shared allocator may fill earlier unsigned hole but cannot reuse or advance
+  past the reported signed slot until chain frontier consumes it.
+- Evidence: collect_nonce_gap* database tests and collect_recover_nonce_gap*
+  mock integration; no live transaction or backend deployment verification.

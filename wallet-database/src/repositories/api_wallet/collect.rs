@@ -56,6 +56,68 @@ mod collect_signed_candidate_tests;
 pub struct ApiCollectRepo;
 
 impl ApiCollectRepo {
+    /// Report an unsigned nonce hole without cancelling or releasing signed bytes.
+    /// Recheck all shared nonce owners under the SQLite writer before failure.
+    pub async fn fail_verified_nonce_gap(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        chain_next: i64,
+        expected_nonce: i64,
+    ) -> Result<u64, crate::Error> {
+        use crate::{
+            dao::api_nonce::ApiNonceDao,
+            entities::api_nonce_claim::{COLLECT_NONCE_GAP_REPORTED, WithdrawNonceDecision},
+        };
+        if chain_next < 0 || expected_nonce <= chain_next {
+            return Ok(0);
+        }
+        let mut tx =
+            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        // Acquire the writer before reading candidate and ownership facts.
+        sqlx::query("UPDATE api_collect SET nonce=nonce WHERE trade_no=?")
+            .bind(trade_no)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        let row = ApiCollectDao::get_api_collect_by_trade_no(&mut *tx, trade_no).await?;
+        if !crate::entities::api_withdraw::is_signed_evm_chain(&row.chain_code)
+            || row.nonce as i64 != expected_nonce
+            || row.err_code.is_some()
+            || row.finished_at.is_some()
+            || row.transaction_time.is_some()
+            || row.raw_tx.is_none()
+            || row.tx_hash.is_none()
+        {
+            return Ok(0);
+        }
+        let decision = ApiNonceDao::signed_nonce_decision(
+            &mut tx,
+            &row.from_addr,
+            &row.chain_code,
+            chain_next,
+        )
+        .await?;
+        let WithdrawNonceDecision::Ready(missing) = decision else {
+            return Ok(0);
+        };
+        if missing >= expected_nonce {
+            return Ok(0);
+        }
+        let message = format!(
+            "{COLLECT_NONCE_GAP_REPORTED} chain_next={chain_next} missing_nonce={missing} order_nonce={expected_nonce}; signed transaction retained, not cancelled"
+        );
+        let rows = ApiCollectDao::update_status_and_err(
+            &mut *tx,
+            trade_no,
+            ApiCollectStatus::SendingTxFailed,
+            ErrCode::SDKInternalError,
+            &message,
+        )
+        .await?;
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(rows)
+    }
+
     pub async fn list_api_collect(
         pool: &ApiTransactionDbPool,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {

@@ -311,3 +311,12 @@ This is not a statement that signed transactions expire or that failed local
 orders are revoked. Terminal signed or unknown reservations remain guarded.
 No authorization to sign/broadcast real transactions, mutate runtime data,
 commit or publish is implied.
+
+### Collect gap failure reporting (2026-10-18)
+Source: user confirmation in this chat after SDK d4839028. Backend does not issue
+a new collect until the previous order receives a failure. A missing-receipt EVM
+collect with an unsigned lower nonce gap must report business failure through
+the existing receipt path and stop retrying. Signed raw/hash and nonce ownership
+remain retained; this report is not on-chain cancellation. The user accepts the
+old signed6 may execute in this historical test recovery. No real signing,
+broadcast, runtime DB mutation, or dependency publication authorized by this fix.

@@ -113,6 +113,62 @@ impl ShadowCollectRecoveryScenario {
         self.adapter_guard.replace(Some(guard));
     }
 
+    pub(crate) async fn given_future_nonce(&self, fixture: &CollectRecoveryFixture) {
+        let pool = self.collect_pool().await;
+        sqlx::query("UPDATE api_collect SET nonce=3 WHERE trade_no=?")
+            .bind(&fixture.trade_no)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+    }
+
+    pub(crate) async fn then_gap_is_failed_without_releasing_signed_nonce(
+        &self,
+        fixture: &CollectRecoveryFixture,
+    ) {
+        let pool = self.collect_pool().await;
+        let row =
+            ApiCollectRepo::get_api_collect_by_trade_no(&pool, &fixture.trade_no).await.unwrap();
+        assert!(row.err_msg.as_deref().unwrap_or_default().starts_with("nonce_gap_reported:"));
+        assert!(row.err_code.is_some());
+        assert_eq!(row.raw_tx.as_deref(), Some("original-signed-raw"));
+        assert_eq!(row.tx_hash.as_deref(), Some(fixture.tx_hash.as_str()));
+        assert_eq!(row.nonce, 3);
+        assert!(row.transaction_time.is_none());
+        assert!(
+            ApiCollectRepo::scan_need_tx_exec_receipt_upload(&pool, 10_000)
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.trade_no == fixture.trade_no)
+        );
+        assert!(
+            !ApiCollectRepo::scan_need_recover(&pool, 10_000)
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.trade_no == fixture.trade_no)
+        );
+        assert!(
+            !ApiCollectRepo::scan_can_broadcast(&pool, 10_000)
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.trade_no == fixture.trade_no)
+        );
+        assert_eq!(
+            wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::observe_signed_nonce(
+                &pool,
+                &row.from_addr,
+                "eth",
+                2
+            )
+            .await
+            .unwrap(),
+            wallet_database::entities::api_nonce_claim::WithdrawNonceDecision::Ready(2)
+        );
+    }
+
     pub(crate) async fn then_evm_recovery_facts(
         &self,
         fixture: &CollectRecoveryFixture,

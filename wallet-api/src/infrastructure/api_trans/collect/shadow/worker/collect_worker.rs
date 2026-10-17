@@ -2456,6 +2456,25 @@ impl ShadowCollectWorker {
                     can_rebroadcast_same_raw,
                 ) {
                     EvmUncertainNonceAction::PreserveFutureNonce => {
+                        let chain_next = i64::try_from(chain_nonce).map_err(|_| {
+                            ServiceError::System(SystemError::Internal(
+                                "chain nonce exceeds i64".into(),
+                            ))
+                        })?;
+                        let rows = ApiCollectRepo::fail_verified_nonce_gap(
+                            &self.ctx.api_transaction_pool()?,
+                            &refreshed.trade_no,
+                            chain_next,
+                            refreshed.nonce as i64,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                        if rows > 0 {
+                            warn!(trade_no = %refreshed.trade_no, chain_nonce, order_nonce = refreshed.nonce,
+                                "Verified unsigned nonce gap; reporting failure while retaining signed transaction");
+                            self.advancer.try_advance(&refreshed.trade_no).await;
+                            return Ok(());
+                        }
                         warn!(
                             trade_no = %refreshed.trade_no,
                             tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),

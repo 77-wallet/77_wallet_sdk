@@ -22,7 +22,17 @@ pub enum WithdrawNonceDecision {
     TerminalGap(i64),
 }
 
+pub const COLLECT_NONCE_GAP_REPORTED: &str = "nonce_gap_reported:";
+
 impl NonceClaim {
+    fn is_reported_collect_gap(&self) -> bool {
+        self.kind == "collect"
+            && self.terminal
+            && !self.executed
+            && self.err_code.is_some()
+            && self.err_msg.as_deref().is_some_and(|m| m.starts_with(COLLECT_NONCE_GAP_REPORTED))
+    }
+
     pub fn is_reusable_failure(&self) -> bool {
         // Confirmed current error rows are deterministic. An unresolved send
         // marker overrides an error, including future manual-review reports.
@@ -49,7 +59,10 @@ pub fn withdraw_nonce_decision(
     }
     let mut slots: std::collections::BTreeMap<i64, bool> = std::collections::BTreeMap::new();
     for claim in claims.iter().filter(|c| c.nonce >= chain_next && c.nonce <= local_last) {
-        if !claim.is_reusable_failure() && (claim.terminal || claim.executed) {
+        if !claim.is_reusable_failure()
+            && (claim.terminal || claim.executed)
+            && !(claim.is_reported_collect_gap() && claim.nonce > chain_next)
+        {
             return Wait;
         }
         *slots.entry(claim.nonce).or_insert(true) &= claim.is_reusable_failure();
@@ -66,6 +79,11 @@ pub fn withdraw_nonce_decision(
         let mut next = chain_next;
         for (&nonce, &reusable) in &slots {
             if nonce > next {
+                if claims.iter().any(|c| {
+                    c.is_reported_collect_gap() && c.nonce >= chain_next && c.nonce <= next
+                }) {
+                    return Wait;
+                }
                 return Ready(next);
             }
             if reusable {
@@ -76,6 +94,11 @@ pub fn withdraw_nonce_decision(
                 None => return Wait,
             };
         }
+        return Wait;
+    }
+    // A reported signed gap still owns its slot. Only an earlier unsigned hole
+    // can be used; never allocate beyond or reuse this failed signed order.
+    if claims.iter().any(|c| c.nonce >= chain_next && c.is_reported_collect_gap()) {
         return Wait;
     }
     let highest_live = slots.iter().rev().find_map(|(n, reusable)| (!reusable).then_some(*n));
@@ -148,5 +171,46 @@ mod recovery_guards {
         six.terminal = true;
         six.err_code = Some(6008);
         assert_eq!(withdraw_nonce_decision(5, 6, &[six]), WithdrawNonceDecision::Wait);
+    }
+}
+
+#[cfg(test)]
+mod reported_gap_tests {
+    use super::*;
+    #[test]
+    fn reported_collect_gap_retains_six_but_allows_unsigned_five() {
+        let claim = NonceClaim {
+            kind: "collect".into(),
+            nonce: 6,
+            raw_tx: Some("raw".into()),
+            tx_hash: Some("hash".into()),
+            err_code: Some(1),
+            err_msg: Some("nonce_gap_reported: chain_next=5 order_nonce=6".into()),
+            failure_stage: None,
+            last_broadcast_at: Some("sent".into()),
+            uncertain: true,
+            executed: false,
+            terminal: true,
+        };
+        assert_eq!(
+            withdraw_nonce_decision(5, 6, &[claim.clone()]),
+            WithdrawNonceDecision::Ready(5)
+        );
+        let mut five = claim.clone();
+        five.nonce = 5;
+        five.terminal = false;
+        five.err_code = None;
+        five.err_msg = None;
+        let mut eight = five.clone();
+        eight.nonce = 8;
+        assert_eq!(
+            withdraw_nonce_decision(5, 8, &[five, claim.clone(), eight.clone()]),
+            WithdrawNonceDecision::Wait
+        );
+        assert_eq!(
+            withdraw_nonce_decision(5, 8, &[claim.clone(), eight]),
+            WithdrawNonceDecision::Ready(5)
+        );
+        assert_eq!(withdraw_nonce_decision(6, 6, &[claim]), WithdrawNonceDecision::Wait);
     }
 }

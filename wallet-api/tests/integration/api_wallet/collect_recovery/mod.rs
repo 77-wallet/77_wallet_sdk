@@ -117,3 +117,17 @@ async fn collect_recover_confirmed_original_never_checks_nonce_conflict() {
 
     scenario.then_evm_recovery_facts(&fixture, false, true).await;
 }
+
+#[tokio::test]
+#[serial]
+async fn collect_recover_nonce_gap_reports_failure_and_preserves_signed_transaction() {
+    let scenario = ShadowCollectRecoveryScenario::new().await;
+    let fixture = CollectRecoveryFixture {
+        trade_no: "evm-missing-frontier".into(),
+        tx_hash: format!("0x{}", "22".repeat(32)),
+    };
+    scenario.given_evm_uncertain_collect(&fixture, true, None).await;
+    scenario.given_future_nonce(&fixture).await;
+    scenario.when().recover_runs(&fixture).await;
+    scenario.then_gap_is_failed_without_releasing_signed_nonce(&fixture).await;
+}

@@ -365,3 +365,121 @@ async fn shared_nonce_recovery_restart_retains_hole_and_rawless_uncertainty() {
         WithdrawNonceDecision::Ready(7)
     );
 }
+
+#[tokio::test]
+async fn collect_nonce_gap_failure_is_idempotent_retains_bytes_and_allows_new_five() {
+    use crate::entities::api_nonce_claim::WithdrawNonceDecision;
+    let pool = setup("collect_gap_report", "six").await;
+    ApiCollectRepo::reserve_signed_collect(&pool, &candidate("six")).await.unwrap();
+    assert_eq!(ApiCollectRepo::fail_verified_nonce_gap(&pool, "six", 5, 6).await.unwrap(), 1);
+    assert_eq!(ApiCollectRepo::fail_verified_nonce_gap(&pool, "six", 5, 6).await.unwrap(), 0);
+    let row = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "six").await.unwrap();
+    assert_eq!(row.raw_tx.as_deref(), Some("raw"));
+    assert_eq!(row.tx_hash.as_deref(), Some("hash"));
+    assert!(row.err_msg.unwrap().contains("missing_nonce=5"));
+    assert!(row.transaction_time.is_none());
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "arbitrum").await.unwrap(), 6);
+    assert_eq!(
+        ApiNonceRepo::observe_signed_nonce(&pool, "sender", "arbitrum", 5).await.unwrap(),
+        WithdrawNonceDecision::Ready(5)
+    );
+    assert_eq!(
+        ApiNonceRepo::observe_signed_nonce(&pool, "sender", "arbitrum", 6).await.unwrap(),
+        WithdrawNonceDecision::Wait
+    );
+    assert!(
+        ApiCollectRepo::scan_need_tx_exec_receipt_upload(&pool, 100)
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.trade_no == "six")
+    );
+    ApiCollectRepo::upsert_api_collect(
+        &pool,
+        "uid",
+        "collect",
+        "sender",
+        "receiver",
+        "1",
+        "v",
+        "arbitrum",
+        None,
+        "ETH",
+        "new-five",
+        2,
+        crate::entities::api_collect::ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .unwrap();
+    ApiCollectRepo::set_order_ack_sent(&pool, "new-five").await.unwrap();
+    ApiCollectRepo::update_building_at(&pool, "new-five").await.unwrap();
+    let mut five = candidate("new-five");
+    five.nonce = 5;
+    five.chain_next = 5;
+    assert_eq!(ApiCollectRepo::reserve_signed_collect(&pool, &five).await.unwrap(), 1);
+    assert_eq!(
+        ApiCollectRepo::get_api_collect_by_trade_no(&pool, "new-five").await.unwrap().nonce,
+        5
+    );
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "arbitrum").await.unwrap(), 6);
+}
+
+#[tokio::test]
+async fn collect_nonce_gap_does_not_fail_normal_queue_or_confirmed_order() {
+    let pool = setup("collect_gap_guards", "six").await;
+    ApiCollectRepo::reserve_signed_collect(&pool, &candidate("six")).await.unwrap();
+    assert_eq!(ApiCollectRepo::fail_verified_nonce_gap(&pool, "six", 6, 6).await.unwrap(), 0);
+    assert_eq!(ApiCollectRepo::fail_verified_nonce_gap(&pool, "six", 5, 7).await.unwrap(), 0);
+    sqlx::query("UPDATE api_collect SET transaction_time=CURRENT_TIMESTAMP WHERE trade_no='six'")
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+    assert_eq!(ApiCollectRepo::fail_verified_nonce_gap(&pool, "six", 5, 6).await.unwrap(), 0);
+    assert!(
+        ApiCollectRepo::get_api_collect_by_trade_no(&pool, "six").await.unwrap().err_code.is_none()
+    );
+}
+
+#[tokio::test]
+async fn collect_nonce_gap_preserves_normal_signed_queue_and_rolls_back_failure() {
+    let pool = setup("collect_gap_queue", "six").await;
+    ApiCollectRepo::reserve_signed_collect(&pool, &candidate("six")).await.unwrap();
+    ApiCollectRepo::upsert_api_collect(
+        &pool,
+        "uid",
+        "collect",
+        "sender",
+        "receiver",
+        "1",
+        "v",
+        "arbitrum",
+        None,
+        "ETH",
+        "five",
+        2,
+        crate::entities::api_collect::ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .unwrap();
+    ApiCollectRepo::set_order_ack_sent(&pool, "five").await.unwrap();
+    ApiCollectRepo::update_building_at(&pool, "five").await.unwrap();
+    let mut five = candidate("five");
+    five.nonce = 5;
+    five.chain_next = 5;
+    ApiCollectRepo::reserve_signed_collect(&pool, &five).await.unwrap();
+    assert_eq!(ApiCollectRepo::fail_verified_nonce_gap(&pool, "six", 5, 6).await.unwrap(), 0);
+    assert!(
+        ApiCollectRepo::get_api_collect_by_trade_no(&pool, "six").await.unwrap().err_code.is_none()
+    );
+    sqlx::query("DELETE FROM api_collect WHERE trade_no='five'")
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+    sqlx::query("CREATE TRIGGER reject_gap_failure BEFORE UPDATE OF status ON api_collect BEGIN SELECT RAISE(ABORT,'failure write rejected'); END").execute(pool.write_ref()).await.unwrap();
+    assert!(ApiCollectRepo::fail_verified_nonce_gap(&pool, "six", 5, 6).await.is_err());
+    let row = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "six").await.unwrap();
+    assert!(row.err_code.is_none());
+    assert_eq!(row.raw_tx.as_deref(), Some("raw"));
+}
