@@ -320,3 +320,13 @@ the existing receipt path and stop retrying. Signed raw/hash and nonce ownership
 remain retained; this report is not on-chain cancellation. The user accepts the
 old signed6 may execute in this historical test recovery. No real signing,
 broadcast, runtime DB mutation, or dependency publication authorized by this fix.
+
+### Query-uncertain collect recovery follow-up (2026-10-18)
+Source: user-requested read-only check on the running Android test App. Old
+C2111021523509907456 retained nonce6 and no failure receipt; recovery returned
+QueryUncertain. Local high-water was153 with only signed6 above chain frontier5;
+new C2111383973761585152 stayed unsigned. These are time-specific incident facts.
+User requests recovery for this branch: independently verify nonce gap and reuse
+the existing atomic business-failure report; preserve signed6/counter and allow
+new5. Do not sign/broadcast or mutate runtime DB. Receipt failure alone is not
+proof; fresh/failed nonce observation must retain the order.

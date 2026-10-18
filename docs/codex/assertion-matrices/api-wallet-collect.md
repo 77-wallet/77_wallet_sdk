@@ -1899,3 +1899,14 @@ or broadcasting.
   past the reported signed slot until chain frontier consumes it.
 - Evidence: collect_nonce_gap* database tests and collect_recover_nonce_gap*
   mock integration; no live transaction or backend deployment verification.
+
+## QueryUncertain nonce gap (2026-10-18)
+- QueryUncertain may independently verify a signed EVM gap after the existing
+  five-minute age; use legacy last_broadcast_at when uncertainty marker absent.
+- Nonce query failure/recent broadcast/no gap keep original signed facts and
+  do not upload failure; no compensating broadcast or cancellation.
+- Shared allocator can fill a gap bounded above by durable signed facts even
+  when legacy counter153 exceeds signed6. Bare counter and unknown trailing
+  slots remain guarded; counter never rewound, reported signed slot retained.
+- Mock integration collect_query_uncertain* plus DB legacy-counter and pure
+  decision tests cover report eligibility and actual new5 candidate commit.

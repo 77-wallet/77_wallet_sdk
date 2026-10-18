@@ -483,3 +483,45 @@ async fn collect_nonce_gap_preserves_normal_signed_queue_and_rolls_back_failure(
     assert!(row.err_code.is_none());
     assert_eq!(row.raw_tx.as_deref(), Some("raw"));
 }
+
+#[tokio::test]
+async fn collect_query_uncertain_legacy_counter_reports_gap_and_commits_new_five() {
+    use crate::entities::api_nonce_claim::WithdrawNonceDecision;
+    let pool = setup("legacy_counter_query_gap", "six").await;
+    ApiCollectRepo::reserve_signed_collect(&pool, &candidate("six")).await.unwrap();
+    ApiNonceRepo::set_nonce_exact(&pool, "sender", "arbitrum", 153).await.unwrap();
+    assert_eq!(ApiCollectRepo::fail_verified_nonce_gap(&pool, "six", 5, 6).await.unwrap(), 1);
+    assert_eq!(
+        ApiNonceRepo::observe_signed_nonce(&pool, "sender", "arbitrum", 5).await.unwrap(),
+        WithdrawNonceDecision::Ready(5)
+    );
+    ApiCollectRepo::upsert_api_collect(
+        &pool,
+        "uid",
+        "collect",
+        "sender",
+        "receiver",
+        "1",
+        "v",
+        "arbitrum",
+        None,
+        "ETH",
+        "new-five",
+        2,
+        crate::entities::api_collect::ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .unwrap();
+    ApiCollectRepo::set_order_ack_sent(&pool, "new-five").await.unwrap();
+    ApiCollectRepo::update_building_at(&pool, "new-five").await.unwrap();
+    let mut five = candidate("new-five");
+    five.nonce = 5;
+    five.chain_next = 5;
+    assert_eq!(ApiCollectRepo::reserve_signed_collect(&pool, &five).await.unwrap(), 1);
+    assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "arbitrum").await.unwrap(), 153);
+    assert_eq!(
+        ApiCollectRepo::get_api_collect_by_trade_no(&pool, "six").await.unwrap().raw_tx.as_deref(),
+        Some("raw")
+    );
+}

@@ -131,3 +131,33 @@ async fn collect_recover_nonce_gap_reports_failure_and_preserves_signed_transact
     scenario.when().recover_runs(&fixture).await;
     scenario.then_gap_is_failed_without_releasing_signed_nonce(&fixture).await;
 }
+
+#[tokio::test]
+#[serial]
+async fn collect_query_uncertain_reports_verified_gap_with_legacy_counter() {
+    let scenario = ShadowCollectRecoveryScenario::new().await;
+    let fixture = CollectRecoveryFixture {
+        trade_no: "query-uncertain-gap".into(),
+        tx_hash: format!("0x{}", "33".repeat(32)),
+    };
+    scenario.given_query_uncertain_gap(&fixture, Some(2), false).await;
+    scenario.when().recover_runs(&fixture).await;
+    scenario.then_gap_is_failed_without_releasing_signed_nonce(&fixture).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_query_uncertain_does_not_fail_without_old_verified_gap() {
+    for (tag, nonce, recent) in
+        [("nonce-error", None, false), ("recent", Some(2), true), ("normal", Some(3), false)]
+    {
+        let scenario = ShadowCollectRecoveryScenario::new().await;
+        let fixture = CollectRecoveryFixture {
+            trade_no: format!("query-uncertain-{tag}"),
+            tx_hash: format!("0x{}", "44".repeat(32)),
+        };
+        scenario.given_query_uncertain_gap(&fixture, nonce, recent).await;
+        scenario.when().recover_runs(&fixture).await;
+        scenario.then_query_uncertain_preserves_order(&fixture).await;
+    }
+}

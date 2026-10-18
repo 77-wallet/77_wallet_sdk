@@ -122,6 +122,59 @@ impl ShadowCollectRecoveryScenario {
             .unwrap();
     }
 
+    pub(crate) async fn given_query_uncertain_gap(
+        &self,
+        fixture: &CollectRecoveryFixture,
+        nonce: Option<u64>,
+        recent: bool,
+    ) {
+        self.given_evm_uncertain_collect(fixture, true, None).await;
+        self.given_future_nonce(fixture).await;
+        let pool = self.collect_pool().await;
+        sqlx::query("UPDATE api_collect SET broadcast_uncertain_since_at=NULL, last_broadcast_at=strftime('%Y-%m-%dT%H:%M:%SZ','now',?) WHERE trade_no=?")
+            .bind(if recent { "-1 minute" } else { "-15 minutes" }).bind(&fixture.trade_no).execute(pool.as_ref()).await.unwrap();
+        wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::set_nonce_exact(
+            &pool,
+            " 0x08932ba7a633FdEA40Dfd68afab610340e6375BF ",
+            "eth",
+            153,
+        )
+        .await
+        .unwrap();
+        self.adapter_guard.take();
+        let queries = Arc::new(AtomicUsize::new(0));
+        let guard = super::adapters::install_evm_recover_probe_with_nonce(
+            &fixture.tx_hash,
+            true,
+            None,
+            queries.clone(),
+            self.conflict_count.clone(),
+            nonce,
+            true,
+        );
+        self.query_count.replace(Some(queries));
+        self.adapter_guard.replace(Some(guard));
+    }
+
+    pub(crate) async fn then_query_uncertain_preserves_order(
+        &self,
+        fixture: &CollectRecoveryFixture,
+    ) {
+        let pool = self.collect_pool().await;
+        let row =
+            ApiCollectRepo::get_api_collect_by_trade_no(&pool, &fixture.trade_no).await.unwrap();
+        assert!(row.err_code.is_none());
+        assert!(row.finished_at.is_none());
+        assert_eq!(row.raw_tx.as_deref(), Some("original-signed-raw"));
+        assert!(
+            !ApiCollectRepo::scan_need_tx_exec_receipt_upload(&pool, 10000)
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.trade_no == fixture.trade_no)
+        );
+    }
+
     pub(crate) async fn then_gap_is_failed_without_releasing_signed_nonce(
         &self,
         fixture: &CollectRecoveryFixture,

@@ -30,7 +30,8 @@ struct CollectTronRecoverProbeAdapter {
     transaction_time_ms: u128,
     block_height: u128,
     missing_receipt: bool,
-    chain_nonce: u64,
+    chain_nonce: Option<u64>,
+    query_uncertain: bool,
     conflict_response: Option<bool>,
     conflict_count: Arc<AtomicUsize>,
 }
@@ -56,7 +57,7 @@ impl Tx for CollectTronRecoverProbeAdapter {
     }
 
     async fn nonce(&self, _addr: &str) -> Result<u64, wallet_api::error::service::ServiceError> {
-        Ok(self.chain_nonce)
+        self.chain_nonce.ok_or(wallet_api::error::service::ServiceError::Timeout)
     }
 
     async fn block_num(&self) -> Result<u64, wallet_chain_interact::Error> {
@@ -71,6 +72,11 @@ impl Tx for CollectTronRecoverProbeAdapter {
         if let Some(hook) = &self.query_hook {
             hook();
             tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        if self.query_uncertain {
+            return Err(wallet_chain_interact::Error::Other(
+                "simulated receipt query failure".into(),
+            ));
         }
         if self.missing_receipt {
             return Ok(None);
@@ -203,7 +209,8 @@ pub(crate) fn install_collect_tron_recover_probe_adapter(
         transaction_time_ms,
         block_height,
         missing_receipt: false,
-        chain_nonce: 0,
+        chain_nonce: Some(0),
+        query_uncertain: false,
         conflict_response: Some(false),
         conflict_count: Arc::new(AtomicUsize::new(0)),
     });
@@ -236,6 +243,26 @@ pub(crate) fn install_evm_recover_probe(
     query_count: Arc<AtomicUsize>,
     conflict_count: Arc<AtomicUsize>,
 ) -> TronRecoverProbeGuard {
+    install_evm_recover_probe_with_nonce(
+        tx_hash,
+        missing_receipt,
+        conflict_response,
+        query_count,
+        conflict_count,
+        Some(2),
+        false,
+    )
+}
+
+pub(crate) fn install_evm_recover_probe_with_nonce(
+    tx_hash: &str,
+    missing_receipt: bool,
+    conflict_response: Option<bool>,
+    query_count: Arc<AtomicUsize>,
+    conflict_count: Arc<AtomicUsize>,
+    chain_nonce: Option<u64>,
+    query_uncertain: bool,
+) -> TronRecoverProbeGuard {
     let chain_code = "eth".to_owned();
     let adapter = Arc::new(CollectTronRecoverProbeAdapter {
         query_count,
@@ -246,7 +273,8 @@ pub(crate) fn install_evm_recover_probe(
         transaction_time_ms: 1_700_000_000_000,
         block_height: 99,
         missing_receipt,
-        chain_nonce: 2,
+        chain_nonce,
+        query_uncertain,
         conflict_response,
         conflict_count,
     });

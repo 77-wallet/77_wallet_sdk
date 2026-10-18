@@ -2203,6 +2203,52 @@ impl ShadowCollectWorker {
         self.apply_recover_observation(&req, recover_result).await
     }
 
+    /// Receipt failure is not a chain failure. Independently verify an old
+    /// signed EVM nonce gap; the repository rechecks durable owners atomically.
+    async fn try_report_query_uncertain_nonce_gap(
+        &self,
+        req: &ApiCollectEntity,
+    ) -> Result<bool, ServiceError> {
+        if !shared_mechanism::is_evm_chain(&req.chain_code)
+            || req.nonce <= 0
+            || !req.raw_tx.as_deref().is_some_and(|raw| !raw.trim().is_empty())
+            || !req.tx_hash.as_deref().is_some_and(|hash| !hash.trim().is_empty())
+            || !shared_mechanism::is_broadcast_uncertain_timed_out(
+                req.broadcast_uncertain_since_at.or(req.last_broadcast_at),
+                Self::EVM_UNCERTAIN_TIMEOUT_SECS,
+                Utc::now(),
+            )
+        {
+            return Ok(false);
+        }
+        let observed = tokio::time::timeout(
+            Duration::from_secs(30),
+            ApiTransDomain::nonce(self.ctx, &req.from_addr, &req.chain_code),
+        )
+        .await;
+        let Ok(Ok(chain_nonce)) = observed else {
+            warn!(trade_no = %req.trade_no, "Independent nonce observation unavailable; preserving query-uncertain collect");
+            return Ok(false);
+        };
+        let Ok(chain_next) = i64::try_from(chain_nonce) else {
+            return Ok(false);
+        };
+        let rows = ApiCollectRepo::fail_verified_nonce_gap(
+            &self.ctx.api_transaction_pool()?,
+            &req.trade_no,
+            chain_next,
+            req.nonce as i64,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+        if rows > 0 {
+            warn!(trade_no = %req.trade_no, chain_nonce, order_nonce = req.nonce,
+                "Query-uncertain collect has a verified unsigned nonce gap; reporting failure and retaining signed transaction");
+            self.advancer.try_advance(&req.trade_no).await;
+        }
+        Ok(rows > 0)
+    }
+
     async fn apply_recover_observation(
         &self,
         req: &ApiCollectEntity,
@@ -2211,7 +2257,10 @@ impl ShadowCollectWorker {
         let trade_no = req.trade_no.as_str();
         match recover_result {
             Ok(RecoveredTxObservation::QueryUncertain) => {
-                warn!(trade_no = %trade_no, "Receipt observation failed; keep order and retry without missing-receipt compensation");
+                if self.try_report_query_uncertain_nonce_gap(req).await? {
+                    return Ok(());
+                }
+                warn!(trade_no = %trade_no, "Receipt observation failed; no verified nonce gap, preserve original order");
                 return Ok(());
             }
             Ok(RecoveredTxObservation::Confirmed(tx_resp)) => {

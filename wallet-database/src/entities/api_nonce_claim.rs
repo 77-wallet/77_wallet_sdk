@@ -71,11 +71,9 @@ pub fn withdraw_nonce_decision(
         return Wait;
     };
     if slots.len() as i64 != required {
-        // A counter without corresponding signed facts is an unknown reservation,
-        // not evidence that it may be reused. Keep legacy allocator guards.
-        if !slots.contains_key(&local_last) {
-            return Wait;
-        }
+        // Only a hole before a durable signed owner is evidenced here. A legacy
+        // high-water counter can be above all signed facts; never allocate its
+        // unknown trailing slots or rewind it. With no signed owner, stay blocked.
         let mut next = chain_next;
         for (&nonce, &reusable) in &slots {
             if nonce > next {
@@ -152,9 +150,11 @@ mod recovery_guards {
         }
     }
     #[test]
-    fn shared_nonce_recovery_unknown_counter_is_not_unsigned_evidence() {
+    fn shared_nonce_recovery_preserves_bare_counter_and_unknown_trailing_slots() {
         assert_eq!(withdraw_nonce_decision(5, 6, &[]), WithdrawNonceDecision::Wait);
-        assert_eq!(withdraw_nonce_decision(5, 7, &[claim(6)]), WithdrawNonceDecision::Wait);
+        // A durable6 bounds the earlier hole; the unknown trailing7 stays protected.
+        assert_eq!(withdraw_nonce_decision(5, 7, &[claim(6)]), WithdrawNonceDecision::Ready(5));
+        assert_eq!(withdraw_nonce_decision(6, 7, &[claim(6)]), WithdrawNonceDecision::Wait);
     }
     #[test]
     fn shared_nonce_recovery_keeps_signed_five_and_uncertain_six_owned() {
@@ -212,5 +212,45 @@ mod reported_gap_tests {
             WithdrawNonceDecision::Ready(5)
         );
         assert_eq!(withdraw_nonce_decision(6, 6, &[claim]), WithdrawNonceDecision::Wait);
+    }
+}
+
+#[cfg(test)]
+mod counter_ahead_gap_tests {
+    use super::*;
+    #[test]
+    fn known_signed_six_proves_earlier_gap_despite_counter_153() {
+        let mut six = NonceClaim {
+            kind: "collect".into(),
+            nonce: 6,
+            raw_tx: Some("raw".into()),
+            tx_hash: Some("hash".into()),
+            err_code: None,
+            err_msg: None,
+            failure_stage: None,
+            last_broadcast_at: Some("sent".into()),
+            uncertain: false,
+            executed: false,
+            terminal: false,
+        };
+        assert_eq!(
+            withdraw_nonce_decision(5, 153, &[six.clone()]),
+            WithdrawNonceDecision::Ready(5)
+        );
+        assert_eq!(withdraw_nonce_decision(5, 153, &[]), WithdrawNonceDecision::Wait);
+        let mut five = six.clone();
+        five.nonce = 5;
+        assert_eq!(
+            withdraw_nonce_decision(5, 153, &[five, six.clone()]),
+            WithdrawNonceDecision::Wait
+        );
+        six.err_code = Some(6001);
+        six.err_msg = Some("nonce_gap_reported: missing_nonce=5".into());
+        six.terminal = true;
+        assert_eq!(
+            withdraw_nonce_decision(5, 153, &[six.clone()]),
+            WithdrawNonceDecision::Ready(5)
+        );
+        assert_eq!(withdraw_nonce_decision(6, 153, &[six]), WithdrawNonceDecision::Wait);
     }
 }
