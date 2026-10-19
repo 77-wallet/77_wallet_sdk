@@ -355,6 +355,50 @@ impl EthTx {
         self.fee_setting_for_chain(&oracle, gas.consume as u64)
     }
 
+    async fn replacement_fee_setting(
+        &self,
+        base: &ApiBaseTransferReq,
+        nonce: u64,
+    ) -> Result<FeeSetting, ServiceError> {
+        if self.chain.chain_code != ChainCode::Scroll || base.token_address.is_contract() {
+            return Err(ServiceError::Parameter(
+                "scoped replacement quote requires native Scroll".into(),
+            ));
+        }
+        let mut setting = FeeSetting {
+            base_fee: U256::ZERO,
+            max_fee_per_gas: U256::ZERO,
+            max_priority_fee_per_gas: U256::ZERO,
+            gas_limit: U256::ZERO,
+        };
+        let chain_id = self.provider.chain_id().await?;
+        // Validate the complete signed identity before any gas estimate.
+        replacement::apply(base.metadata.as_deref(), chain_id, &base.from, nonce, &mut setting)?;
+        let value = self.check_min_transfer(&base.value, base.decimals)?;
+        let tx = TransferOpt::new(&base.from, &base.to, value, None)?.build_transaction()?;
+        let client = RpcClient::new(
+            &self.rpc_url_for_log,
+            self.rpc_header_for_query.clone(),
+            Some(std::time::Duration::from_secs(TIME_OUT)),
+        )?;
+        let gas = replacement::estimate_gas_latest(tx, nonce, |method, params| {
+            let client = &client;
+            async move {
+                Ok(client
+                    .invoke_request::<_, String>(
+                        JsonRpcParams::default().method(method).params(params),
+                    )
+                    .await?)
+            }
+        })
+        .await?;
+        let gas = u64::try_from(gas)
+            .map_err(|_| ServiceError::Parameter("replacement gas overflow".into()))?;
+        setting = self.fee_setting_for_chain(&self.gas_oracle().await?, gas)?;
+        replacement::apply(base.metadata.as_deref(), chain_id, &base.from, nonce, &mut setting)?;
+        Ok(setting)
+    }
+
     async fn native_fee_quote(&self, req: ApiBaseTransferReq) -> Result<U256, ServiceError> {
         if !self.uses_separate_l1_fee() {
             return Err(ServiceError::Parameter(
@@ -369,7 +413,12 @@ impl EthTx {
             amount,
             request.base.token_address.to_chain_token_option(),
         )?;
-        let transaction = transfer.build_transaction()?;
+        let mut transaction = transfer.build_transaction()?;
+        if let Some(context) = replacement::context(request.base.metadata.as_deref())? {
+            let setting = self.replacement_fee_setting(&request.base, context.nonce).await?;
+            transaction = transaction.with_nonce(context.nonce);
+            return self.total_fee_for_transaction(transaction, &setting).await;
+        }
         let setting = match self.chain.network {
             NetworkKind::Mainnet => {
                 let metadata = request
@@ -430,6 +479,9 @@ impl EthTx {
         &self,
         params: &ApiTransferReq,
     ) -> Result<FeeSetting, ServiceError> {
+        if replacement::context(params.base.metadata.as_deref())?.is_some() {
+            return self.replacement_fee_setting(&params.base, params.nonce).await;
+        }
         if let Some(metadata) = &params.base.metadata {
             match Self::fee_setting_form_meta_data(metadata) {
                 Ok(fee_setting) => {
@@ -536,6 +588,25 @@ impl Tx for EthTx {
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
         let n = self.provider.nonce(addr).await?;
         Ok(n)
+    }
+
+    async fn replacement_latest_nonce(&self, address: &str) -> Result<u64, ServiceError> {
+        let client = RpcClient::new(
+            &self.rpc_url_for_log,
+            self.rpc_header_for_query.clone(),
+            Some(std::time::Duration::from_secs(TIME_OUT)),
+        )?;
+        replacement::latest_nonce(address, |method, params| {
+            let client = &client;
+            async move {
+                Ok(client
+                    .invoke_request::<_, String>(
+                        JsonRpcParams::default().method(method).params(params),
+                    )
+                    .await?)
+            }
+        })
+        .await
     }
 
     async fn block_num(&self) -> Result<u64, Error> {
@@ -682,10 +753,15 @@ impl Tx for EthTx {
         let token_key = params.base.token_address.clone();
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, token_key.to_chain_token_option())?;
-        let trans_req = transfer_opt.build_transaction()?;
+        let scoped = replacement::context(params.base.metadata.as_deref())?.is_some();
+        let mut trans_req = transfer_opt.build_transaction()?;
+        if scoped {
+            trans_req = trans_req.with_nonce(params.nonce);
+        }
         let mut fee_setting = match self.chain.network {
             NetworkKind::Mainnet => fee_setting,
-            _ => self.provider.get_fee(trans_req.clone()).await?,
+            _ if !scoped => self.provider.get_fee(trans_req.clone()).await?,
+            _ => fee_setting,
         };
         // Applies only to explicit scoped replacement metadata, after current quote.
         if params.base.metadata.as_deref().is_some_and(|m| m.contains("collectReplacement")) {

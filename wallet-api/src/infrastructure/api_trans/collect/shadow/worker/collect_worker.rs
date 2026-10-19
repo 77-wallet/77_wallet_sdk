@@ -2805,6 +2805,8 @@ impl ShadowCollectWorker {
             );
         }
 
+        // Scope validation and latest-frontier reconciliation precede fee estimation.
+        let scoped_nonce = self.scoped_collect_nonce_before_fee(&req).await?;
         // 6. 检查手续费
         //
         // ⚠️ IMPORTANT:
@@ -2831,7 +2833,10 @@ impl ShadowCollectWorker {
             )));
         }
 
-        if !self.check_fee(&req).await? {
+        if !self
+            .check_fee_for_build(&req, scoped_nonce.as_ref().and_then(|(_, _, c)| c.as_ref()))
+            .await?
+        {
             info!(
                 trade_no = %trade_no,
                 reason_code = "fee_check_failed",
@@ -2881,7 +2886,10 @@ impl ShadowCollectWorker {
         }
         // Observation performs RPC outside the address lock and reserves nothing.
         // The shared counter is rechecked when signed facts commit in phase 3.
-        let (nonce, chain_next, replacement_fee) = self.observe_collect_nonce(&req).await?;
+        let (nonce, chain_next, replacement_fee) = match scoped_nonce {
+            Some(observation) => observation,
+            None => self.observe_collect_nonce(&req).await?,
+        };
         info!(trade_no = %trade_no, nonce, source = "shadow_worker_v2", "Observed nonce candidate");
 
         // ====== phase 2: 锁外 · 网络执行 ======
@@ -3361,6 +3369,15 @@ impl ShadowCollectWorker {
     /// ⚠️ 本方法不做任何状态/事实写入
     /// ⚠️ 不存在"等待 / 重试 / 标记"语义
     pub(crate) async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
+        self.check_fee_for_build(req, None).await
+    }
+    async fn check_fee_for_build(
+        &self,
+        req: &ApiCollectEntity,
+        replacement: Option<
+            &crate::domain::api_wallet::adapter::eth_tx::replacement::ReplacementFeeContext,
+        >,
+    ) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
         let ctx = self.ctx;
@@ -3399,8 +3416,18 @@ impl ShadowCollectWorker {
         let spend_all_native = Self::should_spend_all_native_collect(&req.chain_code, &token_key);
         let sender_rent_reserve =
             Self::sol_token_collect_sender_rent_reserve(&req.chain_code, &token_key)?;
-        let fee_str = match self
-            .estimate_fee(
+        let estimate = if let Some(context) = replacement {
+            let adapter =
+                ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
+                    .await?;
+            let mut params =
+                ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
+            params.with_token(token_key.to_chain_token_option(), token_decimals, &token_symbol);
+            params.metadata = Some(serde_json::json!({"collectReplacement":context}).to_string());
+            super::estimate_evm_collect_fee(adapter.as_ref(), chain_code, params, &main_coin.symbol)
+                .await
+        } else {
+            self.estimate_fee(
                 &req.from_addr,
                 &req.to_addr,
                 &req.value,
@@ -3412,8 +3439,10 @@ impl ShadowCollectWorker {
                 spend_all_native,
             )
             .await
-        {
+        };
+        let fee_str = match estimate {
             Ok(fee_str) => fee_str,
+            Err(err) if replacement.is_some() => return Err(err),
             Err(err) if Self::is_insufficient_fee_balance_error(&err) => {
                 tracing::warn!(
                     trade_no = %req.trade_no,
@@ -3491,6 +3520,11 @@ impl ShadowCollectWorker {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费检查结果 - 可用余额: {}, 需要金额: {}, 手续费: {}", balance, need, fee);
 
         if fee > Decimal::from(0) && balance < need {
+            if replacement.is_some() {
+                return Err(ServiceError::Business(BusinessError::Chain(
+                    ChainError::InsufficientFeeBalance,
+                )));
+            }
             if Self::tron_token_collect_resource_gate_covers_native_fee(req) {
                 tracing::info!(
                     trade_no = %req.trade_no,

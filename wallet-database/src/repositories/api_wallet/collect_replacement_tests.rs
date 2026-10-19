@@ -371,3 +371,38 @@ async fn replacement_case_alias_unknown_counter_still_blocks() {
     ApiNonceRepo::set_nonce_exact(&p, "SENDER", "scroll", 154).await.unwrap();
     assert!(CollectReplacementRepo::prepare(&p, "new", &s, 6).await.unwrap().is_none());
 }
+
+#[tokio::test]
+async fn replacement_retained_scope_is_released_only_by_matching_verified_resolution() {
+    let (p, s) = setup("replacement-retained-scope").await;
+    assert!(!CollectReplacementRepo::scope_is_resolved(&p, &s).await.unwrap());
+    CollectReplacementRepo::prepare(&p, "new", &s, 6).await.unwrap();
+    ApiCollectRepo::reserve_signed_collect(&p, &signed("new")).await.unwrap();
+    assert!(!CollectReplacementRepo::scope_is_resolved(&p, &s).await.unwrap());
+    let block = format!("0x{}", "ab".repeat(32));
+    CollectReplacementRepo::resolve(
+        &p,
+        "new",
+        &ReplacementResolution {
+            transaction_fee: "0.001",
+            resource_consume: "21000",
+            winner_hash: "new-hash",
+            success: true,
+            block_hash: &block,
+            block_number: 42,
+            transaction_time: "2026-10-19T00:00:00Z",
+        },
+    )
+    .await
+    .unwrap();
+    assert!(CollectReplacementRepo::scope_is_resolved(&p, &s).await.unwrap());
+    let mut wrong = s.clone();
+    wrong.old_hash = "unknown".into();
+    assert!(!CollectReplacementRepo::scope_is_resolved(&p, &wrong).await.unwrap());
+    wrong = s.clone();
+    wrong.from_addr = "other".into();
+    assert!(!CollectReplacementRepo::scope_is_resolved(&p, &wrong).await.unwrap());
+    wrong = s.clone();
+    wrong.legacy_counter = 154;
+    assert!(!CollectReplacementRepo::scope_is_resolved(&p, &wrong).await.unwrap());
+}

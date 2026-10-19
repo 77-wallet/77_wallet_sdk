@@ -1924,3 +1924,15 @@ or broadcasting.
 - Adapter `replacement_receipt_checks_winner_identity_finality_and_revert`: receipt/transaction/canonical block/finalized anchor checks, changed anchor and wrong block height rejected; Scroll gasUsed × effectiveGasPrice + l1Fee replaces budget.
 - Ordinary `collect_main_` and database `nonce_` regressions verify failed/cancelled builds remain non-reserving and shared ownership protections remain.
 - Uncovered: live gateway replacement acceptance/finality availability, App packaging/deployment, actual transaction signatures/broadcast. No running config or device DB mutation in this stage.
+
+### Scoped replacement fee preflight and confirmed frontier (2026-10-19 follow-up)
+
+- `collect_replacement_pending_seven_latest_six_still_replaces_six`: node pending7/latest6 still builds nonce6; strict quote and build retain replacement metadata and original signed-slot authority.
+- `collect_replacement_fee_preflight_receives_replacement_before_quote`: before fix, regular quote rejected pending-deducted funds; replacement scope now prepared before quote. No balance override or transfer value reduction.
+- `collect_replacement_unknown_latest_or_unproven_consumption_never_signs`: latest RPC error or latest7 without canonical winner never produces raw/hash, marks a winner, or moves counter153.
+- `collect_replacement_true_fee_shortage_reports_failure_before_signing`: actual quote over latest funds reports FeeInsufficient, abandons only unsigned attempt, never builds/signs or requests automatic fee top-up.
+- Adapter `replacement_estimation_uses_latest_original_value_and_fixed_nonce`: RPC request is eth_estimateGas(original tx with authorized nonce, latest), retains value/from and 10% checked gas buffer. Same helper is used by quote and raw build, including the non-mainnet branch.
+- Adapter `replacement_latest_reads_do_not_fallback_or_accept_overflow`: latest-only transaction count, no pending fallback, RPC errors/overflow rejected.
+- Live evidence (read-only, separate from offline tests): target/collect-replacement-preflight/readonly-estimate-facts.json records same actual nonce6/value failing default estimate but succeeding with latest (21000 gas), while latest6/pending7; no transaction was signed/broadcast.
+- Existing winner reconciliation and ordinary collect regressions are retained. Scope remains opt-in dev test address; no runtime config/device DB mutation, build deployment or real signing/broadcast in this follow-up.
+- Review correction: `collect_replacement_retained_scope_allows_next_real_seven` keeps the explicit scope configured, resolves the signed replacement, then creates and actually commits the next collect at7. `replacement_retained_scope_is_released_only_by_matching_verified_resolution` requires the exact old hash/address/nonce/bound and verified resolution before retiring the old-slot selection; mismatched scopes remain inactive as checkpoints. Common allocation still checks signed claims and unknown counters.

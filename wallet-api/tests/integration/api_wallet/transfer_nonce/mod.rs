@@ -1440,3 +1440,80 @@ async fn collect_replacement_reconciles_each_winner_and_continues_from_seven() -
     }
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn collect_replacement_pending_seven_latest_six_still_replaces_six() -> anyhow::Result<()> {
+    // Given old6 is pending at the node while latest confirmed frontier is6.
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.given_replacement_at_frontier().await?;
+    scenario.adapter.set_nonce_response(Some(7));
+    scenario.adapter.require_replacement_quote();
+    // When the new authorized collect builds, then it replaces6, never allocates7.
+    scenario.when_build().await?;
+    scenario.then_replacement_is_signed_once().await?;
+    Ok(())
+}
+#[tokio::test]
+#[serial]
+async fn collect_replacement_fee_preflight_receives_replacement_before_quote() -> anyhow::Result<()>
+{
+    // Given ordinary pending-state estimation rejects the already-reserved funds.
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.given_replacement_at_frontier().await?;
+    scenario.adapter.require_replacement_quote();
+    // When preflight runs, then the replacement context is present before estimating.
+    scenario.when_build().await?;
+    scenario.then_replacement_is_signed_once().await?;
+    assert_eq!(scenario.adapter.replacement_quotes(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_replacement_unknown_latest_or_unproven_consumption_never_signs()
+-> anyhow::Result<()> {
+    for latest in [None, Some(7)] {
+        // Given latest is unavailable, or moved beyond6 without canonical winner evidence.
+        let scenario = support::CollectBuildScenario::given().await?;
+        scenario.given_replacement_at_frontier().await?;
+        scenario.adapter.set_nonce_response(Some(7));
+        scenario.adapter.set_latest_nonce_response(latest);
+        // When building, then neither pending7 nor uncertainty authorizes a signature.
+        assert!(scenario.when_build().await.is_err());
+        scenario.then_replacement_waits_unsigned().await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_replacement_true_fee_shortage_reports_failure_before_signing() -> anyhow::Result<()>
+{
+    // Given the latest-state replacement quote genuinely exceeds available funds.
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.given_replacement_at_frontier().await?;
+    scenario.adapter.require_replacement_quote();
+    scenario.adapter.unfund_replacement_quote();
+    // When the worker handles BuildTx, then fail/report without signing or a fee top-up.
+    scenario.when_replacement_build_command().await?;
+    scenario.then_replacement_fee_failure_does_not_sign_or_top_up().await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_replacement_retained_scope_allows_next_real_seven() -> anyhow::Result<()> {
+    // Given the explicit recovery scope remains configured through reconciliation.
+    let mut scenario = support::CollectBuildScenario::given().await?;
+    scenario.given_replacement_at_frontier().await?;
+    scenario.given_retained_replacement_configuration().await?;
+    scenario.when_build().await?;
+    scenario.given_replacement_winner(false, true).await?;
+    scenario.when_replacement_recovers().await?;
+    // When the next collect arrives, then it actually commits7 without clearing config.
+    scenario.given_next_collect_after_replacement().await?;
+    scenario.when_build().await?;
+    scenario.then_next_collect_owns_seven_without_replacement().await?;
+    Ok(())
+}

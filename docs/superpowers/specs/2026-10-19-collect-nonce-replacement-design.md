@@ -127,3 +127,15 @@ finalized 证据暂不可用、RPC 超时、未知赢家时保留等待，不承
 低价拒绝边界：收到 underpriced 后持久化 `replacement_requires_requote` 业务失败，现有回执通道上报，保留两份签名并继续观察。当前授权仅这一笔替换，不自动二次加价重签；再次替换需保留完整签名集合的另一次审计尝试，不能直接覆盖本关系。
 
 激活参数准备在 `target/collect-replacement/approved-scope.yaml`，未安装到运行 App。实际发布时需将同名顶层字段合入 dev 配置；用户当前禁止真实签名广播，故本轮不激活、不启动运行路径。
+
+## 2026-10-19 现场验证后的估费入口补修（用户批准）
+
+现场只读证据：当前测试地址 latest nonce6 / pending nonce7，旧hash返回pending；普通latest余额足够但默认pending估费已扣旧6支出，新单每30秒在check_fee失败，未进入替换准备。此证据为当时状态，不当作未来旧签名失效依据。用户明确批准仅原测试地址补修：
+
+- 对已持久化关联或显式匹配配置的请求，在手续费检查前验证摘要、准备关联并核对latest nonce；普通请求不提前分配nonce。
+- pending包括旧6不代表6已确认消耗。仅替换路径独立读取latest；RPC失败、latest已前进但无canonical finalized赢家证据时保留等待，不能推断失败或改用7。
+- quote及raw build统一携带同一replacement metadata、nonce和原金额；对这一原生Scroll替换明确使用eth_estimateGas(transaction含旧nonce, latest)，不使用余额覆盖、不清空交易池、不按pending剩余余额重复扣旧支出。
+- 沿用原10% gas buffer，当前费用与旧签名替换下限、Scroll L1费用、value+fee余额校验；估费失败不签名、不占新号，不自动申请手续费补单。
+- 新单/旧单赢家及已确认后从7继续的既有机制保留。默认关闭、dev限定和显式地址/旧hash/上限边界不变，本阶段不激活运行配置，不操作设备库，不真实签名广播，不含提交推送。
+
+审查补充：显式配置可以保留。仅当对应旧hash、sender、nonce、遗留上限的持久关系已核实并完成对账时，该配置不再把后续未关联的新订单选入旧槽；后续按公共签名占用/计数器检查点正常分配7。活动替换仍使用latest，不得因pending7提前转为普通分配。没有通过删除配置或覆盖旧关系实现恢复。

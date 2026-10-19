@@ -3,14 +3,14 @@ use super::ShadowCollectWorker;
 use crate::{
     domain::api_wallet::{
         adapter::eth_tx::replacement::ReplacementFeeContext,
-        adapter_factory::ApiChainAdapterFactory, trans::ApiTransDomain,
+        adapter_factory::ApiChainAdapterFactory,
     },
     error::service::ServiceError,
 };
 use wallet_database::{
     entities::api_collect::ApiCollectEntity,
     repositories::api_wallet::collect_replacement::{
-        CollectReplacementRepo, ReplacementResolution,
+        CollectReplacementRepo, CollectReplacementScope, ReplacementResolution,
     },
 };
 
@@ -21,6 +21,45 @@ pub(super) enum ReplacementProgress {
     Stop,
 }
 impl ShadowCollectWorker {
+    async fn active_replacement_scope(
+        &self,
+        req: &ApiCollectEntity,
+    ) -> Result<Option<&CollectReplacementScope>, ServiceError> {
+        let Some(scope) = self.ctx.config().collect_replacement_recovery.as_ref().filter(|s| {
+            s.chain_code == req.chain_code
+                && s.from_addr.trim().eq_ignore_ascii_case(req.from_addr.trim())
+        }) else {
+            return Ok(None);
+        };
+        if CollectReplacementRepo::scope_is_resolved(&self.ctx.api_transaction_pool()?, scope)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?
+        {
+            return Ok(None);
+        }
+        Ok(Some(scope))
+    }
+    pub(super) async fn scoped_collect_nonce_before_fee(
+        &self,
+        req: &ApiCollectEntity,
+    ) -> Result<Option<(u64, i64, Option<ReplacementFeeContext>)>, ServiceError> {
+        let configured = self.active_replacement_scope(req).await?.is_some();
+        let existing =
+            CollectReplacementRepo::find(&self.ctx.api_transaction_pool()?, &req.trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?
+                .is_some();
+        if !configured && !existing {
+            return Ok(None);
+        }
+        // A malformed order must not claim the old signed slot before the fee gate.
+        if !self.check_digest(req).await? {
+            return Err(ServiceError::Parameter(
+                "scoped replacement digest verification failed".into(),
+            ));
+        }
+        self.observe_collect_nonce(req).await.map(Some)
+    }
     pub(super) async fn observe_collect_nonce(
         &self,
         req: &ApiCollectEntity,
@@ -29,24 +68,25 @@ impl ShadowCollectWorker {
         let existing = CollectReplacementRepo::find(&pool, &req.trade_no)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
-        let regular = self.get_nonce(&req.from_addr, &req.chain_code).await;
-        if existing.is_none() {
-            if let Ok((n, c)) = regular {
-                return Ok((n, c, None));
-            }
+        let scope = self.active_replacement_scope(req).await?;
+        if existing.is_none() && scope.is_none() {
+            return self
+                .get_nonce(&req.from_addr, &req.chain_code)
+                .await
+                .map(|(n, c)| (n, c, None));
         }
-        let chain_next = ApiTransDomain::nonce(self.ctx, &req.from_addr, &req.chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter_with_ctx(self.ctx, &req.chain_code)
+                .await?;
+        let chain_next = adapter.replacement_latest_nonce(&req.from_addr).await?;
         let chain_next = i64::try_from(chain_next)
             .map_err(|_| ServiceError::Parameter("nonce exceeds recovery range".into()))?;
         let r = if let Some(r) = existing {
             r
         } else {
-            let Some(scope) = self.ctx.config().collect_replacement_recovery.as_ref().filter(|s| {
-                s.chain_code == req.chain_code
-                    && s.from_addr.trim().eq_ignore_ascii_case(req.from_addr.trim())
-            }) else {
-                return regular.map(|(n, c)| (n, c, None));
-            };
+            let scope = scope.ok_or_else(|| {
+                ServiceError::Parameter("missing scoped replacement authorization".into())
+            })?;
             let Some(r) = CollectReplacementRepo::prepare(&pool, &req.trade_no, scope, chain_next)
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?
@@ -119,7 +159,12 @@ impl ShadowCollectWorker {
             ));
         }
         let mut winner = old.or(new);
-        if winner.is_none() && adapter.nonce(&r.from_addr).await.is_ok_and(|n| n > r.nonce as u64) {
+        if winner.is_none()
+            && adapter
+                .replacement_latest_nonce(&r.from_addr)
+                .await
+                .is_ok_and(|n| n > r.nonce as u64)
+        {
             if let Ok(Some(conflict)) = adapter
                 .finalized_nonce_conflict(&r.chain_code, &r.from_addr, r.nonce as i32, &r.old_hash)
                 .await

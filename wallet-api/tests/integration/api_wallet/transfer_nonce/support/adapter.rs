@@ -36,6 +36,10 @@ struct RecordingAdapterState {
     receipt_queries: AtomicUsize,
 
     nonce_response: Mutex<Option<u64>>,
+    latest_nonce_response: Mutex<Option<u64>>,
+    require_replacement_quote: AtomicBool,
+    replacement_quotes: AtomicUsize,
+    replacement_quote_unfunded: AtomicBool,
     nonce_queries: AtomicUsize,
     call_count: AtomicUsize,
     first_entered: AtomicBool,
@@ -122,6 +126,18 @@ impl RecordingEthAdapter {
         self.state.recorded_raw.lock().unwrap().clone()
     }
 
+    pub(crate) fn set_latest_nonce_response(&self, value: Option<u64>) {
+        *self.state.latest_nonce_response.lock().unwrap() = value;
+    }
+    pub(crate) fn unfund_replacement_quote(&self) {
+        self.state.replacement_quote_unfunded.store(true, Ordering::SeqCst);
+    }
+    pub(crate) fn require_replacement_quote(&self) {
+        self.state.require_replacement_quote.store(true, Ordering::SeqCst);
+    }
+    pub(crate) fn replacement_quotes(&self) -> usize {
+        self.state.replacement_quotes.load(Ordering::SeqCst)
+    }
     pub(crate) fn set_nonce_response(&self, response: Option<u64>) {
         *self.state.nonce_response.lock().unwrap() = response;
     }
@@ -297,6 +313,14 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
             .ok_or_else(|| ServiceError::Parameter("simulated nonce RPC failure".into()))
     }
 
+    async fn replacement_latest_nonce(&self, _address: &str) -> Result<u64, ServiceError> {
+        self.state
+            .latest_nonce_response
+            .lock()
+            .unwrap()
+            .ok_or_else(|| ServiceError::Parameter("simulated latest RPC failure".into()))
+    }
+
     async fn block_num(&self) -> Result<u64, ChainError> {
         Ok(0)
     }
@@ -349,10 +373,23 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         self.send_nonce(params.nonce).await
     }
 
-    async fn estimate_native_fee_wei(
-        &self,
-        _req: ApiBaseTransferReq,
-    ) -> Result<U256, ServiceError> {
+    async fn estimate_native_fee_wei(&self, req: ApiBaseTransferReq) -> Result<U256, ServiceError> {
+        if self.state.require_replacement_quote.load(Ordering::SeqCst) {
+            let context = req
+                .metadata
+                .as_deref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
+            if context.as_ref().and_then(|m| m["collectReplacement"]["nonce"].as_u64()) != Some(6) {
+                return Err(ServiceError::Parameter(
+                    "insufficient funds for gas * price + value: pending old6 already deducted"
+                        .into(),
+                ));
+            }
+            self.state.replacement_quotes.fetch_add(1, Ordering::SeqCst);
+            if self.state.replacement_quote_unfunded.load(Ordering::SeqCst) {
+                return Ok(U256::from(10).pow(U256::from(21)));
+            }
+        }
         Ok(U256::ZERO)
     }
 
@@ -369,6 +406,15 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
         _private_key: wallet_chain_interact::types::ChainPrivateKey,
     ) -> Result<(String, wallet_api::domain::api_wallet::RawTx, String), ServiceError> {
+        if self.state.require_replacement_quote.load(Ordering::SeqCst) {
+            let meta = params
+                .base
+                .metadata
+                .as_deref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .expect("raw build retains replacement context");
+            assert_eq!(meta["collectReplacement"]["nonce"].as_u64(), Some(params.nonce));
+        }
         self.state.build_calls.fetch_add(1, Ordering::SeqCst);
         if self.state.block_build.load(Ordering::SeqCst) {
             self.state.first_entered.store(true, Ordering::SeqCst);

@@ -209,6 +209,11 @@ pub trait Tx: Any {
         Ok(None)
     }
 
+    /// Confirmed frontier for explicit same-nonce recovery; never fall back to pending.
+    async fn replacement_latest_nonce(&self, _address: &str) -> Result<u64, ServiceError> {
+        Err(ServiceError::Parameter("latest nonce unsupported for scoped replacement".into()))
+    }
+
     async fn replacement_receipt(
         &self,
         _hash: &str,

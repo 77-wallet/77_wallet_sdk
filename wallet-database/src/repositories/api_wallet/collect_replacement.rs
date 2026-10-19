@@ -62,6 +62,15 @@ impl CollectReplacementRepo {
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
+    /// A retained authorization stops selecting the old slot only after verified resolution.
+    pub async fn scope_is_resolved(
+        pool: &ApiTransactionDbPool,
+        scope: &CollectReplacementScope,
+    ) -> Result<bool, crate::Error> {
+        let resolved:i64=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM api_collect_replacement WHERE old_trade_no=? AND old_hash=? AND chain_code=? AND from_addr=lower(trim(?)) AND nonce=? AND legacy_counter=? AND abandoned_at IS NULL AND winner_hash IS NOT NULL AND block_hash IS NOT NULL AND block_number>0)")
+            .bind(&scope.old_trade_no).bind(&scope.old_hash).bind(&scope.chain_code).bind(&scope.from_addr).bind(scope.nonce).bind(scope.legacy_counter).fetch_one(pool.read_ref()).await.map_err(|e|crate::Error::Database(e.into()))?;
+        Ok(resolved != 0)
+    }
     /// This scope is an explicit, test-only authorization; no matching scope means no replacement.
     pub async fn prepare(
         pool: &ApiTransactionDbPool,

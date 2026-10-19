@@ -151,6 +151,7 @@ impl CollectBuildScenario {
         ApiCollectRepo::fail_verified_nonce_gap(&self.pool, &old_trade, 5, 6).await?;
         ApiNonceRepo::set_nonce_exact(&self.pool, &self.from, "scroll", 153).await?;
         self.adapter.set_nonce_response(Some(6));
+        self.adapter.set_latest_nonce_response(Some(6));
         let scope = CollectReplacementScope {
             chain_code: "scroll".into(),
             from_addr: self.from.clone(),
@@ -162,6 +163,118 @@ impl CollectBuildScenario {
         assert!(
             CollectReplacementRepo::prepare(&self.pool, &self.trade, &scope, 6).await?.is_some()
         );
+        Ok(())
+    }
+    pub async fn given_retained_replacement_configuration(&mut self) -> anyhow::Result<()> {
+        use wallet_database::repositories::api_wallet::collect_replacement::{
+            CollectReplacementRepo, CollectReplacementScope,
+        };
+        let r = CollectReplacementRepo::find(&self.pool, &self.trade).await?.unwrap();
+        let mut config = wallet_api::config::Config::new(
+            "app_code: test\ncrypto: { aes_key: 1234567890abcdef, aes_iv: abcdef1234567890 }\nbackend_api: { dev_url: 'http://127.0.0.1:9', test_url: 'http://127.0.0.1:9', prod_url: 'http://127.0.0.1:9' }\naggregate_api: { dev_url: 'http://127.0.0.1:9', test_url: 'http://127.0.0.1:9', prod_url: 'http://127.0.0.1:9' }\n",
+        )?;
+        // Synthetic persisted identity is intentionally not a real signed hash.
+        config.collect_replacement_recovery = Some(CollectReplacementScope {
+            chain_code: r.chain_code,
+            from_addr: r.from_addr,
+            old_trade_no: r.old_trade_no,
+            old_hash: r.old_hash,
+            nonce: r.nonce,
+            legacy_counter: r.legacy_counter,
+        });
+        let ctx = wallet_api::Context::new_without_handles_for_test(
+            (*self.ctx.get_global_dirs()).clone(),
+            config,
+        )
+        .await?;
+        self.ctx = Box::leak(Box::new(ctx));
+        let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(
+            &(self.from.clone() + "1" + self.ctx.get_sn()),
+        ));
+        sqlx::query("UPDATE api_collect SET validate=? WHERE trade_no=?")
+            .bind(digest)
+            .bind(&self.trade)
+            .execute(self.pool.write_ref())
+            .await?;
+        Ok(())
+    }
+    pub async fn given_next_collect_after_replacement(&mut self) -> anyhow::Result<()> {
+        let old = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, &self.trade).await?;
+        self.trade = next_tag("after-replacement");
+        let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(
+            &(self.from.clone() + "1" + self.ctx.get_sn()),
+        ));
+        ApiCollectRepo::upsert_api_collect(
+            &self.pool,
+            &old.uid,
+            "collect",
+            &self.from,
+            "",
+            "1",
+            &digest,
+            "scroll",
+            None,
+            "ETH",
+            &self.trade,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+        ApiCollectRepo::set_order_ack_sent(&self.pool, &self.trade).await?;
+        self.adapter.set_nonce_response(Some(7));
+        self.adapter.set_latest_nonce_response(Some(7));
+        Ok(())
+    }
+    pub async fn then_next_collect_owns_seven_without_replacement(&self) -> anyhow::Result<()> {
+        let row = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, &self.trade).await?;
+        assert_eq!(row.nonce, 7);
+        assert!(row.raw_tx.is_some());
+        assert_eq!(self.adapter.build_calls(), 2);
+        assert!(wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementRepo::find(&self.pool,&self.trade).await?.is_none());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 153);
+        Ok(())
+    }
+    pub async fn when_replacement_build_command(&self) -> anyhow::Result<()> {
+        use std::sync::Arc;
+        use wallet_api::infrastructure::api_trans::{
+            AddressLockManager, ShadowAdvancer, ShadowCollectCommand, ShadowCollectWorker,
+        };
+        let (tx, _) = tokio::sync::mpsc::channel(32);
+        let worker = ShadowCollectWorker::new(
+            self.ctx,
+            Arc::new(AddressLockManager::new()),
+            Arc::new(ShadowAdvancer::new(self.ctx, tx, None)),
+        );
+        worker.handle(ShadowCollectCommand::BuildTx(self.trade.clone())).await?;
+        Ok(())
+    }
+    pub async fn then_replacement_fee_failure_does_not_sign_or_top_up(&self) -> anyhow::Result<()> {
+        let row = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, &self.trade).await?;
+        assert!(row.raw_tx.is_none());
+        assert!(row.tx_hash.is_none());
+        assert_eq!(
+            row.err_code,
+            Some(wallet_database::entities::api_collect::ErrCode::FeeInsufficient)
+        );
+        assert_ne!(row.need_service_fee, Some(true));
+        assert_eq!(self.adapter.build_calls(), 0);
+        let r=wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementRepo::find(&self.pool,&self.trade).await?.unwrap();
+        assert!(r.abandoned_at.is_some());
+        assert!(r.new_hash.is_none());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 153);
+        Ok(())
+    }
+    pub async fn then_replacement_waits_unsigned(&self) -> anyhow::Result<()> {
+        let row = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, &self.trade).await?;
+        assert!(row.raw_tx.is_none());
+        assert!(row.tx_hash.is_none());
+        assert!(row.err_code.is_none());
+        assert_eq!(self.adapter.build_calls(), 0);
+        let r=wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementRepo::find(&self.pool,&self.trade).await?.unwrap();
+        assert!(r.winner_hash.is_none());
+        assert!(r.new_hash.is_none());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 153);
         Ok(())
     }
     pub async fn then_replacement_is_signed_once(&self) -> anyhow::Result<()> {
