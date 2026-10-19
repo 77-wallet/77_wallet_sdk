@@ -527,3 +527,60 @@ async fn replacement_automatic_checkpoint_preserves_higher_signed_or_uncertain_o
         assert_eq!(higher.raw_tx.is_some(), signed);
     }
 }
+
+#[tokio::test]
+async fn replacement_discovery_and_resolution_use_dynamic_identity_and_nonce() {
+    use crate::entities::api_nonce_claim::WithdrawNonceDecision;
+    for (chain, sender, nonce, high_water) in [
+        ("eth", "sender-alpha", 1_i64, 9_i64),
+        ("base", "sender-beta", 42, 97),
+        ("arbitrum", "sender-gamma", 1001, 4096),
+    ] {
+        let (pool, _) = setup(&format!("generic_recovery_{chain}")).await;
+        // Move the synthetic history to an unrelated address, chain and nonce.
+        sqlx::query("UPDATE api_collect SET chain_code=?,from_addr=?,nonce=CASE WHEN trade_no='old' THEN ? ELSE nonce END")
+            .bind(chain).bind(sender).bind(nonce).execute(pool.write_ref()).await.unwrap();
+        sqlx::query("UPDATE api_collect SET tx_exec_receipt_uploaded_at=CURRENT_TIMESTAMP WHERE trade_no='old'")
+            .execute(pool.write_ref()).await.unwrap();
+        ApiNonceRepo::set_nonce_exact(&pool, sender, chain, high_water).await.unwrap();
+        let scope = CollectReplacementRepo::discover(&pool, "new").await.unwrap().unwrap();
+        assert_eq!(
+            (&*scope.chain_code, &*scope.from_addr, scope.nonce, scope.legacy_counter),
+            (chain, sender, nonce, high_water)
+        );
+        assert!(
+            CollectReplacementRepo::prepare(&pool, "new", &scope, nonce).await.unwrap().is_some()
+        );
+        let candidate = SignedCollectCandidate {
+            trade_no: "new",
+            from_addr: sender,
+            chain_code: chain,
+            tx_hash: "new-hash",
+            raw_tx: "new-raw",
+            transaction_fee: "0.1",
+            nonce,
+            chain_next: nonce,
+        };
+        ApiCollectRepo::reserve_signed_collect(&pool, &candidate).await.unwrap();
+        let block_hash = format!("0x{}", "ab".repeat(32));
+        let proof = ReplacementResolution {
+            transaction_fee: "0.01",
+            resource_consume: "21000",
+            winner_hash: "new-hash",
+            success: true,
+            block_hash: &block_hash,
+            block_number: 100,
+            transaction_time: "2026-10-19T00:00:00Z",
+        };
+        assert!(CollectReplacementRepo::resolve(&pool, "new", &proof).await.unwrap());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&pool, sender, chain).await.unwrap(), nonce);
+        assert_eq!(
+            ApiNonceRepo::observe_signed_nonce(&pool, sender, chain, nonce + 1).await.unwrap(),
+            WithdrawNonceDecision::Ready(nonce + 1)
+        );
+        assert!(!CollectReplacementRepo::resolve(&pool, "new", &proof).await.unwrap());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&pool, sender, chain).await.unwrap(), nonce);
+        // Another identity's counter is never reset by this recovery.
+        assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "scroll").await.unwrap(), 153);
+    }
+}

@@ -182,23 +182,12 @@ impl CollectBuildScenario {
         self.adapter.require_replacement_quote();
         Ok(())
     }
-    pub async fn given_retained_replacement_configuration(&mut self) -> anyhow::Result<()> {
-        use wallet_database::repositories::api_wallet::collect_replacement::{
-            CollectReplacementRepo, CollectReplacementScope,
-        };
-        let r = CollectReplacementRepo::find(&self.pool, &self.trade).await?.unwrap();
-        let mut config = wallet_api::config::Config::new(
+    pub async fn given_restarted_context_without_recovery_override(
+        &mut self,
+    ) -> anyhow::Result<()> {
+        let config = wallet_api::config::Config::new(
             "app_code: test\ncrypto: { aes_key: 1234567890abcdef, aes_iv: abcdef1234567890 }\nbackend_api: { dev_url: 'http://127.0.0.1:9', test_url: 'http://127.0.0.1:9', prod_url: 'http://127.0.0.1:9' }\naggregate_api: { dev_url: 'http://127.0.0.1:9', test_url: 'http://127.0.0.1:9', prod_url: 'http://127.0.0.1:9' }\n",
         )?;
-        // Synthetic persisted identity is intentionally not a real signed hash.
-        config.collect_replacement_recovery = Some(CollectReplacementScope {
-            chain_code: r.chain_code,
-            from_addr: r.from_addr,
-            old_trade_no: r.old_trade_no,
-            old_hash: r.old_hash,
-            nonce: r.nonce,
-            legacy_counter: r.legacy_counter,
-        });
         let ctx = wallet_api::Context::new_without_handles_for_test(
             (*self.ctx.get_global_dirs()).clone(),
             config,

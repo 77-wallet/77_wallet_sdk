@@ -29,24 +29,10 @@ impl ShadowCollectWorker {
         if !crate::domain::chain::is_evm_chain(chain) || req.token_addr.is_contract() {
             return Ok(None);
         }
-        let scope = self
-            .ctx
-            .config()
-            .collect_replacement_recovery
-            .as_ref()
-            .filter(|s| {
-                s.chain_code == req.chain_code
-                    && s.from_addr.trim().eq_ignore_ascii_case(req.from_addr.trim())
-            })
-            .cloned();
-        let scope = match scope {
-            Some(scope) => Some(scope),
-            None => {
-                CollectReplacementRepo::discover(&self.ctx.api_transaction_pool()?, &req.trade_no)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?
-            }
-        };
+        let scope =
+            CollectReplacementRepo::discover(&self.ctx.api_transaction_pool()?, &req.trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
         let Some(scope) = scope else {
             return Ok(None);
         };
@@ -62,13 +48,13 @@ impl ShadowCollectWorker {
         &self,
         req: &ApiCollectEntity,
     ) -> Result<Option<(u64, i64, Option<ReplacementFeeContext>)>, ServiceError> {
-        let configured = self.active_replacement_scope(req).await?.is_some();
+        let discovered = self.active_replacement_scope(req).await?.is_some();
         let existing =
             CollectReplacementRepo::find(&self.ctx.api_transaction_pool()?, &req.trade_no)
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?
                 .is_some();
-        if !configured && !existing {
+        if !discovered && !existing {
             return Ok(None);
         }
         // A malformed order must not claim the old signed slot before the fee gate.
@@ -104,7 +90,7 @@ impl ShadowCollectWorker {
             r
         } else {
             let scope = scope.ok_or_else(|| {
-                ServiceError::Parameter("missing scoped replacement authorization".into())
+                ServiceError::Parameter("missing discovered replacement identity".into())
             })?;
             // A future signature must not pull a new order past a still-missing lower nonce.
             if chain_next < scope.nonce {

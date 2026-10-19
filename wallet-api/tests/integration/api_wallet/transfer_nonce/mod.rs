@@ -1503,15 +1503,16 @@ async fn collect_replacement_true_fee_shortage_reports_failure_before_signing() 
 
 #[tokio::test]
 #[serial]
-async fn collect_replacement_retained_scope_allows_next_real_seven() -> anyhow::Result<()> {
-    // Given the explicit recovery scope remains configured through reconciliation.
+async fn collect_replacement_restart_uses_durable_relation_then_normal_next_nonce()
+-> anyhow::Result<()> {
+    // Given only the durable replacement relation survives a context restart.
     let mut scenario = support::CollectBuildScenario::given().await?;
     scenario.given_replacement_at_frontier().await?;
-    scenario.given_retained_replacement_configuration().await?;
+    scenario.given_restarted_context_without_recovery_override().await?;
     scenario.when_build().await?;
     scenario.given_replacement_winner(false, true).await?;
     scenario.when_replacement_recovers().await?;
-    // When the next collect arrives, then it actually commits7 without clearing config.
+    // When the next collect arrives, it commits the next nonce through the normal flow.
     scenario.given_next_collect_after_replacement().await?;
     scenario.when_build().await?;
     scenario.then_next_collect_owns_seven_without_replacement().await?;

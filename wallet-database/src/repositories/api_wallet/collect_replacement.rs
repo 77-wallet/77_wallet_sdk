@@ -123,7 +123,7 @@ impl CollectReplacementRepo {
             .bind(&scope.old_trade_no).bind(&scope.old_hash).bind(&scope.chain_code).bind(&scope.from_addr).bind(scope.nonce).bind(scope.legacy_counter).fetch_one(pool.read_ref()).await.map_err(|e|crate::Error::Database(e.into()))?;
         Ok(resolved != 0)
     }
-    /// Capture a discovered or explicitly configured intent after atomic ownership validation.
+    /// Capture a discovered intent after atomic ownership validation.
     pub async fn prepare(
         pool: &ApiTransactionDbPool,
         new_trade: &str,
@@ -407,7 +407,7 @@ impl CollectReplacementRepo {
             .bind(evidence.winner_hash).bind(evidence.success).bind(evidence.transaction_fee).bind(evidence.resource_consume).bind(evidence.block_hash).bind(evidence.block_number).bind(evidence.transaction_time).bind(trade).execute(&mut *tx).await.map_err(|e|crate::Error::Database(e.into()))?;
         // Normalize only the captured legacy high-water, in the same writer
         // transaction as winner/execution facts. api_nonce stores LAST USED,
-        // so confirmed6 writes6, leaving7 free until a signed commit owns it.
+        // so a confirmed nonce N writes N, leaving N+1 free until a signed commit owns it.
         // Retain the original high-water audit in legacy_counter.
         // All three signed-intent flows are checked; late unknown changes or
         // higher ownership must never be erased by a repeated recovery.

@@ -1968,3 +1968,11 @@ or broadcasting.
 - Missing/uncertain receipts never prove consumption. The separate existing finalized proof for unknown external nonce conflicts remains unchanged. Known winner receipt must verify exact hash/from/nonce/block and canonical membership/reread; backend confirmation semantics stay aligned with ordinary collect.
 - Resolve winner, recovered execution facts and captured last-used counter normalization atomically (consumed6 -> stored6 -> next candidate7). Preserve original153 audit, higher signed/uncertain ownership and unknown counter growth; duplicate resolution cannot overwrite later work.
 - `collect_replacement_included_winner_reports_once_and_restores_next_seven`: scanner/dispatcher uploads one SUCCESS using new6 identity after idempotent reconciliation. `collect_replacement_releases_ordinary_seven_without_virtual_reservation`: actual ordinary observer returns7 without reserving; synthetic signed commit then owns7; no real signing/broadcast.
+
+
+### 2026-10-19 自动恢复不依赖指定测试范围
+
+- `replacement_legacy_scope_cannot_select_chain_address_or_nonce`：旧配置字段不再参与选择，eth/scroll/base的遗留值均按未知配置忽略。
+- `replacement_discovery_and_resolution_use_dynamic_identity_and_nonce`：临时SQLite验证eth/base/arbitrum、不同发送地址、nonce 1/42/1001和独立历史高水位9/97/4096；自动发现、唯一占用、签名关联、赢家对账后最后使用N/下一N+1、重复对账幂等，以及其他地址计数器不变。
+- `collect_replacement_restart_uses_durable_relation_then_normal_next_nonce`：上下文重建只依赖持久化关联，无手动配置入口；恢复完成后下一归集走正常分配。已有`collect_replacement_`失败/未知结果/并发占用/上报回归继续适用。
+- 业务边界：公共分配与签名占用覆盖归集/手续费/提币；自动关联替换只覆盖原生EVM归集，不扩展其他业务自动重签或取消权限。

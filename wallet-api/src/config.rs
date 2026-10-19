@@ -28,11 +28,6 @@ impl ChainNetwork {
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    /// Explicit test-address recovery only; absent by default. Never enabled in prod.
-    #[serde(default)]
-    pub collect_replacement_recovery: Option<
-        wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementScope,
-    >,
     #[serde(default)]
     pub log_upload: Option<wallet_transport_backend::log_upload::LogUploadConfig>,
     pub backend_api: BackendApiConfig,
@@ -85,29 +80,6 @@ pub struct BackendApiConfig {
 impl Config {
     pub fn new(config_content: &str) -> Result<Self, crate::error::service::ServiceError> {
         let config: Config = wallet_utils::serde_func::serde_yaml_from_str(config_content)?;
-        if config.collect_replacement_recovery.is_some()
-            && (!cfg!(feature = "dev") || cfg!(feature = "prod"))
-        {
-            return Err(crate::error::service::ServiceError::Parameter(
-                "collect replacement recovery requires explicit dev test scope".into(),
-            ));
-        }
-        if let Some(scope) = config.collect_replacement_recovery.as_ref() {
-            let is_hex = |v: &str, n: usize| {
-                v.len() == n && v.starts_with("0x") && v[2..].bytes().all(|c| c.is_ascii_hexdigit())
-            };
-            if scope.chain_code != "scroll"
-                || !is_hex(&scope.from_addr, 42)
-                || !is_hex(&scope.old_hash, 66)
-                || scope.old_trade_no.trim().is_empty()
-                || scope.nonce < 0
-                || scope.legacy_counter < scope.nonce
-            {
-                return Err(crate::error::service::ServiceError::Parameter(
-                    "invalid explicit Scroll test recovery scope".into(),
-                ));
-            }
-        }
         Ok(config)
     }
 
@@ -181,17 +153,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn replacement_config_requires_explicit_valid_dev_scope() {
+    fn replacement_legacy_scope_cannot_select_chain_address_or_nonce() {
         let base = "app_code: test\ncrypto: { aes_key: synthetic-key, aes_iv: synthetic-iv }\nbackend_api: { dev_url: x, test_url: x, prod_url: x }\naggregate_api: { dev_url: x, test_url: x, prod_url: x }\n";
-        assert!(Config::new(base).unwrap().collect_replacement_recovery.is_none());
-        let scope = format!(
-            "{base}collect_replacement_recovery:\n  chain_code: scroll\n  from_addr: '0x{}'\n  old_trade_no: synthetic\n  old_hash: '0x{}'\n  nonce: 6\n  legacy_counter: 153\n",
-            "11".repeat(20),
-            "22".repeat(32)
-        );
-        assert_eq!(Config::new(&scope).is_ok(), cfg!(feature = "dev") && !cfg!(feature = "prod"));
-        assert!(Config::new(&scope.replace("chain_code: scroll", "chain_code: eth")).is_err());
-        assert!(Config::new(&scope.replace("legacy_counter: 153", "legacy_counter: 5")).is_err());
+        // Removed configuration is inert, just like other unknown historical fields.
+        // Recovery is selected from durable order facts, in every environment.
+        for chain in ["eth", "scroll", "base"] {
+            let legacy = format!(
+                "{base}collect_replacement_recovery:\n  chain_code: {chain}\n  from_addr: ignored\n  nonce: 42\n"
+            );
+            assert!(Config::new(&legacy).is_ok());
+        }
     }
 
     #[test]
