@@ -1,4 +1,4 @@
-//! Scoped recovery stays in the existing collect worker lifecycle.
+//! Automatic recovery reuses the existing durable collect replacement lifecycle.
 use super::ShadowCollectWorker;
 use crate::{
     domain::api_wallet::{
@@ -24,14 +24,33 @@ impl ShadowCollectWorker {
     async fn active_replacement_scope(
         &self,
         req: &ApiCollectEntity,
-    ) -> Result<Option<&CollectReplacementScope>, ServiceError> {
-        let Some(scope) = self.ctx.config().collect_replacement_recovery.as_ref().filter(|s| {
-            s.chain_code == req.chain_code
-                && s.from_addr.trim().eq_ignore_ascii_case(req.from_addr.trim())
-        }) else {
+    ) -> Result<Option<CollectReplacementScope>, ServiceError> {
+        let chain: wallet_types::chain::chain::ChainCode = req.chain_code.as_str().try_into()?;
+        if !crate::domain::chain::is_evm_chain(chain) || req.token_addr.is_contract() {
+            return Ok(None);
+        }
+        let scope = self
+            .ctx
+            .config()
+            .collect_replacement_recovery
+            .as_ref()
+            .filter(|s| {
+                s.chain_code == req.chain_code
+                    && s.from_addr.trim().eq_ignore_ascii_case(req.from_addr.trim())
+            })
+            .cloned();
+        let scope = match scope {
+            Some(scope) => Some(scope),
+            None => {
+                CollectReplacementRepo::discover(&self.ctx.api_transaction_pool()?, &req.trade_no)
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?
+            }
+        };
+        let Some(scope) = scope else {
             return Ok(None);
         };
-        if CollectReplacementRepo::scope_is_resolved(&self.ctx.api_transaction_pool()?, scope)
+        if CollectReplacementRepo::scope_is_resolved(&self.ctx.api_transaction_pool()?, &scope)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?
         {
@@ -87,7 +106,14 @@ impl ShadowCollectWorker {
             let scope = scope.ok_or_else(|| {
                 ServiceError::Parameter("missing scoped replacement authorization".into())
             })?;
-            let Some(r) = CollectReplacementRepo::prepare(&pool, &req.trade_no, scope, chain_next)
+            // A future signature must not pull a new order past a still-missing lower nonce.
+            if chain_next < scope.nonce {
+                return self
+                    .get_nonce(&req.from_addr, &req.chain_code)
+                    .await
+                    .map(|(n, c)| (n, c, None));
+            }
+            let Some(r) = CollectReplacementRepo::prepare(&pool, &req.trade_no, &scope, chain_next)
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?
             else {

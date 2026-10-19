@@ -25,7 +25,7 @@ fn bump(v: u128) -> Result<U256, ServiceError> {
         .ok_or_else(invalid)
 }
 /// Absence means ordinary flow; malformed explicit context must fail closed.
-pub(super) fn context(
+pub(crate) fn context(
     metadata: Option<&str>,
 ) -> Result<Option<ReplacementFeeContext>, ServiceError> {
     let Some(meta) = metadata else { return Ok(None) };

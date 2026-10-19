@@ -496,3 +496,53 @@ async fn api_evm_fee_l1_quote_without_metadata_is_isolated_from_raw_gates() {
         }
     }
 }
+
+#[tokio::test]
+async fn replacement_raw_rechecks_native_maximum_budget_on_non_l1_chains() {
+    use alloy::{
+        consensus::{SignableTransaction, TxEip1559, TxEnvelope},
+        network::eip2718::Encodable2718,
+        signers::{SignerSync, local::PrivateKeySigner},
+    };
+    let ctx = crate::testkit::context::api_trans_test_ctx().await;
+    for shortage in [true, false] {
+        let signer = PrivateKeySigner::random();
+        let (mut req, _) = request(ChainCode::Ethereum, false, false);
+        req.base.from = format!("{:#x}", signer.address());
+        let old = TxEip1559 {
+            chain_id: 1,
+            nonce: req.nonce,
+            gas_limit: 21000,
+            max_fee_per_gas: 100,
+            max_priority_fee_per_gas: 10,
+            ..Default::default()
+        };
+        let signature = signer.sign_hash_sync(&old.signature_hash()).unwrap();
+        let old: TxEnvelope = old.into_signed(signature).into();
+        let bytes = old.encoded_2718();
+        req.base.metadata = Some(json!({"collectReplacement":{
+            "old_raw":serde_json::to_string(&RawTx::Evm(bytes.clone(), U256::ZERO)).unwrap(),
+            "old_hash":EthTx::evm_raw_tx_hash_hex(&bytes), "from_addr":req.base.from,"nonce":req.nonce
+        }}).to_string());
+        // Latest funds cover value, but not the replacement's bumped maximum fee.
+        let native = if shortage { U256::from(1_000_000_000_000_000_000u64) } else { U256::MAX };
+        let rpc = Rpc::new(native, U256::ZERO, Ok(U256::ZERO));
+        let adapter =
+            EthTx::new_for_test(ctx, ChainCode::Ethereum, &rpc.url, NetworkKind::Mainnet, None)
+                .unwrap();
+        let result = adapter
+            .build_transfer_raw(&req, ChainPrivateKey::from(hex::encode(signer.to_bytes())))
+            .await;
+        if shortage {
+            assert!(matches!(
+                result.unwrap_err(),
+                ServiceError::Business(BusinessError::Chain(ChainError::InsufficientFeeBalance))
+            ));
+        } else {
+            assert!(result.is_ok(), "{result:?}");
+        }
+        let calls = rpc.calls.lock().unwrap();
+        assert!(calls.iter().any(|r| r["method"] == "eth_getBalance"));
+        assert!(!calls.iter().any(|r| r["method"] == "eth_sendRawTransaction"));
+    }
+}

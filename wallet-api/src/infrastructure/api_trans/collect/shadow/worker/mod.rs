@@ -35,7 +35,11 @@ async fn estimate_evm_collect_fee(
     main_symbol: &str,
 ) -> Result<String, ServiceError> {
     use wallet_types::chain::chain::ChainCode;
-    if matches!(chain_code, ChainCode::Base | ChainCode::Scroll) {
+    let replacement = crate::domain::api_wallet::adapter::eth_tx::replacement::context(
+        params.metadata.as_deref(),
+    )?
+    .is_some();
+    if replacement || matches!(chain_code, ChainCode::Base | ChainCode::Scroll) {
         let wei = adapter.estimate_native_fee_wei(params).await?;
         return unit::format_to_string(wei, eth::consts::ETH_DECIMAL).map_err(ServiceError::from);
     }

@@ -1,4 +1,4 @@
-//! Explicitly scoped replacement ownership and verified legacy-counter recovery.
+//! Durable replacement ownership and verified legacy-counter recovery.
 use crate::{
     ApiTransactionDbPool,
     dao::{api_collect::ApiCollectDao, api_nonce::ApiNonceDao},
@@ -62,6 +62,58 @@ impl CollectReplacementRepo {
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
+    /// Discover one already-reported failed intent; observation does not reserve its slot.
+    /// The worker checks the confirmed frontier and prepare revalidates shared ownership.
+    pub async fn discover(
+        pool: &ApiTransactionDbPool,
+        new_trade: &str,
+    ) -> Result<Option<CollectReplacementScope>, crate::Error> {
+        let new = ApiCollectDao::get_api_collect_by_trade_no(pool.read_ref(), new_trade).await?;
+        if new.token_addr.is_contract()
+            || new.raw_tx.is_some()
+            || new.tx_hash.is_some()
+            || new.err_code.is_some()
+            || new.is_fact_terminal()
+            || new.transaction_time.is_some()
+            || new.last_broadcast_at.is_some()
+            || new.broadcast_uncertain_since_at.is_some()
+            || new.tx_exec_receipt_uploaded_at.is_some()
+        {
+            return Ok(None);
+        }
+        let prefix = crate::entities::api_nonce_claim::COLLECT_NONCE_GAP_REPORTED;
+        let candidates: Vec<crate::entities::api_collect::ApiCollectEntity> = sqlx::query_as(
+            "SELECT old.* FROM api_collect old WHERE old.uid=? AND old.chain_code=?
+             AND lower(old.from_addr)=lower(?) AND lower(trim(old.to_addr))=lower(trim(?))
+             AND old.trade_no<>? AND old.tx_hash IS NOT NULL AND old.raw_tx IS NOT NULL
+             AND old.err_code IS NOT NULL AND substr(old.err_msg,1,length(?))=?
+             AND old.transaction_time IS NULL AND old.tx_exec_receipt_uploaded_at IS NOT NULL
+             AND NOT EXISTS(SELECT 1 FROM api_collect_replacement r WHERE r.old_trade_no=old.trade_no
+               AND r.old_hash=old.tx_hash AND r.winner_hash IS NOT NULL AND r.block_hash IS NOT NULL AND r.block_number>0)
+             ORDER BY old.nonce LIMIT 2"
+        ).bind(&new.uid).bind(&new.chain_code).bind(&new.from_addr).bind(&new.to_addr)
+            .bind(new_trade).bind(prefix).bind(prefix).fetch_all(pool.read_ref()).await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        // Never choose arbitrarily between historical signed intents.
+        if candidates.len() != 1 {
+            return Ok(None);
+        }
+        let old = &candidates[0];
+        if old.token_addr != new.token_addr {
+            return Ok(None);
+        }
+        let counter: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(nonce),0) FROM api_nonce WHERE lower(from_addr)=lower(?) AND chain_code=?")
+            .bind(&new.from_addr).bind(&new.chain_code).fetch_one(pool.read_ref()).await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(Some(CollectReplacementScope {
+            chain_code: new.chain_code,
+            from_addr: new.from_addr,
+            old_trade_no: old.trade_no.clone(),
+            old_hash: old.tx_hash.clone().unwrap(),
+            nonce: i64::from(old.nonce),
+            legacy_counter: counter.max(i64::from(old.nonce)),
+        }))
+    }
     /// A retained authorization stops selecting the old slot only after verified resolution.
     pub async fn scope_is_resolved(
         pool: &ApiTransactionDbPool,
@@ -71,14 +123,14 @@ impl CollectReplacementRepo {
             .bind(&scope.old_trade_no).bind(&scope.old_hash).bind(&scope.chain_code).bind(&scope.from_addr).bind(scope.nonce).bind(scope.legacy_counter).fetch_one(pool.read_ref()).await.map_err(|e|crate::Error::Database(e.into()))?;
         Ok(resolved != 0)
     }
-    /// This scope is an explicit, test-only authorization; no matching scope means no replacement.
+    /// Capture a discovered or explicitly configured intent after atomic ownership validation.
     pub async fn prepare(
         pool: &ApiTransactionDbPool,
         new_trade: &str,
         scope: &CollectReplacementScope,
         chain_next: i64,
     ) -> Result<Option<CollectReplacement>, crate::Error> {
-        if scope.chain_code != "scroll"
+        if scope.chain_code.is_empty()
             || chain_next < scope.nonce
             || scope.nonce < 0
             || scope.legacy_counter < scope.nonce

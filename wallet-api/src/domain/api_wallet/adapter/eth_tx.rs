@@ -360,9 +360,9 @@ impl EthTx {
         base: &ApiBaseTransferReq,
         nonce: u64,
     ) -> Result<FeeSetting, ServiceError> {
-        if self.chain.chain_code != ChainCode::Scroll || base.token_address.is_contract() {
+        if base.token_address.is_contract() {
             return Err(ServiceError::Parameter(
-                "scoped replacement quote requires native Scroll".into(),
+                "replacement quote requires a native EVM asset".into(),
             ));
         }
         let mut setting = FeeSetting {
@@ -400,7 +400,8 @@ impl EthTx {
     }
 
     async fn native_fee_quote(&self, req: ApiBaseTransferReq) -> Result<U256, ServiceError> {
-        if !self.uses_separate_l1_fee() {
+        if !self.uses_separate_l1_fee() && replacement::context(req.metadata.as_deref())?.is_none()
+        {
             return Err(ServiceError::Parameter(
                 "separate L1 fee quote is unsupported".to_string(),
             ));
@@ -663,16 +664,22 @@ impl Tx for EthTx {
         )?;
         tokio::time::timeout(
             std::time::Duration::from_secs(TIME_OUT),
-            replacement_receipt::probe(hash, address, nonce, |method, params| {
-                let client = &client;
-                async move {
-                    Ok(client
-                        .invoke_request::<_, Value>(
-                            JsonRpcParams::default().method(method).params(params),
-                        )
-                        .await?)
-                }
-            }),
+            replacement_receipt::probe(
+                hash,
+                address,
+                nonce,
+                self.uses_separate_l1_fee(),
+                |method, params| {
+                    let client = &client;
+                    async move {
+                        Ok(client
+                            .invoke_request::<_, Value>(
+                                JsonRpcParams::default().method(method).params(params),
+                            )
+                            .await?)
+                    }
+                },
+            ),
         )
         .await
         .map_err(|_| ServiceError::Timeout)?
@@ -777,7 +784,7 @@ impl Tx for EthTx {
         // Automatic API Wallet raw builds must fund the signed EIP-1559
         // maximum, because nodes validate balance against
         // gas_limit * max_fee_per_gas.
-        let fee = if self.uses_separate_l1_fee() {
+        let fee = if self.uses_separate_l1_fee() || scoped {
             let total = self.total_fee_for_transaction(trans_req.clone(), &fee_setting).await?;
             self.ensure_transfer_funded(&params.base, transfer_amount, total).await?;
             total

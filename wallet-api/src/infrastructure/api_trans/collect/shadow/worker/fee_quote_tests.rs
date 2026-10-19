@@ -104,7 +104,11 @@ impl Tx for QuoteAdapter {
         req: crate::request::api_wallet::trans::ApiBaseTransferReq,
     ) -> Result<U256, crate::error::service::ServiceError> {
         self.native_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        assert_eq!(req.token_address.as_db_str(), "0x0000000000000000000000000000000000000001");
+        let replacing = req.metadata.as_deref().is_some_and(|m| m.contains("collectReplacement"));
+        assert_eq!(
+            req.token_address.as_db_str(),
+            if replacing { "" } else { "0x0000000000000000000000000000000000000001" }
+        );
         if self.fail_native {
             return Err(crate::error::service::ServiceError::Parameter("L1 RPC failed".into()));
         }
@@ -209,5 +213,25 @@ async fn fee_quote_funding_and_build_use_same_l1_inclusive_amount() {
         assert_eq!(build_quote, funding_quote);
         assert_eq!(adapter.native_calls.load(Ordering::SeqCst), 2);
         assert_eq!(adapter.display_calls.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn replacement_quote_uses_exact_native_budget_on_every_evm_chain() {
+    for chain in [ChainCode::Ethereum, ChainCode::BnbSmartChain, ChainCode::Base, ChainCode::Scroll]
+    {
+        let adapter = QuoteAdapter::default();
+        let mut params = request(chain);
+        params.with_token(None, 18, "ETH");
+        params.metadata = Some(
+            serde_json::json!({"collectReplacement":{
+                "old_raw":"synthetic", "old_hash":"synthetic", "from_addr":"from", "nonce":6
+            }})
+            .to_string(),
+        );
+        let result = estimate_evm_collect_fee(&adapter, chain, params, "ETH").await.unwrap();
+        assert_eq!(adapter.native_calls.load(Ordering::SeqCst), 1, "{chain}");
+        assert_eq!(adapter.display_calls.load(Ordering::SeqCst), 0, "{chain}");
+        assert!(!result.is_empty());
     }
 }

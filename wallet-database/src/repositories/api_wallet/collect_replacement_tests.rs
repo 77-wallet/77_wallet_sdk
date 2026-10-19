@@ -406,3 +406,123 @@ async fn replacement_retained_scope_is_released_only_by_matching_verified_resolu
     wrong.legacy_counter = 154;
     assert!(!CollectReplacementRepo::scope_is_resolved(&p, &wrong).await.unwrap());
 }
+
+#[tokio::test]
+async fn replacement_discovery_uses_persisted_reported_intent_and_counter_without_configuration() {
+    let (p, expected) = setup("replacement-auto-discover").await;
+    // A local failure is not enough until backend failure upload completed.
+    assert!(CollectReplacementRepo::discover(&p, "new").await.unwrap().is_none());
+    sqlx::query(
+        "UPDATE api_collect SET tx_exec_receipt_uploaded_at=CURRENT_TIMESTAMP WHERE trade_no='old'",
+    )
+    .execute(p.write_ref())
+    .await
+    .unwrap();
+    let found = CollectReplacementRepo::discover(&p, "new").await.unwrap().unwrap();
+    assert_eq!(found, expected);
+    assert!(CollectReplacementRepo::prepare(&p, "new", &found, 6).await.unwrap().is_some());
+    assert_eq!(ApiCollectRepo::reserve_signed_collect(&p, &signed("new")).await.unwrap(), 1);
+    assert_eq!(ApiNonceRepo::get_api_nonce(&p, "sender", "scroll").await.unwrap(), 153);
+}
+
+#[tokio::test]
+async fn replacement_discovery_rejects_other_destination_and_ambiguous_old_intents() {
+    let (p, _) = setup("replacement-auto-ambiguous").await;
+    sqlx::query(
+        "UPDATE api_collect SET tx_exec_receipt_uploaded_at=CURRENT_TIMESTAMP WHERE trade_no='old'",
+    )
+    .execute(p.write_ref())
+    .await
+    .unwrap();
+    sqlx::query("UPDATE api_collect SET to_addr='other' WHERE trade_no='new'")
+        .execute(p.write_ref())
+        .await
+        .unwrap();
+    assert!(CollectReplacementRepo::discover(&p, "new").await.unwrap().is_none());
+    sqlx::query("UPDATE api_collect SET to_addr='receiver' WHERE trade_no='new'")
+        .execute(p.write_ref())
+        .await
+        .unwrap();
+    seed(&p, "other-old").await;
+    sqlx::query("UPDATE api_collect SET nonce=6,tx_hash='another-hash',raw_tx='another-raw',err_code=6008,err_msg=?,tx_exec_receipt_uploaded_at=CURRENT_TIMESTAMP WHERE trade_no='other-old'")
+        .bind(format!("{} synthetic", crate::entities::api_nonce_claim::COLLECT_NONCE_GAP_REPORTED))
+        .execute(p.write_ref()).await.unwrap();
+    assert!(CollectReplacementRepo::discover(&p, "new").await.unwrap().is_none());
+    assert!(CollectReplacementRepo::find(&p, "new").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn replacement_discovery_does_not_reselect_canonically_resolved_old_intent() {
+    let (p, s) = setup("replacement-auto-resolved").await;
+    sqlx::query(
+        "UPDATE api_collect SET tx_exec_receipt_uploaded_at=CURRENT_TIMESTAMP WHERE trade_no='old'",
+    )
+    .execute(p.write_ref())
+    .await
+    .unwrap();
+    CollectReplacementRepo::prepare(&p, "new", &s, 6).await.unwrap().unwrap();
+    ApiCollectRepo::reserve_signed_collect(&p, &signed("new")).await.unwrap();
+    let block = format!("0x{}", "ab".repeat(32));
+    CollectReplacementRepo::resolve(
+        &p,
+        "new",
+        &ReplacementResolution {
+            transaction_fee: "0.001",
+            resource_consume: "21000",
+            winner_hash: "new-hash",
+            success: true,
+            block_hash: &block,
+            block_number: 42,
+            transaction_time: "2026-10-19T00:00:00Z",
+        },
+    )
+    .await
+    .unwrap();
+    seed(&p, "next").await;
+    assert!(CollectReplacementRepo::discover(&p, "next").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn replacement_automatic_checkpoint_preserves_higher_signed_or_uncertain_ownership() {
+    use crate::entities::api_nonce_claim::WithdrawNonceDecision as D;
+    for signed in [true, false] {
+        let (p, _) = setup(if signed {
+            "replacement-auto-higher-signed"
+        } else {
+            "replacement-auto-higher-uncertain"
+        })
+        .await;
+        sqlx::query("UPDATE api_collect SET tx_exec_receipt_uploaded_at=CURRENT_TIMESTAMP WHERE trade_no='old'")
+            .execute(p.write_ref()).await.unwrap();
+        seed(&p, "higher").await;
+        sqlx::query("UPDATE api_collect SET nonce=7,raw_tx=?,tx_hash=?,last_broadcast_at=CURRENT_TIMESTAMP,broadcast_uncertain_since_at=CURRENT_TIMESTAMP WHERE trade_no='higher'")
+            .bind(signed.then_some("higher-raw")).bind(signed.then_some("higher-hash"))
+            .execute(p.write_ref()).await.unwrap();
+        let s = CollectReplacementRepo::discover(&p, "new").await.unwrap().unwrap();
+        CollectReplacementRepo::prepare(&p, "new", &s, 6).await.unwrap().unwrap();
+        ApiCollectRepo::reserve_signed_collect(&p, &super::tests::signed("new")).await.unwrap();
+        let block = format!("0x{}", "ab".repeat(32));
+        CollectReplacementRepo::resolve(
+            &p,
+            "new",
+            &ReplacementResolution {
+                transaction_fee: "0.001",
+                resource_consume: "21000",
+                winner_hash: "new-hash",
+                success: true,
+                block_hash: &block,
+                block_number: 42,
+                transaction_time: "2026-10-19T00:00:00Z",
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            ApiNonceRepo::observe_signed_nonce(&p, "sender", "scroll", 7).await.unwrap(),
+            D::Ready(8)
+        );
+        let higher = ApiCollectRepo::get_api_collect_by_trade_no(&p, "higher").await.unwrap();
+        assert!(higher.broadcast_uncertain_since_at.is_some());
+        assert_eq!(higher.raw_tx.is_some(), signed);
+    }
+}

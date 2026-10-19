@@ -135,6 +135,9 @@ impl RecordingEthAdapter {
     pub(crate) fn require_replacement_quote(&self) {
         self.state.require_replacement_quote.store(true, Ordering::SeqCst);
     }
+    pub(crate) fn allow_ordinary_quote(&self) {
+        self.state.require_replacement_quote.store(false, Ordering::SeqCst);
+    }
     pub(crate) fn replacement_quotes(&self) -> usize {
         self.state.replacement_quotes.load(Ordering::SeqCst)
     }

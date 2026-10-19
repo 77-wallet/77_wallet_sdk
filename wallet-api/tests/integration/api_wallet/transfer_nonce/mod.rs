@@ -1517,3 +1517,39 @@ async fn collect_replacement_retained_scope_allows_next_real_seven() -> anyhow::
     scenario.then_next_collect_owns_seven_without_replacement().await?;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn collect_replacement_automatically_detects_failed_old_slot_without_configuration()
+-> anyhow::Result<()> {
+    // Given an unsigned new collect and a reported old6, latest6/pending7, no configuration/relation.
+    let mut scenario = support::CollectBuildScenario::given().await?;
+    scenario.given_automatic_replacement_without_configuration().await?;
+    // When ordinary BuildTx commands retry and the process resumes from persisted state.
+    scenario.when_build().await?;
+    scenario.when_replacement_build_command().await?;
+    // Then preflight used replacement context, exactly one signature owns6, old signature retained.
+    scenario.then_replacement_is_signed_once().await?;
+    scenario.given_replacement_winner(false, true).await?;
+    scenario.when_replacement_recovers().await?;
+    scenario.given_next_collect_after_replacement().await?;
+    scenario.when_build().await?;
+    scenario.then_next_collect_owns_seven_without_replacement().await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_replacement_automatic_discovery_never_signs_on_unknown_latest_or_winner()
+-> anyhow::Result<()> {
+    for latest in [None, Some(7)] {
+        // Given a discovered failed6, but chain observation cannot prove the slot is available.
+        let scenario = support::CollectBuildScenario::given().await?;
+        scenario.given_automatic_replacement_without_configuration().await?;
+        scenario.adapter.set_latest_nonce_response(latest);
+        // When the normal worker retries, then it keeps both the old signature and high-water.
+        scenario.when_replacement_build_command().await?;
+        scenario.then_automatic_replacement_waits_unsigned().await?;
+    }
+    Ok(())
+}

@@ -165,6 +165,23 @@ impl CollectBuildScenario {
         );
         Ok(())
     }
+    pub async fn given_automatic_replacement_without_configuration(&self) -> anyhow::Result<()> {
+        self.given_replacement_at_frontier().await?;
+        sqlx::query("DELETE FROM api_collect_replacement WHERE new_trade_no=?")
+            .bind(&self.trade)
+            .execute(self.pool.write_ref())
+            .await?;
+        sqlx::query(
+            "UPDATE api_collect SET tx_exec_receipt_uploaded_at=CURRENT_TIMESTAMP WHERE trade_no=?",
+        )
+        .bind(format!("old-{}", self.trade))
+        .execute(self.pool.write_ref())
+        .await?;
+        assert!(wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementRepo::discover(&self.pool, &self.trade).await?.is_some(), "synthetic old/new identities should be automatically eligible");
+        self.adapter.set_nonce_response(Some(7));
+        self.adapter.require_replacement_quote();
+        Ok(())
+    }
     pub async fn given_retained_replacement_configuration(&mut self) -> anyhow::Result<()> {
         use wallet_database::repositories::api_wallet::collect_replacement::{
             CollectReplacementRepo, CollectReplacementScope,
@@ -224,6 +241,7 @@ impl CollectBuildScenario {
         ApiCollectRepo::set_order_ack_sent(&self.pool, &self.trade).await?;
         self.adapter.set_nonce_response(Some(7));
         self.adapter.set_latest_nonce_response(Some(7));
+        self.adapter.allow_ordinary_quote();
         Ok(())
     }
     pub async fn then_next_collect_owns_seven_without_replacement(&self) -> anyhow::Result<()> {
@@ -262,6 +280,15 @@ impl CollectBuildScenario {
         let r=wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementRepo::find(&self.pool,&self.trade).await?.unwrap();
         assert!(r.abandoned_at.is_some());
         assert!(r.new_hash.is_none());
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 153);
+        Ok(())
+    }
+    pub async fn then_automatic_replacement_waits_unsigned(&self) -> anyhow::Result<()> {
+        let row = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, &self.trade).await?;
+        assert!(row.raw_tx.is_none());
+        assert!(row.tx_hash.is_none());
+        assert!(row.err_code.is_none());
+        assert_eq!(self.adapter.build_calls(), 0);
         assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 153);
         Ok(())
     }
