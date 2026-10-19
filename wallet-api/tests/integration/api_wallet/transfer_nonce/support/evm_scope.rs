@@ -56,11 +56,10 @@ impl EvmTransferScenario {
                 .map(|r| r.tx_hash)
         })
     }
-    pub(crate) async fn when_foreign_nonce_is_allocated(&self) -> anyhow::Result<i32> {
-        let engine = wallet_api::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(
-            self.env.manager.ctx(),
-        )?;
-        Ok(engine.allocate_nonce_synced(&self.from, &self.chain).await?)
+    pub(crate) async fn when_foreign_counter_advances(&self) -> anyhow::Result<i64> {
+        // Inject a concurrent committed counter change, not a preallocation API.
+        let pool = db::open_api_transaction_pool(&self.env.db_dir).await;
+        Ok(ApiNonceRepo::set_nonce_floor(&pool, &self.from, &self.chain, 1).await?)
     }
     pub(crate) async fn then_nonce_floor_is(&self, floor: i64) -> anyhow::Result<()> {
         let pool = db::open_api_transaction_pool(&self.env.db_dir).await;

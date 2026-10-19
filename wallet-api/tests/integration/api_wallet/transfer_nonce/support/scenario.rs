@@ -278,12 +278,26 @@ impl TransferNonceScenario {
         self.adapter.set_nonce_response(next);
     }
 
-    pub(crate) async fn when_collect_nonce_is_allocated(&self) -> Result<i32, ServiceError> {
-        let engine = wallet_api::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(
-            self.env.manager.ctx(),
-        )?;
+    pub(crate) async fn when_shared_nonce_is_observed(&self) -> Result<i32, ServiceError> {
         let address = self.from_addr.borrow().clone();
-        engine.allocate_nonce_synced(&address, "bnb").await
+        // Collect and fee share this read-only candidate engine.
+        wallet_api::testkit::collect_fee::allocate_collect_fee_nonce(
+            self.env.manager.ctx(),
+            &address,
+            "bnb",
+        )
+        .await
+        .map(|nonce| nonce as i32)
+    }
+
+    pub(crate) async fn given_nonce_floor(&self, floor: i64) -> anyhow::Result<()> {
+        let address = self.from_addr.borrow().clone();
+        let pool = super::db::open_api_transaction_pool(&self.env.db_dir).await;
+        wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::set_nonce_floor(
+            &pool, &address, "bnb", floor,
+        )
+        .await?;
+        Ok(())
     }
 
     pub(crate) async fn then_nonce_floor_and_queries_are(&self, floor: i64, queries: usize) {

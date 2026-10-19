@@ -1976,3 +1976,11 @@ or broadcasting.
 - `replacement_discovery_and_resolution_use_dynamic_identity_and_nonce`：临时SQLite验证eth/base/arbitrum、不同发送地址、nonce 1/42/1001和独立历史高水位9/97/4096；自动发现、唯一占用、签名关联、赢家对账后最后使用N/下一N+1、重复对账幂等，以及其他地址计数器不变。
 - `collect_replacement_restart_uses_durable_relation_then_normal_next_nonce`：上下文重建只依赖持久化关联，无手动配置入口；恢复完成后下一归集走正常分配。已有`collect_replacement_`失败/未知结果/并发占用/上报回归继续适用。
 - 业务边界：公共分配与签名占用覆盖归集/手续费/提币；自动关联替换只覆盖原生EVM归集，不扩展其他业务自动重签或取消权限。
+
+
+### 2026-10-20 禁止未签名预分配nonce
+
+- `ApiNonceRepo`与`NonceEngine`的compile_fail文档用例：旧公开预分配方法不存在；DAO不再包含对应counter+1 SQL。
+- `shared_candidate_nonce_skips_consumed_without_reserving`、`shared_candidate_nonce_stale_chain_response_does_not_advance_counter`、`shared_candidate_nonce_concurrent_observations_do_not_reserve`：替代仅验证旧分配器的历史用例；重复/并发观察不写nonce，过时链前沿不能提高counter或绕过不明占用。
+- `nonce_alignment_preserves_reserved_nonces`、`nonce_alignment_and_observation_preserve_reservations`：对已存在高水位重复或并发自愈不能回退/继续加号；缺少签名事实时保持保守等待。
+- 既有`candidate_nonce_`、`collect_main_`、`collect_fee_build_`、`collect_replacement_`及withdraw用例继续覆盖实际构建失败/取消、签名提交竞争、重启、未知广播与归集替换恢复。竞争写入夹具直接注入counter变化，不再调用已删除的预分配API。

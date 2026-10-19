@@ -1,5 +1,15 @@
 use crate::{ApiTransactionDbPool, dao::api_nonce::ApiNonceDao};
 
+/// Nonce ownership is committed with signed business facts, never preallocated.
+///
+/// ```compile_fail
+/// use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
+/// let _ = ApiNonceRepo::allocate_next_nonce;
+/// ```
+/// ```compile_fail
+/// use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
+/// let _ = ApiNonceRepo::upsert_and_get_api_nonce;
+/// ```
 pub struct ApiNonceRepo;
 
 impl ApiNonceRepo {
@@ -38,23 +48,6 @@ impl ApiNonceRepo {
 
     // 写权限限制：只允许 NonceEngine 调用
     #[doc(hidden)]
-    pub async fn allocate_next_nonce(
-        pool: &ApiTransactionDbPool,
-        from_addr: &str,
-        chain_code: &str,
-        initial_nonce: i32,
-    ) -> Result<i32, crate::Error> {
-        ApiNonceDao::upsert_and_get_api_nonce(
-            pool.write_ref(),
-            from_addr,
-            chain_code,
-            initial_nonce,
-        )
-        .await
-    }
-
-    // 写权限限制：只允许 NonceEngine 调用
-    #[doc(hidden)]
     pub async fn set_nonce_floor(
         pool: &ApiTransactionDbPool,
         from_addr: &str,
@@ -73,17 +66,6 @@ impl ApiNonceRepo {
         exact_nonce: i64,
     ) -> Result<i64, crate::Error> {
         ApiNonceDao::upsert_nonce_exact(pool.write_ref(), from_addr, chain_code, exact_nonce).await
-    }
-
-    // 写权限限制：只允许 NonceEngine 调用
-    #[doc(hidden)]
-    pub async fn upsert_and_get_api_nonce(
-        pool: &ApiTransactionDbPool,
-        from_addr: &str,
-        chain_code: &str,
-        nonce: i32,
-    ) -> Result<i32, crate::Error> {
-        Self::allocate_next_nonce(pool, from_addr, chain_code, nonce).await
     }
 
     // 写权限限制：只允许 NonceEngine 调用
@@ -197,21 +179,6 @@ mod tests {
         assert!(ok_res.is_ok());
         let got = ApiNonceRepo::get_api_nonce(&pool_default, addr, chain).await.unwrap();
         assert_eq!(got, 404);
-    }
-
-    #[tokio::test]
-    async fn nonce_allocate_and_get_success() {
-        let pool = setup_api_transaction_pool("wallet_db_nonce_success").await;
-        let addr = "0xnonce_s_1";
-        let chain = wallet_types::constant::chain_code::ETHEREUM;
-
-        let n1 = ApiNonceRepo::allocate_next_nonce(&pool, addr, chain, 10).await.unwrap();
-        assert_eq!(n1, 10);
-        let n2 = ApiNonceRepo::allocate_next_nonce(&pool, addr, chain, 10).await.unwrap();
-        assert_eq!(n2, 11);
-
-        let got = ApiNonceRepo::get_api_nonce(&pool, addr, chain).await.unwrap();
-        assert_eq!(got, 11);
     }
 
     #[tokio::test]

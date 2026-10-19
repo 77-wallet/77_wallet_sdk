@@ -626,7 +626,7 @@ async fn self_transfer_candidate_commits_nonce_with_raw() {
 #[tokio::test]
 async fn self_transfer_stale_candidate_leaves_no_signed_row() {
     let pool = setup_api_transaction_pool("self_transfer_candidate").await;
-    ApiNonceRepo::allocate_next_nonce(&pool, "sender", "eth", 4).await.unwrap();
+    ApiNonceRepo::set_nonce_floor(&pool, "sender", "eth", 4).await.unwrap();
     assert!(ApiWithdrawRepo::reserve_signed_self_transfer(&pool, &signed()).await.is_err());
     assert_eq!(ApiNonceRepo::get_api_nonce(&pool, "sender", "eth").await.unwrap(), 4);
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM api_withdraws")

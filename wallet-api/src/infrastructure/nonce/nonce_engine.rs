@@ -141,6 +141,15 @@ impl ChainErrorNormalizer {
 }
 
 /// NonceEngine核心引擎
+/// Candidate observation never preallocates a nonce.
+/// ```compile_fail
+/// use wallet_api::infrastructure::nonce::nonce_engine::NonceEngine;
+/// let _ = NonceEngine::allocate_nonce;
+/// ```
+/// ```compile_fail
+/// use wallet_api::infrastructure::nonce::nonce_engine::NonceEngine;
+/// let _ = NonceEngine::allocate_nonce_synced;
+/// ```
 pub struct NonceEngine {
     /// 冻结的地址集合，使用多值集合存储不同的冻结原因
     frozen_addresses: DashMap<(String, String), HashSet<FreezeReason>>,
@@ -278,52 +287,6 @@ impl NonceEngine {
         engine
     }
 
-    /// Fast Path: 快速分配nonce
-    pub async fn allocate_nonce(&self, address: &str, chain: &str) -> Result<i32, ServiceError> {
-        // 检查地址是否被冻结
-        if self.is_frozen(&address, &chain) {
-            return Err(ServiceError::Parameter(format!(
-                "Address {} on chain {} is frozen",
-                address, chain
-            )));
-        }
-
-        // 如果 nonce 记录不存在，需要先 bootstrap（避免从 0 错误起步导致 nonce too low）
-        {
-            use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-            let pool = self.ctx.api_transaction_pool()?;
-            let exists = ApiNonceRepo::get_api_nonce_optional(&pool, address, chain)
-                .await
-                .map_err(ServiceError::Database)?
-                .is_some();
-            if !exists {
-                return self.slow_path_allocate(address, chain).await;
-            }
-        }
-
-        // 尝试快速路径：直接从数据库获取并递增
-        match self.fast_path_allocate(&address, &chain).await {
-            Ok(nonce) => {
-                info!(address = %address, chain = %chain, nonce = %nonce, source = "nonce_engine", "Fast path nonce allocation successful");
-                Ok(nonce)
-            }
-            Err(e) => {
-                // 快速路径失败，走慢速路径
-                info!(address = %address, chain = %chain, error = %e, source = "nonce_engine", "Fast path failed, falling back to slow path");
-                self.slow_path_allocate(&address, &chain).await
-            }
-        }
-    }
-
-    /// Allocate for collect after observing the chain's current next nonce.
-    pub async fn allocate_nonce_synced(
-        &self,
-        address: &str,
-        chain: &str,
-    ) -> Result<i32, ServiceError> {
-        self.allocate_nonce_after_observation(address, chain, false).await
-    }
-
     /// Observe a candidate without reserving it. The signed intent repository
     /// rechecks and reserves atomically before the caller may broadcast.
     pub(crate) async fn observe_ordinary_transfer_nonce(
@@ -406,124 +369,12 @@ impl NonceEngine {
         }
     }
 
-    async fn allocate_nonce_after_observation(
-        &self,
-        address: &str,
-        chain: &str,
-        reject_gap: bool,
-    ) -> Result<i32, ServiceError> {
-        if self.is_frozen(address, chain) {
-            return Err(ServiceError::Parameter(format!(
-                "Address {} on chain {} is frozen",
-                address, chain
-            )));
-        }
-
-        // Incident: another transaction consumed nonce 1 while collect's local
-        // last-used value was 0. A local-only increment reused the consumed nonce.
-        // Query failure must not fall back to the stale local allocation.
-        let chain_next = ApiTransDomain::nonce(self.ctx, address, chain).await?;
-        let chain_next = i32::try_from(chain_next).map_err(|_| {
-            ServiceError::Parameter("chain nonce exceeds supported allocation range".into())
-        })?;
-        let target_last = i64::from(chain_next) - 1;
-        let pool = self.ctx.api_transaction_pool()?;
-        let local_last =
-            wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::set_nonce_floor(
-                &pool,
-                address,
-                chain,
-                target_last,
-            )
-            .await
-            .map_err(ServiceError::Database)?;
-        info!(
-            address,
-            chain,
-            chain_next,
-            local_last,
-            source = "nonce_engine",
-            "Nonce floor synced before allocation"
-        );
-
-        if reject_gap && local_last >= i64::from(chain_next) {
-            return Err(ServiceError::Parameter(format!(
-                "nonce_gap_requires_recovery: address={address} chain={chain} chain_next={chain_next} local_last={local_last}"
-            )));
-        }
-
-        // set_nonce_floor is monotonic; allocation remains a separate atomic
-        // increment. Concurrent reservations and older RPC responses cannot
-        // lower the floor or hand out the same nonce.
-        let allocated = self.allocate_nonce(address, chain).await?;
-        if reject_gap && allocated != chain_next {
-            // Another flow can reserve between observation and increment. Keep
-            // that reservation, but never broadcast beyond the observed gap.
-            return Err(ServiceError::Parameter(format!(
-                "nonce_gap_requires_recovery: concurrent reservation address={address} chain={chain} chain_next={chain_next} allocated={allocated}"
-            )));
-        }
-        Ok(allocated)
-    }
-
     /// 获取地址级 transfer gate，确保同地址转账串行执行
     pub async fn acquire_transfer_gate(&self, address: &str, chain: &str) -> OwnedSemaphorePermit {
         let key = (address.to_string(), chain.to_string());
         let semaphore =
             self.transfer_gates.entry(key).or_insert_with(|| Arc::new(Semaphore::new(1))).clone();
         semaphore.acquire_owned().await.expect("transfer gate closed unexpectedly")
-    }
-
-    /// 快速路径：直接从数据库获取并递增
-    async fn fast_path_allocate(&self, address: &str, chain: &str) -> Result<i32, ServiceError> {
-        use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-
-        let pool = self.ctx.api_transaction_pool()?;
-
-        // 尝试获取并递增nonce，只对SQLite busy/locked错误进行重试
-        let max_retries = 3;
-        for attempt in 0..max_retries {
-            match ApiNonceRepo::allocate_next_nonce(&pool, address, chain, 0).await {
-                Ok(nonce) => return Ok(nonce),
-                Err(e) => {
-                    // 检查是否是SQLite busy/locked错误
-                    let is_sqlite_busy = match &e {
-                        wallet_database::Error::Database(db_err) => {
-                            let msg = db_err.to_string();
-                            msg.contains("database is locked") || msg.contains("busy")
-                        }
-                        _ => false,
-                    };
-
-                    if !is_sqlite_busy || attempt == max_retries - 1 {
-                        return Err(ServiceError::Database(e));
-                    }
-
-                    // 短暂睡眠后重试
-                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-                }
-            }
-        }
-
-        // 理论上不会走到这里，因为循环中已经处理了所有情况
-        Err(ServiceError::System(crate::error::system::SystemError::Internal(
-            "Failed to allocate nonce after max retries".to_string(),
-        )))
-    }
-
-    /// 慢速路径：bootstrap + reconcile
-    async fn slow_path_allocate(&self, address: &str, chain: &str) -> Result<i32, ServiceError> {
-        use crate::infrastructure::nonce::nonce_bootstrap::get_nonce_bootstrap_service;
-
-        // 1. 确保nonce已初始化
-        let bootstrap_service = get_nonce_bootstrap_service();
-        bootstrap_service.ensure_nonce_initialized(self.ctx, address, chain).await?;
-
-        // 2. 触发reconcile
-        self.trigger_reconcile_with_reason(address, chain, ReconcileReason::SystemStartup, false);
-
-        // 3. 再次尝试快速路径
-        self.fast_path_allocate(address, chain).await
     }
 
     /// 触发reconcile
