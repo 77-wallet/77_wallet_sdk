@@ -542,8 +542,17 @@ impl ShadowCollectWorker {
         }
     }
 
-    /// 处理单个 Command
-    pub async fn handle(&self, cmd: ShadowCollectCommand) -> Result<(), ServiceError> {
+    /// Keep the large command state out of every dispatcher branch. This is
+    /// a heap boundary, not a spawned task: dropping the caller still cancels
+    /// the same operation and releases its existing guards.
+    pub fn handle(
+        &self,
+        cmd: ShadowCollectCommand,
+    ) -> impl std::future::Future<Output = Result<(), ServiceError>> + Send + '_ {
+        Box::pin(self.handle_inner(cmd))
+    }
+
+    async fn handle_inner(&self, cmd: ShadowCollectCommand) -> Result<(), ServiceError> {
         // 提取 trade_no 用于日志
         let trade_no = match &cmd {
             ShadowCollectCommand::ExpireUnexecuted(trade_no) => trade_no,

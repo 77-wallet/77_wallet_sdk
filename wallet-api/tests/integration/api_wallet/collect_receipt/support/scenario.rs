@@ -36,9 +36,11 @@ impl CollectReceiptScenario {
         let env = ensure_worker_env().await;
         env.recorder.reset();
 
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../target/collect-receipt")
-            .join(format!("{}-{}", std::process::id(), uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join("collect-receipt").join(format!(
+            "{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
         std::fs::create_dir_all(&root).unwrap();
         let dirs = wallet_api::dirs::Dirs::new(root.to_str().unwrap()).unwrap();
         let config = wallet_api::config::Config::new(&format!(

@@ -711,3 +711,7 @@ impl ShadowDispatcher {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "dispatcher_stack_tests.rs"]
+mod stack_tests;
