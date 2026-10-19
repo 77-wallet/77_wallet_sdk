@@ -42,6 +42,18 @@ pub enum RawTx {
     Sol(String, String), // solana tx serialized
 }
 
+/// Verified finalized winner of a linked replacement competition.
+#[derive(Debug, Clone)]
+pub struct ReplacementReceipt {
+    pub transaction_fee: String,
+    pub resource_consume: String,
+    pub tx_hash: String,
+    pub success: bool,
+    pub block_hash: String,
+    pub block_number: u64,
+    pub transaction_time: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TxVisibilityProbe {
     pub signature_status: Option<String>,
@@ -194,6 +206,15 @@ pub trait Tx: Any {
         Option<wallet_database::repositories::api_wallet::collect::FinalizedCollectNonceConflict>,
         crate::error::service::ServiceError,
     > {
+        Ok(None)
+    }
+
+    async fn replacement_receipt(
+        &self,
+        _hash: &str,
+        _address: &str,
+        _nonce: u64,
+    ) -> Result<Option<ReplacementReceipt>, ServiceError> {
         Ok(None)
     }
 

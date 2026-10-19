@@ -563,7 +563,15 @@ impl ApiCollectRepo {
             input.chain_next,
         )
         .await?;
-        if decision != crate::entities::api_nonce_claim::WithdrawNonceDecision::Ready(input.nonce)
+        let replacement = super::collect_replacement::CollectReplacementRepo::permits_signed(
+            &mut tx,
+            input.trade_no,
+            input.nonce,
+            input.chain_next,
+        )
+        .await?;
+        if (decision != crate::entities::api_nonce_claim::WithdrawNonceDecision::Ready(input.nonce)
+            && !replacement)
             || row.building_at.is_none()
             || row.order_ack_sent_at.is_none()
             || row.is_fact_terminal()
@@ -592,6 +600,13 @@ impl ApiCollectRepo {
         if rows != 1 {
             return Err(crate::Error::Other("collect candidate commit conflict".into()));
         }
+        super::collect_replacement::CollectReplacementRepo::record_signed(
+            &mut tx,
+            input.trade_no,
+            input.tx_hash,
+            input.raw_tx,
+        )
+        .await?;
         let signed = ApiCollectDao::get_api_collect_by_trade_no(&mut *tx, input.trade_no).await?;
         ApiCollectDao::update_status(&mut *tx, input.trade_no, signed.recompute_status()).await?;
         ApiNonceDao::upsert_nonce_floor(&mut *tx, input.from_addr, input.chain_code, input.nonce)

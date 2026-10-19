@@ -1910,3 +1910,17 @@ or broadcasting.
   slots remain guarded; counter never rewound, reported signed slot retained.
 - Mock integration collect_query_uncertain* plus DB legacy-counter and pure
   decision tests cover report eligibility and actual new5 candidate commit.
+
+### Explicit Scroll test-address replacement (2026-10-19)
+
+- Default disabled; dev/non-prod explicit scope selects old order/hash/sender/nonce/counter bound. Existing signed relations survive restart.
+- `replacement_signed_candidate_preserves_old_and_commits_relation`, `replacement_concurrent_preparation_has_one_owner`: signed-first atomic linkage, immutable old raw, one active owner.
+- `replacement_checkpoint_allows_actual_seven_and_fences_legacy_reservation`: confirmed slot consumption enables real signed7, retains153 audit, blocks legacy counter-first increments while unresolved, and permits verified external chain-frontier advancement after resolution.
+- `replacement_relation_survives_reopen`, `replacement_migration_preserves_legacy_signed_rows`: restart and existing data preservation.
+- `replacement_winner_write_failure_rolls_back_confirmation_and_checkpoint`: winner and new success fact commit together.
+- `replacement_padded_legacy_sender_is_rejected_before_preparation`: reject ambiguous whitespace aliases before ownership selection.
+- `replacement_underpriced_reports_requote_but_keeps_signed_watch`: report explicit quote failure, never overwrite signatures; continue result observation.
+- API `collect_replacement_reconciles_each_winner_and_continues_from_seven`: old/new winners × success/revert; duplicate recovery stable; actual receipt fee/resource retained; old hash never marks new success.
+- Adapter `replacement_receipt_checks_winner_identity_finality_and_revert`: receipt/transaction/canonical block/finalized anchor checks, changed anchor and wrong block height rejected; Scroll gasUsed × effectiveGasPrice + l1Fee replaces budget.
+- Ordinary `collect_main_` and database `nonce_` regressions verify failed/cancelled builds remain non-reserving and shared ownership protections remain.
+- Uncovered: live gateway replacement acceptance/finality availability, App packaging/deployment, actual transaction signatures/broadcast. No running config or device DB mutation in this stage.

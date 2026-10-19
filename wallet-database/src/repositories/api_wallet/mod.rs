@@ -6,6 +6,7 @@ pub mod assets;
 pub mod chain;
 pub mod coin;
 pub mod collect;
+pub mod collect_replacement;
 pub mod collect_strategy;
 pub mod collect_strategy_chain_config;
 

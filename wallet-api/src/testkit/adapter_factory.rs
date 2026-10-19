@@ -7,6 +7,8 @@ use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 
+pub use crate::domain::api_wallet::adapter::tx::ReplacementReceipt;
+
 use crate::domain::api_wallet::adapter::tx::Tx;
 
 static TEST_TRANSACTION_ADAPTER_OVERRIDE: Lazy<DashMap<String, Arc<dyn Tx + Send + Sync>>> =

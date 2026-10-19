@@ -330,3 +330,7 @@ User requests recovery for this branch: independently verify nonce gap and reuse
 the existing atomic business-failure report; preserve signed6/counter and allow
 new5. Do not sign/broadcast or mutate runtime DB. Receipt failure alone is not
 proof; fresh/failed nonce observation must retain the order.
+
+### 2026-10-19：当前测试地址的归集替换授权
+
+来源：用户本会话明确确认。仅 Scroll 测试 sender `0x5A99406CE8D9F8B3527a38408582872144C8b890`，允许新真实归集业务替换旧订单 `C2111021523509907456` 的 nonce=6，并在 canonical finalized 消耗证据后恢复从 7 分配；遗留计数器 153 保留审计。授权仅本地址、本事故，不能泛化为任意生产地址或全局计数器重置。当前阶段只改代码及离线验证，禁止真实签名、广播和运行库修改。时效：配置激活前须以当时链上结果决定赢家；历史签名不能因本地失败视为失效。

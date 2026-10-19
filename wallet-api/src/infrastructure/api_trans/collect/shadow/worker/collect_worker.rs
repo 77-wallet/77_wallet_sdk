@@ -1,4 +1,6 @@
 #![allow(deprecated)]
+#[path = "collect_replacement.rs"]
+mod replacement_flow;
 
 use crate::domain::api_wallet::trans::RecoveredTxObservation;
 // collect/shadow/worker/collect_worker.rs
@@ -2110,6 +2112,12 @@ impl ShadowCollectWorker {
 
     /// Recover 内部实现，可能返回错误
     async fn process_recover_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
+        // Linked signed competitions stay observable after a local business failure.
+        let candidate = self.get_collect_entity(trade_no).await?;
+        match self.reconcile_collect_replacement(&candidate).await? {
+            replacement_flow::ReplacementProgress::Normal => {}
+            _ => return Ok(()),
+        }
         // ====== phase 1: 锁内 · 并发裁决 ======
         // ⚠️ 锁内禁止任何网络调用、sleep、await RPC
         let req = {
@@ -2255,6 +2263,11 @@ impl ShadowCollectWorker {
         recover_result: Result<RecoveredTxObservation, ServiceError>,
     ) -> Result<(), ServiceError> {
         let trade_no = req.trade_no.as_str();
+        match self.reconcile_collect_replacement(req).await? {
+            replacement_flow::ReplacementProgress::Stop
+            | replacement_flow::ReplacementProgress::Wait => return Ok(()),
+            _ => {}
+        }
         match recover_result {
             Ok(RecoveredTxObservation::QueryUncertain) => {
                 if self.try_report_query_uncertain_nonce_gap(req).await? {
@@ -2868,7 +2881,7 @@ impl ShadowCollectWorker {
         }
         // Observation performs RPC outside the address lock and reserves nothing.
         // The shared counter is rechecked when signed facts commit in phase 3.
-        let (nonce, chain_next) = self.get_nonce(&req.from_addr, &req.chain_code).await?;
+        let (nonce, chain_next, replacement_fee) = self.observe_collect_nonce(&req).await?;
         info!(trade_no = %trade_no, nonce, source = "shadow_worker_v2", "Observed nonce candidate");
 
         // ====== phase 2: 锁外 · 网络执行 ======
@@ -2886,7 +2899,12 @@ impl ShadowCollectWorker {
 
         // 生成转账请求 - 使用解析后的执行地址和获取到的nonce
         // Candidate is reserved only with signed facts in phase 3.
-        let transfer_req = self.gen_transfer_req(&req, &exec_to_addr, nonce).await?;
+        let mut transfer_req = self.gen_transfer_req(&req, &exec_to_addr, nonce).await?;
+        if let Some(context) = replacement_fee {
+            transfer_req.base.metadata =
+                Some(serde_json::json!({"collectReplacement":context}).to_string());
+        }
+
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_worker_v2", "Generated transfer request with nonce");
 
         // 构建交易。公共包装负责 guarded endpoint 并发、timeout、成功/失败记录。
@@ -3094,6 +3112,14 @@ impl ShadowCollectWorker {
                     ),
                 ),
             ));
+        }
+
+        match self.reconcile_collect_replacement(&req).await? {
+            replacement_flow::ReplacementProgress::Stop => return Ok(()),
+            replacement_flow::ReplacementProgress::ContinueNew => {
+                return self.process_recover(trade_no.to_owned()).await;
+            }
+            _ => {}
         }
 
         // 反序列化raw_tx
@@ -4134,6 +4160,23 @@ impl ShadowCollectWorker {
                 "Skip mark failed: transaction already confirmed (monotonicity constraint)"
             );
             return Ok(());
+        }
+
+        if err.to_string().to_ascii_lowercase().contains("underpriced") {
+            let rejected=wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementRepo::fail_signed_quote(&self.ctx.api_transaction_pool()?,trade_no).await.map_err(|e|ServiceError::Database(e.into()))?;
+            if rejected {
+                self.advancer.try_advance(trade_no).await;
+                return Ok(());
+            }
+        }
+        if Self::is_insufficient_fee_balance_error(&err) {
+            let abandoned=wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementRepo::fail_unsigned_attempt(
+                &self.ctx.api_transaction_pool()?,trade_no,&format!("replacement fee budget insufficient: {err}; no automatic top-up"),
+            ).await.map_err(|e|ServiceError::Database(e.into()))?;
+            if abandoned {
+                self.advancer.try_advance(trade_no).await;
+                return Ok(());
+            }
         }
 
         // 🔒 事实保护：检查是否已被 invalidate_raw_tx 作废

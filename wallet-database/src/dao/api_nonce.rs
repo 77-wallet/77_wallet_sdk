@@ -18,6 +18,16 @@ impl ApiNonceDao {
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
         let claims = Self::nonce_claims(&mut *conn, address, chain, chain_next, i64::MAX).await?;
+        // Explicit scoped recovery leaves the historical counter intact. Only
+        // a verified consumed replacement authorizes ignoring that captured bound.
+        let recovered: Option<i64> = sqlx::query_scalar(
+            "SELECT MAX(legacy_counter) FROM api_collect_replacement WHERE lower(from_addr)=lower(trim(?)) AND chain_code=? AND winner_hash IS NOT NULL AND block_hash IS NOT NULL AND nonce<?"
+        ).bind(address).bind(chain).bind(chain_next).fetch_one(&mut *conn).await.map_err(|e|crate::Error::Database(e.into()))?;
+        let counter = if recovered.is_some_and(|bound| counter.is_some_and(|n| n <= bound)) {
+            None
+        } else {
+            counter
+        };
         let last = claims
             .iter()
             .map(|c| c.nonce)

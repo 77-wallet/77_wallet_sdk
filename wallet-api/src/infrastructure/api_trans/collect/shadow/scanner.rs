@@ -1762,12 +1762,19 @@ impl ShadowScanner {
         trace!(max_items = %self.config.max_items_per_scan, "Scanning need recover records");
 
         // 查询DB中需要恢复的记录
-        let records =
+        let mut records =
             wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_recover(
                 &pool,
                 self.config.max_items_per_scan,
             )
             .await?;
+
+        let linked=wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementRepo::pending_orders(&pool,self.config.max_items_per_scan).await?;
+        for row in linked {
+            if !records.iter().any(|r| r.trade_no == row.trade_no) {
+                records.push(row);
+            }
+        }
 
         // 保存原始记录数
         let original_count = records.len();

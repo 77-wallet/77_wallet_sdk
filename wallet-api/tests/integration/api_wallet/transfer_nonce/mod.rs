@@ -1414,3 +1414,29 @@ async fn withdraw_new_order_uses_unsigned_five_with_saved_six() -> anyhow::Resul
     assert_eq!(scenario.adapter.build_calls(), 1);
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn collect_replacement_uses_scoped_old_nonce_and_keeps_legacy_audit() -> anyhow::Result<()> {
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.given_replacement_at_frontier().await?;
+    scenario.when_build().await?;
+    scenario.then_replacement_is_signed_once().await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_replacement_reconciles_each_winner_and_continues_from_seven() -> anyhow::Result<()>
+{
+    for (old, success) in [(false, true), (false, false), (true, true), (true, false)] {
+        let scenario = support::CollectBuildScenario::given().await?;
+        scenario.given_replacement_at_frontier().await?;
+        scenario.when_build().await?;
+        scenario.given_replacement_winner(old, success).await?;
+        scenario.when_replacement_recovers().await?;
+        scenario.when_replacement_recovers().await?;
+        scenario.then_replacement_reconciled(old, success).await?;
+    }
+    Ok(())
+}

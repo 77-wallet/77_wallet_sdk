@@ -1,5 +1,9 @@
 #[path = "eth_nonce_conflict.rs"]
 mod nonce_conflict;
+#[path = "eth_replacement.rs"]
+pub(crate) mod replacement;
+#[path = "eth_replacement_receipt.rs"]
+mod replacement_receipt;
 
 use crate::{
     context::Context,
@@ -574,6 +578,35 @@ impl Tx for EthTx {
         .map_err(|_| ServiceError::Timeout)?
     }
 
+    async fn replacement_receipt(
+        &self,
+        hash: &str,
+        address: &str,
+        nonce: u64,
+    ) -> Result<Option<crate::domain::api_wallet::adapter::tx::ReplacementReceipt>, ServiceError>
+    {
+        let client = RpcClient::new(
+            &self.rpc_url_for_log,
+            self.rpc_header_for_query.clone(),
+            Some(std::time::Duration::from_secs(TIME_OUT)),
+        )?;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(TIME_OUT),
+            replacement_receipt::probe(hash, address, nonce, |method, params| {
+                let client = &client;
+                async move {
+                    Ok(client
+                        .invoke_request::<_, Value>(
+                            JsonRpcParams::default().method(method).params(params),
+                        )
+                        .await?)
+                }
+            }),
+        )
+        .await
+        .map_err(|_| ServiceError::Timeout)?
+    }
+
     async fn query_tx_seen_on_node(&self, hash: &str) -> Result<bool, ServiceError> {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let rpc_client =
@@ -650,10 +683,21 @@ impl Tx for EthTx {
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, token_key.to_chain_token_option())?;
         let trans_req = transfer_opt.build_transaction()?;
-        let fee_setting = match self.chain.network {
+        let mut fee_setting = match self.chain.network {
             NetworkKind::Mainnet => fee_setting,
             _ => self.provider.get_fee(trans_req.clone()).await?,
         };
+        // Applies only to explicit scoped replacement metadata, after current quote.
+        if params.base.metadata.as_deref().is_some_and(|m| m.contains("collectReplacement")) {
+            replacement::apply(
+                params.base.metadata.as_deref(),
+                self.provider.chain_id().await?,
+                &params.base.from,
+                params.nonce,
+                &mut fee_setting,
+            )?;
+        }
+
         // Automatic API Wallet raw builds must fund the signed EIP-1559
         // maximum, because nodes validate balance against
         // gas_limit * max_fee_per_gas.

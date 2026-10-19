@@ -62,7 +62,7 @@ tracing-appender = { workspace = true }
 chrono = { workspace = true }
 
 anyhow = { workspace = true }
-alloy = { workspace = true }
+alloy = { workspace = true, features = ["k256"] }
 # solana-sdk = { workspace = true }
 
 rand = { workspace = true }

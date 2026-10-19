@@ -18,6 +18,7 @@ use wallet_database::entities::asset_token_key::AssetTokenKey;
 #[derive(Default)]
 struct RecordingAdapterState {
     recorded_nonces: Mutex<Vec<u64>>,
+    replacement_receipts: Mutex<Vec<wallet_api::testkit::adapter_factory::ReplacementReceipt>>,
     recorded_raw: Mutex<Vec<Vec<u8>>>,
     build_calls: AtomicUsize,
     funded_balance: AtomicBool,
@@ -170,6 +171,12 @@ impl RecordingEthAdapter {
         self.state.block_first.store(true, Ordering::SeqCst);
     }
 
+    pub(crate) fn set_replacement_receipt(
+        &self,
+        receipt: wallet_api::testkit::adapter_factory::ReplacementReceipt,
+    ) {
+        self.state.replacement_receipts.lock().unwrap().push(receipt);
+    }
     pub(crate) fn recorded_nonces(&self) -> Vec<u64> {
         self.state.recorded_nonces.lock().expect("nonce lock").clone()
     }
@@ -406,6 +413,22 @@ impl wallet_api::domain::api_wallet::Tx for RecordingEthAdapter {
         self.send_nonce(u64::from_be_bytes(bytes.try_into().unwrap())).await
     }
 
+    async fn replacement_receipt(
+        &self,
+        hash: &str,
+        _address: &str,
+        _nonce: u64,
+    ) -> Result<Option<wallet_api::testkit::adapter_factory::ReplacementReceipt>, ServiceError>
+    {
+        Ok(self
+            .state
+            .replacement_receipts
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|r| r.tx_hash == hash)
+            .cloned())
+    }
     async fn query_tx_seen_on_node(&self, _hash: &str) -> Result<bool, ServiceError> {
         self.state.visibility_queries.fetch_add(1, Ordering::SeqCst);
         if self.state.visibility_tls_error.load(Ordering::SeqCst) {
