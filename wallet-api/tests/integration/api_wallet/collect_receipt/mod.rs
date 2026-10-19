@@ -125,3 +125,19 @@ async fn collect_finalized_conflict_receipt_retries_backend_failure_before_finis
 
     scenario.then_conflict_receipt(&fixture, true, 2).await;
 }
+
+#[serial]
+#[tokio::test]
+async fn collect_replacement_included_winner_reports_once_and_restores_next_seven() {
+    // Given immutable old/new6 and the captured legacy153, without a live signer.
+    let scenario = CollectReceiptScenario::new().await;
+    let fixture = CollectReceiptFixture::new("replacement_finality");
+    scenario.given_signed_replacement(&fixture).await;
+    // When included receipt evidence is reconciled twice and the real scanner dispatches upload.
+    scenario.when_replacement_winner_is_reconciled(&fixture).await;
+    let selected = scenario.when().scanner_dispatches_receipt().await;
+    scenario.then().scanner_selected_trade(selected, &fixture);
+    scenario.when().worker_uploads_receipt(&fixture).await;
+    // Then one success report uses the new identity, audit remains, next usable counter is7.
+    scenario.then_replacement_upload_and_counter_are_recovered(&fixture).await;
+}

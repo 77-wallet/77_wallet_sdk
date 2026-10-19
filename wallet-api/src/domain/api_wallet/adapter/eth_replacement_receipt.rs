@@ -1,4 +1,4 @@
-//! Read-only canonical/finalized inclusion proof for either replacement identity.
+//! Selected-RPC canonical receipt proof, using normal collect inclusion semantics.
 use crate::{domain::api_wallet::adapter::tx::ReplacementReceipt, error::service::ServiceError};
 use alloy::primitives::U256;
 use serde_json::{Value, json};
@@ -40,14 +40,8 @@ where
     {
         return Ok(None);
     }
-    let anchor = rpc("eth_getBlockByNumber", vec![json!("finalized"), json!(false)]).await?;
-    if !quantity(&anchor["number"]).is_some_and(|h| h >= height) {
-        return Ok(None);
-    }
-    let Some(anchor_height) = quantity(&anchor["number"]) else { return Ok(None) };
-    let Some(anchor_hash) = anchor["hash"].as_str().filter(|h| h.len() == 66) else {
-        return Ok(None);
-    };
+    // Linked old/new transactions follow the existing collect receipt policy:
+    // verify canonical inclusion, without introducing an L1-finalized gate.
     let block =
         rpc("eth_getBlockByNumber", vec![json!(format!("0x{height:x}")), json!(false)]).await?;
     if quantity(&block["number"]) != Some(height)
@@ -63,11 +57,10 @@ where
     let Some(time) = chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0) else {
         return Ok(None);
     };
-    let checked_anchor =
-        rpc("eth_getBlockByNumber", vec![json!(format!("0x{anchor_height:x}")), json!(false)])
-            .await?;
-    if quantity(&checked_anchor["number"]) != Some(anchor_height)
-        || checked_anchor["hash"].as_str() != Some(anchor_hash)
+    let checked_block =
+        rpc("eth_getBlockByNumber", vec![json!(format!("0x{height:x}")), json!(false)]).await?;
+    if quantity(&checked_block["number"]) != Some(height)
+        || checked_block["hash"].as_str() != Some(block_hash)
     {
         return Ok(None);
     }
@@ -115,38 +108,39 @@ mod tests {
         );
     }
     #[tokio::test]
-    async fn replacement_receipt_checks_winner_identity_finality_and_revert() {
+    async fn replacement_receipt_checks_winner_identity_canonical_block_and_revert() {
         let hash = format!("0x{}", "11".repeat(32));
         let block = format!("0x{}", "22".repeat(32));
         for (
             status,
-            anchor,
+            tx_nonce,
             wrong_sender,
-            changed_anchor,
+            changed_block,
             wrong_height,
             requires_l1,
             l1_present,
             expected,
         ) in [
-            (1, 42, false, false, false, true, true, Some(true)),
-            (0, 42, false, false, false, true, true, Some(false)),
-            (1, 41, false, false, false, true, true, None),
-            (1, 42, true, false, false, true, true, None),
-            (1, 42, false, true, false, true, true, None),
-            (1, 42, false, false, true, true, true, None),
-            (1, 42, false, false, false, false, false, Some(true)),
-            (1, 42, false, false, false, true, false, None),
+            (1, 6, false, false, false, true, true, Some(true)),
+            (0, 6, false, false, false, true, true, Some(false)),
+            (1, 7, false, false, false, true, true, None),
+            (1, 6, true, false, false, true, true, None),
+            (1, 6, false, true, false, true, true, None),
+            (1, 6, false, false, true, true, true, None),
+            (1, 6, false, false, false, false, false, Some(true)),
+            (1, 6, false, false, false, true, false, None),
+            (2, 6, false, false, false, true, true, None),
         ] {
             let reads = std::sync::atomic::AtomicUsize::new(0);
             let result=probe(&hash,"sender",6,requires_l1,|method,params|{
                 let hash=hash.clone();let block=block.clone();
-                let second = method=="eth_getBlockByNumber" && params[0]!="finalized" && reads.fetch_add(1,std::sync::atomic::Ordering::SeqCst)>0;
+                assert!(method!="eth_getBlockByNumber" || params[0]!="finalized","linked replacement must follow normal included-receipt policy");
+                let second=method=="eth_getBlockByNumber" && reads.fetch_add(1,std::sync::atomic::Ordering::SeqCst)>0;
                 async move {Ok(match method {
                     "eth_getTransactionReceipt"=>json!({"transactionHash":hash,"blockHash":block,"blockNumber":"0x2a","status":format!("0x{status:x}"),"gasUsed":"0x5208","effectiveGasPrice":"0x1","l1Fee":if l1_present {json!("0x7")} else {Value::Null}}),
-                    "eth_getTransactionByHash"=>json!({"hash":hash,"from":if wrong_sender{"wrong"}else{"sender"},"nonce":"0x6","blockNumber":"0x2a","blockHash":block}),
-                    "eth_getBlockByNumber" if params[0]=="finalized"=>json!({"number":format!("0x{anchor:x}"),"hash":block}),
-                    "eth_getBlockByNumber"=>json!({"number":if wrong_height{"0x2b"}else{"0x2a"},"hash":if changed_anchor && second{format!("0x{}","33".repeat(32))}else{block},"transactions":[hash],"timestamp":"0x68f40000"}),
-                    _=>Value::Null,
+                    "eth_getTransactionByHash"=>json!({"hash":hash,"from":if wrong_sender{"wrong"}else{"sender"},"nonce":format!("0x{tx_nonce:x}"),"blockNumber":"0x2a","blockHash":block}),
+                    "eth_getBlockByNumber"=>json!({"number":if wrong_height{"0x2b"}else{"0x2a"},"hash":if changed_block && second{format!("0x{}","33".repeat(32))}else{block},"transactions":[hash],"timestamp":"0x68f40000"}),
+                    _=>panic!("unexpected proof method: {method}"),
                 })}
             }).await.unwrap();
             if let Some(ref r) = result {

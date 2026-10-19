@@ -177,8 +177,14 @@ impl ShadowCollectWorker {
         } else {
             Ok(None)
         };
-        let old = old.ok().flatten();
-        let new = new.ok().flatten();
+        let old = old.unwrap_or_else(|error| {
+            tracing::warn!(trade_no=%req.trade_no,tx_hash=%r.old_hash,error=%error,"Old replacement identity proof unavailable; retaining ownership");
+            None
+        });
+        let new = new.unwrap_or_else(|error| {
+            tracing::warn!(trade_no=%req.trade_no,tx_hash=?r.new_hash,error=%error,"New replacement identity proof unavailable; retaining ownership");
+            None
+        });
         if old.is_some() && new.is_some() {
             return Err(ServiceError::Parameter(
                 "inconsistent replacement chain evidence: both identities included".into(),

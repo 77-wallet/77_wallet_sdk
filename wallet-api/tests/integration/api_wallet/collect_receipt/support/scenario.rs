@@ -461,3 +461,165 @@ async fn current_backend_url() -> Option<String> {
     let app_state = wallet_api::app_state::APP_STATE.read().await;
     app_state.url().backend.clone()
 }
+
+impl CollectReceiptScenario {
+    pub(crate) async fn given_signed_replacement(&self, fixture: &CollectReceiptFixture) {
+        use wallet_database::repositories::api_wallet::{
+            collect::SignedCollectCandidate,
+            collect_replacement::{CollectReplacementRepo, CollectReplacementScope},
+            nonce::ApiNonceRepo,
+        };
+        let old = format!("old-{}", fixture.trade_no);
+        for trade in [&old, &fixture.trade_no] {
+            ApiCollectRepo::upsert_api_collect(
+                &self.collect_pool,
+                "uid",
+                "collect",
+                &fixture.from_addr,
+                &fixture.receipt_to_addr,
+                "1.12",
+                "digest",
+                "scroll",
+                None,
+                "ETH",
+                trade,
+                2,
+                ApiCollectStatus::Init,
+                1,
+            )
+            .await
+            .unwrap();
+            ApiCollectRepo::set_order_ack_sent(&self.collect_pool, trade).await.unwrap();
+            ApiCollectRepo::update_building_at(&self.collect_pool, trade).await.unwrap();
+        }
+        let old_hash = format!("0x{}", "33".repeat(32));
+        for (trade, hash, raw) in [
+            (&old, &old_hash, "old-synthetic-raw"),
+            (&fixture.trade_no, &fixture.tx_hash, "new-synthetic-raw"),
+        ] {
+            ApiCollectRepo::reserve_signed_collect(
+                &self.collect_pool,
+                &SignedCollectCandidate {
+                    trade_no: trade,
+                    from_addr: &fixture.from_addr,
+                    chain_code: "scroll",
+                    tx_hash: hash,
+                    raw_tx: raw,
+                    transaction_fee: "0.1",
+                    nonce: 6,
+                    chain_next: 6,
+                },
+            )
+            .await
+            .unwrap();
+            if trade == &old {
+                ApiCollectRepo::fail_verified_nonce_gap(&self.collect_pool, &old, 5, 6)
+                    .await
+                    .unwrap();
+                sqlx::query("UPDATE api_collect SET tx_exec_receipt_uploaded_at=CURRENT_TIMESTAMP WHERE trade_no=?").bind(&old).execute(self.collect_pool.write_ref()).await.unwrap();
+                ApiNonceRepo::set_nonce_exact(
+                    &self.collect_pool,
+                    &fixture.from_addr,
+                    "scroll",
+                    153,
+                )
+                .await
+                .unwrap();
+                CollectReplacementRepo::prepare(
+                    &self.collect_pool,
+                    &fixture.trade_no,
+                    &CollectReplacementScope {
+                        chain_code: "scroll".into(),
+                        from_addr: fixture.from_addr.clone(),
+                        old_trade_no: old.clone(),
+                        old_hash: old_hash.clone(),
+                        nonce: 6,
+                        legacy_counter: 153,
+                    },
+                    6,
+                )
+                .await
+                .unwrap()
+                .unwrap();
+            }
+        }
+    }
+
+    pub(crate) async fn when_replacement_winner_is_reconciled(
+        &self,
+        fixture: &CollectReceiptFixture,
+    ) {
+        use wallet_database::repositories::api_wallet::collect_replacement::{
+            CollectReplacementRepo, ReplacementResolution,
+        };
+        let block = format!("0x{}", "ab".repeat(32));
+        let proof = ReplacementResolution {
+            transaction_fee: "0.000000000000000123",
+            resource_consume: "21000",
+            winner_hash: &fixture.tx_hash,
+            success: true,
+            block_hash: &block,
+            block_number: 42,
+            transaction_time: "2026-10-19T00:00:00Z",
+        };
+        assert!(
+            CollectReplacementRepo::resolve(&self.collect_pool, &fixture.trade_no, &proof)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !CollectReplacementRepo::resolve(&self.collect_pool, &fixture.trade_no, &proof)
+                .await
+                .unwrap()
+        );
+    }
+
+    pub(crate) async fn then_replacement_upload_and_counter_are_recovered(
+        &self,
+        fixture: &CollectReceiptFixture,
+    ) {
+        use wallet_database::repositories::api_wallet::{
+            collect_replacement::CollectReplacementRepo, nonce::ApiNonceRepo,
+        };
+        let row =
+            ApiCollectRepo::get_api_collect_by_trade_no(&self.collect_pool, &fixture.trade_no)
+                .await
+                .unwrap();
+        assert_eq!(row.nonce, 6);
+        assert!(row.transaction_time.is_some());
+        assert!(row.tx_exec_receipt_uploaded_at.is_some());
+        assert!(row.err_code.is_none());
+        assert_eq!(row.transaction_fee, "0.000000000000000123");
+        let relation = CollectReplacementRepo::find(&self.collect_pool, &fixture.trade_no)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(relation.winner_hash.as_deref(), Some(fixture.tx_hash.as_str()));
+        assert_eq!(relation.legacy_counter, 153);
+        assert_eq!(
+            ApiNonceRepo::get_api_nonce(&self.collect_pool, &fixture.from_addr, "scroll")
+                .await
+                .unwrap(),
+            6
+        );
+        let requests = self.env.recorder.snapshot();
+        let receipts: Vec<_> = requests
+            .iter()
+            .filter(|r| r.path.contains("awallet/aw/trans/executeComplete"))
+            .collect();
+        assert_eq!(receipts.len(), 1);
+        let payload = decrypt_captured_api_backend_body(&receipts[0].body);
+        assert_collect_receipt_payload(
+            &payload,
+            &fixture.trade_no,
+            &fixture.receipt_to_addr,
+            &fixture.tx_hash,
+        );
+        let old =
+            ApiCollectRepo::get_api_collect_by_trade_no(&self.collect_pool, &relation.old_trade_no)
+                .await
+                .unwrap();
+        assert!(old.err_code.is_some());
+        assert_eq!(old.tx_hash.as_deref(), Some(relation.old_hash.as_str()));
+    }
+}

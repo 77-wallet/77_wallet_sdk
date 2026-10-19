@@ -1553,3 +1553,18 @@ async fn collect_replacement_automatic_discovery_never_signs_on_unknown_latest_o
     }
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn collect_replacement_releases_ordinary_seven_without_virtual_reservation()
+-> anyhow::Result<()> {
+    // Given a confirmed included new6 winner and the captured legacy153.
+    let scenario = support::CollectBuildScenario::given().await?;
+    scenario.given_replacement_at_frontier().await?;
+    scenario.when_build().await?;
+    scenario.given_replacement_winner(false, true).await?;
+    scenario.when_replacement_recovers().await?;
+    // Then the actual ordinary observer returns7; only signed commit occupies it.
+    scenario.then_ordinary_seven_is_free_until_signed_commit().await?;
+    Ok(())
+}

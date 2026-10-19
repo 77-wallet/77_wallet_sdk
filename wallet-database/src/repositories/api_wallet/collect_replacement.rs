@@ -405,6 +405,32 @@ impl CollectReplacementRepo {
         }
         sqlx::query("UPDATE api_collect_replacement SET winner_hash=?,execution_success=?,actual_transaction_fee=?,actual_resource_consume=?,block_hash=?,block_number=?,transaction_time=?,updated_at=CURRENT_TIMESTAMP WHERE new_trade_no=? AND winner_hash IS NULL")
             .bind(evidence.winner_hash).bind(evidence.success).bind(evidence.transaction_fee).bind(evidence.resource_consume).bind(evidence.block_hash).bind(evidence.block_number).bind(evidence.transaction_time).bind(trade).execute(&mut *tx).await.map_err(|e|crate::Error::Database(e.into()))?;
+        // Normalize only the captured legacy high-water, in the same writer
+        // transaction as winner/execution facts. api_nonce stores LAST USED,
+        // so confirmed6 writes6, leaving7 free until a signed commit owns it.
+        // Retain the original high-water audit in legacy_counter.
+        // All three signed-intent flows are checked; late unknown changes or
+        // higher ownership must never be erased by a repeated recovery.
+        let next = r
+            .nonce
+            .checked_add(1)
+            .ok_or_else(|| crate::Error::Other("replacement nonce overflow".into()))?;
+        let counter: Option<i64> = sqlx::query_scalar(
+            "SELECT MAX(nonce) FROM api_nonce WHERE lower(from_addr)=lower(?) AND chain_code=?",
+        )
+        .bind(&r.from_addr)
+        .bind(&r.chain_code)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        if counter.is_some_and(|n| n <= r.legacy_counter)
+            && ApiNonceDao::nonce_claims(&mut *tx, &r.from_addr, &r.chain_code, next, i64::MAX)
+                .await?
+                .is_empty()
+        {
+            sqlx::query("UPDATE api_nonce SET nonce=?,updated_at=CURRENT_TIMESTAMP WHERE lower(from_addr)=lower(?) AND chain_code=? AND nonce<=?")
+                .bind(r.nonce).bind(&r.from_addr).bind(&r.chain_code).bind(r.legacy_counter).execute(&mut *tx).await.map_err(|e|crate::Error::Database(e.into()))?;
+        }
         tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(true)
     }

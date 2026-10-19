@@ -18,3 +18,14 @@ pub fn manager(ctx: &'static Context) -> (WalletManager, TaskGuard) {
 pub(crate) fn is_noop_context(ctx: &Context) -> bool {
     NOOP_CONTEXTS.contains_key(&(ctx as *const Context as usize))
 }
+
+/// Observe the ordinary EVM candidate without signing, reserving, or broadcasting.
+pub async fn observe_nonce(
+    ctx: &'static Context,
+    address: &str,
+    chain: &str,
+) -> Result<i32, crate::error::service::ServiceError> {
+    crate::infrastructure::nonce::nonce_engine::get_nonce_engine_with_ctx(ctx)?
+        .observe_ordinary_transfer_nonce(address, chain)
+        .await
+}

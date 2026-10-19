@@ -103,7 +103,7 @@ async fn replacement_winner_recovers_counter_only_after_chain_consumption() {
         ApiNonceRepo::observe_signed_nonce(&p, "sender", "scroll", 7).await.unwrap(),
         D::Ready(7)
     );
-    assert_eq!(ApiNonceRepo::get_api_nonce(&p, "sender", "scroll").await.unwrap(), 153);
+    assert_eq!(ApiNonceRepo::get_api_nonce(&p, "sender", "scroll").await.unwrap(), 6);
     // Unknown post-recovery counter changes invalidate the captured authorization.
     ApiNonceRepo::set_nonce_exact(&p, "sender", "scroll", 154).await.unwrap();
     assert_eq!(
@@ -293,7 +293,7 @@ async fn replacement_checkpoint_allows_actual_seven_and_fences_legacy_reservatio
     seven.raw_tx = "seven-raw";
     assert_eq!(ApiCollectRepo::reserve_signed_collect(&p, &seven).await.unwrap(), 1);
     assert_eq!(ApiCollectRepo::get_api_collect_by_trade_no(&p, "seven").await.unwrap().nonce, 7);
-    assert_eq!(ApiNonceRepo::get_api_nonce(&p, "sender", "scroll").await.unwrap(), 153);
+    assert_eq!(ApiNonceRepo::get_api_nonce(&p, "sender", "scroll").await.unwrap(), 7);
     // Canonical external consumption can advance beyond the historical bound.
     seed(&p, "external-next").await;
     let mut next = signed("external-next");
@@ -521,6 +521,7 @@ async fn replacement_automatic_checkpoint_preserves_higher_signed_or_uncertain_o
             ApiNonceRepo::observe_signed_nonce(&p, "sender", "scroll", 7).await.unwrap(),
             D::Ready(8)
         );
+        assert_eq!(ApiNonceRepo::get_api_nonce(&p, "sender", "scroll").await.unwrap(), 153);
         let higher = ApiCollectRepo::get_api_collect_by_trade_no(&p, "higher").await.unwrap();
         assert!(higher.broadcast_uncertain_since_at.is_some());
         assert_eq!(higher.raw_tx.is_some(), signed);

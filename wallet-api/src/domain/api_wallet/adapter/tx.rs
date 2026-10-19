@@ -42,7 +42,8 @@ pub enum RawTx {
     Sol(String, String), // solana tx serialized
 }
 
-/// Verified finalized winner of a linked replacement competition.
+/// Verified canonical included result of a linked replacement competition.
+/// Uses normal collect receipt semantics; it is not an L1-finality proof.
 #[derive(Debug, Clone)]
 pub struct ReplacementReceipt {
     pub transaction_fee: String,
@@ -214,6 +215,8 @@ pub trait Tx: Any {
         Err(ServiceError::Parameter("latest nonce unsupported for scoped replacement".into()))
     }
 
+    /// Confirm a known signed identity using the normal included-receipt policy.
+    /// Missing/uncertain receipts and pending nonce observations are not evidence.
     async fn replacement_receipt(
         &self,
         _hash: &str,

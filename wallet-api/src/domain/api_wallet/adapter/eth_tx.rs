@@ -1572,3 +1572,7 @@ mod tests {
 #[cfg(test)]
 #[path = "eth_tx/fee_tests.rs"]
 mod fee_tests;
+
+#[cfg(test)]
+#[path = "eth_tx/replacement_receipt_tests.rs"]
+mod receipt_tests;

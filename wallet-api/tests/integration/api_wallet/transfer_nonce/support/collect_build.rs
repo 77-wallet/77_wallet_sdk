@@ -250,7 +250,7 @@ impl CollectBuildScenario {
         assert!(row.raw_tx.is_some());
         assert_eq!(self.adapter.build_calls(), 2);
         assert!(wallet_database::repositories::api_wallet::collect_replacement::CollectReplacementRepo::find(&self.pool,&self.trade).await?.is_none());
-        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 153);
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 7);
         Ok(())
     }
     pub async fn when_replacement_build_command(&self) -> anyhow::Result<()> {
@@ -382,7 +382,7 @@ impl CollectBuildScenario {
             ApiNonceRepo::observe_signed_nonce(&self.pool, &self.from, "scroll", 7).await?,
             WithdrawNonceDecision::Ready(7)
         );
-        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 153);
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 6);
         assert!(self.adapter.recorded_nonces().is_empty());
         assert!(
             ApiCollectRepo::scan_need_tx_exec_receipt_upload(&self.pool, 10000)
@@ -462,5 +462,49 @@ impl CollectBuildScenario {
     }
     pub async fn given_competing_reservation(&self) {
         ApiNonceRepo::set_nonce_floor(&self.pool, &self.from, "scroll", 5).await.unwrap();
+    }
+}
+
+impl CollectBuildScenario {
+    pub async fn then_ordinary_seven_is_free_until_signed_commit(&self) -> anyhow::Result<()> {
+        use wallet_database::{
+            entities::{api_withdraw::SignedSelfTransfer, asset_token_key::AssetTokenKey},
+            repositories::api_wallet::withdraw::ApiWithdrawRepo,
+        };
+        let observed =
+            wallet_api::testkit::ordinary_business::observe_nonce(self.ctx, &self.from, "scroll")
+                .await?;
+        assert_eq!(observed, 7);
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 6);
+        let trade = format!("ordinary-{}", self.trade);
+        // Synthetic persisted signed facts only: no signer or broadcaster runs.
+        ApiWithdrawRepo::reserve_signed_self_transfer(
+            &self.pool,
+            &SignedSelfTransfer {
+                trade_no: &trade,
+                uid: "uid",
+                name: "ordinary",
+                from_addr: &self.from,
+                to_addr: super::request::BNB_TO_ADDR,
+                chain_code: "scroll",
+                token_addr: AssetTokenKey::Native,
+                symbol: "ETH",
+                value: "1",
+                nonce: 7,
+                tx_hash: "synthetic-ordinary-seven",
+                raw_tx: "synthetic-seven-raw",
+                transaction_fee: "0.1",
+                notes: None,
+            },
+        )
+        .await?;
+        assert_eq!(ApiNonceRepo::get_api_nonce(&self.pool, &self.from, "scroll").await?, 7);
+        assert!(
+            wallet_api::testkit::ordinary_business::observe_nonce(self.ctx, &self.from, "scroll")
+                .await
+                .is_err()
+        );
+        assert!(self.adapter.recorded_nonces().is_empty());
+        Ok(())
     }
 }
